@@ -585,6 +585,7 @@ cdef class DotNetEmulator:
         cdef str method_name
         cdef type emulated_type
         cdef bint push_obj_reference
+        cdef net_row_objects.ColumnValue params_obj
         
         method_obj = <net_row_objects.MethodDefOrRef>instr.get_argument()
         if force_method_obj:
@@ -608,9 +609,10 @@ cdef class DotNetEmulator:
 
             #crappy fix for the params issue - use whichever is bigger. #More investigation is definitely needed to fix this.
             #see  d18aa5d58656fffd7a2a0a3d7f6f4e011bf0f39b8f89701b0e5263951e1ce90c methods 1365 and 1404
-            if method_obj.get_column('ParamList').get_formatted_value() == None:
-                print('Error paramList {} {}'.format(hex(method_obj.get_token()), method_obj.get_column('ParamList').get_raw_value()))
-            amt_params = len(method_obj.get_column('ParamList').get_formatted_value())
+            params_obj = method_obj.get_column('ParamList')
+            amt_params = 0
+            if params_obj.get_formatted_value() != None:
+                amt_params = len(params_obj.get_formatted_value())
             if len(method_obj.get_param_types()) > amt_params:
                 amt_params = len(method_obj.get_param_types())
 
