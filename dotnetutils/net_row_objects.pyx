@@ -1095,6 +1095,8 @@ cdef class MethodDef(MethodDefOrRef):
 
         # process paramslist
         metadata_heap = self.get_dotnetpe().get_heap('#~')
+        if self.get_token() == 0x6000039:
+            print('running process() {}'.format(metadata_heap.has_table('Param')))
         if metadata_heap.has_table('Param'):
             params_list_len = len(metadata_heap.obtain_table('Param'))
             params_list_end = params_list_len + 1
