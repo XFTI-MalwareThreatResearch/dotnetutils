@@ -979,6 +979,9 @@ cpdef bytes remove_useless_functions(bytes data):
     cdef net_table_objects.MemberRefTable memberref_table
     cdef unsigned long x
     cdef unsigned long y
+    cdef list useless_rids
+    cdef list useless_xrefs
+    cdef tuple xref_info
     cdef datetime start_time
     cdef datetime end_time
     
@@ -1002,10 +1005,14 @@ cpdef bytes remove_useless_functions(bytes data):
     end_time = datetime.now()
     print('Finished first loop {}'.format(end_time - start_time))
     start_time = end_time
-
-    for u_rid in useless_methods.keys():
-        u_method = dotnet.get_method_by_rid(u_rid)
-        for method_rid, instr_index in u_method.get_xrefs():
+    useless_rids = list(useless_methods.keys())
+    for x in range(len(useless_rids)):
+        u_method = method_table.get(useless_rids[x])
+        useless_xrefs = u_method.get_xrefs()
+        for y in range(len(useless_xrefs)):
+            xref_info = useless_xrefs[y]
+            method_rid = xref_info[0]
+            instr_index = xref_info[1]
             method_obj = dotnet.get_method_by_rid(method_rid)
             method_disasm = method_obj.disassemble_method()
             instr_list = method_disasm.get_list_of_instrs()
