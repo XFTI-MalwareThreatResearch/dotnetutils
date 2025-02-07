@@ -393,6 +393,9 @@ cdef class DotNetPeFile:
         cdef bytes str_val
         cdef bytes metadata_heap_data
         cdef DotNetPeFile curr_dpe
+        cdef list col_objs
+        cdef unsigned long x
+        cdef unsigned long y
 
 
         #first go through all the columns and apply any changes that need to be applied.
@@ -402,8 +405,11 @@ cdef class DotNetPeFile:
         metadata_heap = self.get_heap('#~')
         original_strings_items = self.get_heap('#Strings').get_items()
         for table_name, table_obj in metadata_heap.get_tables().items():
-            for row_obj in table_obj:
-                for orig_col_obj in row_obj:
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj[x]
+                col_objs = list(row_obj)
+                for y in range(len(col_objs)):
+                    orig_col_obj = col_objs[y]
                     current_byte_value = orig_col_obj.get_value()
                     if orig_col_obj.has_value():
                         if isinstance(orig_col_obj.get_col_type(), net_tokens.CodedToken):
