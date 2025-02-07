@@ -4,6 +4,8 @@ from dotnetutils cimport dotnetpefile, net_tokens, net_row_objects, net_emulator
 from dotnetutils cimport net_opcodes, net_utils, net_table_objects, net_structs, net_utils, net_emu_types
 from dotnetutils import net_graphing, net_exceptions
 
+from cpython.datetime cimport datetime
+
 """
 This file contains various functions for removing different types of obfuscation
 Commonly seen in obfuscated .Net samples.
@@ -977,10 +979,12 @@ cpdef bytes remove_useless_functions(bytes data):
     cdef net_table_objects.MemberRefTable memberref_table
     cdef unsigned long x
     cdef unsigned long y
+    cdef datetime start_time
+    cdef datetime end_time
     
     useless_methods = dict(
     )  # dictionary of useless method rids and the instructions to replace them with
-
+    start_time = datetime.now()
     dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     method_table = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
     memberref_table = <net_table_objects.MemberRefTable>dotnet.get_metadata_table('MemberRef')
@@ -995,6 +999,9 @@ cpdef bytes remove_useless_functions(bytes data):
                     useless_methods[method.get_rid()] = data2
                     # for sanity sake set the raw value to 0.  TODO: fix this to remove the method from the binary entirely.
                     # method['RVA'].set_raw_value(0)
+    end_time = datetime.now()
+    print('Finished first loop {}'.format(end_time - start_time))
+    start_time = end_time
 
     for u_rid in useless_methods.keys():
         u_method = dotnet.get_method_by_rid(u_rid)
@@ -1006,6 +1013,10 @@ cpdef bytes remove_useless_functions(bytes data):
             instr_arg = instr.get_argument()
             dotnet.patch_instruction(method_obj, useless_methods[instr_arg.get_rid()], instr.get_instr_offset(),
                                      len(instr))
+
+    end_time = datetime.now()
+    print('Finished second loop {}'.format(end_time - start_time))
+    start_time = end_time
 
     # Check for useless memberref calls.
 
@@ -1023,6 +1034,9 @@ cpdef bytes remove_useless_functions(bytes data):
                                              instr.get_instr_offset(), len(instr))
 
     # now search for junk methods
+    end_time = datetime.now()
+    print('Finished third loop {}'.format(end_time - start_time))
+    start_time = end_time
 
     for x in range(1, len(method_table) + 1):
         method = method_table.get(x)
@@ -1054,6 +1068,9 @@ cpdef bytes remove_useless_functions(bytes data):
                                          * b'\x00') + patch
                                 dotnet.patch_instruction(
                                     method, patch, instr.get_instr_offset(), len(instr))
+    end_time = datetime.now()
+    print('Finished fourth loop {}'.format(end_time - start_time))
+    start_time = end_time
     return dotnet.reconstruct_executable()
 
 
