@@ -595,9 +595,9 @@ cdef class DotNetPeFile:
         """
         Patch an instruction.
         """
-        if method_obj['RVA'].get_value() != 0:
+        if method_obj['RVA'].get_raw_value() != 0:
             disas = method_obj.disassemble_method()
-            rva = method_obj['RVA'].get_value()
+            rva = method_obj['RVA'].get_raw_value()
             offset = self.get_pe().get_offset_from_rva(rva)
             patch_offset = offset + disas.get_header_size() + instr_offset  # needs to be zero based not 1 based.
             exe_data = self.get_exe_data()
