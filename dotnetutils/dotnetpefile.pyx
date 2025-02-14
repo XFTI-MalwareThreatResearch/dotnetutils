@@ -371,7 +371,7 @@ cdef class DotNetPeFile:
             return treftable.get_type_by_full_name(type_full_name)
         return None
 
-    cpdef bytes reconstruct_executable(self):
+    cpdef bytes reconstruct_executable(self) except *:
         """
         Obtain the executable with all changes to the strings, metadata, code and user strings section intact.
 

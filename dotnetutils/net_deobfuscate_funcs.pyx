@@ -951,7 +951,7 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
         return 1
     return 2
 
-cpdef bytes remove_useless_functions(bytes data):
+cpdef bytes remove_useless_functions(bytes data) except *:
     """
     Removes functions that simply call another function with the same arguments.
     TODO: This method needs a rewrite.  For example, on sample 0320 for cex parser, it takes around 5 minutes to decode strings
@@ -1080,9 +1080,6 @@ cpdef bytes remove_useless_functions(bytes data):
     start_time = end_time
     return dotnet.reconstruct_executable()
 
-
-
-
 cdef bint has_prefix(bytes type_name):
     cdef list prefixes
     cdef bytes nums
@@ -1176,7 +1173,6 @@ cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.
         check_type(
             method_obj, tdefref, parent_method_name, name, parent_method_signature, checked_types)
 
-
 cpdef bytes cleanup_names(bytes data,
                   bint change_namespaces=True,
                   bint change_method_names=True,
@@ -1186,7 +1182,7 @@ cpdef bytes cleanup_names(bytes data,
                   bint change_field_names=True,
                   bint change_property_names=True,
                   bint force_main_method=True,
-                  bint change_import_names=True):
+                  bint change_import_names=True) except *:
     """
     Changes various names throughout the binary to more readable values
     Intended for instances when the names have been obfuscated.
@@ -1261,14 +1257,7 @@ cpdef bytes cleanup_names(bytes data,
     cdef net_table_objects.TableObject table_obj1
     cdef net_table_objects.TableObject table_obj2
     cdef net_table_objects.MethodSemanticsTable semantics_table
-    
-    
-
-
     dotnetpe = dotnetpefile.DotNetPeFile(pe_data=data)
-
-
-
     namespace_count = 0
     class_count = 0
     # Add more common method names here that should not be manipulated.

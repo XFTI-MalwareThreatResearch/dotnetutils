@@ -21,7 +21,7 @@ cdef class DotNetPeFile:
 
     cpdef int delete_user_string(self, int us_index)
 
-    cpdef bytes reconstruct_executable(self)
+    cpdef bytes reconstruct_executable(self) except *
 
     cpdef net_row_objects.TypeDefOrRef get_type_by_full_name(self, bytes type_full_name)
 
