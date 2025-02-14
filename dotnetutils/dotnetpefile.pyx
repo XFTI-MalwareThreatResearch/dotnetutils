@@ -448,7 +448,7 @@ cdef class DotNetPeFile:
                                     if orig_col_obj.get_changed_value() != None:
                                         orig_col_obj.set_raw_value(orig_col_obj.get_changed_value())
         end_time = datetime.now()
-        print('First loop took {}'.format(end_time - start_time))
+        print('reconstruct First loop took {}'.format(end_time - start_time))
         start_time = end_time
         #add any extra strings to our fake #Strings heap.
         for str_val in self.added_strings:
@@ -465,7 +465,7 @@ cdef class DotNetPeFile:
             if len(item) != 0:
                 strings_stream.append_item(item)
         end_time = datetime.now()
-        print('Second loops took {}'.format(end_time - start_time))
+        print('reconstruct Second loops took {}'.format(end_time - start_time))
         start_time = end_time
 
         #so now that weve applied all the changes to the various streams, go through each of them and ensure that the heap_offset_size is updated.
@@ -489,7 +489,7 @@ cdef class DotNetPeFile:
                 if heap_id == None:
                     raise net_exceptions.InvalidHeapNameException
         end_time = datetime.now()
-        print('Third loop took {}'.format(end_time - start_time))
+        print('reconstruct Third loop took {}'.format(end_time - start_time))
         start_time = end_time
         #begin patching in various streams.  Start with the metadata heap.
         #problem: we cant patch the stuff in individually.  Has to be all or nothing.
@@ -527,7 +527,7 @@ cdef class DotNetPeFile:
         curr_exe_data = bytes(curr_exe_data)
 
         end_time = datetime.now()
-        print('At has_heap {}'.format(end_time - start_time))
+        print('reconstruct At has_heap {}'.format(end_time - start_time))
 
         if self.has_heap('#US'):
             curr_dpe = DotNetPeFile(pe_data=curr_exe_data)
