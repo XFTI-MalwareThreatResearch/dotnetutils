@@ -9,7 +9,7 @@ from dotnetutils.net_structs import IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, Do
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from logging import getLogger
 from ctypes import sizeof
-from datetime cimport datetime
+from cpython.datetime cimport datetime
 
 logger = getLogger(__name__)
 
