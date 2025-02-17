@@ -55,7 +55,7 @@ cdef class RowObject:
             self.values[col_name.lower()] = cval
             index += 1
 
-    cpdef ColumnValue get_column(self, str col_name):
+    cpdef ColumnValue get_column(self, str col_name) except *:
         if not hasattr(col_name, 'lower'):
             raise net_exceptions.ObjectTypeException
         return <ColumnValue>self.values[col_name.lower()]
@@ -72,7 +72,7 @@ cdef class RowObject:
         """
         return self.dotnetpe
 
-    cpdef int get_rid(self):
+    cpdef int get_rid(self) except *:
         """
         Obtain the RID of a RowObject.
         A RID is a 1 based index of the row in a specific metadata table.
@@ -85,7 +85,7 @@ cdef class RowObject:
         """
         return self.table_name
 
-    cpdef int get_token(self):
+    cpdef int get_token(self) except *:
         """
         Obtain the MDToken value for the column.
         """
@@ -300,7 +300,7 @@ cdef class ColumnValue:
         """
         return not self.__has_no_value
 
-    cpdef object get_value(self):
+    cpdef object get_value(self) except *:
         """
         Obtain the processed value corresponding to the raw_value
         :return: The processed value corresponding to the column
@@ -329,7 +329,7 @@ cdef class ColumnValue:
         """
         self.formatted_value = value
 
-    cpdef object get_formatted_value(self):
+    cpdef object get_formatted_value(self) except *:
         """
         Obtains the formatted value for a column
         :return: The formatted value
@@ -345,7 +345,7 @@ cdef class ColumnValue:
         """
         return self.changed_value
 
-    cpdef int get_raw_value(self):
+    cpdef int get_raw_value(self) except *:
         """
         Obtain the raw, unprocessed value.
         :return: the raw value

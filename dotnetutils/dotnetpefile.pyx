@@ -397,9 +397,6 @@ cdef class DotNetPeFile:
         cdef list col_objs
         cdef unsigned long x
         cdef unsigned long y
-        cdef datetime start_time
-        cdef datetime end_time
-
 
         #first go through all the columns and apply any changes that need to be applied.
         blob_stream = net_processing.BlobStream(None, None, self, dummy=True)
@@ -407,7 +404,6 @@ cdef class DotNetPeFile:
         guid_stream = net_processing.GuidStream(None, None, self, dummy=True)
         metadata_heap = self.get_heap('#~')
         original_strings_items = self.get_heap('#Strings').get_items()
-        start_time = datetime.now()
         for table_name, table_obj in metadata_heap.get_tables().items():
             for x in range(1, len(table_obj) + 1):
                 row_obj = table_obj[x]
@@ -447,9 +443,6 @@ cdef class DotNetPeFile:
                                 if orig_col_obj.get_col_type().is_fixed_value() and orig_col_obj.get_col_type().get_fixed_size() != -1:
                                     if orig_col_obj.get_changed_value() != None:
                                         orig_col_obj.set_raw_value(orig_col_obj.get_changed_value())
-        end_time = datetime.now()
-        print('reconstruct First loop took {}'.format(end_time - start_time))
-        start_time = end_time
         #add any extra strings to our fake #Strings heap.
         for str_val in self.added_strings:
             strings_stream.append_item(str_val)
@@ -464,9 +457,6 @@ cdef class DotNetPeFile:
         for item in original_strings_items:
             if len(item) != 0:
                 strings_stream.append_item(item)
-        end_time = datetime.now()
-        print('reconstruct Second loops took {}'.format(end_time - start_time))
-        start_time = end_time
 
         #so now that weve applied all the changes to the various streams, go through each of them and ensure that the heap_offset_size is updated.
         for heap_name, heap_value in self.get_heaps().items():
@@ -488,9 +478,6 @@ cdef class DotNetPeFile:
                     heap_id = net_structs.BITMASK_GUID
                 if heap_id == None:
                     raise net_exceptions.InvalidHeapNameException
-        end_time = datetime.now()
-        print('reconstruct Third loop took {}'.format(end_time - start_time))
-        start_time = end_time
         #begin patching in various streams.  Start with the metadata heap.
         #problem: we cant patch the stuff in individually.  Has to be all or nothing.
         curr_exe_data = self.get_exe_data()
@@ -526,9 +513,6 @@ cdef class DotNetPeFile:
                                                                              curr_strings.get_offset() + curr_strings.get_size():]
         curr_exe_data = bytes(curr_exe_data)
 
-        end_time = datetime.now()
-        print('reconstruct At has_heap {}'.format(end_time - start_time))
-
         if self.has_heap('#US'):
             curr_dpe = DotNetPeFile(pe_data=curr_exe_data)
             current_us_heap = curr_dpe.get_heap('#US')
@@ -549,7 +533,6 @@ cdef class DotNetPeFile:
         else:
             curr_exe_data = bytes(curr_exe_data)
             self.set_exe_data(curr_exe_data)
-
             return curr_exe_data
 
     cpdef int delete_user_string(self, int us_index):
