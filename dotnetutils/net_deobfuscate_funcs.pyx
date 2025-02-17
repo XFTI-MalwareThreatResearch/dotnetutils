@@ -4,6 +4,8 @@ from dotnetutils cimport dotnetpefile, net_tokens, net_row_objects, net_emulator
 from dotnetutils cimport net_opcodes, net_utils, net_table_objects, net_structs, net_utils, net_emu_types
 from dotnetutils import net_graphing, net_exceptions
 
+from cpython.datetime cimport datetime
+
 """
 This file contains various functions for removing different types of obfuscation
 Commonly seen in obfuscated .Net samples.
@@ -949,7 +951,7 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
         return 1
     return 2
 
-cpdef bytes remove_useless_functions(bytes data):
+cpdef bytes remove_useless_functions(bytes data) except *:
     """
     Removes functions that simply call another function with the same arguments.
     TODO: This method needs a rewrite.  For example, on sample 0320 for cex parser, it takes around 5 minutes to decode strings
@@ -977,10 +979,12 @@ cpdef bytes remove_useless_functions(bytes data):
     cdef net_table_objects.MemberRefTable memberref_table
     cdef unsigned long x
     cdef unsigned long y
+    cdef list useless_rids
+    cdef list useless_xrefs
+    cdef tuple xref_info
     
     useless_methods = dict(
     )  # dictionary of useless method rids and the instructions to replace them with
-
     dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     method_table = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
     memberref_table = <net_table_objects.MemberRefTable>dotnet.get_metadata_table('MemberRef')
@@ -995,10 +999,14 @@ cpdef bytes remove_useless_functions(bytes data):
                     useless_methods[method.get_rid()] = data2
                     # for sanity sake set the raw value to 0.  TODO: fix this to remove the method from the binary entirely.
                     # method['RVA'].set_raw_value(0)
-
-    for u_rid in useless_methods.keys():
-        u_method = dotnet.get_method_by_rid(u_rid)
-        for method_rid, instr_index in u_method.get_xrefs():
+    useless_rids = list(useless_methods.keys())
+    for x in range(len(useless_rids)):
+        u_method = method_table.get(useless_rids[x])
+        useless_xrefs = u_method.get_xrefs()
+        for y in range(len(useless_xrefs)):
+            xref_info = useless_xrefs[y]
+            method_rid = xref_info[0]
+            instr_index = xref_info[1]
             method_obj = dotnet.get_method_by_rid(method_rid)
             method_disasm = method_obj.disassemble_method()
             instr_list = method_disasm.get_list_of_instrs()
@@ -1055,9 +1063,6 @@ cpdef bytes remove_useless_functions(bytes data):
                                 dotnet.patch_instruction(
                                     method, patch, instr.get_instr_offset(), len(instr))
     return dotnet.reconstruct_executable()
-
-
-
 
 cdef bint has_prefix(bytes type_name):
     cdef list prefixes
@@ -1152,7 +1157,6 @@ cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.
         check_type(
             method_obj, tdefref, parent_method_name, name, parent_method_signature, checked_types)
 
-
 cpdef bytes cleanup_names(bytes data,
                   bint change_namespaces=True,
                   bint change_method_names=True,
@@ -1162,7 +1166,7 @@ cpdef bytes cleanup_names(bytes data,
                   bint change_field_names=True,
                   bint change_property_names=True,
                   bint force_main_method=True,
-                  bint change_import_names=True):
+                  bint change_import_names=True) except *:
     """
     Changes various names throughout the binary to more readable values
     Intended for instances when the names have been obfuscated.
@@ -1237,14 +1241,7 @@ cpdef bytes cleanup_names(bytes data,
     cdef net_table_objects.TableObject table_obj1
     cdef net_table_objects.TableObject table_obj2
     cdef net_table_objects.MethodSemanticsTable semantics_table
-    
-    
-
-
     dotnetpe = dotnetpefile.DotNetPeFile(pe_data=data)
-
-
-
     namespace_count = 0
     class_count = 0
     # Add more common method names here that should not be manipulated.

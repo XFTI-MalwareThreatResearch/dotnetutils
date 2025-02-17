@@ -9,6 +9,7 @@ from dotnetutils.net_structs import IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, Do
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from logging import getLogger
 from ctypes import sizeof
+from cpython.datetime cimport datetime
 
 logger = getLogger(__name__)
 
@@ -371,7 +372,7 @@ cdef class DotNetPeFile:
             return treftable.get_type_by_full_name(type_full_name)
         return None
 
-    cpdef bytes reconstruct_executable(self):
+    cpdef bytes reconstruct_executable(self) except *:
         """
         Obtain the executable with all changes to the strings, metadata, code and user strings section intact.
 
@@ -393,7 +394,9 @@ cdef class DotNetPeFile:
         cdef bytes str_val
         cdef bytes metadata_heap_data
         cdef DotNetPeFile curr_dpe
-
+        cdef list col_objs
+        cdef unsigned long x
+        cdef unsigned long y
 
         #first go through all the columns and apply any changes that need to be applied.
         blob_stream = net_processing.BlobStream(None, None, self, dummy=True)
@@ -402,8 +405,11 @@ cdef class DotNetPeFile:
         metadata_heap = self.get_heap('#~')
         original_strings_items = self.get_heap('#Strings').get_items()
         for table_name, table_obj in metadata_heap.get_tables().items():
-            for row_obj in table_obj:
-                for orig_col_obj in row_obj:
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj[x]
+                col_objs = list(row_obj)
+                for y in range(len(col_objs)):
+                    orig_col_obj = col_objs[y]
                     current_byte_value = orig_col_obj.get_value()
                     if orig_col_obj.has_value():
                         if isinstance(orig_col_obj.get_col_type(), net_tokens.CodedToken):
@@ -412,7 +418,6 @@ cdef class DotNetPeFile:
                                 if current_byte_value != None:
                                     if orig_col_obj.get_col_type() != net_tokens.get_UserStringsStream():
                                         if orig_col_obj.get_col_type() == net_tokens.get_StringsStream():
-
                                             new_raw_value = strings_stream.find_index(orig_col_obj.get_value())
                                             if new_raw_value == -1:
                                                 new_raw_value = strings_stream.append_item(orig_col_obj.get_value())
@@ -438,7 +443,6 @@ cdef class DotNetPeFile:
                                 if orig_col_obj.get_col_type().is_fixed_value() and orig_col_obj.get_col_type().get_fixed_size() != -1:
                                     if orig_col_obj.get_changed_value() != None:
                                         orig_col_obj.set_raw_value(orig_col_obj.get_changed_value())
-
         #add any extra strings to our fake #Strings heap.
         for str_val in self.added_strings:
             strings_stream.append_item(str_val)
@@ -529,7 +533,6 @@ cdef class DotNetPeFile:
         else:
             curr_exe_data = bytes(curr_exe_data)
             self.set_exe_data(curr_exe_data)
-
             return curr_exe_data
 
     cpdef int delete_user_string(self, int us_index):
@@ -595,9 +598,9 @@ cdef class DotNetPeFile:
         """
         Patch an instruction.
         """
-        if method_obj['RVA'].get_value() != 0:
+        if method_obj['RVA'].get_raw_value() != 0:
             disas = method_obj.disassemble_method()
-            rva = method_obj['RVA'].get_value()
+            rva = method_obj['RVA'].get_raw_value()
             offset = self.get_pe().get_offset_from_rva(rva)
             patch_offset = offset + disas.get_header_size() + instr_offset  # needs to be zero based not 1 based.
             exe_data = self.get_exe_data()

@@ -12,17 +12,17 @@ cdef class RowObject:
     cdef str table_name
     cdef list sizes
 
-    cpdef ColumnValue get_column(self, str col_name)
+    cpdef ColumnValue get_column(self, str col_name) except *
     
     cpdef list get_sizes(self)
 
     cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
 
-    cpdef int get_rid(self)
+    cpdef int get_rid(self) except *
 
     cpdef str get_table_name(self)
 
-    cpdef int get_token(self)
+    cpdef int get_token(self) except *
 
     cpdef int get_file_offset(self)
 
@@ -55,7 +55,6 @@ cdef class ColumnValue:
     cdef object __formatter_method
     cdef bint __has_no_value
 
-
     cdef bytes get_value_as_bytes(self)
 
     cdef int get_value_as_int(self)
@@ -74,15 +73,15 @@ cdef class ColumnValue:
     
     cpdef bint has_value(self)
 
-    cpdef object get_value(self)
+    cpdef object get_value(self) except *
 
     cpdef void set_formatted_value(self, object value)
 
-    cpdef object get_formatted_value(self)
+    cpdef object get_formatted_value(self) except *
 
     cpdef object get_changed_value(self)
 
-    cpdef int get_raw_value(self)
+    cpdef int get_raw_value(self) except *
     
     cpdef bint was_value_changed(self)
     

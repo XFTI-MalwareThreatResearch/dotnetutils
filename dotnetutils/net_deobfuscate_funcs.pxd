@@ -19,7 +19,7 @@ cdef bint __is_modified_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
 
 cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj)
 
-cpdef bytes remove_useless_functions(bytes data)
+cpdef bytes remove_useless_functions(bytes data) except *
 
 cdef bint has_prefix(bytes type_name)
 
@@ -35,4 +35,4 @@ cpdef bytes cleanup_names(bytes data,
                   bint change_field_names=*,
                   bint change_property_names=*,
                   bint force_main_method=*,
-                  bint change_import_names=*)
+                  bint change_import_names=*) except *
