@@ -10,13 +10,12 @@ from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from logging import getLogger
 from ctypes import sizeof
 from cpython.datetime cimport datetime
+from cpython.exc cimport PyErr_CheckSignals
 
 logger = getLogger(__name__)
 
 
 cdef class DotNetPeFile:
-
-
     def __init__(self, str file_path='', bytes pe_data=bytes(), bint no_processing=False):
         """
         Represents a .NET pe file.
@@ -443,6 +442,7 @@ cdef class DotNetPeFile:
                                 if orig_col_obj.get_col_type().is_fixed_value() and orig_col_obj.get_col_type().get_fixed_size() != -1:
                                     if orig_col_obj.get_changed_value() != None:
                                         orig_col_obj.set_raw_value(orig_col_obj.get_changed_value())
+        PyErr_CheckSignals()
         #add any extra strings to our fake #Strings heap.
         for str_val in self.added_strings:
             strings_stream.append_item(str_val)
@@ -457,7 +457,7 @@ cdef class DotNetPeFile:
         for item in original_strings_items:
             if len(item) != 0:
                 strings_stream.append_item(item)
-
+        PyErr_CheckSignals()
         #so now that weve applied all the changes to the various streams, go through each of them and ensure that the heap_offset_size is updated.
         for heap_name, heap_value in self.get_heaps().items():
             if isinstance(heap_value, net_processing.Stream):
@@ -493,6 +493,7 @@ cdef class DotNetPeFile:
             '#~').get_start_offset() + self.get_metadata_dir().get_metadata_heap_size():]
 
         curr_exe_data = bytes(curr_exe_data)
+        PyErr_CheckSignals()
 
         curr_dpe = DotNetPeFile(pe_data=curr_exe_data, no_processing=True)
 
@@ -512,7 +513,7 @@ cdef class DotNetPeFile:
         curr_exe_data = curr_exe_data[:curr_strings.get_offset()] + strings_data + curr_exe_data[
                                                                              curr_strings.get_offset() + curr_strings.get_size():]
         curr_exe_data = bytes(curr_exe_data)
-
+        PyErr_CheckSignals()
         if self.has_heap('#US'):
             curr_dpe = DotNetPeFile(pe_data=curr_exe_data)
             current_us_heap = curr_dpe.get_heap('#US')

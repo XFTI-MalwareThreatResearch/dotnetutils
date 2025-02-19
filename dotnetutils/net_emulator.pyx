@@ -13,6 +13,7 @@ from collections import defaultdict
 from dotnetutils import net_structs as py_net_structs
 from dotnetutils cimport net_utils, net_tokens, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
 from dotnetutils import net_emu_coretypes as py_net_emu_types
+from cpython.exc cimport PyErr_CheckSignals
 
 tlock = threading.Lock()
 
@@ -1683,6 +1684,7 @@ cdef class DotNetEmulator:
             if self.print_debug:
                 self.print_current_state()
         while self.current_eip < len(self.disasm_obj):
+            PyErr_CheckSignals() #Try and allow celery timeouts.
             self.should_break = False
             instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if instr == None:

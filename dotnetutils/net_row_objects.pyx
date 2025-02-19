@@ -7,6 +7,7 @@ from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
 from typing import Union
+from cpython.exc cimport PyErr_CheckSignals
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
@@ -306,6 +307,7 @@ cdef class ColumnValue:
         :return: The processed value corresponding to the column
         """
         #check if value was changed
+        PyErr_CheckSignals() #In order to make sure we respect SIGINT etc, check it here.
         if self.changed_value != None:
             return self.changed_value
         if self.__has_no_value:
