@@ -1666,6 +1666,7 @@ cdef class DotNetEmulator:
         cdef net_cil_disas.Instruction instr
         cdef bint should_print
         cdef str ins_name
+        cdef int int_err
         cdef bint do_normal_offsets
         self.get_appdomain().set_current_emulator(self)
         self.get_appdomain().set_executing_dotnetpe(self.method_obj.get_dotnetpe())
@@ -1684,7 +1685,9 @@ cdef class DotNetEmulator:
             if self.print_debug:
                 self.print_current_state()
         while self.current_eip < len(self.disasm_obj):
-            PyErr_CheckSignals() #Try and allow celery timeouts.
+            int_err = PyErr_CheckSignals()
+            if int_err == -1:
+                exit()
             self.should_break = False
             instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if instr == None:

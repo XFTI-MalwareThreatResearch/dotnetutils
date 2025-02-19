@@ -306,8 +306,11 @@ cdef class ColumnValue:
         Obtain the processed value corresponding to the raw_value
         :return: The processed value corresponding to the column
         """
+        cdef int int_err
         #check if value was changed
-        PyErr_CheckSignals() #In order to make sure we respect SIGINT etc, check it here.
+        int_err = PyErr_CheckSignals()
+        if int_err == -1:
+            exit()
         if self.changed_value != None:
             return self.changed_value
         if self.__has_no_value:
