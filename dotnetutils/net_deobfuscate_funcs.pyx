@@ -1,5 +1,7 @@
 #cython: language_level=3
 
+import os
+
 from dotnetutils cimport dotnetpefile, net_tokens, net_row_objects, net_emulator, net_cil_disas
 from dotnetutils cimport net_opcodes, net_utils, net_table_objects, net_structs, net_utils, net_emu_types
 from dotnetutils import net_graphing, net_exceptions
@@ -1018,7 +1020,7 @@ cpdef bytes remove_useless_functions(bytes data) except *:
             try:
                 sig_check()
             except KeyboardInterrupt:
-                exit(0)
+                os.exit(0)
 
     # Check for useless memberref calls.
 
@@ -1070,7 +1072,7 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     try:
         sig_check()
     except KeyboardInterrupt:
-        exit(0)
+        os.exit(0)
     return dotnet.reconstruct_executable()
 
 cdef bint has_prefix(bytes type_name):

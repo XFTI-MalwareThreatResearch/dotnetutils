@@ -6,6 +6,7 @@ import numpy
 import sys
 import time
 import ctypes
+import os
 import io
 import threading
 from dotnetutils import net_exceptions
@@ -1687,7 +1688,7 @@ cdef class DotNetEmulator:
             try:
                 sig_check()
             except KeyboardInterrupt:
-                exit(0)
+                os.exit(0)
             self.should_break = False
             instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if instr == None:

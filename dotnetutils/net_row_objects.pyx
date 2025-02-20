@@ -1,4 +1,5 @@
 #cython: language_level=3
+import os
 import hashlib
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_structs
@@ -310,7 +311,7 @@ cdef class ColumnValue:
         try:
             sig_check()
         except KeyboardInterrupt:
-            exit(0)
+            os.exit(0)
         if self.changed_value != None:
             return self.changed_value
         if self.__has_no_value:
