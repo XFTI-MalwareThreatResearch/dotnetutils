@@ -1,4 +1,5 @@
 #cython: language_level=3
+import os
 import hashlib
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_structs
@@ -7,7 +8,7 @@ from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
 from typing import Union
-from cpython.exc cimport PyErr_CheckSignals
+from cysignals.signals cimport sig_check
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
@@ -57,6 +58,10 @@ cdef class RowObject:
             index += 1
 
     cpdef ColumnValue get_column(self, str col_name) except *:
+        try:
+            sig_check()
+        except KeyboardInterrupt:
+            os.exit(0)
         if not hasattr(col_name, 'lower'):
             raise net_exceptions.ObjectTypeException
         return <ColumnValue>self.values[col_name.lower()]
@@ -114,7 +119,7 @@ cdef class RowObject:
         return iter(self.values.values())
 
     def __getitem__(self, item):
-        return self.values[item.lower()]
+        return self.get_column(item)
 
     def __str__(self):
         if 'name' in self.values:
@@ -306,11 +311,11 @@ cdef class ColumnValue:
         Obtain the processed value corresponding to the raw_value
         :return: The processed value corresponding to the column
         """
-        cdef int int_err
         #check if value was changed
-        int_err = PyErr_CheckSignals()
-        if int_err == -1:
-            exit()
+        try:
+            sig_check()
+        except KeyboardInterrupt:
+            os.exit(0)
         if self.changed_value != None:
             return self.changed_value
         if self.__has_no_value:

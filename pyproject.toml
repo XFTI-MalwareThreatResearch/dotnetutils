@@ -16,5 +16,5 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools", "cython", "wheel", "numpy"]
+requires = ["setuptools", "cython", "wheel", "numpy", "cysignals"]
 build-backend = "setuptools.build_meta"
