@@ -61,7 +61,7 @@ cdef class RowObject:
         try:
             sig_check()
         except KeyboardInterrupt:
-            os.exit(0)
+            os._exit(0)
         if not hasattr(col_name, 'lower'):
             raise net_exceptions.ObjectTypeException
         return <ColumnValue>self.values[col_name.lower()]
@@ -315,7 +315,7 @@ cdef class ColumnValue:
         try:
             sig_check()
         except KeyboardInterrupt:
-            os.exit(0)
+            os._exit(0)
         if self.changed_value != None:
             return self.changed_value
         if self.__has_no_value:

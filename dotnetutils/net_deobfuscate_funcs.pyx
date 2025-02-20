@@ -1020,7 +1020,7 @@ cpdef bytes remove_useless_functions(bytes data) except *:
             try:
                 sig_check()
             except KeyboardInterrupt:
-                os.exit(0)
+                os._exit(0)
 
     # Check for useless memberref calls.
 
@@ -1072,7 +1072,7 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     try:
         sig_check()
     except KeyboardInterrupt:
-        os.exit(0)
+        os._exit(0)
     return dotnet.reconstruct_executable()
 
 cdef bint has_prefix(bytes type_name):

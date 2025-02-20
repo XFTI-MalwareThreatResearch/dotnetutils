@@ -445,7 +445,7 @@ cdef class DotNetPeFile:
         try:
             sig_check()
         except KeyboardInterrupt:
-            os.exit(0)
+            os._exit(0)
 
         #add any extra strings to our fake #Strings heap.
         for str_val in self.added_strings:
@@ -464,7 +464,7 @@ cdef class DotNetPeFile:
         try:
             sig_check()
         except KeyboardInterrupt:
-            os.exit(0)
+            os._exit(0)
         #so now that weve applied all the changes to the various streams, go through each of them and ensure that the heap_offset_size is updated.
         for heap_name, heap_value in self.get_heaps().items():
             if isinstance(heap_value, net_processing.Stream):
@@ -503,7 +503,7 @@ cdef class DotNetPeFile:
         try:
             sig_check()
         except KeyboardInterrupt:
-            os.exit(0)
+            os._exit(0)
 
         curr_dpe = DotNetPeFile(pe_data=curr_exe_data, no_processing=True)
 
@@ -526,7 +526,7 @@ cdef class DotNetPeFile:
         try:
             sig_check()
         except KeyboardInterrupt:
-            os.exit(0)
+            os._exit(0)
         if self.has_heap('#US'):
             curr_dpe = DotNetPeFile(pe_data=curr_exe_data)
             current_us_heap = curr_dpe.get_heap('#US')
