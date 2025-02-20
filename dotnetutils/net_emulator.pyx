@@ -13,7 +13,7 @@ from collections import defaultdict
 from dotnetutils import net_structs as py_net_structs
 from dotnetutils cimport net_utils, net_tokens, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
 from dotnetutils import net_emu_coretypes as py_net_emu_types
-from cpython.exc cimport PyErr_CheckSignals
+from cysignals.signals cimport sig_check
 
 tlock = threading.Lock()
 
@@ -1666,7 +1666,6 @@ cdef class DotNetEmulator:
         cdef net_cil_disas.Instruction instr
         cdef bint should_print
         cdef str ins_name
-        cdef int int_err
         cdef bint do_normal_offsets
         self.get_appdomain().set_current_emulator(self)
         self.get_appdomain().set_executing_dotnetpe(self.method_obj.get_dotnetpe())
@@ -1685,9 +1684,10 @@ cdef class DotNetEmulator:
             if self.print_debug:
                 self.print_current_state()
         while self.current_eip < len(self.disasm_obj):
-            int_err = PyErr_CheckSignals()
-            if int_err == -1:
-                exit()
+            try:
+                sig_check()
+            except KeyboardInterrupt:
+                exit(0)
             self.should_break = False
             instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if instr == None:

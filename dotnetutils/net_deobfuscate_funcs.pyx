@@ -3,7 +3,7 @@
 from dotnetutils cimport dotnetpefile, net_tokens, net_row_objects, net_emulator, net_cil_disas
 from dotnetutils cimport net_opcodes, net_utils, net_table_objects, net_structs, net_utils, net_emu_types
 from dotnetutils import net_graphing, net_exceptions
-from cpython.exc cimport PyErr_CheckSignals
+from cysignals.signals cimport sig_check
 
 from cpython.datetime cimport datetime
 
@@ -983,7 +983,6 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     cdef list useless_rids
     cdef list useless_xrefs
     cdef tuple xref_info
-    cdef int int_err
     
     useless_methods = dict(
     )  # dictionary of useless method rids and the instructions to replace them with
@@ -1016,9 +1015,10 @@ cpdef bytes remove_useless_functions(bytes data) except *:
             instr_arg = instr.get_argument()
             dotnet.patch_instruction(method_obj, useless_methods[instr_arg.get_rid()], instr.get_instr_offset(),
                                      len(instr))
-        int_err = PyErr_CheckSignals()
-        if int_err == -1:
-            exit()
+            try:
+                sig_check()
+            except KeyboardInterrupt:
+                exit(0)
 
     # Check for useless memberref calls.
 
@@ -1067,9 +1067,10 @@ cpdef bytes remove_useless_functions(bytes data) except *:
                                          * b'\x00') + patch
                                 dotnet.patch_instruction(
                                     method, patch, instr.get_instr_offset(), len(instr))
-    int_err = PyErr_CheckSignals()
-    if int_err == -1:
-        exit()
+    try:
+        sig_check()
+    except KeyboardInterrupt:
+        exit(0)
     return dotnet.reconstruct_executable()
 
 cdef bint has_prefix(bytes type_name):
