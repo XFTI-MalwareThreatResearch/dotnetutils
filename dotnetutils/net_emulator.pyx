@@ -1688,7 +1688,7 @@ cdef class DotNetEmulator:
             try:
                 sig_check()
             except KeyboardInterrupt:
-                os.exit(0)
+                os._exit(0)
             self.should_break = False
             instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if instr == None:
