@@ -58,6 +58,10 @@ cdef class RowObject:
             index += 1
 
     cpdef ColumnValue get_column(self, str col_name) except *:
+        try:
+            sig_check()
+        except KeyboardInterrupt:
+            os.exit(0)
         if not hasattr(col_name, 'lower'):
             raise net_exceptions.ObjectTypeException
         return <ColumnValue>self.values[col_name.lower()]
@@ -115,7 +119,7 @@ cdef class RowObject:
         return iter(self.values.values())
 
     def __getitem__(self, item):
-        return self.values[item.lower()]
+        return self.get_column(item)
 
     def __str__(self):
         if 'name' in self.values:
