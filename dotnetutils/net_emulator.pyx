@@ -101,7 +101,7 @@ cdef class EmulatorAppDomain:
         cdef net_row_objects.RowObject asm_obj
         cdef net_emu_types.DotNetAssembly result
         asm_obj = dpe.get_metadata_table('Assembly').get(0)
-        result = net_emu_types.DotNetAssembly(asm_obj)
+        result = net_emu_types.DotNetAssembly(self.get_emulator_obj(), asm_obj)
         if len(self.__loaded_assemblies) == 0:
             self.original_assembly = result
         self.__loaded_assemblies.append(result)
@@ -120,7 +120,7 @@ cdef class EmulatorAppDomain:
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
                 mdef_obj = <net_row_objects.MethodDef> mrefdef_obj
                 arg_one = net_emu_types.DotNetNull(self.get_emulator_obj()) #Not sure what arg_one actually is supposed to do but for now Null works.
-                arg_two = net_emu_types.DotNetResolveEventArgs(name)
+                arg_two = net_emu_types.DotNetResolveEventArgs(self.get_emulator_obj(), name)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, method_params=[arg_one, arg_two])
                 emu_obj.run_function()
                 result_obj = emu_obj.get_stack().pop()
@@ -148,8 +148,8 @@ cdef class EmulatorAppDomain:
         for mrefdef_obj in self.__resourceresolve_handlers:
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
                 mdef_obj = <net_row_objects.MethodDef> mrefdef_obj
-                arg_one = net_emu_types.DotNetNull(self) #Not sure what arg_one actually is supposed to do but for now Null works.
-                arg_two = net_emu_types.DotNetResolveEventArgs(name)
+                arg_one = net_emu_types.DotNetNull(self.get_emulator_obj()) #Not sure what arg_one actually is supposed to do but for now Null works.
+                arg_two = net_emu_types.DotNetResolveEventArgs(self.get_emulator_obj(), name)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, method_params=[arg_one, arg_two])
                 emu_obj.run_function()
                 result_obj = emu_obj.get_stack().pop()
@@ -1132,7 +1132,7 @@ cdef class DotNetEmulator:
         return True
 
     cdef bint handle_ldstr_instruction(self, net_cil_disas.Instruction instr) except *:
-        self.stack.append(net_emu_types.DotNetString(instr.get_argument(), 'utf-16le'))
+        self.stack.append(net_emu_types.DotNetString(self, instr.get_argument(), 'utf-16le'))
         return True
 
     cdef bint handle_ldtoken_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1154,7 +1154,7 @@ cdef class DotNetEmulator:
         cdef net_row_objects.TypeDefOrRef type_obj
         type_obj = instr.get_argument()
         amt_of_elem = self.stack.pop()
-        value1 = net_emu_types.DotNetArray(amt_of_elem, type_obj)
+        value1 = net_emu_types.DotNetArray(self, amt_of_elem, type_obj)
         self.stack.append(value1)
         return True
 
