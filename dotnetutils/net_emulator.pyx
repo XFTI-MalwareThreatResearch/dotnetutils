@@ -119,7 +119,7 @@ cdef class EmulatorAppDomain:
         for mrefdef_obj in self.__assemblyresolve_handlers:
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
                 mdef_obj = <net_row_objects.MethodDef> mrefdef_obj
-                arg_one = net_emu_types.DotNetNull() #Not sure what arg_one actually is supposed to do but for now Null works.
+                arg_one = net_emu_types.DotNetNull(self.get_emulator_obj()) #Not sure what arg_one actually is supposed to do but for now Null works.
                 arg_two = net_emu_types.DotNetResolveEventArgs(name)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, method_params=[arg_one, arg_two])
                 emu_obj.run_function()

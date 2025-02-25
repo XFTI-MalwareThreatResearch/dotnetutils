@@ -1666,642 +1666,1104 @@ cdef class DotNetOpCode(DotNetObject):
 
 
 cdef class DotNetOpCodes(DotNetObject):
-    Nop = DotNetOpCode("nop", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0, DotNetFlowControl.Next, False, 0)
-    Break = DotNetOpCode("break", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+
+    @staticmethod
+    def Nop(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "nop", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+                        DotNetOpCodeType.Primitive, 1, 255, 0, DotNetFlowControl.Next, False, 0)
+    
+    @staticmethod
+    def Break(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "break", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
                          DotNetOpCodeType.Primitive, 1, 255, 1, DotNetFlowControl.Break, False, 0)
-    Ldarg_0 = DotNetOpCode("ldarg.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+
+    @staticmethod
+    def Ldarg_0(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 2, DotNetFlowControl.Next,
                            False, 1)
-    Ldarg_1 = DotNetOpCode("ldarg.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    
+    @staticmethod
+    def Ldarg_1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 3, DotNetFlowControl.Next,
                            False, 1)
-    Ldarg_2 = DotNetOpCode("ldarg.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+
+    @staticmethod
+    def Ldarg_2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 4, DotNetFlowControl.Next,
                            False, 1)
-    Ldarg_3 = DotNetOpCode("ldarg.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+
+    @staticmethod
+    def Ldarg_3(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 5, DotNetFlowControl.Next,
                            False, 1)
-    Ldloc_0 = DotNetOpCode("ldloc.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Ldloc_0(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 6, DotNetFlowControl.Next,
                            False, 1)
-    Ldloc_1 = DotNetOpCode("ldloc.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+
+    @staticmethod
+    def Ldloc_1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 7, DotNetFlowControl.Next,
                            False, 1)
-    Ldloc_2 = DotNetOpCode("ldloc.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Ldloc_2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 8, DotNetFlowControl.Next,
                            False, 1)
-    Ldloc_3 = DotNetOpCode("ldloc.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+
+    @staticmethod
+    def Ldloc_3(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 9, DotNetFlowControl.Next,
                            False, 1)
-    Stloc_0 = DotNetOpCode("stloc.0", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+
+    @staticmethod
+    def Stloc_0(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.0", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0xA, DotNetFlowControl.Next,
                            False, -1)
-    Stloc_1 = DotNetOpCode("stloc.1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stloc_1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0xB, DotNetFlowControl.Next,
                            False, -1)
-    Stloc_2 = DotNetOpCode("stloc.2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stloc_2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0xC, DotNetFlowControl.Next,
                            False, -1)
-    Stloc_3 = DotNetOpCode("stloc.3", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stloc_3(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.3", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0xD, DotNetFlowControl.Next,
                            False, -1)
-    Ldarg_S = DotNetOpCode("ldarg.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Ldarg_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0xE,
                            DotNetFlowControl.Next, False, 1)
-    Ldarga_S = DotNetOpCode("ldarga.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldarga_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarga.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0xF,
                             DotNetFlowControl.Next, False, 1)
-    Starg_S = DotNetOpCode("starg.s", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Starg_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "starg.s", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0x10,
                            DotNetFlowControl.Next, False, -1)
-    Ldloc_S = DotNetOpCode("ldloc.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Ldloc_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0x11,
                            DotNetFlowControl.Next, False, 1)
-    Ldloca_S = DotNetOpCode("ldloca.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldloca_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloca.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0x12,
                             DotNetFlowControl.Next, False, 1)
-    Stloc_S = DotNetOpCode("stloc.s", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stloc_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.s", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0x13,
                            DotNetFlowControl.Next, False, -1)
-    Ldnull = DotNetOpCode("ldnull", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushref,
+    @staticmethod
+    def Ldnull(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldnull", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushref,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x14,
                           DotNetFlowControl.Next, False, 1)
-    Ldc_I4_M1 = DotNetOpCode("ldc.i4.m1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_M1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.m1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x15, DotNetFlowControl.Next,
                              False, 1)
-    Ldc_I4_0 = DotNetOpCode("ldc.i4.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_0(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x16, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_1 = DotNetOpCode("ldc.i4.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x17, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_2 = DotNetOpCode("ldc.i4.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x18, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_3 = DotNetOpCode("ldc.i4.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_3(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x19, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_4 = DotNetOpCode("ldc.i4.4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1A, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_5 = DotNetOpCode("ldc.i4.5", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_5(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.5", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1B, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_6 = DotNetOpCode("ldc.i4.6", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_6(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.6", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1C, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_7 = DotNetOpCode("ldc.i4.7", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_7(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.7", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1D, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_8 = DotNetOpCode("ldc.i4.8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1E, DotNetFlowControl.Next,
                             False, 1)
-    Ldc_I4_S = DotNetOpCode("ldc.i4.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldc_I4_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.ShortInlineI, DotNetOpCodeType.Macro, 1, 255, 0x1F,
                             DotNetFlowControl.Next, False, 1)
-    Ldc_I4 = DotNetOpCode("ldc.i4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineI,
+    @staticmethod
+    def Ldc_I4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineI,
                           DotNetOpCodeType.Primitive, 1, 255, 0x20, DotNetFlowControl.Next, False, 1)
-    Ldc_I8 = DotNetOpCode("ldc.i8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi8, DotNetOperandType.InlineI8,
+    @staticmethod
+    def Ldc_I8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi8, DotNetOperandType.InlineI8,
                           DotNetOpCodeType.Primitive, 1, 255, 0x21, DotNetFlowControl.Next, False, 1)
-    Ldc_R4 = DotNetOpCode("ldc.r4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushr4,
+    @staticmethod
+    def Ldc_R4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.r4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushr4,
                           DotNetOperandType.ShortInlineR, DotNetOpCodeType.Primitive, 1, 255, 0x22,
                           DotNetFlowControl.Next, False, 1)
-    Ldc_R8 = DotNetOpCode("ldc.r8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushr8, DotNetOperandType.InlineR,
+    @staticmethod
+    def Ldc_R8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.r8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushr8, DotNetOperandType.InlineR,
                           DotNetOpCodeType.Primitive, 1, 255, 0x23, DotNetFlowControl.Next, False, 1)
-    Dup = DotNetOpCode("dup", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1_push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Dup(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "dup", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1_push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x25, DotNetFlowControl.Next, False, 1)
-    Pop = DotNetOpCode("pop", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Pop(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "pop", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x26, DotNetFlowControl.Next, False, -1)
-    Jmp = DotNetOpCode("jmp", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineMethod,
+    @staticmethod
+    def Jmp(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "jmp", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineMethod,
                        DotNetOpCodeType.Primitive, 1, 255, 0x27, DotNetFlowControl.Call, True, 0)
-    Call = DotNetOpCode("call", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
+    @staticmethod
+    def Call(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "call", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
                         DotNetOperandType.InlineMethod, DotNetOpCodeType.Primitive, 1, 255, 0x28,
                         DotNetFlowControl.Call, False, 0)
-    Calli = DotNetOpCode("calli", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
+    @staticmethod
+    def Calli(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "calli", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
                          DotNetOperandType.InlineSig, DotNetOpCodeType.Primitive, 1, 255, 0x29, DotNetFlowControl.Call,
                          False, 0)
-    Ret = DotNetOpCode("ret", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Ret(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ret", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x2A, DotNetFlowControl.Return, True, 0)
-    Br_S = DotNetOpCode("br.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Br_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "br.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                         DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2B,
                         DotNetFlowControl.Branch, True, 0)
-    BrFalse_S = DotNetOpCode("brFalse.s", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def BrFalse_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "brFalse.s", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                              DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2C,
                              DotNetFlowControl.Cond_Branch, False, -1)
-    BrTrue_S = DotNetOpCode("brTrue.s", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def BrTrue_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "brTrue.s", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2D,
                             DotNetFlowControl.Cond_Branch, False, -1)
-    Beq_S = DotNetOpCode("beq.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+
+    @staticmethod
+    def Beq_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "beq.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2E,
                          DotNetFlowControl.Cond_Branch, False, -2)
-    Bge_S = DotNetOpCode("bge.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bge_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bge.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2F,
                          DotNetFlowControl.Cond_Branch, False, -2)
-    Bgt_S = DotNetOpCode("bgt.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bgt_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bgt.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x30,
                          DotNetFlowControl.Cond_Branch, False, -2)
-    Ble_S = DotNetOpCode("ble.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Ble_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ble.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x31,
                          DotNetFlowControl.Cond_Branch, False, -2)
-    Blt_S = DotNetOpCode("blt.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Blt_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "blt.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x32,
                          DotNetFlowControl.Cond_Branch, False, -2)
-    Bne_Un_S = DotNetOpCode("bne.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bne_Un_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bne.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x33,
                             DotNetFlowControl.Cond_Branch, False, -2)
-    Bge_Un_S = DotNetOpCode("bge.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bge_Un_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bge.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x34,
                             DotNetFlowControl.Cond_Branch, False, -2)
-    Bgt_Un_S = DotNetOpCode("bgt.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bgt_Un_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bgt.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x35,
                             DotNetFlowControl.Cond_Branch, False, -2)
-    Ble_Un_S = DotNetOpCode("ble.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Ble_Un_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ble.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x36,
                             DotNetFlowControl.Cond_Branch, False, -2)
-    Blt_Un_S = DotNetOpCode("blt.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Blt_Un_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "blt.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x37,
                             DotNetFlowControl.Cond_Branch, False, -2)
-    Br = DotNetOpCode("br", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineBrTarget,
+    @staticmethod
+    def Br(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "br", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineBrTarget,
                       DotNetOpCodeType.Primitive, 1, 255, 0x38, DotNetFlowControl.Branch, True, 0)
-    BrFalse = DotNetOpCode("brFalse", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def BrFalse(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "brFalse", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0x39,
                            DotNetFlowControl.Cond_Branch, False, -1)
-    BrTrue = DotNetOpCode("brTrue", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def BrTrue(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "brTrue", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0x3A,
                           DotNetFlowControl.Cond_Branch, False, -1)
-    Beq = DotNetOpCode("beq", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Beq(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "beq", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3B,
                        DotNetFlowControl.Cond_Branch, False, -2)
-    Bge = DotNetOpCode("bge", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bge(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bge", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3C,
                        DotNetFlowControl.Cond_Branch, False, -2)
-    Bgt = DotNetOpCode("bgt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bgt(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bgt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3D,
                        DotNetFlowControl.Cond_Branch, False, -2)
-    Ble = DotNetOpCode("ble", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Ble(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ble", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3E,
                        DotNetFlowControl.Cond_Branch, False, -2)
-    Blt = DotNetOpCode("blt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Blt(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "blt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3F,
                        DotNetFlowControl.Cond_Branch, False, -2)
-    Bne_Un = DotNetOpCode("bne.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bne_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bne.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x40,
                           DotNetFlowControl.Cond_Branch, False, -2)
-    Bge_Un = DotNetOpCode("bge.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bge_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bge.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x41,
                           DotNetFlowControl.Cond_Branch, False, -2)
-    Bgt_Un = DotNetOpCode("bgt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Bgt_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "bgt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x42,
                           DotNetFlowControl.Cond_Branch, False, -2)
-    Ble_Un = DotNetOpCode("ble.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Ble_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ble.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x43,
                           DotNetFlowControl.Cond_Branch, False, -2)
-    Blt_Un = DotNetOpCode("blt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Blt_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "blt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x44,
                           DotNetFlowControl.Cond_Branch, False, -2)
-    Switch = DotNetOpCode("switch", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Switch(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "switch", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineSwitch, DotNetOpCodeType.Primitive, 1, 255, 0x45,
                           DotNetFlowControl.Cond_Branch, False, -1)
-    Ldind_I1 = DotNetOpCode("ldind.i1", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldind_I1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i1", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x46,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_U1 = DotNetOpCode("ldind.u1", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldind_U1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u1", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x47,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_I2 = DotNetOpCode("ldind.i2", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldind_I2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i2", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x48,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_U2 = DotNetOpCode("ldind.u2", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldind_U2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u2", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x49,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_I4 = DotNetOpCode("ldind.i4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldind_I4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4A,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_U4 = DotNetOpCode("ldind.u4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldind_U4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4B,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_I8 = DotNetOpCode("ldind.i8", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi8,
+    @staticmethod
+    def Ldind_I8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i8", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi8,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4C,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_I = DotNetOpCode("ldind.i", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldind_I(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4D,
                            DotNetFlowControl.Next, False, 0)
-    Ldind_R4 = DotNetOpCode("ldind.r4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushr4,
+    @staticmethod
+    def Ldind_R4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.r4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushr4,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4E,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_R8 = DotNetOpCode("ldind.r8", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushr8,
+    @staticmethod
+    def Ldind_R8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.r8", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushr8,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4F,
                             DotNetFlowControl.Next, False, 0)
-    Ldind_Ref = DotNetOpCode("ldind.ref", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushref,
+    @staticmethod
+    def Ldind_Ref(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.ref", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushref,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x50,
                              DotNetFlowControl.Next, False, 0)
-    Stind_Ref = DotNetOpCode("stind.ref", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stind_Ref(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.ref", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x51,
                              DotNetFlowControl.Next, False, -2)
-    Stind_I1 = DotNetOpCode("stind.i1", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stind_I1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i1", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x52,
                             DotNetFlowControl.Next, False, -2)
-    Stind_I2 = DotNetOpCode("stind.i2", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stind_I2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i2", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x53,
                             DotNetFlowControl.Next, False, -2)
-    Stind_I4 = DotNetOpCode("stind.i4", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stind_I4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i4", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x54,
                             DotNetFlowControl.Next, False, -2)
-    Stind_I8 = DotNetOpCode("stind.i8", DotNetStackBehaviour.Popi_popi8, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stind_I8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i8", DotNetStackBehaviour.Popi_popi8, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x55,
                             DotNetFlowControl.Next, False, -2)
-    Stind_R4 = DotNetOpCode("stind.r4", DotNetStackBehaviour.Popi_popr4, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stind_R4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.r4", DotNetStackBehaviour.Popi_popr4, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x56,
                             DotNetFlowControl.Next, False, -2)
-    Stind_R8 = DotNetOpCode("stind.r8", DotNetStackBehaviour.Popi_popr8, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stind_R8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.r8", DotNetStackBehaviour.Popi_popr8, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x57,
                             DotNetFlowControl.Next, False, -2)
-    Add = DotNetOpCode("add", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Add(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "add", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x58, DotNetFlowControl.Next, False, -1)
-    Sub = DotNetOpCode("sub", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Sub(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "sub", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x59, DotNetFlowControl.Next, False, -1)
-    Mul = DotNetOpCode("mul", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Mul(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "mul", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x5A, DotNetFlowControl.Next, False, -1)
-    Div = DotNetOpCode("div", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Div(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "div", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x5B, DotNetFlowControl.Next, False, -1)
-    Div_Un = DotNetOpCode("div.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Div_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "div.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x5C,
                           DotNetFlowControl.Next, False, -1)
-    Rem = DotNetOpCode("rem", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Rem(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "rem", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x5D, DotNetFlowControl.Next, False, -1)
-    Rem_Un = DotNetOpCode("rem.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Rem_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "rem.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x5E,
                           DotNetFlowControl.Next, False, -1)
-    And = DotNetOpCode("and", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def And(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "and", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x5F, DotNetFlowControl.Next, False, -1)
-    Or = DotNetOpCode("or", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Or(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "or", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                       DotNetOpCodeType.Primitive, 1, 255, 0x60, DotNetFlowControl.Next, False, -1)
-    Xor = DotNetOpCode("xor", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Xor(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "xor", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x61, DotNetFlowControl.Next, False, -1)
-    Shl = DotNetOpCode("shl", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Shl(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "shl", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x62, DotNetFlowControl.Next, False, -1)
-    Shr = DotNetOpCode("shr", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Shr(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "shr", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x63, DotNetFlowControl.Next, False, -1)
-    Shr_Un = DotNetOpCode("shr.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Shr_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "shr.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x64,
                           DotNetFlowControl.Next, False, -1)
-    Neg = DotNetOpCode("neg", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Neg(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "neg", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x65, DotNetFlowControl.Next, False, 0)
-    Not = DotNetOpCode("not", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Not(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "not", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 1, 255, 0x66, DotNetFlowControl.Next, False, 0)
-    Conv_I1 = DotNetOpCode("conv.i1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_I1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x67,
                            DotNetFlowControl.Next, False, 0)
-    Conv_I2 = DotNetOpCode("conv.i2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_I2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x68,
                            DotNetFlowControl.Next, False, 0)
-    Conv_I4 = DotNetOpCode("conv.i4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_I4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x69,
                            DotNetFlowControl.Next, False, 0)
-    Conv_I8 = DotNetOpCode("conv.i8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    @staticmethod
+    def Conv_I8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6A,
                            DotNetFlowControl.Next, False, 0)
-    Conv_R4 = DotNetOpCode("conv.r4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr4,
+    @staticmethod
+    def Conv_R4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.r4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr4,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6B,
                            DotNetFlowControl.Next, False, 0)
-    Conv_R8 = DotNetOpCode("conv.r8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
+    @staticmethod
+    def Conv_R8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.r8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6C,
                            DotNetFlowControl.Next, False, 0)
-    Conv_U4 = DotNetOpCode("conv.u4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_U4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6D,
                            DotNetFlowControl.Next, False, 0)
-    Conv_U8 = DotNetOpCode("conv.u8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    @staticmethod
+    def Conv_U8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6E,
                            DotNetFlowControl.Next, False, 0)
-    Callvirt = DotNetOpCode("callvirt", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
+    @staticmethod
+    def Callvirt(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "callvirt", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
                             DotNetOperandType.InlineMethod, DotNetOpCodeType.Objmodel, 1, 255, 0x6F,
                             DotNetFlowControl.Call, False, 0)
-    Cpobj = DotNetOpCode("cpobj", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Cpobj(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "cpobj", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                          DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x70, DotNetFlowControl.Next,
                          False, -2)
-    Ldobj = DotNetOpCode("ldobj", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push1, DotNetOperandType.InlineType,
+    @staticmethod
+    def Ldobj(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldobj", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push1, DotNetOperandType.InlineType,
                          DotNetOpCodeType.Objmodel, 1, 255, 0x71, DotNetFlowControl.Next, False, 0)
-    Ldstr = DotNetOpCode("ldstr", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushref,
+    @staticmethod
+    def Ldstr(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldstr", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushref,
                          DotNetOperandType.InlineString, DotNetOpCodeType.Objmodel, 1, 255, 0x72,
                          DotNetFlowControl.Next, False, 1)
-    Newobj = DotNetOpCode("newobj", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Pushref,
+    @staticmethod
+    def Newobj(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "newobj", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Pushref,
                           DotNetOperandType.InlineMethod, DotNetOpCodeType.Objmodel, 1, 255, 0x73,
                           DotNetFlowControl.Call, False, 1)
-    Castclass = DotNetOpCode("castclass", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushref,
+    @staticmethod
+    def Castclass(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "castclass", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushref,
                              DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x74,
                              DotNetFlowControl.Next, False, 0)
-    Isinst = DotNetOpCode("isinst", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Isinst(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "isinst", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
                           DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x75, DotNetFlowControl.Next,
                           False, 0)
-    Conv_R_Un = DotNetOpCode("conv.r.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
+    @staticmethod
+    def Conv_R_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.r.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x76,
                              DotNetFlowControl.Next, False, 0)
-    Unbox = DotNetOpCode("unbox", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineType,
+    @staticmethod
+    def Unbox(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "unbox", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineType,
                          DotNetOpCodeType.Primitive, 1, 255, 0x79, DotNetFlowControl.Next, False, 0)
-    Throw = DotNetOpCode("throw", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Throw(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "throw", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
                          DotNetOpCodeType.Objmodel, 1, 255, 0x7A, DotNetFlowControl.Throw, True, -1)
-    Ldfld = DotNetOpCode("ldfld", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Ldfld(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldfld", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push1,
                          DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7B, DotNetFlowControl.Next,
                          False, 0)
-    Ldflda = DotNetOpCode("ldflda", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldflda(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldflda", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
                           DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7C,
                           DotNetFlowControl.Next, False, 0)
-    Stfld = DotNetOpCode("stfld", DotNetStackBehaviour.Popref_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stfld(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stfld", DotNetStackBehaviour.Popref_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7D, DotNetFlowControl.Next,
                          False, -2)
-    Ldsfld = DotNetOpCode("ldsfld", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Ldsfld(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldsfld", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7E,
                           DotNetFlowControl.Next, False, 1)
-    Ldsflda = DotNetOpCode("ldsflda", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldsflda(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldsflda", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7F,
                            DotNetFlowControl.Next, False, 1)
-    Stsfld = DotNetOpCode("stsfld", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stsfld(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stsfld", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x80,
                           DotNetFlowControl.Next, False, -1)
-    Stobj = DotNetOpCode("stobj", DotNetStackBehaviour.Popi_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stobj(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stobj", DotNetStackBehaviour.Popi_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 1, 255, 0x81, DotNetFlowControl.Next,
                          False, -2)
-    Conv_Ovf_I1_Un = DotNetOpCode("conv.ovf.i1.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_I1_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i1.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x82,
                                   DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I2_Un = DotNetOpCode("conv.ovf.i2.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_I2_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i2.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x83,
                                   DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I4_Un = DotNetOpCode("conv.ovf.i4.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_I4_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i4.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x84,
                                   DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I8_Un = DotNetOpCode("conv.ovf.i8.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    @staticmethod
+    def Conv_Ovf_I8_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i8.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x85,
                                   DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U1_Un = DotNetOpCode("conv.ovf.u1.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_U1_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u1.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x86,
                                   DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U2_Un = DotNetOpCode("conv.ovf.u2.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_U2_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u2.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x87,
                                   DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U4_Un = DotNetOpCode("conv.ovf.u4.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_U4_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u4.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x88,
                                   DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U8_Un = DotNetOpCode("conv.ovf.u8.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    @staticmethod
+    def Conv_Ovf_U8_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u8.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x89,
                                   DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I_Un = DotNetOpCode("conv.ovf.i.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_I_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                  DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x8A,
                                  DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U_Un = DotNetOpCode("conv.ovf.u.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_U_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                  DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x8B,
                                  DotNetFlowControl.Next, False, 0)
-    Box = DotNetOpCode("box", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushref, DotNetOperandType.InlineType,
+    @staticmethod
+    def Box(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "box", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushref, DotNetOperandType.InlineType,
                        DotNetOpCodeType.Primitive, 1, 255, 0x8C, DotNetFlowControl.Next, False, 0)
-    Newarr = DotNetOpCode("newarr", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushref,
+    @staticmethod
+    def Newarr(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "newarr", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushref,
                           DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x8D, DotNetFlowControl.Next,
                           False, 0)
-    Ldlen = DotNetOpCode("ldlen", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Ldlen(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldlen", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
                          DotNetOpCodeType.Objmodel, 1, 255, 0x8E, DotNetFlowControl.Next, False, 0)
-    Ldelema = DotNetOpCode("ldelema", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldelema(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelema", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x8F,
                            DotNetFlowControl.Next, False, -1)
-    Ldelem_I1 = DotNetOpCode("ldelem.i1", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldelem_I1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i1", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x90,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_U1 = DotNetOpCode("ldelem.u1", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldelem_U1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u1", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x91,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_I2 = DotNetOpCode("ldelem.i2", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldelem_I2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i2", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x92,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_U2 = DotNetOpCode("ldelem.u2", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldelem_U2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u2", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x93,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_I4 = DotNetOpCode("ldelem.i4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldelem_I4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x94,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_U4 = DotNetOpCode("ldelem.u4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldelem_U4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x95,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_I8 = DotNetOpCode("ldelem.i8", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi8,
+    @staticmethod
+    def Ldelem_I8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i8", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi8,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x96,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_I = DotNetOpCode("ldelem.i", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldelem_I(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x97,
                             DotNetFlowControl.Next, False, -1)
-    Ldelem_R4 = DotNetOpCode("ldelem.r4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushr4,
+    @staticmethod
+    def Ldelem_R4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.r4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushr4,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x98,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_R8 = DotNetOpCode("ldelem.r8", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushr8,
+    @staticmethod
+    def Ldelem_R8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.r8", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushr8,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x99,
                              DotNetFlowControl.Next, False, -1)
-    Ldelem_Ref = DotNetOpCode("ldelem.ref", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushref,
+    @staticmethod
+    def Ldelem_Ref(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.ref", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushref,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9A,
                               DotNetFlowControl.Next, False, -1)
-    Stelem_I = DotNetOpCode("stelem.i", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem_I(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9B,
                             DotNetFlowControl.Next, False, -3)
-    Stelem_I1 = DotNetOpCode("stelem.i1", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem_I1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i1", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9C,
                              DotNetFlowControl.Next, False, -3)
-    Stelem_I2 = DotNetOpCode("stelem.i2", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem_I2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i2", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9D,
                              DotNetFlowControl.Next, False, -3)
-    Stelem_I4 = DotNetOpCode("stelem.i4", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem_I4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i4", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9E,
                              DotNetFlowControl.Next, False, -3)
-    Stelem_I8 = DotNetOpCode("stelem.i8", DotNetStackBehaviour.Popref_popi_popi8, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem_I8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i8", DotNetStackBehaviour.Popref_popi_popi8, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9F,
                              DotNetFlowControl.Next, False, -3)
-    Stelem_R4 = DotNetOpCode("stelem.r4", DotNetStackBehaviour.Popref_popi_popr4, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem_R4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.r4", DotNetStackBehaviour.Popref_popi_popr4, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA0,
                              DotNetFlowControl.Next, False, -3)
-    Stelem_R8 = DotNetOpCode("stelem.r8", DotNetStackBehaviour.Popref_popi_popr8, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem_R8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.r8", DotNetStackBehaviour.Popref_popi_popr8, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA1,
                              DotNetFlowControl.Next, False, -3)
-    Stelem_Ref = DotNetOpCode("stelem.ref", DotNetStackBehaviour.Popref_popi_popref, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem_Ref(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.ref", DotNetStackBehaviour.Popref_popi_popref, DotNetStackBehaviour.Push0,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA2,
                               DotNetFlowControl.Next, False, -3)
-    Ldelem = DotNetOpCode("ldelem", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Ldelem(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA3, DotNetFlowControl.Next,
                           False, -1)
-    Stelem = DotNetOpCode("stelem", DotNetStackBehaviour.Popref_popi_pop1, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stelem(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem", DotNetStackBehaviour.Popref_popi_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA4, DotNetFlowControl.Next,
                           False, 0)
-    Unbox_Any = DotNetOpCode("unbox.any", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Unbox_Any(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "unbox.any", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push1,
                              DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA5,
                              DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I1 = DotNetOpCode("conv.ovf.i1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_I1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB3,
                                DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U1 = DotNetOpCode("conv.ovf.u1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_U1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB4,
                                DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I2 = DotNetOpCode("conv.ovf.i2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_I2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB5,
                                DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U2 = DotNetOpCode("conv.ovf.u2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_U2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB6,
                                DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I4 = DotNetOpCode("conv.ovf.i4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_I4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB7,
                                DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U4 = DotNetOpCode("conv.ovf.u4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_U4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB8,
                                DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I8 = DotNetOpCode("conv.ovf.i8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    @staticmethod
+    def Conv_Ovf_I8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                                DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB9,
                                DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U8 = DotNetOpCode("conv.ovf.u8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    @staticmethod
+    def Conv_Ovf_U8(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                                DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xBA,
                                DotNetFlowControl.Next, False, 0)
-    Refanyval = DotNetOpCode("refanyval", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Refanyval(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "refanyval", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 1, 255, 0xC2,
                              DotNetFlowControl.Next, False, 0)
-    Ckfinite = DotNetOpCode("ckfinite", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
+    @staticmethod
+    def Ckfinite(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ckfinite", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xC3,
                             DotNetFlowControl.Next, False, 0)
-    Mkrefany = DotNetOpCode("mkrefany", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Mkrefany(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "mkrefany", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push1,
                             DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 1, 255, 0xC6,
                             DotNetFlowControl.Next, False, 0)
-    Ldtoken = DotNetOpCode("ldtoken", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldtoken(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldtoken", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineTok, DotNetOpCodeType.Primitive, 1, 255, 0xD0,
                            DotNetFlowControl.Next, False, 1)
-    Conv_U2 = DotNetOpCode("conv.u2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_U2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD1,
                            DotNetFlowControl.Next, False, 0)
-    Conv_U1 = DotNetOpCode("conv.u1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_U1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD2,
                            DotNetFlowControl.Next, False, 0)
-    Conv_I = DotNetOpCode("conv.i", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Conv_I(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
                           DotNetOpCodeType.Primitive, 1, 255, 0xD3, DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_I = DotNetOpCode("conv.ovf.i", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_I(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD4,
                               DotNetFlowControl.Next, False, 0)
-    Conv_Ovf_U = DotNetOpCode("conv.ovf.u", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Conv_Ovf_U(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD5,
                               DotNetFlowControl.Next, False, 0)
-    Add_Ovf = DotNetOpCode("add.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Add_Ovf(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "add.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD6,
                            DotNetFlowControl.Next, False, -1)
-    Add_Ovf_Un = DotNetOpCode("add.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Add_Ovf_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "add.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD7,
                               DotNetFlowControl.Next, False, -1)
-    Mul_Ovf = DotNetOpCode("mul.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Mul_Ovf(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "mul.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD8,
                            DotNetFlowControl.Next, False, -1)
-    Mul_Ovf_Un = DotNetOpCode("mul.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Mul_Ovf_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "mul.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD9,
                               DotNetFlowControl.Next, False, -1)
-    Sub_Ovf = DotNetOpCode("sub.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Sub_Ovf(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "sub.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDA,
                            DotNetFlowControl.Next, False, -1)
-    Sub_Ovf_Un = DotNetOpCode("sub.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    @staticmethod
+    def Sub_Ovf_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "sub.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDB,
                               DotNetFlowControl.Next, False, -1)
-    Endfinally = DotNetOpCode("endfinally", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Endfinally(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "endfinally", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDC,
                               DotNetFlowControl.Return, True, 0)
-    Leave = DotNetOpCode("leave", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Leave(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "leave", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                          DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0xDD,
                          DotNetFlowControl.Branch, True, 0)
-    Leave_S = DotNetOpCode("leave.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Leave_S(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "leave.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0xDE,
                            DotNetFlowControl.Branch, True, 0)
-    Stind_I = DotNetOpCode("stind.i", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Stind_I(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDF,
                            DotNetFlowControl.Next, False, -2)
-    Conv_U = DotNetOpCode("conv.u", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Conv_U(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
                           DotNetOpCodeType.Primitive, 1, 255, 0xE0, DotNetFlowControl.Next, False, 0)
-    Prefix7 = DotNetOpCode("prefix7", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Prefix7(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix7", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xF8, DotNetFlowControl.Meta,
                            False, 0)
-    Prefix6 = DotNetOpCode("prefix6", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Prefix6(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix6", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xF9, DotNetFlowControl.Meta,
                            False, 0)
-    Prefix5 = DotNetOpCode("prefix5", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Prefix5(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix5", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFA, DotNetFlowControl.Meta,
                            False, 0)
-    Prefix4 = DotNetOpCode("prefix4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Prefix4(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFB, DotNetFlowControl.Meta,
                            False, 0)
-    Prefix3 = DotNetOpCode("prefix3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Prefix3(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFC, DotNetFlowControl.Meta,
                            False, 0)
-    Prefix2 = DotNetOpCode("prefix2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Prefix2(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFD, DotNetFlowControl.Meta,
                            False, 0)
-    Prefix1 = DotNetOpCode("prefix1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Prefix1(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFE, DotNetFlowControl.Meta,
                            False, 0)
-    Prefixref = DotNetOpCode("prefixref", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Prefixref(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "prefixref", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 255,
                              DotNetFlowControl.Meta, False, 0)
-    Arglist = DotNetOpCode("arglist", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Arglist(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "arglist", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0, DotNetFlowControl.Next,
                            False, 1)
-    Ceq = DotNetOpCode("ceq", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Ceq(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ceq", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 2, 0xFE, 1, DotNetFlowControl.Next, False, -1)
-    Cgt = DotNetOpCode("cgt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Cgt(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "cgt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 2, 0xFE, 2, DotNetFlowControl.Next, False, -1)
-    Cgt_Un = DotNetOpCode("cgt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Cgt_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "cgt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 3, DotNetFlowControl.Next,
                           False, -1)
-    Clt = DotNetOpCode("clt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
+    @staticmethod
+    def Clt(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "clt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
                        DotNetOpCodeType.Primitive, 2, 0xFE, 4, DotNetFlowControl.Next, False, -1)
-    Clt_Un = DotNetOpCode("clt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Clt_Un(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "clt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 5, DotNetFlowControl.Next,
                           False, -1)
-    Ldftn = DotNetOpCode("ldftn", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineMethod,
+    @staticmethod
+    def Ldftn(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldftn", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineMethod,
                          DotNetOpCodeType.Primitive, 2, 0xFE, 6, DotNetFlowControl.Next, False, 1)
-    Ldvirtftn = DotNetOpCode("ldvirtftn", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Ldvirtftn(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldvirtftn", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineMethod, DotNetOpCodeType.Primitive, 2, 0xFE, 7,
                              DotNetFlowControl.Next, False, 0)
-    Ldarg = DotNetOpCode("ldarg", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1, DotNetOperandType.InlineVar,
+    @staticmethod
+    def Ldarg(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1, DotNetOperandType.InlineVar,
                          DotNetOpCodeType.Primitive, 2, 0xFE, 9, DotNetFlowControl.Next, False, 1)
-    Ldarga = DotNetOpCode("ldarga", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineVar,
+    @staticmethod
+    def Ldarga(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarga", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineVar,
                           DotNetOpCodeType.Primitive, 2, 0xFE, 0xA, DotNetFlowControl.Next, False, 1)
-    Starg = DotNetOpCode("starg", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineVar,
+    @staticmethod
+    def Starg(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "starg", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineVar,
                          DotNetOpCodeType.Primitive, 2, 0xFE, 0xB, DotNetFlowControl.Next, False, -1)
-    Ldloc = DotNetOpCode("ldloc", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1, DotNetOperandType.InlineVar,
+    @staticmethod
+    def Ldloc(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1, DotNetOperandType.InlineVar,
                          DotNetOpCodeType.Primitive, 2, 0xFE, 0xC, DotNetFlowControl.Next, False, 1)
-    Ldloca = DotNetOpCode("ldloca", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineVar,
+    @staticmethod
+    def Ldloca(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloca", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineVar,
                           DotNetOpCodeType.Primitive, 2, 0xFE, 0xD, DotNetFlowControl.Next, False, 1)
-    Stloc = DotNetOpCode("stloc", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineVar,
+    @staticmethod
+    def Stloc(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineVar,
                          DotNetOpCodeType.Primitive, 2, 0xFE, 0xE, DotNetFlowControl.Next, False, -1)
-    Localloc = DotNetOpCode("localloc", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Localloc(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "localloc", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0xF,
                             DotNetFlowControl.Next, False, 0)
-    Endfilter = DotNetOpCode("endfilter", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Endfilter(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "endfilter", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x11,
                              DotNetFlowControl.Return, True, -1)
-    Unaligned = DotNetOpCode("unaligned.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Unaligned(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "unaligned.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                              DotNetOperandType.ShortInlineI, DotNetOpCodeType.Prefix, 2, 0xFE, 0x12,
                              DotNetFlowControl.Meta, False, 0)
-    Volatile = DotNetOpCode("volatile.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Volatile(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "volatile.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x13,
                             DotNetFlowControl.Meta, False, 0)
-    Tailcall = DotNetOpCode("tail.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Tailcall(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "tail.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x14,
                             DotNetFlowControl.Meta, False, 0)
-    Initobj = DotNetOpCode("initobj", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Initobj(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "initobj", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 2, 0xFE, 0x15,
                            DotNetFlowControl.Next, False, -1)
-    Constrained = DotNetOpCode("constrained.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Constrained(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "constrained.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                                DotNetOperandType.InlineType, DotNetOpCodeType.Prefix, 2, 0xFE, 0x16,
                                DotNetFlowControl.Meta, False, 0)
-    Cpblk = DotNetOpCode("cpblk", DotNetStackBehaviour.Popi_popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Cpblk(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "cpblk", DotNetStackBehaviour.Popi_popi_popi, DotNetStackBehaviour.Push0,
                          DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x17,
                          DotNetFlowControl.Next, False, -3)
-    Initblk = DotNetOpCode("initblk", DotNetStackBehaviour.Popi_popi_popi, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Initblk(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "initblk", DotNetStackBehaviour.Popi_popi_popi, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x18,
                            DotNetFlowControl.Next, False, -3)
-    Rethrow = DotNetOpCode("rethrow", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Rethrow(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "rethrow", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 2, 0xFE, 0x1A,
                            DotNetFlowControl.Throw, True, 0)
-    Sizeof = DotNetOpCode("sizeof", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineType,
+    @staticmethod
+    def Sizeof(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "sizeof", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineType,
                           DotNetOpCodeType.Primitive, 2, 0xFE, 0x1C, DotNetFlowControl.Next, False, 1)
-    Refanytype = DotNetOpCode("refanytype", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    @staticmethod
+    def Refanytype(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "refanytype", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x1D,
                               DotNetFlowControl.Next, False, 0)
-    Readonly = DotNetOpCode("readonly.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    @staticmethod
+    def Readonly(app_domain):
+        return DotNetOpCode(app_domain.get_emulator_obj(), "readonly.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x1E,
                             DotNetFlowControl.Meta, False, 0)
 
