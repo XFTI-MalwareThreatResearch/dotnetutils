@@ -2780,9 +2780,6 @@ cdef class DotNetOpCodes(DotNetObject):
             return True
         return False
 
-
-OpCodes = DotNetOpCodes()
-
 cdef class DotNetILGenerator(DotNetObject):
     def __init__(self, emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
