@@ -149,6 +149,7 @@ cdef class EmulatorAppDomain:
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
                 mdef_obj = <net_row_objects.MethodDef> mrefdef_obj
                 arg_one = net_emu_types.DotNetNull() #Not sure what arg_one actually is supposed to do but for now Null works.
+                arg_one.set_emulator_obj(self.get_emulator_obj())
                 arg_two = net_emu_types.DotNetResolveEventArgs(name)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, method_params=[arg_one, arg_two])
                 emu_obj.run_function()
@@ -416,6 +417,7 @@ cdef class DotNetEmulator:
     cdef object __get_default_value(self, net_utils.TypeSig type_sig):
         cdef net_structs.CorElementType element_type
         cdef net_row_objects.TypeDefOrRef superclass
+        cdef net_emu_types.DotNetNull new_obj
         if isinstance(type_sig, net_utils.CorLibTypeSig):
             element_type = type_sig.get_element_type()
             if element_type == net_structs.CorElementType.ELEMENT_TYPE_I:
@@ -448,7 +450,9 @@ cdef class DotNetEmulator:
                 if superclass != None: # if superclass is NULL, should DotNetNull or DotNetObject be returned?
                     if superclass.get_full_name() == b'System.Enum':
                         return py_net_emu_types.DotNetUInt32(0)
-        return net_emu_types.DotNetNull()
+        new_obj = net_emu_types.DotNetNull()
+        new_obj.set_emulator_obj(self)
+        return new_obj
 
     def skip_next_instruction(self):
         self.__skip_next_instruction = True
@@ -1518,6 +1522,7 @@ cdef class DotNetEmulator:
         #TODO: make sure this instr works.
         cdef net_row_objects.TypeRef instr_arg
         cdef type potential_type
+        cdef net_emu_types.DotNetNull null_obj
         obj_ref = self.stack.pop()
         orig_obj_ref = None
         instr_arg = instr.get_argument()
@@ -1531,7 +1536,9 @@ cdef class DotNetEmulator:
             obj_ref.initialize_type(instr_arg)
             self.stack.append(obj_ref)
         else:
-            self.stack.append(net_emu_types.DotNetNull())
+            null_obj = net_emu_types.DotNetNull()
+            null_obj.set_emulator_obj(self)
+            self.stack.append(null_obj)
         return True
 
     cdef bint handle_ldflda_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1667,6 +1674,7 @@ cdef class DotNetEmulator:
         cdef net_cil_disas.Instruction instr
         cdef bint should_print
         cdef str ins_name
+        cdef net_emu_types.DotNetNull null_obj
         cdef bint do_normal_offsets
         self.get_appdomain().set_current_emulator(self)
         self.get_appdomain().set_executing_dotnetpe(self.method_obj.get_dotnetpe())
@@ -1910,7 +1918,9 @@ cdef class DotNetEmulator:
                 elif ins_op == net_opcodes.Opcodes.Ldloca or ins_op == net_opcodes.Opcodes.Ldloca_S:
                     self.handle_ldloca_instruction(instr)
                 elif ins_op == net_opcodes.Opcodes.Ldnull:
-                    self.stack.append(net_emu_types.DotNetNull())
+                    null_obj = net_emu_types.DotNetNull()
+                    null_obj.set_emulator_obj(self)
+                    self.stack.append(null_obj)
                 elif ins_op == net_opcodes.Opcodes.Ldobj:
                     self.handle_ldobj_instruction(instr)
                 elif ins_op == net_opcodes.Opcodes.Ldvirtftn:

@@ -129,6 +129,7 @@ cdef class DotNetObject:
         self.type_sig_obj = type_sig_obj
 
     cpdef void __initialize_field(self, unsigned long field_rid):
+        cdef DotNetNull null_obj
         field_obj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(field_rid)
         field_sig: net_utils.FieldSig = field_obj.get_field_signature()
         if not isinstance(field_sig, net_utils.FieldSig):
@@ -167,13 +168,17 @@ cdef class DotNetObject:
                 raise Exception('unknown corlibtype for initialize_field: {}'.format(type_sig.get_element_type()))
         else:
             if isinstance(type_sig, net_utils.ClassSig):
-                self.set_field(field_rid, DotNetNull())
+                null_obj = DotNetNull()
+                null_obj.set_emulator_obj(self.get_emulator_obj())
+                self.set_field(field_rid, null_obj)
             elif isinstance(type_sig, net_utils.ValueTypeSig):
                 self.set_field(field_rid, DotNetObject()) #ValueTypes are similar enough to objects it seems where this should be proper.
                 #valuetypes are weird - seems the most prominent is basically enums which should be treated as numbers.  This might need to be adjusted eventually.
                 #structs can also be valuetypes - we need dotnetobject() here.
             elif isinstance(type_sig, net_utils.SZArraySig):
-                self.set_field(field_rid, DotNetNull()) #DotNetNull() should work fine here since any arrays are going to be initialized by a newarr anyway.
+                null_obj = DotNetNull()
+                null_obj.set_emulator_obj(self.get_emulator_obj())
+                self.set_field(field_rid, null_obj) #DotNetNull() should work fine here since any arrays are going to be initialized by a newarr anyway.
             else:
                 raise Exception('unknown sigtype for initialize_field {}'.format(type(type_sig)))
 
@@ -608,7 +613,9 @@ cdef class DotNetAssembly(DotNetObject):
     def GetManifestResourceStream(self, name):
         resource_data = self.get_emulator_obj().get_appdomain().get_resource_by_name(name)
         if not resource_data:
-            return DotNetNull()
+            obj = DotNetNull()
+            obj.set_emulator_obj(self.get_emulator_obj())
+            return obj
 
         obj = DotNetStream(resource_data)
         obj.set_type_obj(self.get_module().get_dotnetpe().get_type_by_full_name(
@@ -659,7 +666,9 @@ cdef class DotNetAssembly(DotNetObject):
             #For now dont search the filesystem for assemblies, only the current loaded stuff.
             result = app_domain.get_assembly_by_name(binary_data)
             if result == None:
-                return DotNetNull()
+                obj = DotNetNull()
+                obj.set_emulator_obj(app_domain.get_emulator_obj())
+                return obj
             return result
         else:
             raise net_exceptions.InvalidArgumentsException()
@@ -897,7 +906,9 @@ cdef class DotNetThread(DotNetObject):
     def Start(self):
         if not isinstance(self.__thread_start, DotNetThreadStart):
             raise net_exceptions.InvalidArgumentsException()
-        dnfunc = DotNetFunc(DotNetNull(), self.__thread_start.get_method_object())
+        nobj = DotNetNull()
+        nobj.set_emulator_obj(self.get_emulator_obj())
+        dnfunc = DotNetFunc(nobj, self.__thread_start.get_method_object())
         dnfunc.set_emulator_obj(self.get_emulator_obj())
         self.__internal_thread = threading.Thread(target=dne_thread_runner, args=[dnfunc])
         self.__internal_thread.start()
