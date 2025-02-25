@@ -94,8 +94,10 @@ cpdef get_cor_type_from_name(type_name):
     return None
 
 cdef class DotNetObject:
-    def __init__(self):
-        self.emulator_obj = None
+    def __init__(self, emulator_obj):
+        if emulator_obj == None:
+            raise Exception 
+        self.__emulator_obj = emulator_obj
         self.fields = dict()
         self.type_obj = None
         self.type_sig_obj = None
@@ -103,10 +105,7 @@ cdef class DotNetObject:
         self.__initialized = False
 
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self):
-        return self.emulator_obj
-
-    cpdef void set_emulator_obj(self, net_emulator.DotNetEmulator emulator_obj):
-        self.emulator_obj = emulator_obj
+        return self.__emulator_obj
 
     cpdef void set_field(self, unsigned long idno, object val):
         self.fields[idno] = val
@@ -168,16 +167,14 @@ cdef class DotNetObject:
                 raise Exception('unknown corlibtype for initialize_field: {}'.format(type_sig.get_element_type()))
         else:
             if isinstance(type_sig, net_utils.ClassSig):
-                null_obj = DotNetNull()
-                null_obj.set_emulator_obj(self.get_emulator_obj())
+                null_obj = DotNetNull(self.get_emulator_obj())
                 self.set_field(field_rid, null_obj)
             elif isinstance(type_sig, net_utils.ValueTypeSig):
-                self.set_field(field_rid, DotNetObject()) #ValueTypes are similar enough to objects it seems where this should be proper.
+                self.set_field(field_rid, DotNetObject(self.get_emulator_obj())) #ValueTypes are similar enough to objects it seems where this should be proper.
                 #valuetypes are weird - seems the most prominent is basically enums which should be treated as numbers.  This might need to be adjusted eventually.
                 #structs can also be valuetypes - we need dotnetobject() here.
             elif isinstance(type_sig, net_utils.SZArraySig):
-                null_obj = DotNetNull()
-                null_obj.set_emulator_obj(self.get_emulator_obj())
+                null_obj = DotNetNull(self.get_emulator_obj())
                 self.set_field(field_rid, null_obj) #DotNetNull() should work fine here since any arrays are going to be initialized by a newarr anyway.
             else:
                 raise Exception('unknown sigtype for initialize_field {}'.format(type(type_sig)))
@@ -200,7 +197,7 @@ cdef class DotNetObject:
                         self.set_field(field_obj.get_rid(), net_emu_coretypes.DotNetInt32(0))
                     else:
                         if isinstance(sig_obj.get_type_sig(), net_utils.TypeDefOrRefSig):
-                            obj = DotNetObject()
+                            obj = DotNetObject(self.get_emulator_obj())
                             obj.initialize_type(sig_obj.get_type_sig().get_type())
                             self.set_field(field_obj.get_rid(), obj)
                     # self.initialized_fields.append(field_obj.get_rid())"""
@@ -235,8 +232,8 @@ cdef class DotNetObject:
             return object.__str__(self)
 
 cdef class DotNetNull(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     def __eq__(self, other):
         return isinstance(other, DotNetNull)
@@ -257,8 +254,8 @@ cdef class DotNetNull(DotNetObject):
 
 
 cdef class DotNetType(DotNetObject):
-    def __init__(self, type_handle, sig_obj=None):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, type_handle, sig_obj=None):
+        DotNetObject.__init__(self, emulator_obj)
         if isinstance(type_handle, net_row_objects.TypeDef) or isinstance(type_handle, net_row_objects.TypeRef):
             self.type_handle = type_handle
         elif isinstance(type_handle, net_row_objects.TypeSpec):
@@ -286,9 +283,8 @@ cdef class DotNetType(DotNetObject):
 
     @staticmethod
     def GetTypeFromHandle(app_domain, obj):
-        assembly = DotNetAssembly.GetExecutingAssembly(app_domain)
-        obj2 = DotNetType(obj)
-        obj2.set_type_obj(assembly.get_module().get_dotnetpe().get_type_by_full_name(b'System.Type'))
+        obj2 = DotNetType(app_domain.get_emulator_obj(), obj)
+        obj2.set_type_obj(app_domain.get_emulator_obj().get_dotnetpe().get_type_by_full_name(b'System.Type'))
         return obj2
 
     def get_Module(self):
@@ -296,7 +292,7 @@ cdef class DotNetType(DotNetObject):
             raise net_exceptions.ObjectTypeException
         #There is going to have to be a ton of reimplementation to support this for TypeRefs.
         assembly = DotNetAssembly.GetExecutingAssembly(self.get_emulator_obj().get_appdomain())
-        return DotNetModule(assembly.get_module())
+        return DotNetModule(self.get_emulator_obj(), assembly.get_module())
 
     def GetFields(self, binding_flags=None):
         if binding_flags == 1064:
@@ -305,11 +301,10 @@ cdef class DotNetType(DotNetObject):
             type_obj = self.get_type_handle()
             for item in type_obj['FieldList'].get_formatted_value():
                 if item.is_static():
-                    field_info = DotNetFieldInfo(item)
+                    field_info = DotNetFieldInfo(self.get_emulator_obj(), item)
                     field_objs.append(field_info)
-                    field_info.set_emulator_obj(self.get_emulator_obj())
 
-            result_array = DotNetArray(len(field_objs), type_obj.get_dotnetpe().get_type_by_full_name(
+            result_array = DotNetArray(self.get_emulator_obj(), len(field_objs), type_obj.get_dotnetpe().get_type_by_full_name(
                 b'System.Reflection.FieldInfo'), initialize=False)
             result_array.set_internal_array(field_objs)
             return result_array
@@ -325,12 +320,12 @@ cdef class DotNetType(DotNetObject):
 
     def get_Assembly(self):
         module_obj = self.get_type_handle().get_dotnetpe().get_metadata_table('Assembly').get(0)
-        return DotNetAssembly(module_obj)
+        return DotNetAssembly(self.get_emulator_obj(), module_obj)
 
 
 cdef class DotNetMonitor(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def Enter(app_domain, obj, lockTaken=False):
@@ -346,8 +341,8 @@ cdef class DotNetMonitor(DotNetObject):
         pass
 
 cdef class DotNetDictionary(DotNetObject):
-    def __init__(self, capacity=0): #Capacity probably doesnt actually matter.
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, capacity=0): #Capacity probably doesnt actually matter.
+        DotNetObject.__init__(self, emulator_obj)
         self.__internal_dict = dict()
 
     def TryGetValue(self, param1, param2):
@@ -373,12 +368,12 @@ cdef class DotNetDictionary(DotNetObject):
 
 
 cdef class DotNetConcurrentDictionary(DotNetDictionary):
-    def __init__(self):
-        DotNetDictionary.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetDictionary.__init__(self, emulator_obj)
 
 cdef class DotNetStringBuilder(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
         self.char_array = bytes()
         self.is_wide = False
 
@@ -393,13 +388,13 @@ cdef class DotNetStringBuilder(DotNetObject):
 
     def ToString(self):
         if self.is_wide:
-            return DotNetString(self.char_array, str_encoding='utf-16le')
-        return DotNetString(self.char_array, str_encoding='utf-8')
+            return DotNetString(self.get_emulator_obj(), self.char_array, str_encoding='utf-16le')
+        return DotNetString(self.get_emulator_obj(), self.char_array, str_encoding='utf-8')
 
 
 cdef class DotNetStream(DotNetObject):
-    def __init__(self, rsrc_data):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, rsrc_data):
+        DotNetObject.__init__(self, emulator_obj)
         if isinstance(rsrc_data, DotNetArray):
             self.rsrc_stream = io.BytesIO(bytes(rsrc_data.get_internal_array()))
         else:
@@ -436,7 +431,7 @@ cdef class DotNetStream(DotNetObject):
         cdef bytes raw_obj
         cdef list actual_obj
         cdef Py_ssize_t x
-        arr_obj = DotNetArray(count, DotNetAssembly.GetExecutingAssembly(self.get_emulator_obj().get_appdomain()).get_module().get_dotnetpe().get_type_by_full_name(
+        arr_obj = DotNetArray(self.get_emulator_obj(), count, DotNetAssembly.GetExecutingAssembly(self.get_emulator_obj().get_appdomain()).get_module().get_dotnetpe().get_type_by_full_name(
             b'System.Byte'), initialize=False)
         raw_obj = self.rsrc_stream.read(count)
         actual_obj = list()
@@ -454,8 +449,8 @@ cdef class DotNetStream(DotNetObject):
 
 
 cdef class DotNetMemoryStream(DotNetObject):
-    def __init__(self, data, writeable=True):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, data, writeable=True):
+        DotNetObject.__init__(self, emulator_obj)
         if not isinstance(data, net_emu_coretypes.DotNetInt32):
             self.internal_data = data
             self.writeable = writeable
@@ -507,7 +502,7 @@ cdef class DotNetMemoryStream(DotNetObject):
         internal_data = list(self.internal_data)
         for x in range(len(internal_data)):
             internal_data[x] = net_emu_coretypes.DotNetUInt8(internal_data[x])
-        array = DotNetArray(len(internal_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), len(internal_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
                             initialize=False)
         array.set_internal_array(internal_data)
         return array
@@ -518,8 +513,8 @@ cdef class DotNetMemoryStream(DotNetObject):
 
 
 cdef class DotNetAssemblyName(DotNetObject):
-    def __init__(self, name, assembly):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, name, assembly):
+        DotNetObject.__init__(self, emulator_obj)
         self.name = name
         self.assembly = assembly
         if self.name.endswith(b'.exe'):
@@ -533,7 +528,7 @@ cdef class DotNetAssemblyName(DotNetObject):
 
         if module_obj['PublicKey'].get_raw_value() == 0:
             #If raw value is 0, return a empty array.
-            return DotNetArray(0, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'))
+            return DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'))
         public_key = module_obj['PublicKey'].get_value()
 
         sha_hash = hashlib.sha1()
@@ -542,18 +537,18 @@ cdef class DotNetAssemblyName(DotNetObject):
         public_key_token = list(hashed_key[-8:][::-1])
         for x in range(len(public_key_token)):
             public_key_token[x] = net_emu_coretypes.DotNetUInt8(public_key_token[x])
-        array = DotNetArray(len(public_key_token), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), len(public_key_token), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
                             initialize=False)
         array.set_internal_array(list(public_key_token))
         return array
 
     def get_Name(self):
-        return DotNetString(self.name, 'utf-8')
+        return DotNetString(self.get_emulator_obj(), self.name, 'utf-8')
 
 
 cdef class DotNetManifestModule(DotNetObject):
-    def __init__(self, dnassembly):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, dnassembly):
+        DotNetObject.__init__(self, emulator_obj)
         self.dnassembly = dnassembly
 
 
@@ -562,18 +557,18 @@ cdef class DotNetAssembly(DotNetObject):
     This class is meant to fool checks to ensure that
     Deobfuscation methods are being executed by their assembly.
     """
-    def __init__(self, module):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, module):
+        DotNetObject.__init__(self, emulator_obj)
         self.module = module
 
     cpdef get_module(self):
         return self.module
 
     def get_ManifestModule(self):
-        return DotNetManifestModule(self)
+        return DotNetManifestModule(self.get_emulator_obj(), self)
 
     def get_EntryPoint(self):
-        return DotNetMemberInfo(self.get_module().get_dotnetpe().get_entry_point())
+        return DotNetMemberInfo(self.get_emulator_obj(), self.get_module().get_dotnetpe().get_entry_point())
 
     def get_FullName(self):
         dpe = self.get_module().get_dotnetpe()
@@ -585,7 +580,7 @@ cdef class DotNetAssembly(DotNetObject):
         assembly_token = assembly_name.GetPublicKeyToken()
         pkeytoken = binascii.hexlify(bytes(assembly_token.get_internal_array())).decode()
         string_name = '{}, Version={}, Culture=neutral, PublicKeyToken={}'.format(name, version, pkeytoken)
-        return DotNetString(string_name.encode('utf-16le'))
+        return DotNetString(self.get_emulator_obj(), string_name.encode('utf-16le'))
 
     def get_Location(self):
         """
@@ -598,7 +593,7 @@ cdef class DotNetAssembly(DotNetObject):
 
     @staticmethod
     def GetExecutingAssembly(app_domain):
-        dotnetassembly = DotNetAssembly(
+        dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(),
             app_domain.get_executing_dotnetpe().get_metadata_table('Assembly').get(0))
         dotnetassembly.set_type_obj(app_domain.get_executing_dotnetpe().get_type_by_full_name(
             b'System.Reflection.Assembly'))
@@ -606,18 +601,17 @@ cdef class DotNetAssembly(DotNetObject):
 
     @staticmethod
     def GetCallingAssembly(app_domain):
-        dotnetassembly = DotNetAssembly(app_domain.get_calling_dotnetpe().get_metadata_table('Assembly').get(0))
+        dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(), app_domain.get_calling_dotnetpe().get_metadata_table('Assembly').get(0))
         dotnetassembly.set_type_obj(app_domain.get_calling_dotnetpe().get_type_by_full_name(b'System.Reflection.Assembly'))
         return dotnetassembly
 
     def GetManifestResourceStream(self, name):
         resource_data = self.get_emulator_obj().get_appdomain().get_resource_by_name(name)
         if not resource_data:
-            obj = DotNetNull()
-            obj.set_emulator_obj(self.get_emulator_obj())
+            obj = DotNetNull(self.get_emulator_obj())
             return obj
 
-        obj = DotNetStream(resource_data)
+        obj = DotNetStream(self.get_emulator_obj(), resource_data)
         obj.set_type_obj(self.get_module().get_dotnetpe().get_type_by_full_name(
             b'System.IO.Stream'))
         return obj
@@ -627,27 +621,26 @@ cdef class DotNetAssembly(DotNetObject):
         result = list()
         if resources:
             for item in resources:
-                dns = DotNetString(item['Name'].get_value(), 'utf-8')
+                dns = DotNetString(self.get_emulator_obj(), item['Name'].get_value(), 'utf-8')
                 result.append(dns)
         
-        results = DotNetArray(len(result), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.String'),
+        results = DotNetArray(self.get_emulator_obj(), len(result), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.String'),
                     initialize=False)
         results.set_internal_array(result)
         return results
 
     def GetName(self):
-        obj = DotNetAssemblyName(self.get_module()['Name'].get_value(), self)
-        obj.set_emulator_obj(self.get_emulator_obj())
+        obj = DotNetAssemblyName(self.get_emulator_obj(), self.get_module()['Name'].get_value(), self)
         obj.set_type_obj(self.get_module().get_dotnetpe().get_type_by_full_name(
             b'System.Reflection.AssemblyName'))
         return obj
 
     def GetModules(self):
         modules = self.get_module().get_dotnetpe().get_metadata_table('Module')
-        result = DotNetArray(len(modules), self.get_module().get_dotnetpe().get_type_by_full_name(
+        result = DotNetArray(self.get_emulator_obj(), len(modules), self.get_module().get_dotnetpe().get_type_by_full_name(
             b'System.Reflection.Module'))
         for x in range(len(modules)):
-            result[x] = DotNetModule(modules.get(x))
+            result[x] = DotNetModule(self.get_emulator_obj(), modules.get(x))
         return result
 
     def Equals(self, other):
@@ -666,8 +659,7 @@ cdef class DotNetAssembly(DotNetObject):
             #For now dont search the filesystem for assemblies, only the current loaded stuff.
             result = app_domain.get_assembly_by_name(binary_data)
             if result == None:
-                obj = DotNetNull()
-                obj.set_emulator_obj(app_domain.get_emulator_obj())
+                obj = DotNetNull(app_domain.get_emulator_obj())
                 return obj
             return result
         else:
@@ -678,9 +670,9 @@ cdef class DotNetAssembly(DotNetObject):
 
 
 cdef class DotNetList(DotNetObject):
-    def __init__(self, initial_capacity=0):
-        DotNetObject.__init__(self)
-        self.internal = list([DotNetNull()] * initial_capacity) #NOTE: this may cause some problems.  Initial values here may need to be reworked.
+    def __init__(self, emulator_obj, initial_capacity=0):
+        DotNetObject.__init__(self, emulator_obj)
+        self.internal = list([DotNetNull(emulator_obj)] * initial_capacity) #NOTE: this may cause some problems.  Initial values here may need to be reworked.
 
     def AddRange(self, range_obj):
         for item in range_obj:
@@ -743,8 +735,8 @@ cdef class DotNetList(DotNetObject):
         return str(self.internal) + ' Count={}'.format(self.get_Count())
 
 cdef class DotNetArray(DotNetObject):
-    def __init__(self, size, type_obj=None, initialize=True):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, size, type_obj=None, initialize=True):
+        DotNetObject.__init__(self, emulator_obj)
         self.set_type_obj(type_obj)
         #If I change how this is set up, it will save a literal ton of time.
         self.internal_array = []
@@ -769,7 +761,7 @@ cdef class DotNetArray(DotNetObject):
                     self.internal_array[x + index] = net_emu_coretypes.DotNetUInt8(0)
             else:
                 for x in range(size):
-                    dno = DotNetObject()
+                    dno = DotNetObject(self.get_emulator_obj())
                     dno.initialize_type(self.get_type_obj())
                     self.internal_array[x + index] = dno
         else:
@@ -778,7 +770,7 @@ cdef class DotNetArray(DotNetObject):
                     self.internal_array.append(net_emu_coretypes.DotNetUInt8(0))
             else:
                 for x in range(size):
-                    dno = DotNetNull() #If this is system.object it could mess up some null checks.
+                    dno = DotNetNull(self.get_emulator_obj()) #If this is system.object it could mess up some null checks.
                     dno.initialize_type(self.get_type_obj())
                     self.internal_array.append(dno)
 
@@ -815,7 +807,7 @@ cdef class DotNetArray(DotNetObject):
         return net_emu_coretypes.DotNetInt32(len(self.internal_array))
 
     def __add__(self, other):
-        new_obj = DotNetArray(1, initialize=False)
+        new_obj = DotNetArray(self.get_emulator_obj(), 1, initialize=False)
         new_obj.set_type_obj(self.get_type_obj())
         new_obj.internal_array = self.internal_array + other.internal_array
         return new_obj
@@ -834,8 +826,8 @@ cdef class DotNetArray(DotNetObject):
                                                                        len(self.internal_array), array_str)
 
 cdef class DotNetStackTrace(DotNetObject):
-    def __init__(self, skipFrames=0, fNeedFileInfo=False):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, skipFrames=0, fNeedFileInfo=False):
+        DotNetObject.__init__(self, emulator_obj)
         self.skipFrames = skipFrames
         self.fNeedFileInfo = fNeedFileInfo
 
@@ -846,15 +838,15 @@ cdef class DotNetStackTrace(DotNetObject):
         while emulator_ptr:
             emulator_list.insert(0, emulator_ptr)
             emulator_ptr = emulator_ptr.get_caller()
-        sf_obj = DotNetStackFrame()
+        sf_obj = DotNetStackFrame(self.get_emulator_obj())
         sf_obj.set_type_obj(self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(
             b'System.Diagnostics.StackFrame'))
         sf_obj.current_emulator = emulator_list[number]
         return sf_obj
 
 cdef class DotNetStackFrame(DotNetObject):
-    def __init__(self, skip_frames=0):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, skip_frames=0):
+        DotNetObject.__init__(self, emulator_obj)
         self.current_emulator = None
         self.skip_frames = skip_frames
 
@@ -862,22 +854,22 @@ cdef class DotNetStackFrame(DotNetObject):
         emulator_obj = self.get_emulator_obj()
         for x in range(self.skip_frames):
             emulator_obj = emulator_obj.get_caller()
-        obj = DotNetMemberInfo(emulator_obj.get_method_obj())
+        obj = DotNetMemberInfo(self.get_emulator_obj(), emulator_obj.get_method_obj())
         obj.set_type_obj(emulator_obj.get_method_obj().get_dotnetpe().get_type_by_full_name(
             b'System.Reflection.MemberInfo'))
         return obj
 
 cdef class DotNetMemberInfo(DotNetObject):
-    def __init__(self, internal_method):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, internal_method):
+        DotNetObject.__init__(self, emulator_obj)
         self.internal_method = internal_method
 
     def get_DeclaringType(self):
-        return DotNetType(self.internal_method.get_parent_type())
+        return DotNetType(self.get_emulator_obj(), self.internal_method.get_parent_type())
 
 cdef class DotNetConsole(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
     #we probably dont need these methods to actually do anything for our purposes.
     @staticmethod
     def WriteLine(app_domain, item):
@@ -893,7 +885,7 @@ def dne_thread_runner(dnfunc):
     dnfunc.Invoke()
 
 cdef class DotNetThread(DotNetObject):
-    def __init__(self, thread_start=None):
+    def __init__(self, emulator_obj, thread_start=None):
         DotNetObject.__init__(self)
         #DotNetThread.__identifier should increment on each new thread.  Going to need to work on this a bit. TODO
         self.__identifier = net_emu_coretypes.DotNetInt32(1)
@@ -906,10 +898,8 @@ cdef class DotNetThread(DotNetObject):
     def Start(self):
         if not isinstance(self.__thread_start, DotNetThreadStart):
             raise net_exceptions.InvalidArgumentsException()
-        nobj = DotNetNull()
-        nobj.set_emulator_obj(self.get_emulator_obj())
-        dnfunc = DotNetFunc(nobj, self.__thread_start.get_method_object())
-        dnfunc.set_emulator_obj(self.get_emulator_obj())
+        nobj = DotNetNull(self.get_emulator_obj())
+        dnfunc = DotNetFunc(self.get_emulator_obj(), nobj, self.__thread_start.get_method_object())
         self.__internal_thread = threading.Thread(target=dne_thread_runner, args=[dnfunc])
         self.__internal_thread.start()
 
@@ -921,7 +911,7 @@ cdef class DotNetThread(DotNetObject):
     @staticmethod
     def get_CurrentThread(app_domain):
         # Emulator doesnt support threads so just return a fake object.
-        obj = DotNetThread()
+        obj = DotNetThread(app_domain.get_emulator_obj())
         obj.set_type_obj(app_domain.get_executing_dotnetpe().get_type_by_full_name(
             b'System.Threading.Thread'))
         return obj
@@ -980,8 +970,8 @@ cdef void initialize_array_helper(DotNetArray arr, net_row_objects.RowObject run
         raise Exception()  # FIXME: change
 
 cdef class DotNetRuntimeHelpers(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def InitializeArray(app_domain, arr, runtime_handle):
@@ -1019,8 +1009,8 @@ cdef class ArrayAddress:
                                                                   self.__internal_arrayaddr_index])
 
 cdef class DotNetMath(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def Max(app_domain, value1, value2):
@@ -1052,8 +1042,8 @@ cdef class DotNetMath(DotNetObject):
 
 
 cdef class DotNetBitConverter(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def IsLittleEndian(app_domain):
@@ -1098,7 +1088,7 @@ cdef class DotNetBitConverter(DotNetObject):
         if not hasattr(value1, 'dtype'):
             raise net_exceptions.ObjectTypeException
 
-        dnr = DotNetArray(value1.dtype.itemsize,
+        dnr = DotNetArray(app_domain.get_emulator_obj(), value1.dtype.itemsize,
                           DotNetAssembly.GetExecutingAssembly(app_domain).get_module().get_dotnetpe().get_type_by_full_name(b'System.Byte'),
                           initialize=False)
         b_data = list(int.to_bytes(value1.item(), length=value1.dtype.itemsize, byteorder='little', signed=value1.dtype.kind != 'u'))
@@ -1114,8 +1104,8 @@ cdef void blockcopy_helper(DotNetArray src, object srcOffset, DotNetArray dst, o
 
 
 cdef class DotNetBuffer(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def BlockCopy(app_domain, src, srcOffset, dst, dstOffset, count):
@@ -1124,12 +1114,12 @@ cdef class DotNetBuffer(DotNetObject):
         blockcopy_helper(src, srcOffset, dst, dstOffset, count)
 
 cdef class DotNetAppDomain(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def get_CurrentDomain(app_domain):
-        return DotNetAppDomain()
+        return DotNetAppDomain(app_domain.get_emulator_obj())
 
     def add_AssemblyResolve(self, obj):
         self.get_emulator_obj().get_appdomain().add_assembly_handler(obj.get_method_obj())
@@ -1138,47 +1128,47 @@ cdef class DotNetAppDomain(DotNetObject):
         self.get_emulator_obj().get_appdomain().add_resource_handler(obj.get_method_obj())
 
 cdef class DotNetResolveEventHandler(DotNetObject):
-    def __init__(self, arg1, arg2):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, arg1, arg2):
+        DotNetObject.__init__(self, emulator_obj)
         self.__method_object = arg2
 
     cpdef net_row_objects.MethodDefOrRef get_method_obj(self):
         return self.__method_object
 
 cdef class DotNetEncoding(DotNetObject):
-    def __init__(self, name):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, name):
+        DotNetObject.__init__(self, emulator_obj)
         self.name = name
 
     @staticmethod
     def get_UTF8(app_domain):
-        return DotNetEncoding('utf-8')
+        return DotNetEncoding(app_domain.get_emulator_obj(), 'utf-8')
 
     @staticmethod
     def get_Unicode(app_domain):
-        return DotNetEncoding('utf-16le')
+        return DotNetEncoding(app_domain.get_emulator_obj(), 'utf-16le')
 
     def GetString(self, data, index=0, count=-1):
         if isinstance(data, DotNetString):
             return data.Substring(index, index + count)
         if count >= 0:
-            return DotNetString(data[index:index + count], self.name)
+            return DotNetString(self.get_emulator_obj(), data[index:index + count], self.name)
         else:
-            return DotNetString(data[index:], self.name)
+            return DotNetString(self.get_emulator_obj(), data[index:], self.name)
 
     def GetBytes(self, str_obj):
         if not isinstance(str_obj, DotNetString):
             raise net_exceptions.ObjectTypeException
         raw_bytes = str_obj.get_str_data_as_bytes().decode(str_obj.get_str_encoding()).encode(self.name)
-        result = DotNetArray(len(raw_bytes),
+        result = DotNetArray(self.get_emulator_obj(), len(raw_bytes),
                              self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'))
         for x in range(len(raw_bytes)):
             result[x] = net_emu_coretypes.DotNetInt8(raw_bytes[x])
         return result
 
 cdef class DotNetString(DotNetObject):
-    def __init__(self, str_data, str_encoding='utf-16le'):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, str_data, str_encoding='utf-16le'):
+        DotNetObject.__init__(self, emulator_obj)
         self.str_encoding = str_encoding
         self.str_data = self.__sanitize_data(str_data)
 
@@ -1260,7 +1250,7 @@ cdef class DotNetString(DotNetObject):
 
     @staticmethod
     def Empty(app_domain):
-        return DotNetString(bytes(), 'utf-16le')
+        return DotNetString(app_domain.get_emulator_obj(), bytes(), 'utf-16le')
 
     @staticmethod
     def Intern(app_domain, str_obj):
@@ -1284,7 +1274,7 @@ cdef class DotNetString(DotNetObject):
                         base_encoding = element.get_str_encoding()
                     base_str += element.get_str_data()
 
-                return DotNetString(base_str, base_encoding)
+                return DotNetString(app_domain.get_emulator_obj(), base_str, base_encoding)
 
             else:
                 raise net_exceptions.InvalidArgumentsException('DotNetArray', type(array))
@@ -1296,11 +1286,11 @@ cdef class DotNetString(DotNetObject):
 
             #I dont really like this, but it should work for now. FIXME - this could fail with weird parameters (non byte array)
             if isinstance(arg2, net_emu_coretypes.DotNetInt16) or isinstance(arg2, net_emu_coretypes.DotNetUInt16):
-                result = DotNetString(array.get_str_data() + [net_emu_coretypes.DotNetChar(arg2)], array.get_str_encoding())
+                result = DotNetString(app_domain.get_emulator_obj(), array.get_str_data() + [net_emu_coretypes.DotNetChar(arg2)], array.get_str_encoding())
             elif isinstance(arg2, DotNetString):
                 if not arg2.get_str_encoding() == array.get_str_encoding():
                     raise net_exceptions.EncodingMismatchException
-                result = DotNetString(array.get_str_data() + arg2.get_str_data(), array.get_str_encoding())
+                result = DotNetString(app_domain.get_emulator_obj(), array.get_str_data() + arg2.get_str_data(), array.get_str_encoding())
             elif isinstance(arg2, net_emu_coretypes.DotNetChar):
                 result = DotNetString.Concat(app_domain, array, arg2.ToString())
             else:
@@ -1325,7 +1315,7 @@ cdef class DotNetString(DotNetObject):
             raise net_exceptions.EncodingMismatchException
 
         new_str_data = self.get_str_data_as_bytes().replace(old_char.get_str_data_as_bytes(), new_char.get_str_data_as_bytes())
-        return DotNetString(new_str_data, self.get_str_encoding())
+        return DotNetString(self.get_emulator_obj(), new_str_data, self.get_str_encoding())
 
     def get_Length(self):
         return net_emu_coretypes.DotNetInt32(len(self.get_str_data()))
@@ -1354,7 +1344,7 @@ cdef class DotNetString(DotNetObject):
         else:
             end_index = stop
 
-        return DotNetString(self.get_str_data()[start_index:end_index], self.get_str_encoding())
+        return DotNetString(self.get_emulator_obj(), self.get_str_data()[start_index:end_index], self.get_str_encoding())
 
     def Split(self, char_array):
         if not isinstance(char_array, DotNetArray):
@@ -1377,9 +1367,9 @@ cdef class DotNetString(DotNetObject):
         method_obj = emu_obj.get_method_obj()
         dpe = method_obj.get_dotnetpe()
         type_obj = dpe.get_type_by_full_name(b'System.String')
-        result = DotNetArray(len(python_result), type_obj=type_obj)
+        result = DotNetArray(self.get_emulator_obj(), len(python_result), type_obj=type_obj)
         for x in range(len(python_result)):
-            item = DotNetString(python_result[x])
+            item = DotNetString(self.get_emulator_obj(), python_result[x])
             result[x] = item
         return result
 
@@ -1401,25 +1391,25 @@ cdef class DotNetString(DotNetObject):
         return hash(full_val)
 
 cdef class DotNetModule(DotNetObject):
-    def __init__(self, internal_module):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, internal_module):
+        DotNetObject.__init__(self, emulator_obj)
         self.internal_module = internal_module
 
     def get_ModuleHandle(self):
-        return DotNetModuleHandle(self.internal_module)
+        return DotNetModuleHandle(self.get_emulator_obj(), self.internal_module)
 
     def ResolveMethod(self, method_token):
-        return DotNetMethodBase(self.internal_module.get_dotnetpe().get_token_value(method_token))
+        return DotNetMethodBase(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(method_token))
 
     def ResolveType(self, type_token):
-        return DotNetType(self.internal_module.get_dotnetpe().get_token_value(type_token))
+        return DotNetType(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(type_token))
 
     def ResolveField(self, field_token):
-        return DotNetFieldInfo(self.internal_module.get_dotnetpe().get_token_value(field_token))
+        return DotNetFieldInfo(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(field_token))
 
 cdef class DotNetModuleHandle(DotNetObject):
-    def __init__(self, internal_module):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, internal_module):
+        DotNetObject.__init__(self, emulator_obj)
         self.internal_module = internal_module
 
     def ResolveTypeHandle(self, type_token):
@@ -1428,19 +1418,19 @@ cdef class DotNetModuleHandle(DotNetObject):
         else:
             usable_ref = self
         tdef = self.get_dotnetpe().get_token_value(type_token)
-        return DotNetRuntimeTypeHandle(tdef)
+        return DotNetRuntimeTypeHandle(self.get_emulator_obj(), tdef)
 
     def ResolveMethodHandle(self, method_token):
         tdef = self.get_dotnetpe().get_token_value(method_token)
-        return DotNetRuntimeMethodHandle(tdef)
+        return DotNetRuntimeMethodHandle(self.get_emulator_obj(), tdef)
 
     def GetRuntimeTypeHandleFromMetadataToken(self, value1):
         tdef = self.get_dotnetpe().get_token_value(value1)
         return DotNetRuntimeTypeHandle(tdef)
 
 cdef class DotNetRuntimeTypeHandle(DotNetObject):
-    def __init__(self, internal_typedef):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, internal_typedef):
+        DotNetObject.__init__(self, emulator_obj)
         self.internal_typedef = internal_typedef
 
     cpdef get_internal_typedef(self):
@@ -1451,19 +1441,18 @@ cdef class DotNetRuntimeTypeHandle(DotNetObject):
                                                             self.internal_typedef.get_full_name())
 
 cdef class DotNetRuntimeMethodHandle(DotNetObject):
-    def __init__(self, internal_method):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, internal_method):
+        DotNetObject.__init__(self, emulator_obj)
         self.internal_method = internal_method
 
 cdef class DotNetFieldInfo(DotNetObject):
-    def __init__(self, internal_field):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, internal_field):
+        DotNetObject.__init__(self, emulator_obj)
         self.internal_field = internal_field
 
     def get_FieldType(self):
-        type_obj = DotNetType(DotNetRuntimeTypeHandle(
+        type_obj = DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(
             self.internal_field.get_parent_type()))
-        type_obj.set_emulator_obj(self.get_emulator_obj())
         return type_obj
 
     def SetValue(self, obj, value_obj):
@@ -1473,14 +1462,14 @@ cdef class DotNetFieldInfo(DotNetObject):
             obj.set_field(self.internal_field.get_rid(), value_obj)
 
     def get_Name(self):
-        return DotNetString(self.internal_field['Name'].get_value(), 'ascii')
+        return DotNetString(self.get_emulator_obj(), self.internal_field['Name'].get_value(), 'ascii')
 
     def __str__(self):
         return 'DotNetFieldInfo: Field-{}, {}'.format(self.internal_field.get_rid(), self.internal_field['Name'].get_value())
 
 cdef class DotNetMethodInfo(DotNetMethodBase):
-    def __init__(self, internal_method):
-        DotNetMethodBase.__init__(self, internal_method)
+    def __init__(self, emulator_obj, internal_method):
+        DotNetMethodBase.__init__(self, emulator_obj, internal_method)
 
     def get_ReturnType(self):
         return_sig = self.internal_method.get_method_signature().get_return_type()
@@ -1490,10 +1479,10 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
             type_obj = self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name)
             if type_name and not type_obj:
                 type_obj = NameOnlyTypeRef(type_name)
-            return DotNetType(DotNetRuntimeTypeHandle(type_obj))
+            return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(type_obj))
         else:
             if isinstance(return_sig, net_utils.TypeDefOrRefSig) and return_sig.get_type() is not None:
-                return DotNetType(DotNetRuntimeTypeHandle(return_sig.get_type()))
+                return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(return_sig.get_type()))
         raise net_exceptions.OperationNotSupportedException()
 
     def __str__(self):
@@ -1501,27 +1490,27 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
                                                         self.internal_method.get_full_name())
 
 cdef class DotNetParameterInfo(DotNetObject):
-    def __init__(self, internal_param):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, internal_param):
+        DotNetObject.__init__(self, emulator_obj)
         self.internal_param = internal_param
 
     def get_ParameterType(self):
         if isinstance(self.internal_param, net_utils.CorLibTypeSig):
             type_name = get_cor_type_name(self.internal_param.get_element_type())
-            return DotNetType(DotNetRuntimeTypeHandle(self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name)), self.internal_param)
+            return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name)), self.internal_param)
         elif isinstance(self.internal_param, net_utils.SZArraySig):
-            return DotNetType(DotNetRuntimeTypeHandle(self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Array')), self.internal_param) #NOTE: this might not account for generics.
+            return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Array')), self.internal_param) #NOTE: this might not account for generics.
         elif isinstance(self.internal_param, net_utils.ClassSig):
-            return DotNetType(DotNetRuntimeTypeHandle(self.internal_param.get_type()), self.internal_param)
+            return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(self.internal_param.get_type()), self.internal_param)
         raise net_exceptions.OperationNotSupportedException()
 
 cdef class DotNetMethodBase(DotNetMemberInfo):
-    def __init__(self, internal_method):
-        DotNetMemberInfo.__init__(self, internal_method)
+    def __init__(self, emulator_obj, internal_method):
+        DotNetMemberInfo.__init__(self, emulator_obj, internal_method)
 
     @staticmethod
     def GetMethodFromHandle(app_domain, method_handle):
-        return DotNetMethodInfo(method_handle.internal_method)
+        return DotNetMethodInfo(app_domain.get_emulator_obj(), method_handle.internal_method)
 
     def get_IsStatic(self):
         # TODO: does this work?
@@ -1529,10 +1518,10 @@ cdef class DotNetMethodBase(DotNetMemberInfo):
 
     def GetParameters(self):
         param_list = self.internal_method.get_param_types()
-        result = DotNetArray(len(param_list),
+        result = DotNetArray(self.get_emulator_obj(), len(param_list),
                              self.internal_method.get_dotnetpe().get_type_by_full_name(b'System.Reflection.ParameterInfo'))
         for x in range(len(param_list)):
-            result[x] = DotNetParameterInfo(param_list[x])
+            result[x] = DotNetParameterInfo(self.get_emulator_obj(), param_list[x])
         return result
 
     @staticmethod
@@ -1544,15 +1533,14 @@ cdef class DotNetMethodBase(DotNetMemberInfo):
         return net_emu_coretypes.DotNetBoolean(obj1 != obj2)
 
 cdef class DotNetDelegate(DotNetObject):
-    def __init__(self, dn_type, dn_methodinfo):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, dn_type, dn_methodinfo):
+        DotNetObject.__init__(self, emulator_obj)
         self.dn_type = dn_type
         self.dn_methodinfo = dn_methodinfo
 
     @staticmethod
     def CreateDelegate(app_domain, dotnet_type, dotnet_methodinfo):
-        del_obj = DotNetDelegate(dotnet_type, dotnet_methodinfo)
-        del_obj.set_emulator_obj(dotnet_type.get_emulator_obj())
+        del_obj = DotNetDelegate(app_domain.get_emulator_obj(), dotnet_type.get_emulator_obj(), dotnet_type, dotnet_methodinfo)
         return del_obj
 
     #TODO: can this be optimized?
@@ -1604,8 +1592,6 @@ cdef class DotNetDelegate(DotNetObject):
             ret_val = emu_method(*actual_method_args)
 
             if method_obj.has_return_value():
-                if isinstance(ret_val, DotNetObject):
-                    ret_val.set_emulator_obj(self.get_emulator_obj())
                 return ret_val
         else:
             raise net_exceptions.OperationNotSupportedException()
@@ -1617,12 +1603,12 @@ cdef class DotNetDelegate(DotNetObject):
             return 'Delegate: {}'.format(self.dn_methodinfo.internal_method.get_full_name())
 
 cdef class DotNetMulticastDelegate(DotNetDelegate):
-    def __init__(self, dn_type, dn_methodinfo):
-        DotNetDelegate.__init__(self, dn_type, dn_methodinfo)
+    def __init__(self, emulator_obj, dn_type, dn_methodinfo):
+        DotNetDelegate.__init__(self, emulator_obj, dn_type, dn_methodinfo)
 
 cdef class DotNetConvert(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def ToInt32(app_domain, string):
@@ -1637,7 +1623,7 @@ cdef class DotNetConvert(DotNetObject):
     def FromBase64String(app_domain, string):
         str_data = string.get_str_data_as_bytes()
         new_str_data = base64.b64decode(bytes(str_data))
-        dnarray = DotNetArray(len(new_str_data), DotNetAssembly.GetExecutingAssembly(app_domain).get_module().get_dotnetpe().get_type_by_full_name(
+        dnarray = DotNetArray(app_domain.get_emulator_obj(), len(new_str_data), DotNetAssembly.GetExecutingAssembly(app_domain).get_module().get_dotnetpe().get_type_by_full_name(
             b'System.Byte'), initialize=False)
         int_array = list()
         for x in range(len(new_str_data)):
@@ -1651,8 +1637,8 @@ cdef class DotNetConvert(DotNetObject):
 
 
 cdef class DotNetOpCode(DotNetObject):
-    def __init__(self, stringname, pop, push, operand, op_type, size, s1, s2, ctrl, endsjmpblk, stack):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, stringname, pop, push, operand, op_type, size, s1, s2, ctrl, endsjmpblk, stack):
+        DotNetObject.__init__(self, emulator_obj)
         self.stringname = stringname
         self.pop = pop
         self.push = push
@@ -2319,8 +2305,8 @@ cdef class DotNetOpCodes(DotNetObject):
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x1E,
                             DotNetFlowControl.Meta, False, 0)
 
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def TakesSingleByteArgument(app_domain, opcode):
@@ -2336,8 +2322,8 @@ cdef class DotNetOpCodes(DotNetObject):
 OpCodes = DotNetOpCodes()
 
 cdef class DotNetILGenerator(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
         self.method_body = bytes()
 
     cpdef __internal_emit_noargs(self, opcode):
@@ -2401,13 +2387,13 @@ cdef class NameOnlyTypeRef():
 
 
 cdef class DotNetDynamicMethod(DotNetObject):
-    def __init__(self, name, return_type, parameter_types, owner, skip_visibility):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, name, return_type, parameter_types, owner, skip_visibility):
+        DotNetObject.__init__(self, emulator_obj)
         self.name = name
         self.return_type = return_type
         self.parameter_types = parameter_types
         self.skip_visibility = skip_visibility
-        self.il_generator = DotNetILGenerator()
+        self.il_generator = DotNetILGenerator(self.get_emulator_obj())
         self.parent_type = owner
         self.sig_obj = None
         self.static = True
@@ -2466,13 +2452,13 @@ cdef class DotNetDynamicMethod(DotNetObject):
 
 
 cdef class DotNetIntPtr(DotNetObject):
-    def __init__(self, _value):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, _value):
+        DotNetObject.__init__(self, emulator_obj)
         self.value = _value
 
     @staticmethod
     def Zero(app_domain):
-        return DotNetIntPtr(net_emu_coretypes.DotNetInt32(0))
+        return DotNetIntPtr(app_domain.get_emulator_obj(), net_emu_coretypes.DotNetInt32(0))
 
 
 cdef class DotNetSortedList(DotNetList):
@@ -2480,15 +2466,15 @@ cdef class DotNetSortedList(DotNetList):
 
 
 cdef class DotNetHashTable(DotNetConcurrentDictionary):
-    def __init__(self):
-        DotNetConcurrentDictionary.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetConcurrentDictionary.__init__(self, emulator_obj)
 
 
 cdef class DotNetRSACryptoServiceProvider(DotNetObject):
     use_machine_key_store = False
 
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def set_UseMachineKeyStore(app_domain, new_val):
@@ -2496,10 +2482,10 @@ cdef class DotNetRSACryptoServiceProvider(DotNetObject):
 
 
 cdef class DotNetBinaryReader(DotNetObject):
-    def __init__(self, stream):
+    def __init__(self, emulator_obj, stream):
         if not (isinstance(stream, DotNetStream) or isinstance(stream, DotNetMemoryStream)):
             raise net_exceptions.ObjectTypeException
-        DotNetObject.__init__(self)
+        DotNetObject.__init__(self, emulator_obj)
         self.stream = stream
 
     def get_BaseStream(self):
@@ -2516,8 +2502,8 @@ cdef class DotNetBinaryReader(DotNetObject):
 
 
 cdef class DotNetMarshal(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def ReadIntPtr(app_domain, intptr, offset):
@@ -2559,8 +2545,8 @@ cdef class DotNetMarshal(DotNetObject):
 
 
 cdef class DotNetGCHandle(DotNetObject):
-    def __init__(self, target, _type=None):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, target, _type=None):
+        DotNetObject.__init__(self, emulator_obj)
         self.__target = target
         self.__type = _type
 
@@ -2572,17 +2558,17 @@ cdef class DotNetGCHandle(DotNetObject):
 
     @staticmethod
     def Alloc(app_domain, target, _type=None):
-        return DotNetGCHandle(target, _type)
+        return DotNetGCHandle(app_domain.get_emulator_obj(), target, _type)
 
 cdef class DotNetWaitCallback(DotNetObject):
-    def __init__(self, _object, method_object):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, _object, method_object):
+        DotNetObject.__init__(self, emulator_obj)
         self.__method_object = method_object
         self.__object = _object
 
 cdef class DotNetFunc(DotNetObject):
-    def __init__(self, _object, method_object):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, _object, method_object):
+        DotNetObject.__init__(self, emulator_obj)
         self.__method_object = method_object
         self.__object = _object
 
@@ -2633,15 +2619,13 @@ cdef class DotNetFunc(DotNetObject):
             ret_val = emu_method(*actual_method_args)
 
             if method_obj.has_return_value():
-                if isinstance(ret_val, DotNetObject):
-                    ret_val.set_emulator_obj(self.get_emulator_obj())
                 return ret_val
         else:
             raise net_exceptions.OperationNotSupportedException()
 
 cdef class DotNetThreadPool(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def QueueUserWorkItem(app_domain, wait_callback):
@@ -2652,8 +2636,8 @@ cdef class DotNetThreadPool(DotNetObject):
         return net_emu_coretypes.DotNetBoolean(True)
 
 cdef class DotNetThreadStart(DotNetObject):
-    def __init__(self, _object, method_object):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, _object, method_object):
+        DotNetObject.__init__(self, emulator_obj)
         self.__object = _object
         self.__method_object = method_object
 
@@ -2661,8 +2645,8 @@ cdef class DotNetThreadStart(DotNetObject):
         return self.__method_object
 
 cdef class DotNetDebugger(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def get_IsAttached(app_domain):
@@ -2673,7 +2657,7 @@ cdef class DotNetDebugger(DotNetObject):
 
 
 cdef class DotNetComparison(DotNetObject):
-    def __init__(self, _object, method_object):
+    def __init__(self, emulator_obj, _object, method_object):
         DotNetObject.__init__(self)
         self.__object = _object
         self.__method_object = method_object
@@ -2682,7 +2666,7 @@ cdef class DotNetComparison(DotNetObject):
         return self.__method_object
 
 cdef class DotNetGC(DotNetObject):
-    def __init__(self):
+    def __init__(self, emulator_obj):
         DotNetObject.__init__(self)
 
     @staticmethod
@@ -2690,12 +2674,12 @@ cdef class DotNetGC(DotNetObject):
         pass
 
 cdef class DotNetPath(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def GetTempPath(app_domain):
-        return DotNetString('%Temp%'.encode('utf-16le'))
+        return DotNetString(app_domain.get_emulator_obj(), '%Temp%'.encode('utf-16le'))
 
     @staticmethod
     def Combine(app_domain, path_one, path_two):
@@ -2704,21 +2688,21 @@ cdef class DotNetPath(DotNetObject):
 
         #for now assume windows
         combined = ntpath.join(str_one, str_two)
-        return DotNetString(combined.encode('utf-16le'))
+        return DotNetString(app_domain.get_emulator_obj(), combined.encode('utf-16le'))
 
 cdef class DotNetEnvironment(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
     
     @staticmethod
     def GetFolderPath(app_domain, folder_enum):
         if folder_enum == 28:
-            return DotNetString('%LocalAppData%'.encode('utf-16le'))
+            return DotNetString(app_domain.get_emulator_obj(), '%LocalAppData%'.encode('utf-16le'))
         raise net_exceptions.OperationNotSupportedException()
 
 cdef class DotNetResolveEventArgs(DotNetObject):
-    def __init__(self, DotNetString name):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, DotNetString name):
+        DotNetObject.__init__(self, emulator_obj)
         self.__name = name
 
     def get_Name(self):
@@ -2726,8 +2710,8 @@ cdef class DotNetResolveEventArgs(DotNetObject):
 
 
 cdef class DotNetDeflateStream(DotNetObject):
-    def __init__(self, original_stream, mode):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, original_stream, mode):
+        DotNetObject.__init__(self, emulator_obj)
         #for simplicity just grab the entire buffer and decompress it here.
         rsrc_stream = original_stream.get_rsrc_stream()
         decom = zlib.decompressobj(-15)
@@ -2750,8 +2734,8 @@ cdef class DotNetDeflateStream(DotNetObject):
         return net_emu_coretypes.DotNetInt32(amt_written)
 
 cdef class DotNetSymmetricAlgorithm(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
         self.__key = None
         self.__iv = None
 
@@ -2780,8 +2764,8 @@ cdef class DotNetSymmetricAlgorithm(DotNetObject):
         self.__mode = mode
 
 cdef class DotNetICryptoTransform(DotNetObject):
-    def __init__(self, provider):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj, provider):
+        DotNetObject.__init__(self, emulator_obj)
         self.provider = provider
 
     def get_InputBlockSize(self):
@@ -2797,8 +2781,8 @@ cdef class DotNetICryptoTransform(DotNetObject):
         raise Exception()
 
 cdef class DotNetDESDecryptor(DotNetICryptoTransform):
-    def __init__(self, provider):
-        DotNetICryptoTransform.__init__(self, provider)
+    def __init__(self, emulator_obj, provider):
+        DotNetICryptoTransform.__init__(self, emulator_obj, provider)
         #CBC mode is default in c#
         self.des_object = DES.new(bytes(self.provider.get_Key().get_internal_array()), DES.MODE_CBC, bytes(self.provider.get_IV().get_internal_array()))
 
@@ -2828,15 +2812,15 @@ cdef class DotNetDESDecryptor(DotNetICryptoTransform):
         usable_output = list()
         for x in range(len(output_data)):
             usable_output.append(net_emu_coretypes.DotNetUInt8(output_data[x]))
-        array = DotNetArray(len(usable_output), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), len(usable_output), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
                     initialize=False)
         array.set_internal_array(usable_output)
 
         return array
 
 cdef class DotNetDESCryptoServiceProvider(DotNetSymmetricAlgorithm):
-    def __init__(self):
-        DotNetSymmetricAlgorithm.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetSymmetricAlgorithm.__init__(self, emulator_obj)
 
     def set_IV(self, iv):
         super().set_IV(iv)
@@ -2851,19 +2835,19 @@ cdef class DotNetDESCryptoServiceProvider(DotNetSymmetricAlgorithm):
         return super().get_Key()
 
     def CreateDecryptor(self):
-        return DotNetDESDecryptor(self)
+        return DotNetDESDecryptor(self.get_emulator_obj(), self)
 
 cdef class DotNetApplication(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
 
     @staticmethod
     def get_ProductVersion(app_domain):
-        return DotNetString(app_domain.get_executing_dotnetpe().get_productversion().encode('utf-16le'))
+        return DotNetString(app_domain.get_emulator_obj(), app_domain.get_executing_dotnetpe().get_productversion().encode('utf-16le'))
 
 cdef class DotNetHashAlgorithm(DotNetObject):
-    def __init__(self):
-        DotNetObject.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
     
     def Clear(self):
         pass
@@ -2872,8 +2856,8 @@ cdef class DotNetHashAlgorithm(DotNetObject):
         raise Exception()
 
 cdef class DotNetMD5CryptoServiceProvider(DotNetHashAlgorithm):
-    def __init__(self):
-        DotNetHashAlgorithm.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetHashAlgorithm.__init__(self, emulator_obj)
 
     def ComputeHash(self, data):
         internal_data = bytes(data.get_internal_array())
@@ -2881,7 +2865,7 @@ cdef class DotNetMD5CryptoServiceProvider(DotNetHashAlgorithm):
         md5_obj.update(internal_data)
         resulting_data = md5_obj.digest()
         count = len(resulting_data)
-        arr_obj = DotNetArray(count, DotNetAssembly.GetExecutingAssembly(self.get_emulator_obj().get_appdomain()).get_module().get_dotnetpe().get_type_by_full_name(
+        arr_obj = DotNetArray(self.get_emulator_obj(), count, DotNetAssembly.GetExecutingAssembly(self.get_emulator_obj().get_appdomain()).get_module().get_dotnetpe().get_type_by_full_name(
             b'System.Byte'), initialize=False)
         usable_data = list()
         for x in range(len(resulting_data)):
@@ -2891,8 +2875,8 @@ cdef class DotNetMD5CryptoServiceProvider(DotNetHashAlgorithm):
         return arr_obj
     
 cdef class DotNet3DESDecryptor(DotNetICryptoTransform):
-    def __init__(self, provider):
-        DotNetICryptoTransform.__init__(self, provider)
+    def __init__(self, emulator_obj, provider):
+        DotNetICryptoTransform.__init__(self, emulator_obj, provider)
         #CBC mode is default in c#
         mode = DES.MODE_CBC
         if self.provider.get_Mode() == 2:
@@ -2939,15 +2923,15 @@ cdef class DotNet3DESDecryptor(DotNetICryptoTransform):
                 if is_padded:
                     usable_output = usable_output[:start_index]
 
-        array = DotNetArray(len(usable_output), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), len(usable_output), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
                     initialize=False)
         array.set_internal_array(usable_output)
 
         return array
 
 cdef class DotNet3DESCryptoServiceProvider(DotNetSymmetricAlgorithm):
-    def __init__(self):
-        DotNetSymmetricAlgorithm.__init__(self)
+    def __init__(self, emulator_obj):
+        DotNetSymmetricAlgorithm.__init__(self, emulator_obj)
 
     def set_IV(self, iv):
         super().set_IV(iv)
@@ -2974,7 +2958,7 @@ cdef class DotNet3DESCryptoServiceProvider(DotNetSymmetricAlgorithm):
         return super().set_Mode(mode)
 
     def CreateDecryptor(self):
-        return DotNet3DESDecryptor(self)
+        return DotNet3DESDecryptor(self.get_emulator_obj(), self)
 
     def Clear(self):
         pass

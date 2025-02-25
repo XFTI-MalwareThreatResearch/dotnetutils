@@ -148,8 +148,7 @@ cdef class EmulatorAppDomain:
         for mrefdef_obj in self.__resourceresolve_handlers:
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
                 mdef_obj = <net_row_objects.MethodDef> mrefdef_obj
-                arg_one = net_emu_types.DotNetNull() #Not sure what arg_one actually is supposed to do but for now Null works.
-                arg_one.set_emulator_obj(self.get_emulator_obj())
+                arg_one = net_emu_types.DotNetNull(self) #Not sure what arg_one actually is supposed to do but for now Null works.
                 arg_two = net_emu_types.DotNetResolveEventArgs(name)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, method_params=[arg_one, arg_two])
                 emu_obj.run_function()
@@ -166,17 +165,11 @@ cdef class DotNetStack:
         self.__max_stack_size = max_stack_size
 
     cdef void append(self, object obj):
-        cdef net_emu_types.DotNetObject dobj
         # if not self.__verify_obj_type(obj):
         #    raise net_exceptions.EmulatorStackTypeUnknown(type(obj))
 
         # if len(self) == self.__max_stack_size:
         #    raise net_exceptions.EmualatorMaxStackSizeViolated()
-
-        if isinstance(obj, net_emu_types.DotNetObject):
-            dobj = <net_emu_types.DotNetObject> obj
-            dobj.set_emulator_obj(self.__emulator)
-
         self.__internal_stack.append(obj)
 
     cpdef object pop(self):
@@ -450,8 +443,7 @@ cdef class DotNetEmulator:
                 if superclass != None: # if superclass is NULL, should DotNetNull or DotNetObject be returned?
                     if superclass.get_full_name() == b'System.Enum':
                         return py_net_emu_types.DotNetUInt32(0)
-        new_obj = net_emu_types.DotNetNull()
-        new_obj.set_emulator_obj(self)
+        new_obj = net_emu_types.DotNetNull(self)
         return new_obj
 
     def skip_next_instruction(self):
@@ -627,7 +619,7 @@ cdef class DotNetEmulator:
             if method_obj.method_has_this() and method_obj.get_column('Name').get_value() != b'.ctor':
                 method_args.insert(0, self.stack.pop())
             if is_newobj:
-                dot_obj = net_emu_types.DotNetObject()
+                dot_obj = net_emu_types.DotNetObject(self)
                 dot_obj.initialize_type(method_obj.get_parent_type())
                 method_args.insert(0, dot_obj)
             new_emu = self.spawn_new_emulator(method_obj, method_args, caller=self)
@@ -680,6 +672,8 @@ cdef class DotNetEmulator:
             if not emu_method:
                 raise net_exceptions.OperationNotSupportedException
             actual_method_args = list(method_args)
+            if is_newobj:
+                actual_method_args.insert(0, self)
             
             if method_obj.is_static_method():
                 actual_method_args.insert(0, self.get_appdomain())
@@ -690,12 +684,9 @@ cdef class DotNetEmulator:
             if is_newobj:
                 if isinstance(ret_val, net_emu_types.DotNetObject):
                     ret_val.initialize_type(method_obj.get_parent_type())
-                    ret_val.set_emulator_obj(self)
                 self.stack.append(ret_val)
 
             if method_obj.has_return_value() and not is_newobj and method_obj.get_column('Name').get_value() != b'.ctor':
-                if isinstance(ret_val, net_emu_types.DotNetObject):
-                    ret_val.set_emulator_obj(self)
                 self.stack.append(ret_val)
         elif method_obj.get_table_name() == 'MethodSpec':
             return self.handle_call_instruction(instr, is_virt, is_newobj,
@@ -1064,8 +1055,6 @@ cdef class DotNetEmulator:
         else:
             self.stack.append(obj)
             array = [obj.get_obj_ref()]
-            if isinstance(array[0], net_emu_types.DotNetObject):
-                array[0].set_emulator_obj(self)
             copy_obj = net_emu_types.ArrayAddress(array, 0)
             self.stack.append(copy_obj)
         return True
@@ -1239,8 +1228,6 @@ cdef class DotNetEmulator:
         if self.method_obj.has_return_value():
             if self.caller:
                 value1 = self.stack.pop()
-                if isinstance(value1, net_emu_types.DotNetObject):
-                    value1.set_emulator_obj(self)
                 self.caller.stack.append(value1)
         else:
             if self.method_obj.get_column('Name').get_value() == b'.ctor':
@@ -1461,8 +1448,6 @@ cdef class DotNetEmulator:
     cdef bint handle_ldelema_instruction(self, net_cil_disas.Instruction instr) except *:
         index = self.stack.pop()
         array_obj = self.stack.pop()
-        if isinstance(array_obj, net_emu_types.DotNetObject):
-            array_obj.set_emulator_obj(self)
         self.stack.append(net_emu_types.ArrayAddress(array_obj, index))
         return True
 
@@ -1516,7 +1501,7 @@ cdef class DotNetEmulator:
         obj_ref = self.stack.pop()
         if isinstance(obj_ref, net_emu_types.ArrayAddress):
             if not isinstance(obj_ref.get_obj_ref(), net_emu_types.DotNetObject):
-                obj_ref.set_obj_ref(net_emu_types.DotNetObject())
+                obj_ref.set_obj_ref(net_emu_types.DotNetObject(self))
             obj_ref = obj_ref.get_obj_ref()
         if not isinstance(obj_ref, net_emu_types.DotNetObject):
             raise net_exceptions.ObjectTypeException
@@ -1542,8 +1527,7 @@ cdef class DotNetEmulator:
             obj_ref.initialize_type(instr_arg)
             self.stack.append(obj_ref)
         else:
-            null_obj = net_emu_types.DotNetNull()
-            null_obj.set_emulator_obj(self)
+            null_obj = net_emu_types.DotNetNull(self)
             self.stack.append(null_obj)
         return True
 
@@ -1554,8 +1538,6 @@ cdef class DotNetEmulator:
         if not isinstance(
             obj_ref, net_emu_types.DotNetObject) or field_obj.is_static():
             raise net_exceptions.ObjectTypeException
-        if isinstance(obj_ref, net_emu_types.DotNetObject):
-            obj_ref.set_emulator_obj(self)
         self.stack.append(net_emu_types.ArrayAddress([obj_ref.get_field(field_obj.get_rid())], 0))
         return True
 
@@ -1576,11 +1558,9 @@ cdef class DotNetEmulator:
             type_obj = local_type.get_type()
 
             if type_obj.is_valuetype():
-                new_obj = net_emu_types.DotNetObject()
+                new_obj = net_emu_types.DotNetObject(self)
                 new_obj.initialize_type(type_obj)
                 self.localvars[index] = new_obj
-        if isinstance(self.localvars[index], net_emu_types.DotNetObject):
-            self.localvars[index].set_emulator_obj(self)
         self.stack.append(net_emu_types.ArrayAddress([self.localvars[index]], 0))
         return True
 
@@ -1605,14 +1585,10 @@ cdef class DotNetEmulator:
             type_obj = net_emu_types.NET_EMULATE_TYPE_REGISTRATIONS[type_name]
             method_obj = getattr(type_obj, field_name)
             ret_val = method_obj()
-            if isinstance(ret_val, net_emu_types.DotNetObject):
-                ret_val.set_emulator_obj(self)
             self.stack.append(net_emu_types.ArrayAddress([ret_val], 0))
         else:
             field_obj = <net_row_objects.Field>arg_obj
             if field_obj.get_rid() in self.static_fields:
-                if isinstance(self.static_fields[field_obj.get_rid()], net_emu_types.DotNetObject):
-                    self.static_fields[field_obj.get_rid()].set_emulator_obj(self)
                 self.stack.append(net_emu_types.ArrayAddress([self.static_fields[field_obj.get_rid()]], 0))
             else:
                 self.static_fields[field_obj.get_rid()] = py_net_emu_types.DotNetInt32(0)
@@ -1931,8 +1907,7 @@ cdef class DotNetEmulator:
                 elif ins_op == net_opcodes.Opcodes.Ldloca or ins_op == net_opcodes.Opcodes.Ldloca_S:
                     self.handle_ldloca_instruction(instr)
                 elif ins_op == net_opcodes.Opcodes.Ldnull:
-                    null_obj = net_emu_types.DotNetNull()
-                    null_obj.set_emulator_obj(self)
+                    null_obj = net_emu_types.DotNetNull(self)
                     self.stack.append(null_obj)
                 elif ins_op == net_opcodes.Opcodes.Ldobj:
                     self.handle_ldobj_instruction(instr)

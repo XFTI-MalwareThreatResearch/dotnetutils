@@ -19,8 +19,6 @@ cdef class DotNetObject:
 
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self)
 
-    cpdef void set_emulator_obj(self, net_emulator.DotNetEmulator emulator_obj)
-
     cpdef void set_field(self, unsigned long idno, object val)
 
     cpdef object get_field(self, unsigned long idno)
