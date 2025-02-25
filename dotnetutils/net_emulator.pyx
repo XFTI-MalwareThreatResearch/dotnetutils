@@ -1064,6 +1064,8 @@ cdef class DotNetEmulator:
         else:
             self.stack.append(obj)
             array = [obj.get_obj_ref()]
+            if isinstance(array[0], net_emu_types.DotNetObject):
+                array[0].set_emulator_obj(self)
             copy_obj = net_emu_types.ArrayAddress(array, 0)
             self.stack.append(copy_obj)
         return True
@@ -1459,6 +1461,8 @@ cdef class DotNetEmulator:
     cdef bint handle_ldelema_instruction(self, net_cil_disas.Instruction instr) except *:
         index = self.stack.pop()
         array_obj = self.stack.pop()
+        if isinstance(array_obj, net_emu_types.DotNetObject):
+            array_obj.set_emulator_obj(self)
         self.stack.append(net_emu_types.ArrayAddress(array_obj, index))
         return True
 
@@ -1550,7 +1554,8 @@ cdef class DotNetEmulator:
         if not isinstance(
             obj_ref, net_emu_types.DotNetObject) or field_obj.is_static():
             raise net_exceptions.ObjectTypeException
-        
+        if isinstance(obj_ref, net_emu_types.DotNetObject):
+            obj_ref.set_emulator_obj(self)
         self.stack.append(net_emu_types.ArrayAddress([obj_ref.get_field(field_obj.get_rid())], 0))
         return True
 
@@ -1574,6 +1579,8 @@ cdef class DotNetEmulator:
                 new_obj = net_emu_types.DotNetObject()
                 new_obj.initialize_type(type_obj)
                 self.localvars[index] = new_obj
+        if isinstance(self.localvars[index], net_emu_types.DotNetObject):
+            self.localvars[index].set_emulator_obj(self)
         self.stack.append(net_emu_types.ArrayAddress([self.localvars[index]], 0))
         return True
 
@@ -1598,10 +1605,14 @@ cdef class DotNetEmulator:
             type_obj = net_emu_types.NET_EMULATE_TYPE_REGISTRATIONS[type_name]
             method_obj = getattr(type_obj, field_name)
             ret_val = method_obj()
+            if isinstance(ret_val, net_emu_types.DotNetObject):
+                ret_val.set_emulator_obj(self)
             self.stack.append(net_emu_types.ArrayAddress([ret_val], 0))
         else:
             field_obj = <net_row_objects.Field>arg_obj
             if field_obj.get_rid() in self.static_fields:
+                if isinstance(self.static_fields[field_obj.get_rid()], net_emu_types.DotNetObject):
+                    self.static_fields[field_obj.get_rid()].set_emulator_obj(self)
                 self.stack.append(net_emu_types.ArrayAddress([self.static_fields[field_obj.get_rid()]], 0))
             else:
                 self.static_fields[field_obj.get_rid()] = py_net_emu_types.DotNetInt32(0)
