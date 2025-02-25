@@ -1204,9 +1204,11 @@ cdef class DotNetEmulator:
     cdef bint handle_ldfld_instruction(self, net_cil_disas.Instruction instr) except *:
         cdef net_row_objects.Field field_obj
         obj_ref = self.stack.pop()
+        self.print_string('obj ref starts as {}'.format(str(obj_ref)), 1)
         if isinstance(obj_ref, net_emu_types.ArrayAddress):
             obj_ref = obj_ref.get_obj_ref()
         field_obj = instr.get_argument()
+        self.print_string('obj ref ends at {} {}'.format(str(obj_ref), field_obj.get_rid()), 1)
         if not isinstance(obj_ref, net_emu_types.DotNetObject) or field_obj.is_static():
             raise net_exceptions.ObjectTypeException
 
