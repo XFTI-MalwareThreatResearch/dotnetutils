@@ -672,11 +672,12 @@ cdef class DotNetEmulator:
             if not emu_method:
                 raise net_exceptions.OperationNotSupportedException
             actual_method_args = list(method_args)
-            if is_newobj:
-                actual_method_args.insert(0, self)
             
             if method_obj.is_static_method():
                 actual_method_args.insert(0, self.get_appdomain())
+
+            if is_newobj or method_obj['Name'].get_value() == b'.ctor':
+                actual_method_args.insert(0, self)
             ret_val = emu_method(*actual_method_args)
             if obj_ref_initial is not None and obj_ref is not None:
                 obj_ref_initial.set_obj_ref(obj_ref)
