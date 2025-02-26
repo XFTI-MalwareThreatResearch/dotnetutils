@@ -284,7 +284,7 @@ cdef class DotNetType(DotNetObject):
     @staticmethod
     def GetTypeFromHandle(app_domain, obj):
         obj2 = DotNetType(app_domain.get_emulator_obj(), obj)
-        obj2.set_type_obj(app_domain.get_emulator_obj().get_dotnetpe().get_type_by_full_name(b'System.Type'))
+        obj2.set_type_obj(app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Type'))
         return obj2
 
     def get_Module(self):
