@@ -886,7 +886,7 @@ def dne_thread_runner(dnfunc):
 
 cdef class DotNetThread(DotNetObject):
     def __init__(self, emulator_obj, thread_start=None):
-        DotNetObject.__init__(self)
+        DotNetObject.__init__(self, emulator_obj)
         #DotNetThread.__identifier should increment on each new thread.  Going to need to work on this a bit. TODO
         self.__identifier = net_emu_coretypes.DotNetInt32(1)
         self.__thread_start = thread_start
