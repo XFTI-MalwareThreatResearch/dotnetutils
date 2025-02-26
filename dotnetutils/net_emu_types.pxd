@@ -10,7 +10,7 @@ cdef void blockcopy_helper(DotNetArray src, object srcOffset, DotNetArray dst, o
 
 #NOTE: probably can remove cython sigs for all methods that arent in DotNetObject, its going to be called as a python object anyway.
 cdef class DotNetObject:
-    cdef net_emulator.DotNetEmulator emulator_obj
+    cdef net_emulator.DotNetEmulator __emulator_obj
     cdef dict fields
     cdef net_row_objects.RowObject type_obj
     cdef net_utils.TypeSig type_sig_obj
