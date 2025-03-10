@@ -11,7 +11,7 @@ class DotNetNumber:
     def __init__(self, emulator_obj, numpy_dtype, value_obj):
         self.__emulator_obj = emulator_obj
         self.__numpy_dtype = numpy_dtype
-        self.__value = numpy_dtype(value_obj)
+        self.__value = numpy.array(value_obj, dtype=self.__numpy_dtype)
 
     def get_value(self):
         return self.__value
@@ -63,7 +63,6 @@ class DotNetNumber:
 
     def __add__(self, other):
         val_obj = self.__value + other.__value
-        print('add val obj {} {} {} {}'.format(type(val_obj), val_obj, type(val_obj.dtype), val_obj.dtype))
         return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
 
     def __sub__(self, other):
