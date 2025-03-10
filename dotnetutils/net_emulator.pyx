@@ -414,35 +414,35 @@ cdef class DotNetEmulator:
         if isinstance(type_sig, net_utils.CorLibTypeSig):
             element_type = type_sig.get_element_type()
             if element_type == net_structs.CorElementType.ELEMENT_TYPE_I:
-                return py_net_emu_types.DotNetInt32(0)
+                return py_net_emu_types.DotNetInt32(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
-                return py_net_emu_types.DotNetInt8(0)
+                return py_net_emu_types.DotNetInt8(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I2:
-                return py_net_emu_types.DotNetInt16(0)
+                return py_net_emu_types.DotNetInt16(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I4:
-                return py_net_emu_types.DotNetInt32(0)
+                return py_net_emu_types.DotNetInt32(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I8:
-                return py_net_emu_types.DotNetInt64(0)
+                return py_net_emu_types.DotNetInt64(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U:
-                return py_net_emu_types.DotNetUInt32(0)
+                return py_net_emu_types.DotNetUInt32(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
-                return py_net_emu_types.DotNetUInt8(0)
+                return py_net_emu_types.DotNetUInt8(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U2:
-                return py_net_emu_types.DotNetUInt16(0)
+                return py_net_emu_types.DotNetUInt16(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U4:
-                return py_net_emu_types.DotNetUInt32(0)
+                return py_net_emu_types.DotNetUInt32(self, 0)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U8:
-                return py_net_emu_types.DotNetUInt64(0)
+                return py_net_emu_types.DotNetUInt64(self, 0)
         elif isinstance(type_sig, net_utils.ValueTypeSig):
             # handle System.Enums as a different case
             superclass = type_sig.get_type()
             if superclass.get_full_name() == b'System.Enum':
-                return py_net_emu_types.DotNetUInt32(0)
+                return py_net_emu_types.DotNetUInt32(self, 0)
             else:
                 superclass = superclass.get_superclass()
                 if superclass != None: # if superclass is NULL, should DotNetNull or DotNetObject be returned?
                     if superclass.get_full_name() == b'System.Enum':
-                        return py_net_emu_types.DotNetUInt32(0)
+                        return py_net_emu_types.DotNetUInt32(self, 0)
         new_obj = net_emu_types.DotNetNull(self)
         return new_obj
 
@@ -776,25 +776,25 @@ cdef class DotNetEmulator:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
         if value1 == value2:
-            self.stack.append(py_net_emu_types.DotNetInt32(1))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 1))
         else:
-            self.stack.append(py_net_emu_types.DotNetInt32(0))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 0))
         return False
 
     cdef bint handle_cgt_instruction(self, net_cil_disas.Instruction instr) except *:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
         if value1 > value2:
-            self.stack.append(py_net_emu_types.DotNetInt32(1))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 1))
         else:
-            self.stack.append(py_net_emu_types.DotNetInt32(0))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 0))
         return False
 
     cdef bint handle_cgt_un_instruction(self, net_cil_disas.Instruction instr) except *:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
         if value1 == value2 and value2 is None:
-            self.stack.append(py_net_emu_types.DotNetInt32(0))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 0))
             return False
         #make sure both are converted to unsigned. NOTE: this functionality may not work for floating point stuff.
         if hasattr(value1, 'dtype') and value1.dtype.kind != 'u':
@@ -802,18 +802,18 @@ cdef class DotNetEmulator:
         if hasattr(value2, 'dtype') and value2.dtype.kind != 'u':
             value2 = value2.astype('u{}'.format(value2.dtype.itemsize), casting='unsafe')
         if value1 > value2:
-            self.stack.append(py_net_emu_types.DotNetInt32(1))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 1))
         else:
-            self.stack.append(py_net_emu_types.DotNetInt32(0))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 0))
         return False
 
     cdef bint handle_clt_instruction(self, net_cil_disas.Instruction instr) except *:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
         if value1 < value2:
-            self.stack.append(py_net_emu_types.DotNetInt32(1))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 1))
         else:
-            self.stack.append(py_net_emu_types.DotNetInt32(0))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 0))
         return False
 
     cdef bint handle_clt_un_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -821,27 +821,27 @@ cdef class DotNetEmulator:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
         if value1 < value2:
-            self.stack.append(py_net_emu_types.DotNetInt32(1))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 1))
         else:
             max_item_size = max(value1.itemsize, value2.itemsize)
             if max_item_size == 1:
-                un_value1 = py_net_emu_types.DotNetUInt8(value1)
-                un_value2 = py_net_emu_types.DotNetUInt8(value2)
+                un_value1 = py_net_emu_types.DotNetUInt8(self, value1)
+                un_value2 = py_net_emu_types.DotNetUInt8(self, value2)
             elif max_item_size == 2:
-                un_value1 = py_net_emu_types.DotNetUInt16(value1)
-                un_value2 = py_net_emu_types.DotNetUInt16(value1)
+                un_value1 = py_net_emu_types.DotNetUInt16(self, value1)
+                un_value2 = py_net_emu_types.DotNetUInt16(self, value1)
             elif max_item_size == 4:
-                un_value1 = py_net_emu_types.DotNetUInt32(value1)
-                un_value2 = py_net_emu_types.DotNetUInt32(value2)
+                un_value1 = py_net_emu_types.DotNetUInt32(self, value1)
+                un_value2 = py_net_emu_types.DotNetUInt32(self, value2)
             elif max_item_size == 8:
-                un_value1 = py_net_emu_types.DotNetUInt64(value1)
-                un_value2 = py_net_emu_types.DotNetUInt64(value2)
+                un_value1 = py_net_emu_types.DotNetUInt64(self, value1)
+                un_value2 = py_net_emu_types.DotNetUInt64(self, value2)
             else:
                 raise net_exceptions.InstructionNotSupportedException(instr.get_name())
             if un_value1 < un_value2:
-                self.stack.append(py_net_emu_types.DotNetInt32(1))
+                self.stack.append(py_net_emu_types.DotNetInt32(self, 1))
             else:
-                self.stack.append(py_net_emu_types.DotNetInt32(0))
+                self.stack.append(py_net_emu_types.DotNetInt32(self, 0))
         return False
 
     cdef bint handle_add_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -862,15 +862,15 @@ cdef class DotNetEmulator:
         cdef net_opcodes.Opcodes ins_op
         ins_op = instr.get_opcode()
         if ins_op == net_opcodes.Opcodes.Conv_I1:
-            self.stack.append(py_net_emu_types.DotNetInt8(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetInt8(self, self.stack.pop()))
         elif ins_op == net_opcodes.Opcodes.Conv_I2:
-            self.stack.append(py_net_emu_types.DotNetInt16(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetInt16(self, self.stack.pop()))
         elif ins_op == net_opcodes.Opcodes.Conv_I4:
-            self.stack.append(py_net_emu_types.DotNetInt32(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, self.stack.pop()))
         elif ins_op == net_opcodes.Opcodes.Conv_I8:
-            self.stack.append(py_net_emu_types.DotNetInt64(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetInt64(self, self.stack.pop()))
         elif ins_op == net_opcodes.Opcodes.Conv_I:
-            self.stack.append(py_net_emu_types.DotNetInt32(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, self.stack.pop()))
 
         return True
 
@@ -888,15 +888,15 @@ cdef class DotNetEmulator:
         cdef net_opcodes.Opcodes ins_op
         ins_op = instr.get_opcode()
         if ins_op == net_opcodes.Opcodes.Conv_U2:
-            self.stack.append(py_net_emu_types.DotNetUInt16(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetUInt16(self, self.stack.pop()))
         elif ins_op == net_opcodes.Opcodes.Conv_U4:
-            self.stack.append(py_net_emu_types.DotNetUInt32(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetUInt32(self, self.stack.pop()))
         elif ins_op == net_opcodes.Opcodes.Conv_U8:
-            self.stack.append(py_net_emu_types.DotNetUInt64(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetUInt64(self, self.stack.pop()))
         elif ins_op == net_opcodes.Opcodes.Conv_U1:
-            self.stack.append(py_net_emu_types.DotNetUInt8(self.stack.pop()))
+            self.stack.append(py_net_emu_types.DotNetUInt8(self, self.stack.pop()))
         elif ins_op == net_opcodes.Opcodes.Conv_U:
-            self.stack.append(py_net_emu_types.DotNetInt32(py_net_emu_types.DotNetUInt32(self.stack.pop())))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, py_net_emu_types.DotNetUInt32(self, self.stack.pop())))
         return True
 
     cdef bint handle_ldarg_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -918,25 +918,25 @@ cdef class DotNetEmulator:
                 param_obj = signature_obj.get_parameters()[sig_param_num]
                 if isinstance(param_obj, net_utils.CorLibTypeSig):
                     if param_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I1:
-                        self.stack.append(py_net_emu_types.DotNetInt8(
+                        self.stack.append(py_net_emu_types.DotNetInt8(self, 
                             self.method_params[number]))
                     elif param_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I2:
-                        self.stack.append(py_net_emu_types.DotNetInt16(
+                        self.stack.append(py_net_emu_types.DotNetInt16(self, 
                             self.method_params[number]))
                     elif param_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I4:
-                        self.stack.append(py_net_emu_types.DotNetInt32(
+                        self.stack.append(py_net_emu_types.DotNetInt32(self, 
                             self.method_params[number]))
                     elif param_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I8:
-                        self.stack.append(py_net_emu_types.DotNetInt64(
+                        self.stack.append(py_net_emu_types.DotNetInt64(self, 
                             self.method_params[number]))
                     elif param_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U1:
-                        self.stack.append(py_net_emu_types.DotNetUInt8(self.method_params[number]))
+                        self.stack.append(py_net_emu_types.DotNetUInt8(self, self.method_params[number]))
                     elif param_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U2:
-                        self.stack.append(py_net_emu_types.DotNetUInt16(self.method_params[number]))
+                        self.stack.append(py_net_emu_types.DotNetUInt16(self, self.method_params[number]))
                     elif param_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U4:
-                        self.stack.append(py_net_emu_types.DotNetUInt32(self.method_params[number]))
+                        self.stack.append(py_net_emu_types.DotNetUInt32(self, self.method_params[number]))
                     elif param_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U8:
-                        self.stack.append(py_net_emu_types.DotNetUInt64(self.method_params[number]))
+                        self.stack.append(py_net_emu_types.DotNetUInt64(self, self.method_params[number]))
                     else:
                         self.stack.append(self.method_params[number])
                 else:
@@ -955,25 +955,25 @@ cdef class DotNetEmulator:
             result_obj.initialize_type(instr.get_argument())
             self.stack.append(result_obj)
         elif ins_op == net_opcodes.Opcodes.Ldelem_I:
-            self.stack.append(py_net_emu_types.DotNetInt32(array_obj[index]))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, array_obj[index]))
         elif ins_op == net_opcodes.Opcodes.Ldelem_I1:
-            self.stack.append(py_net_emu_types.DotNetInt32(py_net_emu_types.DotNetInt8(array_obj[index])))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, py_net_emu_types.DotNetInt8(self, array_obj[index])))
         elif ins_op == net_opcodes.Opcodes.Ldelem_I2:
-            self.stack.append(py_net_emu_types.DotNetInt32(py_net_emu_types.DotNetInt16(array_obj[index])))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, py_net_emu_types.DotNetInt16(self, array_obj[index])))
         elif ins_op == net_opcodes.Opcodes.Ldelem_I4:
-            self.stack.append(py_net_emu_types.DotNetInt32(py_net_emu_types.DotNetInt32(array_obj[index])))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, py_net_emu_types.DotNetInt32(self, array_obj[index])))
         elif ins_op == net_opcodes.Opcodes.Ldelem_I8:
-            self.stack.append(py_net_emu_types.DotNetInt64(array_obj[index]))
+            self.stack.append(py_net_emu_types.DotNetInt64(self, array_obj[index]))
         elif ins_op == net_opcodes.Opcodes.Ldelem_R4:
-            self.stack.append(py_net_emu_types.DotNetSingle(array_obj[index]))
+            self.stack.append(py_net_emu_types.DotNetSingle(self, array_obj[index]))
         elif ins_op == net_opcodes.Opcodes.Ldelem_R8:
-            self.stack.append(py_net_emu_types.DotNetDouble(array_obj[index]))
+            self.stack.append(py_net_emu_types.DotNetDouble(self, array_obj[index]))
         elif ins_op == net_opcodes.Opcodes.Ldelem_U1:
-            self.stack.append(py_net_emu_types.DotNetInt32(py_net_emu_types.DotNetUInt8(array_obj[index])))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, py_net_emu_types.DotNetUInt8(self, array_obj[index])))
         elif ins_op == net_opcodes.Opcodes.Ldelem_U2:
-            self.stack.append(py_net_emu_types.DotNetInt32(py_net_emu_types.DotNetUInt16(array_obj[index])))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, py_net_emu_types.DotNetUInt16(self, array_obj[index])))
         elif ins_op == net_opcodes.Opcodes.Ldelem_U4:
-            self.stack.append(py_net_emu_types.DotNetInt32(py_net_emu_types.DotNetUInt32(array_obj[index])))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, py_net_emu_types.DotNetUInt32(self, array_obj[index])))
         elif ins_op == net_opcodes.Opcodes.Ldelem_Ref:
             self.stack.append(array_obj[index])
         else:
@@ -981,19 +981,19 @@ cdef class DotNetEmulator:
         return True
 
     cdef bint handle_ldc_i4_instruction(self, net_cil_disas.Instruction instr) except *:
-        self.stack.append(py_net_emu_types.DotNetInt32(instr.get_argument()))
+        self.stack.append(py_net_emu_types.DotNetInt32(self, instr.get_argument()))
         return True
 
     cdef bint handle_ldc_i8_instruction(self, net_cil_disas.Instruction instr) except *:
-        self.stack.append(py_net_emu_types.DotNetInt64(instr.get_argument()))
+        self.stack.append(py_net_emu_types.DotNetInt64(self, instr.get_argument()))
         return True
 
     cdef bint handle_ldc_r4_instruction(self, net_cil_disas.Instruction instr) except *:
-        self.stack.append(py_net_emu_types.DotNetSingle(instr.get_argument()))
+        self.stack.append(py_net_emu_types.DotNetSingle(self, instr.get_argument()))
         return True
 
     cdef bint handle_ldc_r8_instruction(self, net_cil_disas.Instruction instr) except *:
-        self.stack.append(py_net_emu_types.DotNetDouble(instr.get_argument()))
+        self.stack.append(py_net_emu_types.DotNetDouble(self, instr.get_argument()))
         return True
 
     cdef bint handle_ldloc_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1101,7 +1101,7 @@ cdef class DotNetEmulator:
                                             self.static_fields[field.get_rid()] = self.__get_default_value(sig.get_type_sig())
                                             self.stack.append(self.static_fields[field.get_rid()])
                                         else:
-                                            self.static_fields[field.get_rid()] = py_net_emu_types.DotNetInt32(0)
+                                            self.static_fields[field.get_rid()] = py_net_emu_types.DotNetInt32(self, 0)
                                             self.stack.append(self.static_fields[field.get_rid()])
                                     break
                 else:
@@ -1128,7 +1128,7 @@ cdef class DotNetEmulator:
                     self.static_fields[field_obj.get_rid()] = self.__get_default_value(sig.get_type_sig())
                     self.stack.append(self.static_fields[field_obj.get_rid()])
                 else:
-                    self.static_fields[field_obj.get_rid()] = py_net_emu_types.DotNetInt32(0)
+                    self.static_fields[field_obj.get_rid()] = py_net_emu_types.DotNetInt32(self, 0)
                     self.stack.append(self.static_fields[field_obj.get_rid()])
         return True
 
@@ -1196,11 +1196,9 @@ cdef class DotNetEmulator:
     cdef bint handle_ldfld_instruction(self, net_cil_disas.Instruction instr) except *:
         cdef net_row_objects.Field field_obj
         obj_ref = self.stack.pop()
-        self.print_string('obj ref starts as {}'.format(str(obj_ref)), 1)
         if isinstance(obj_ref, net_emu_types.ArrayAddress):
             obj_ref = obj_ref.get_obj_ref()
         field_obj = instr.get_argument()
-        self.print_string('obj ref ends at {} {}'.format(str(obj_ref), field_obj.get_rid()), 1)
         if not isinstance(obj_ref, net_emu_types.DotNetObject) or field_obj.is_static():
             raise net_exceptions.ObjectTypeException
 
@@ -1257,13 +1255,13 @@ cdef class DotNetEmulator:
         value1 = self.stack.pop()
         max_item_size = value1.itemsize
         if max_item_size == 1:
-            un_value1 = py_net_emu_types.DotNetUInt8(value1)
+            un_value1 = py_net_emu_types.DotNetUInt8(self, value1)
         elif max_item_size == 2:
-            un_value1 = py_net_emu_types.DotNetUInt16(value1)
+            un_value1 = py_net_emu_types.DotNetUInt16(self, value1)
         elif max_item_size == 4:
-            un_value1 = py_net_emu_types.DotNetUInt32(value1)
+            un_value1 = py_net_emu_types.DotNetUInt32(self, value1)
         elif max_item_size == 8:
-            un_value1 = py_net_emu_types.DotNetUInt64(value1)
+            un_value1 = py_net_emu_types.DotNetUInt64(self, value1)
         else:
             raise net_exceptions.InstructionNotSupportedException(instr.get_name())
         self.stack.append(un_value1 >> bits)
@@ -1288,21 +1286,21 @@ cdef class DotNetEmulator:
         if isinstance(local_type_sig, net_utils.CorLibTypeSig):
             e_type = local_type_sig.get_element_type()
             if e_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
-                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetInt8(value1))
+                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetInt8(self, value1))
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_I2:
-                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetInt16(value1))
+                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetInt16(self, value1))
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_I4:
-                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetInt32(value1))
+                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetInt32(self, value1))
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_I8:
-                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetInt64(value1))
+                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetInt64(self, value1))
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
-                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetUInt8(value1))
+                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetUInt8(self, value1))
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_U2:
-                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetUInt16(value1))
+                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetUInt16(self, value1))
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_U4:
-                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetUInt32(value1))
+                obj_ref.set_field(field_obj.get_rid(), py_net_emu_types.DotNetUInt32(self, value1))
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_U8:
-                obj_ref.set_field(field_obj.get_rid(),  py_net_emu_types.DotNetUInt64(value1))
+                obj_ref.set_field(field_obj.get_rid(),  py_net_emu_types.DotNetUInt64(self, value1))
             else:
                 obj_ref.set_field(field_obj.get_rid(), value1)
         else:
@@ -1329,21 +1327,21 @@ cdef class DotNetEmulator:
         if isinstance(local_type_sig, net_utils.CorLibTypeSig):
             e_type = local_type_sig.get_element_type()
             if e_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
-                self.localvars[number] = py_net_emu_types.DotNetInt8(value1)
+                self.localvars[number] = py_net_emu_types.DotNetInt8(self, value1)
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_I2:
-                self.localvars[number] = py_net_emu_types.DotNetInt16(value1)
+                self.localvars[number] = py_net_emu_types.DotNetInt16(self, value1)
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_I4:
-                self.localvars[number] = py_net_emu_types.DotNetInt32(value1)
+                self.localvars[number] = py_net_emu_types.DotNetInt32(self, value1)
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_I8:
-                self.localvars[number] = py_net_emu_types.DotNetInt64(value1)
+                self.localvars[number] = py_net_emu_types.DotNetInt64(self, value1)
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
-                self.localvars[number] = py_net_emu_types.DotNetUInt8(value1)
+                self.localvars[number] = py_net_emu_types.DotNetUInt8(self, value1)
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_U2:
-                self.localvars[number] = py_net_emu_types.DotNetUInt16(value1)
+                self.localvars[number] = py_net_emu_types.DotNetUInt16(self, value1)
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_U4:
-                self.localvars[number] = py_net_emu_types.DotNetUInt32(value1)
+                self.localvars[number] = py_net_emu_types.DotNetUInt32(self, value1)
             elif e_type == net_structs.CorElementType.ELEMENT_TYPE_U8:
-                self.localvars[number] = py_net_emu_types.DotNetUInt64(value1)
+                self.localvars[number] = py_net_emu_types.DotNetUInt64(self, value1)
             else:
                 self.localvars[number] = value1
         else:
@@ -1392,19 +1390,19 @@ cdef class DotNetEmulator:
         array_obj = self.stack.pop()
         # array_obj[index] = value1
         if ins_op == net_opcodes.Opcodes.Stelem_I:
-            array_obj[index] = py_net_emu_types.DotNetInt32(value1)
+            array_obj[index] = py_net_emu_types.DotNetInt32(self, value1)
         elif ins_op == net_opcodes.Opcodes.Stelem_I1:
-            array_obj[index] = py_net_emu_types.DotNetInt8(value1)
+            array_obj[index] = py_net_emu_types.DotNetInt8(self, value1)
         elif ins_op == net_opcodes.Opcodes.Stelem_I2:
-            array_obj[index] = py_net_emu_types.DotNetInt16(value1)
+            array_obj[index] = py_net_emu_types.DotNetInt16(self, value1)
         elif ins_op == net_opcodes.Opcodes.Stelem_I4:
-            array_obj[index] = py_net_emu_types.DotNetInt32(value1)
+            array_obj[index] = py_net_emu_types.DotNetInt32(self, value1)
         elif ins_op == net_opcodes.Opcodes.Stelem_I8:
-            array_obj[index] = py_net_emu_types.DotNetInt64(value1)
+            array_obj[index] = py_net_emu_types.DotNetInt64(self, value1)
         elif ins_op == net_opcodes.Opcodes.Stelem_R4:
-            array_obj[index] = py_net_emu_types.DotNetSingle(value1)
+            array_obj[index] = py_net_emu_types.DotNetSingle(self, value1)
         elif ins_op == net_opcodes.Opcodes.Stelem_R8:
-            array_obj[index] = py_net_emu_types.DotNetDouble(value1)
+            array_obj[index] = py_net_emu_types.DotNetDouble(self, value1)
         elif ins_op == net_opcodes.Opcodes.Stelem_Ref:
             array_obj[index] = value1
         elif ins_op == net_opcodes.Opcodes.Stelem:
@@ -1438,10 +1436,10 @@ cdef class DotNetEmulator:
         ins_op = instr.get_opcode()
         address_obj = self.stack.pop()
         if ins_op == net_opcodes.Opcodes.Ldind_U4:
-            self.stack.append(py_net_emu_types.DotNetInt32(
+            self.stack.append(py_net_emu_types.DotNetInt32(self, 
                 address_obj.get_obj_ref()))
         elif ins_op == net_opcodes.Opcodes.Ldind_U1:
-            self.stack.append(py_net_emu_types.DotNetInt32(py_net_emu_types.DotNetUInt8(address_obj.get_obj_ref())))
+            self.stack.append(py_net_emu_types.DotNetInt32(self, py_net_emu_types.DotNetUInt8(self, address_obj.get_obj_ref())))
         else:
             raise net_exceptions.InstructionNotSupportedException(ins_name)
         return True
@@ -1544,7 +1542,7 @@ cdef class DotNetEmulator:
 
     cdef bint handle_ldlen_instruction(self, net_cil_disas.Instruction instr) except *:
         value_obj = self.stack.pop()
-        self.stack.append(py_net_emu_types.DotNetUInt64(len(value_obj)))
+        self.stack.append(py_net_emu_types.DotNetUInt64(self, len(value_obj)))
         return True
 
     cdef bint handle_ldloca_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1592,7 +1590,7 @@ cdef class DotNetEmulator:
             if field_obj.get_rid() in self.static_fields:
                 self.stack.append(net_emu_types.ArrayAddress([self.static_fields[field_obj.get_rid()]], 0))
             else:
-                self.static_fields[field_obj.get_rid()] = py_net_emu_types.DotNetInt32(0)
+                self.static_fields[field_obj.get_rid()] = py_net_emu_types.DotNetInt32(self, 0)
                 self.stack.append(net_emu_types.ArrayAddress([self.static_fields[field_obj.get_rid()]], 0))
         return True
     
