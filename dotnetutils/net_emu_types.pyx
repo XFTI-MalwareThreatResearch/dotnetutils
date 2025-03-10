@@ -1014,31 +1014,38 @@ cdef class DotNetMath(DotNetObject):
 
     @staticmethod
     def Max(app_domain, value1, value2):
-        return numpy.max([value1, value2])
+        val_obj = numpy.max([value1, value2])
+        return net_emu_coretypes.DotNetNumber(app_domain.get_emulator_obj(), val_obj.dtype, val_obj)
 
     @staticmethod
     def Abs(app_domain, value1):
-        return numpy.absolute(value1)
+        val_obj = numpy.absolute(value1)
+        return net_emu_coretypes.DotNetNumber(app_domain.get_emulator_obj(), val_obj.dtype, val_obj)
 
     @staticmethod
     def Exp(app_domain, value1):
-        return numpy.exp(value1)
+        val_obj = numpy.exp(value1)
+        return net_emu_coretypes.DotNetNumber(app_domain.get_emulator_obj(), val_obj.dtype, val_obj)
 
     @staticmethod
     def Cos(app_domain, value1):
-        return numpy.cos(value1)
+        val_obj = numpy.cos(value1)
+        return net_emu_coretypes.DotNetNumber(app_domain.get_emulator_obj(), val_obj.dtype, val_obj)
 
     @staticmethod
     def Sin(app_domain, value1):
-        return numpy.sin(value1)
+        val_obj = numpy.sin(value1)
+        return net_emu_coretypes.DotNetNumber(app_domain.get_emulator_obj(), val_obj.dtype, val_obj)
 
     @staticmethod
     def Tan(app_domain, value1):
-        return numpy.tan(value1)
+        val_obj = numpy.tan(value1)
+        return net_emu_coretypes.DotNetNumber(app_domain.get_emulator_obj(), val_obj.dtype, val_obj)
     
     @staticmethod
     def Log(app_domain, value1):
-        return numpy.log(value1)
+        val_obj = numpy.log(value1)
+        return net_emu_coretypes.DotNetNumber(app_domain.get_emulator_obj(), val_obj.dtype, val_obj)
 
 
 cdef class DotNetBitConverter(DotNetObject):
@@ -1047,7 +1054,7 @@ cdef class DotNetBitConverter(DotNetObject):
 
     @staticmethod
     def IsLittleEndian(app_domain):
-        return net_emu_coretypes.DotNetBoolean(sys.byteorder == 'little')
+        return net_emu_coretypes.DotNetBoolean(app_domain.get_emulator_obj(), sys.byteorder == 'little')
 
     @staticmethod
     def ToInt32(app_domain, obj, start_index=None):
@@ -1063,25 +1070,6 @@ cdef class DotNetBitConverter(DotNetObject):
             return net_emu_coretypes.DotNetInt32(app_domain.get_emulator_obj(), p_int & 0xFFFFFFFF)
         else:
             return net_emu_coretypes.DotNetInt32(app_domain.get_emulator_obj(), usable_obj)
-        
-    """@staticmethod
-    def ToUInt32(app_domain, obj, start_index=None):
-        print(type(obj), type(start_index), obj, start_index)
-        usable_obj = obj
-        if start_index is not None:
-            if isinstance(usable_obj, DotNetString):
-                usable_obj = usable_obj.str_data[start_index:] #TODO: this might not account properly for utf-16le
-            else:
-                usable_obj = usable_obj[start_index:]
-        if isinstance(usable_obj, list):
-            # force the list to be uint8
-            usable_bytes = list()
-            for usable in usable_obj:
-                usable_bytes.append(numpy.uint8(usable))
-            p_int = int.from_bytes(bytes(usable_bytes), 'little', signed=False)
-            return dotnet_u4(p_int & 0xFFFFFFFF)
-        else:
-            return dotnet_u4(usable_obj)"""
 
     @staticmethod
     def GetBytes(app_domain, value1):

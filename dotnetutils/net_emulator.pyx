@@ -1215,7 +1215,7 @@ cdef class DotNetEmulator:
             elif value2.dtype.kind == 'u':
                 value2 = value2.astype('i{}'.format(value2.dtype.itemsize), casting='unsafe')
         result = numpy.bitwise_or(value1, value2)
-        self.stack.append(result)
+        self.stack.append(py_net_emu_types.DotNetNumber(self, result.dtype, result))
         return True
 
     cdef bint handle_not_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1240,13 +1240,15 @@ cdef class DotNetEmulator:
         if value1.dtype.kind != bits.dtype.kind:
             new_dtype = numpy.dtype('{}{}'.format(value1.dtype.kind, bits.dtype.itemsize))
             bits = bits.astype(new_dtype)
-        self.stack.append(value1 << bits)
+        res_obj = value1 << bits
+        self.stack.append(py_net_emu_types.DotNetNumber(self, res_obj.dtype, res_obj))
         return True
 
     cdef bint handle_shr_instruction(self, net_cil_disas.Instruction instr) except *:
         bits = self.stack.pop()
         value1 = self.stack.pop()
-        self.stack.append(value1 >> bits)
+        res_obj = value1 >> bits
+        self.stack.append(py_net_emu_types.DotNetNumber(self, res_obj.dtype, res_obj))
         return True
 
     cdef bint handle_shr_un_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1264,7 +1266,8 @@ cdef class DotNetEmulator:
             un_value1 = py_net_emu_types.DotNetUInt64(self, value1)
         else:
             raise net_exceptions.InstructionNotSupportedException(instr.get_name())
-        self.stack.append(un_value1 >> bits)
+        res_obj = un_value1 >> bits
+        self.stack.append(py_net_emu_types.DotNetNumber(self, res_obj.dtype, res_obj))
         return True
 
     cdef bint handle_stfld_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1361,7 +1364,7 @@ cdef class DotNetEmulator:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
         result = value1 - value2
-        self.stack.append(result)
+        self.stack.append(py_net_emu_types.DotNetNumber(self, result.dtype, result))
         return True
 
     cdef bint handle_switch_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1379,7 +1382,7 @@ cdef class DotNetEmulator:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
         result = (value1 ^ value2).astype(value1.dtype)  # temp fix for above.
-        self.stack.append(result)
+        self.stack.append(py_net_emu_types.DotNetNumber(self, result.dtype, result))
         return True
 
     cdef bint handle_stelem_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1413,7 +1416,7 @@ cdef class DotNetEmulator:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
         result = numpy.fmod(value1, value2)
-        self.stack.append(result)
+        self.stack.append(py_net_emu_types.DotNetNumber(self, result.dtype, result))
         return True
 
     cdef bint handle_rem_un_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1424,7 +1427,7 @@ cdef class DotNetEmulator:
         if value2.dtype.kind == 'i':
             value2 = value2.astype('u{}'.format(value2.dtype.itemsize), casting='unsafe')
         result = numpy.fmod(value1, value2)
-        self.stack.append(result)
+        self.stack.append(py_net_emu_types.DotNetNumber(self, result.dtype, result))
         return True
 
     cdef bint handle_ldind_instruction(self, net_cil_disas.Instruction instr) except *:
