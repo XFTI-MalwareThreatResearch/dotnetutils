@@ -63,6 +63,7 @@ class DotNetNumber:
 
     def __add__(self, other):
         val_obj = self.__value + other.__value
+        print('add val obj {} {}'.format(type(val_obj), val_obj))
         return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
 
     def __sub__(self, other):
