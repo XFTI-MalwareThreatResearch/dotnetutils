@@ -28,6 +28,9 @@ class DotNetNumber:
             return False
         return True
 
+    def __index__(self):
+        return int(self.__value)
+
     def __int__(self):
         return int(self.__value)
 
