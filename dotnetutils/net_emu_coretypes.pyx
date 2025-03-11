@@ -23,6 +23,9 @@ class DotNetNumber:
     def get_emulator_obj(self):
         return self.__emulator_obj
 
+    def __bool__(self):
+        return self.__value != 0
+
     def __str__(self):
         return str(self.__value)
 
