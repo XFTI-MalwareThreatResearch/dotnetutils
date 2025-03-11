@@ -224,21 +224,21 @@ class DotNetNumber:
 
 class DotNetInt8(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.int8, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int8), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetInt16(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.int16, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int16), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetInt32(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.int32, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int32), value_obj)
 
     def CompareTo(self, other):
         return DotNetInt32(self.get_emulator_obj(), self - other)
@@ -248,70 +248,70 @@ class DotNetInt32(DotNetNumber):
 
 class DotNetInt64(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.int64, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int64), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetUInt8(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.uint8, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.uint8), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetUInt16(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.uint16, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.uint16), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetUInt32(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.uint32, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.uint32), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetUInt64(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.uint64, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.uint64), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetSingle(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.float32, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.float32), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetDouble(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.float64, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.float64), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetBoolean(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.bool_, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.bool_), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetVoid(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.void, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.void), value_obj)
 
     def ToString(self):
         return net_emu_types.DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
 
 class DotNetChar(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
-        DotNetNumber.__init__(self, emulator_obj, numpy.int16, value_obj)
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int16), value_obj)
 
     def ToString(self):
         b_data = int.to_bytes(self.item(), length=2, byteorder='little', signed=True)
