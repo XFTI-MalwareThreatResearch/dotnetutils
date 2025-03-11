@@ -28,6 +28,9 @@ class DotNetNumber:
             return False
         return True
 
+    def __int__(self):
+        return int(self.__value)
+
     def __str__(self):
         return str(self.__value)
 

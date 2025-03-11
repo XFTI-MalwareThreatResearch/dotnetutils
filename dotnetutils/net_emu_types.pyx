@@ -741,7 +741,7 @@ cdef class DotNetArray(DotNetObject):
         #If I change how this is set up, it will save a literal ton of time.
         self.internal_array = []
         if initialize:
-            self.setup_default_value(0, size, True)
+            self.setup_default_value(0, int(size), True)
 
     cpdef list get_internal_array(self):
         return self.internal_array
