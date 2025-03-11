@@ -1273,7 +1273,7 @@ cdef class DotNetString(DotNetObject):
                 return finished_str
 
             #I dont really like this, but it should work for now. FIXME - this could fail with weird parameters (non byte array)
-            if isinstance(arg2, net_emu_coretypes.DotNetInt16) or isinstance(arg2, net_emu_coretypes.DotNetUInt16):
+            if isinstance(arg2, net_emu_coretypes.DotNetNumber) and (arg2.is_uint16() or arg2.is_int16()):
                 result = DotNetString(app_domain.get_emulator_obj(), array.get_str_data() + [net_emu_coretypes.DotNetChar(app_domain.get_emulator_obj(), arg2)], array.get_str_encoding())
             elif isinstance(arg2, DotNetString):
                 if not arg2.get_str_encoding() == array.get_str_encoding():

@@ -6,12 +6,13 @@ from dotnetutils cimport net_emu_types
 
 #some base types.  Might need to rework by making them also support DotNetObject. TODO - check if this should be done.
 #I cant really think of a good way to rework dotnetobjects into this or make it into a C type right now.  For now leave it and see what the performance hit is.
-
+#FIXME: The DotNetNumber class may break code that does things like isinstance(object, DotNetInt32)
 class DotNetNumber:
     def __init__(self, emulator_obj, numpy_dtype, value_obj):
         self.__emulator_obj = emulator_obj
         self.__numpy_dtype = numpy_dtype
-        self.__value = numpy.array(value_obj, dtype=self.__numpy_dtype)
+        #FIXME: This conversion code results in a numpy.ndarray, not numpy.int32 etc.
+        self.__value = self.__numpy_dtype.type(value_obj)
 
     def get_value(self):
         return self.__value
@@ -214,6 +215,12 @@ class DotNetNumber:
     def __round__(self, ndigits=None):
         val_obj = round(self.__value, ndigits)
         return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def is_uint16(self):
+        return self.__numpy_dtype.itemsize == 2 and self.__numpy_dtype.kind == 'u'
+
+    def is_int16(self):
+        return self.__numpy_dtype.itemsize == 2 and self.__numpy_dtype.kind == 'i'
 
 class DotNetInt8(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
