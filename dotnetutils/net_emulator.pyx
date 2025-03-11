@@ -775,6 +775,8 @@ cdef class DotNetEmulator:
         # TODO: ceq compares may be broken when comparing DotNetNull objects
         value2 = self.stack.pop()
         value1 = self.stack.pop()
+        if value2 == value1 == 32:
+            print('handle ceq instruction value1={}, {}, {}, {} value2={}, {}, {}, {}'.format(type(value1), value1.get_value(), value1.get_numpy_dtype(), type(value1.get_value()), type(value2), value2.get_value(), value2.get_numpy_dtype(), type(value2.get_value())))
         if value1 == value2:
             self.stack.append(py_net_emu_types.DotNetInt32(self, 1))
         else:
