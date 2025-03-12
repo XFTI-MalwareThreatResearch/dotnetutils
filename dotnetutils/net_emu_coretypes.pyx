@@ -38,7 +38,7 @@ class DotNetNumber:
         return str(self.__value)
 
     def __repr__(self):
-        return self.__value.__repr__()
+        return str(self.__value)
 
     def __copy__(self):
         val_obj = self.__numpy_dtype.type(self.__value)
@@ -104,6 +104,9 @@ class DotNetNumber:
         return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
 
     def __rsub__(self, other):
+        #This isnt really correct because the assumption that other has the same dtype as self is false.
+        #however this shouldnt be used too often, only in net_emu_coretypes Code.
+        #Try to avoid doing math with non DotNetNumbers though.
         if isinstance(other, DotNetNumber):
             val_obj = other.__value - self.__value
         else:
