@@ -37,6 +37,13 @@ class DotNetNumber:
     def __str__(self):
         return str(self.__value)
 
+    def __repr__(self):
+        return self.__value.__repr__()
+
+    def __copy__(self):
+        val_obj = self.__numpy_dtype.type(self.__value)
+        return DotNetNumber(self.get_emulator_obj(), self.__numpy_dtype, val_obj)
+
     def __lt__(self, other):
         if isinstance(other, DotNetNumber):
             return self.__value < other.__value

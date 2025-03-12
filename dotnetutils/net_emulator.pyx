@@ -1051,7 +1051,7 @@ cdef class DotNetEmulator:
         obj = self.stack.pop()
         if not isinstance(obj, net_emu_types.ArrayAddress):
             print('1 {} {}'.format(obj, type(obj)))
-            copy_obj = copy.deepcopy(obj)  # FIXME: copy.copy on ArrayAddress objects is giving back a non ArrayAddress value.  A temporary fix is given below.
+            copy_obj = copy.copy(obj)  # FIXME: copy.copy on ArrayAddress objects is giving back a non ArrayAddress value.  A temporary fix is given below.
             print('2')
             self.stack.append(obj)
             print('3')
