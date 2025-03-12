@@ -49,6 +49,7 @@ class DotNetNumber:
 
     def _eq__(self, other):
         if isinstance(other, DotNetNumber):
+            print('DotNetNumber __eq__ {} {} {} {}'.format(type(self.__value), type(other.__value), self.__value, other.__value))
             return self.__value == other.__value
         return self.__value == other
 
