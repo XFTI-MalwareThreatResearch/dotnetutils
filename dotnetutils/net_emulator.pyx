@@ -1240,6 +1240,7 @@ cdef class DotNetEmulator:
         if value1.dtype.kind != bits.dtype.kind:
             new_dtype = numpy.dtype('{}{}'.format(value1.dtype.kind, bits.dtype.itemsize))
             bits = bits.astype(new_dtype)
+            bits = DotNetNumber(self, new_dtype, bits)
         res_obj = value1 << bits
         self.stack.append(py_net_emu_types.DotNetNumber(self, res_obj.dtype, res_obj))
         return True
