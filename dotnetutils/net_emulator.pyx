@@ -1255,6 +1255,7 @@ cdef class DotNetEmulator:
     cdef bint handle_shr_un_instruction(self, net_cil_disas.Instruction instr) except *:
         cdef int max_item_size
         bits = net_utils.convert_to_uint(self.stack.pop())
+        bits = py_net_emu_types.DotNetNumber(self, bits.dtype, bits)
         value1 = self.stack.pop()
         max_item_size = value1.itemsize
         if max_item_size == 1:
