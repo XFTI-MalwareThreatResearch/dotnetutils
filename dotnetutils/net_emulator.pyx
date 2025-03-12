@@ -1686,7 +1686,6 @@ cdef class DotNetEmulator:
             if self.print_debug:
                 self.print_current_state()
         while self.current_eip < len(self.disasm_obj):
-            print('at top of loop')
             self.should_break = False
             instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if instr == None:
@@ -1961,7 +1960,6 @@ cdef class DotNetEmulator:
                 self.__last_instr_end = time.perf_counter_ns()
                 #if self.__post_exec_callback:
                 #    self.__post_exec_callback(self, instr, self.__callback_param)
-                print('at except')
             except net_exceptions.InstructionNotSupportedException as e:
                 if self.break_on_unsupported:
                     break
@@ -1992,7 +1990,6 @@ cdef class DotNetEmulator:
                 if not self.already_init:
                     self.get_appdomain().set_calling_dotnetpe(None)
                 raise e
-            print('at self print debug')
             if self.print_debug:
                 if len(self.print_debug_instrs) == 0 or instr.get_name() in self.print_debug_instrs:
                     should_print = False
@@ -2008,7 +2005,6 @@ cdef class DotNetEmulator:
                         self.print_current_state()
 
 
-            print('At ins_op')
             if ins_op == net_opcodes.Opcodes.Ret or self.should_break:
                 # TODO: In theory this supports the break instruction, add a way to insert it.
                 break
