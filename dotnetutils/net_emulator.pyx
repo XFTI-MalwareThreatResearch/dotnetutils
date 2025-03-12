@@ -879,9 +879,9 @@ cdef class DotNetEmulator:
         ins_op = instr.get_opcode()
         value1 = self.stack.pop()
         if ins_op == net_opcodes.Opcodes.Conv_R4:
-            self.stack.append(value1.astype(py_net_emu_types.DotNetSingle))
+            self.stack.append(py_net_emu_types.DotNetSingle(self, value1.get_value()))
         elif ins_op == net_opcodes.Opcodes.Conv_R8:
-            self.stack.append(value1.astype(py_net_emu_types.DotNetDouble))
+            self.stack.append(py_net_emu_types.DotNetDouble(self, value1.get_value()))
         return True
 
     cdef bint handle_conv_u_instruction(self, net_cil_disas.Instruction instr) except *:
@@ -1497,7 +1497,7 @@ cdef class DotNetEmulator:
     cdef bint handle_conv_r_un_instruction(self, net_cil_disas.Instruction instr) except *:
         value1 = self.stack.pop()
         # TODO: heres the issue with DotNetReactor.  Does converting this to a float64 instead cause issues?
-        self.stack.append(value1.astype(py_net_emu_types.DotNetDouble))
+        self.stack.append(py_net_emu_types.DotNetDouble(self, value1.get_value()))
         return True
 
     cdef bint handle_initobj_instruction(self, net_cil_disas.Instruction instr) except *:
