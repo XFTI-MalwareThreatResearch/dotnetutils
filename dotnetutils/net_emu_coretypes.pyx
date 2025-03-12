@@ -97,7 +97,18 @@ class DotNetNumber:
         return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)      
 
     def __sub__(self, other):
-        val_obj = self.__value - other.__value
+        if not isinstance(other, DotNetNumber):
+            val_obj = self.__value - other
+        else:
+            val_obj = self.__value - other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __rsub__(self, other):
+        if isinstance(other, DotNetNumber):
+            val_obj = other.__value - self.__value
+        else:
+            val_obj = other - self.__value
+            val_obj = self.__numpy_dtype.type(val_obj)
         return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
 
     def __mul__(self, other):
