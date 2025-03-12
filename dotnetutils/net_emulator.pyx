@@ -1050,7 +1050,7 @@ cdef class DotNetEmulator:
         cdef list array
         obj = self.stack.pop()
         if not isinstance(obj, net_emu_types.ArrayAddress):
-            print('1')
+            print('1 {}'.format(obj))
             copy_obj = copy.copy(obj)  # FIXME: copy.copy on ArrayAddress objects is giving back a non ArrayAddress value.  A temporary fix is given below.
             print('2')
             self.stack.append(obj)
