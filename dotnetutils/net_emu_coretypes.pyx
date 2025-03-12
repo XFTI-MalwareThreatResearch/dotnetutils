@@ -88,6 +88,14 @@ class DotNetNumber:
             val_obj = self.__value + other
         return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
 
+    def __radd__(self, other):
+        #Add needs to work with ints due to for loops.
+        if isinstance(other, DotNetNumber):
+            val_obj = self.__value + other.__value
+        else:
+            val_obj = self.__value + other
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)      
+
     def __sub__(self, other):
         val_obj = self.__value - other.__value
         return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
