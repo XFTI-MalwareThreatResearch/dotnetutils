@@ -689,6 +689,7 @@ cdef class DotNetEmulator:
 
             if method_obj.has_return_value() and not is_newobj and method_obj.get_column('Name').get_value() != b'.ctor':
                 self.stack.append(ret_val)
+            print('Done with handle_call_instruction')
         elif method_obj.get_table_name() == 'MethodSpec':
             return self.handle_call_instruction(instr, is_virt, is_newobj,
                                                 method_obj.get_column('Method').get_value(), None)
