@@ -1050,14 +1050,22 @@ cdef class DotNetEmulator:
         cdef list array
         obj = self.stack.pop()
         if not isinstance(obj, net_emu_types.ArrayAddress):
+            print('1')
             copy_obj = copy.copy(obj)  # FIXME: copy.copy on ArrayAddress objects is giving back a non ArrayAddress value.  A temporary fix is given below.
+            print('2')
             self.stack.append(obj)
+            print('3')
             self.stack.append(copy_obj)
         else:
+            print('4')
             self.stack.append(obj)
+            print('5')
             array = [obj.get_obj_ref()]
+            print('6')
             copy_obj = net_emu_types.ArrayAddress(array, 0)
+            print('7')
             self.stack.append(copy_obj)
+        print('Finished dup instr')
         return True
 
     cdef bint handle_ldsfld_instruction(self, net_cil_disas.Instruction instr) except *:
