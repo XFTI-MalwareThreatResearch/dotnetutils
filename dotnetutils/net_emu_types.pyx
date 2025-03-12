@@ -437,7 +437,7 @@ cdef class DotNetStream(DotNetObject):
         actual_obj = list()
         for x in range(len(raw_obj)):
             item = raw_obj[x]
-            actual_obj.append(net_emu_coretypes.DotNetUInt8(item))
+            actual_obj.append(net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), item))
         arr_obj.set_internal_array(actual_obj)
         return arr_obj
 

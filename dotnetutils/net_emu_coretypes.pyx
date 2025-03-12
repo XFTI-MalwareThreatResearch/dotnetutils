@@ -38,6 +38,8 @@ class DotNetNumber:
         return str(self.__value)
 
     def __repr__(self):
+        if isinstance(self.__value, DotNetNumber):
+            return str(self.__value.get_value())
         return str(self.__value)
 
     def __copy__(self):
