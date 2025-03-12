@@ -593,10 +593,12 @@ cdef class DotNetAssembly(DotNetObject):
 
     @staticmethod
     def GetExecutingAssembly(app_domain):
+        print('running getexecutingassembly')
         dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(),
             app_domain.get_executing_dotnetpe().get_metadata_table('Assembly').get(0))
         dotnetassembly.set_type_obj(app_domain.get_executing_dotnetpe().get_type_by_full_name(
             b'System.Reflection.Assembly'))
+        print('done running getexecutingassembly')
         return dotnetassembly
 
     @staticmethod
