@@ -1158,7 +1158,9 @@ cdef class DotNetString(DotNetObject):
     def __init__(self, emulator_obj, str_data, str_encoding='utf-16le'):
         DotNetObject.__init__(self, emulator_obj)
         self.str_encoding = str_encoding
+        print('before sanitize {} {}'.format(str_data, type(str_data[0])))
         self.str_data = self.__sanitize_data(str_data)
+        print(5)
 
     cpdef str get_str_data_as_str(self):
         return self.get_str_data_as_bytes().decode(self.get_str_encoding())
@@ -1173,6 +1175,7 @@ cdef class DotNetString(DotNetObject):
         cdef object item
         cdef bytes b_data
         cdef bint skip_next_value
+        print(1)
         if isinstance(str_data, DotNetArray) or isinstance(str_data, list) or isinstance(str_data, bytes) or isinstance(str_data, bytearray):
             usable_data = list()
             if isinstance(str_data, bytes) or isinstance(str_data, bytearray):
@@ -1185,7 +1188,7 @@ cdef class DotNetString(DotNetObject):
                     for x in range(len(str_data)):
                         item = net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), str_data[x])
                         usable_data.append(item)
-
+                print(2)
                 return usable_data
             else:
                 skip_next_value = False
@@ -1211,8 +1214,10 @@ cdef class DotNetString(DotNetObject):
                             usable_data.append(net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), b_data[1]))
                         else:
                             usable_data.append(net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), item))
+                print(3)
                 return usable_data         
         else:
+            print(4)
             raise net_exceptions.InvalidArgumentsException()
 
     cpdef bytes get_str_data_as_bytes(self):
