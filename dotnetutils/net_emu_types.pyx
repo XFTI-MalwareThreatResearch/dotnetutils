@@ -9,7 +9,6 @@ import threading
 import binascii
 import functools
 import ntpath
-import numpy
 import zlib
 from enum import IntEnum
 from collections import defaultdict
@@ -22,7 +21,9 @@ from dotnetutils cimport dotnetpefile
 
 from dotnetutils cimport net_emulator
 from dotnetutils import net_emu_coretypes
+from cpython.object cimport PyCFunction, PyObject
 
+cimport numpy
 """
 This file contains python versions of various .NET classes
 All classes should extend DotNetObject with the exception of ArrayAddress
@@ -103,6 +104,14 @@ cdef class DotNetObject:
         self.type_sig_obj = None
         self.initialized_fields = list()
         self.__initialized = False
+
+    cpdef void register_method(self, str name, emulated_func_ptr func):
+        self.__registered_methods[name] = func
+
+    cpdef emulated_func_ptr get_registered_method(self, str name):
+        if name not in self.__registered_methods:
+            return NULL
+        return self.__registered_methods[name]
 
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self):
         return self.__emulator_obj
@@ -231,6 +240,344 @@ cdef class DotNetObject:
                 return str_val                
             return object.__str__(self)
 
+cdef class DotNetNumber(DotNetObject):
+    def __init__(self, emulator_obj, numpy_dtype, value_obj):
+        DotNetObject.__init__(self, emulator_obj)
+        self.__numpy_dtype = numpy_dtype
+        #FIXME: This conversion code results in a numpy.ndarray, not numpy.int32 etc.
+        self.__value = self.__numpy_dtype.type(value_obj)
+        self.register_method('ToString', self.ToString)
+
+    cpdef object get_value(self):
+        return self.__value
+
+    @staticmethod
+    cdef DotNetString ToString(list objs):
+        cdef DotNetNumber self
+        self = objs[0]
+        return DotNetString(self.get_emulator_obj(), str(self).encode('utf-16le'))
+
+    cpdef numpy.dtype get_numpy_dtype(self):
+        return self.__numpy_dtype
+
+    def __bool__(self):
+        if self.__value == 0:
+            return False
+        return True
+
+    def __index__(self):
+        return int(self.__value)
+
+    def __int__(self):
+        return int(self.__value)
+
+    def __str__(self):
+        return str(self.__value)
+
+    def __repr__(self):
+        if isinstance(self.__value, DotNetNumber):
+            return str(self.__value.get_value())
+        return str(self.__value)
+
+    def __copy__(self):
+        val_obj = self.__numpy_dtype.type(self.__value)
+        return DotNetNumber(self.get_emulator_obj(), self.__numpy_dtype, val_obj)
+
+    def __lt__(self, other):
+        if isinstance(other, DotNetNumber):
+            return self.__value < other.__value
+        return self.__value < other
+
+    def __le__(self, other):
+        if isinstance(other, DotNetNumber):
+            return self.__value <= other.__value
+        return self.__value <= other
+
+    def __eq__(self, other):
+        if isinstance(other, DotNetNumber):
+            return self.__value == other.__value
+        return self.__value == other
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __gt__(self, other):
+        if isinstance(other, DotNetNumber):
+            return self.__value > other.__value
+        return self.__value > other
+
+    def __ge__(self, other):
+        if isinstance(other, DotNetNumber):
+            return self.__value >= other.__value
+        return self.__value >= other
+
+    def __hash__(self):
+        return hash(self.__value)
+
+    def __getattr__(self, name):
+        if hasattr(self.__value, name):
+            return getattr(self.__value, name)
+        raise AttributeError
+
+    def __add__(self, other):
+        #Add needs to work with ints due to for loops.
+        if isinstance(other, DotNetNumber):
+            val_obj = self.__value + other.__value
+        else:
+            val_obj = self.__value + other
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __radd__(self, other):
+        #Add needs to work with ints due to for loops.
+        if isinstance(other, DotNetNumber):
+            val_obj = self.__value + other.__value
+        else:
+            val_obj = self.__value + other
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)      
+
+    def __sub__(self, other):
+        if not isinstance(other, DotNetNumber):
+            val_obj = self.__value - other
+        else:
+            val_obj = self.__value - other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __rsub__(self, other):
+        #This isnt really correct because the assumption that other has the same dtype as self is false.
+        #however this shouldnt be used too often, only in net_emu_coretypes Code.
+        #Try to avoid doing math with non DotNetNumbers though.
+        if isinstance(other, DotNetNumber):
+            val_obj = other.__value - self.__value
+        else:
+            val_obj = other - self.__value
+            val_obj = self.__numpy_dtype.type(val_obj)
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __mul__(self, other):
+        val_obj = self.__value * other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __matmul__(self, other):
+        val_obj = self.__value @ other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __truediv__(self, other):
+        val_obj = self.__value / other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __floordiv__(self, other):
+        val_obj = self.__value // other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __mod__(self, other):
+        val_obj = self.__value % other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __divmod__(self, other):
+        quotient, remainder = divmod(self.__value, other.__value)
+        return DotNetNumber(self.get_emulator_obj(), quotient.dtype, quotient), DotNetNumber(self.get_emulator_obj(), remainder.dtype, remainder)
+
+    def __pow__(self, other, mod=None):
+        result = pow(self.__value, other.__value, mod)
+        return DotNetNumber(self.get_emulator_obj(), result.dtype, result)
+
+    def __lshift__(self, other):
+        val_obj = self.__value << other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __rshift__(self, other):
+        val_obj = self.__value >> other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __and__(self, other):
+        val_obj = self.__value & other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __xor__(self, other):
+        val_obj = self.__value ^ other.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __or__(self, other):
+        result = self.__value | other.__value
+        return DotNetNumber(self.get_emulator_obj(), result.dtype, result)
+
+    def __iadd__(self, other):
+        val_obj = self.__value + other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __isub__(self, other):
+        val_obj = self.__value - other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __imul__(self, other):
+        val_obj = self.__value * other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __imatmul__(self, other):
+        val_obj = self.__value @ other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __itruediv__(self, other):
+        val_obj = self.__value / other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __ifloordiv__(self, other):
+        val_obj = self.__value // other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __imod__(self, other):
+        val_obj = self.__value % other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __ipow__(self, other, mod=None):
+        val_obj = pow(self.__value, other.__value, mod)
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __ilshift__(self, other):
+        val_obj = self.__value << other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __irshift__(self, other):
+        val_obj = self.__value >> other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __iand__(self, other):
+        val_obj = self.__value & other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __ixor__(self, other):
+        val_obj = self.__value ^ other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __ior__(self, other):
+        val_obj = self.__value | other.__value
+        self.__value = val_obj
+        self.__numpy_dtype = val_obj.dtype
+        return self
+
+    def __neg__(self):
+        val_obj = -self.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __pos__(self):
+        val_obj = +self.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __abs__(self):
+        val_obj = abs(self.__value)
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __invert__(self):
+        val_obj = ~self.__value
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    def __round__(self, ndigits=None):
+        val_obj = round(self.__value, ndigits)
+        return DotNetNumber(self.get_emulator_obj(), val_obj.dtype, val_obj)
+
+    cpdef bint is_uint16(self):
+        return self.__numpy_dtype.itemsize == 2 and self.__numpy_dtype.kind == 'u'
+
+    cpdef bint is_int16(self):
+        return self.__numpy_dtype.itemsize == 2 and self.__numpy_dtype.kind == 'i'
+
+cdef class DotNetInt8(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int8_t), value_obj)
+        self.register_method('ToString', self.ToString)
+
+cdef class DotNetInt16(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int16_t), value_obj)
+
+cdef class DotNetInt32(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int32_t), value_obj)
+        self.register_method('CompareTo', self.CompareTo)
+
+    @staticmethod
+    cdef DotNetInt32 CompareTo(list objs):
+        cdef DotNetInt32 self
+        cdef DotNetNumber other
+        self = objs[0]
+        other = objs[1]
+        return DotNetInt32(self.get_emulator_obj(), self - other)
+
+cdef class DotNetInt64(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int64_t), value_obj)
+
+cdef class DotNetUInt8(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.uint8_t), value_obj)
+
+cdef class DotNetUInt16(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.uint16_t), value_obj)
+
+cdef class DotNetUInt32(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.uint32_t), value_obj)
+
+cdef class DotNetUInt64(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.uint64_t), value_obj)
+
+cdef class DotNetSingle(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.float32_t), value_obj)
+
+cdef class DotNetDouble(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.float64_t), value_obj)
+
+cdef class DotNetBoolean(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.bool_t), value_obj)
+
+cdef class DotNetVoid(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.void_t), value_obj)
+
+cdef class DotNetChar(DotNetNumber):
+    def __init__(self, emulator_obj, value_obj):
+        DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int16_t), value_obj)
+        self.register_method('ToString', self.ToString)
+
+    @staticmethod
+    cdef DotNetString ToString(list objs):
+        cdef bytes b_data
+        cdef DotNetString string
+        cdef DotNetChar self
+        self = objs[0]
+        b_data = int.to_bytes(self.item(), length=2, byteorder='little', signed=True)
+        string = DotNetString(self.get_emulator_obj(), b_data)
+        return string
+
 cdef class DotNetNull(DotNetObject):
     def __init__(self, emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
@@ -263,39 +610,84 @@ cdef class DotNetType(DotNetObject):
         else:
             self.type_handle = type_handle.get_internal_typedef()
         self.sig_obj = sig_obj
+        self.register_method('get_IsByRef', self.get_IsByRef)
+        self.register_method('op_Inequality', self.op_Inequality)
+        self.register_method('op_Equality', self.op_Equality)
+        self.register_method('GetTypeFromHandle', self.GetTypeFromHandle)
+        self.register_method('get_Module', self.get_Module)
+        self.register_method('GetFields', self.GetFields)
+        self.register_method('get_MetadataToken', self.get_MetadataToken)
+        self.register_method('get_Assembly', self.get_Assembly)
 
     cpdef get_type_handle(self):
         return self.type_handle
 
-    def get_IsByRef(self):
-        return isinstance(self.sig_obj, net_utils.ByRefSig)
+    @staticmethod
+    cdef DotNetBoolean get_IsByRef(list objs):
+        cdef DotNetType self
+        self = objs[0]
+        return DotNetBoolean(self.get_emulator_obj(), isinstance(self.sig_obj, net_utils.ByRefSig))
 
     #def GetElementType(self):
     #    pass #TODO
 
     @staticmethod
-    def op_Equality(app_domain, obj1, obj2):
-        return net_emu_coretypes.DotNetBoolean(app_domain.get_emulator_obj(), obj1 == obj2)
+    cdef DotNetBoolean op_Equality(list objs):
+        cdef EmulatorAppDomain app_domain
+        cdef DotNetObject obj1
+        cdef DotNetObject obj2
+        app_domain = objs[0]
+        obj1 = objs[1]
+        obj2 = objs[2]
+        return DotNetBoolean(app_domain.get_emulator_obj(), obj1 == obj2)
 
     @staticmethod
-    def op_Inequality(app_domain, obj1, obj2):
-        return net_emu_coretypes.DotNetBoolean(app_domain.get_emulator_obj(), obj1 != obj2)
+    cdef DotNetBoolean op_Inequality(list objs):
+        cdef EmulatorAppDomain app_domain
+        cdef DotNetObject obj1
+        cdef DotNetObject obj2
+        app_domain = objs[0]
+        obj1 = objs[1]
+        obj2 = objs[2]
+        return DotNetBoolean(app_domain.get_emulator_obj(), obj1 != obj2)
 
     @staticmethod
-    def GetTypeFromHandle(app_domain, obj):
+    cdef DotNetType GetTypeFromHandle(list objs):
+        cdef EmulatorAppDomain app_domain
+        cdef DotNetObject obj
+        cdef DotNetType obj2
+        app_domain = objs[0]
+        obj = objs[1]
         obj2 = DotNetType(app_domain.get_emulator_obj(), obj)
         obj2.set_type_obj(app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Type'))
         return obj2
 
-    def get_Module(self):
+    @staticmethod
+    cdef DotNetModule get_Module(list objs):
+        cdef DotNetType self
+        cdef DotNetAssembly assembly
+        self = objs[0]
         if not isinstance(self.type_handle, net_row_objects.TypeDef):
             raise net_exceptions.ObjectTypeException
         #There is going to have to be a ton of reimplementation to support this for TypeRefs.
         assembly = DotNetAssembly.GetExecutingAssembly(self.get_emulator_obj().get_appdomain())
         return DotNetModule(self.get_emulator_obj(), assembly.get_module())
 
-    def GetFields(self, binding_flags=None):
-        if binding_flags == 1064:
+    @staticmethod 
+    cdef DotNetArray GetFields(list objs):
+        cdef DotNetType self
+        cdef DotNetInt32 binding_flags
+        cdef list field_objs
+        cdef net_row_objects.Field item
+        cdef net_row_objects.TypeDef type_obj
+        cdef DotNetFieldInfo field_info
+        cdef DotNetArray result_array
+        self = objs[0]
+        if len(objs) == 2:
+            binding_flags = objs[1]
+        else:
+            binding_flags = DotNetInt32(self, 0)
+        if binding_flags == DotNetInt32(self.get_emulator(), 1064):
             # static, nonpublic, getfield
             field_objs = list()
             type_obj = self.get_type_handle()
@@ -310,15 +702,24 @@ cdef class DotNetType(DotNetObject):
             return result_array
         else:
             raise net_exceptions.OperationNotSupportedException()
+        return DotNetArray(self.get_emulator_obj(), 0, type_obj.get_dotnetpe().get_type_by_full_name(b'System.Reflection.FieldInfo'), initialize=False)
 
-    def get_MetadataToken(self):
+    @staticmethod
+    cdef DotNetInt32 get_MetadataToken(list objs):
+        cdef DotNetType self
+        cdef int coded_token
+        self = objs[0]
         coded_token = self.get_type_handle().get_token()
-        return net_emu_coretypes.DotNetInt32(self.get_emulator_obj(), coded_token)
+        return DotNetInt32(self.get_emulator_obj(), coded_token)
 
     def __eq__(self, other):
         return isinstance(other, DotNetType) and self.get_type_handle() == other.get_type_handle()
-
-    def get_Assembly(self):
+    
+    @staticmethod
+    cdef DotNetAssembly get_Assembly(list objs):
+        cdef DotNetType self
+        cdef net_row_objects.Assembly module_obj
+        self = objs[0]
         module_obj = self.get_type_handle().get_dotnetpe().get_metadata_table('Assembly').get(0)
         return DotNetAssembly(self.get_emulator_obj(), module_obj)
 

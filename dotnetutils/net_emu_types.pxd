@@ -1,6 +1,9 @@
 #cython: language_level=3
 from dotnetutils cimport net_row_objects, net_utils, dotnetpefile
 from dotnetutils cimport net_emulator
+from cpython.object cimport PyCFunction, PyObject
+
+cimport numpy
 
 cdef str remove_generics_from_name(str name)
 
@@ -16,6 +19,11 @@ cdef class DotNetObject:
     cdef net_utils.TypeSig type_sig_obj
     cdef list initialized_fields
     cdef bint __initialized
+    cdef dict __registered_methods
+
+    cpdef void register_method(self, str name, emulated_func_ptr func)
+
+    cpdef emulated_func_ptr get_registered_method(self, str name)
 
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self)
 
@@ -36,6 +44,63 @@ cdef class DotNetObject:
     cpdef initialize_type(self, type_obj)
 
     cpdef get_type(self)
+
+ctypedef DotNetObject (*emulated_func_ptr)(list)
+
+cdef class DotNetNumber(DotNetObject):
+    cdef numpy.dtype __numpy_dtype
+    cdef object  __value
+
+    cpdef object get_value(self)
+
+    cpdef numpy.dtype get_numpy_dtype(self)
+
+    cpdef bint is_uint16(self)
+
+    cpdef bint is_int16(self)
+
+    @staticmethod
+    cdef DotNetString ToString(list objs)
+    
+cdef class DotNetInt8(DotNetNumber):
+    pass
+
+cdef class DotNetInt16(DotNetNumber):
+    pass
+
+cdef class DotNetInt32(DotNetNumber):
+    @staticmethod
+    cdef DotNetInt32 CompareTo(list objs)
+
+cdef class DotNetInt64(DotNetNumber):
+    pass
+
+cdef class DotNetUInt8(DotNetNumber):
+    pass
+
+cdef class DotNetUInt16(DotNetNumber):
+    pass
+
+cdef class DotNetUInt32(DotNetNumber):
+    pass
+
+cdef class DotNetUInt64(DotNetNumber):
+    pass
+
+cdef class DotNetSingle(DotNetNumber):
+    pass
+
+cdef class DotNetDouble(DotNetNumber):
+    pass
+
+cdef class DotNetBoolean(DotNetNumber):
+    pass
+    
+cdef class DotNetVoid(DotNetNumber):
+    pass
+
+cdef class DotNetChar(DotNetNumber):
+    pass
 
 cdef class DotNetNull(DotNetObject):
     pass
@@ -75,6 +140,30 @@ cdef class DotNetType(DotNetObject):
     cdef net_utils.TypeSig sig_obj
 
     cpdef get_type_handle(self)
+
+    @staticmethod
+    cdef DotNetBoolean get_IsByRef(list objs)
+
+    @staticmethod
+    cdef DotNetBoolean op_Equality(list objs)
+
+    @staticmethod
+    cdef DotNetBoolean op_Inequality(list objs)
+
+    @staticmethod
+    cdef DotNetType GetTypeFromHandle(list objs)
+
+    @staticmethod
+    cdef DotNetModule get_Module(list objs)
+
+    @staticmethod
+    cdef DotNetArray GetFields(list objs)
+
+    @staticmethod
+    cdef DotNetInt32 get_MetadataToken(list objs)
+
+    @staticmethod
+    cdef DotNetAssembly get_Assembly(list objs)
 
 
 cdef class DotNetMonitor(DotNetObject):
