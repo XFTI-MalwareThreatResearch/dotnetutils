@@ -818,10 +818,19 @@ cdef class DotNetArray(DotNetObject):
         else:
             array_str = str(self.internal_array)
         if len(array_str) > 250:
-            return 'DotNetArray: type_obj={}:{}, len={}, begin={}, end={}'.format(self.get_type_obj().get_table_name(),
-                                                                                  self.get_type_obj().get_rid(),
-                                                                                  len(self.internal_array),
-                                                                                  array_str[:50], array_str[-50:])
+            if self.get_type_obj() != None:
+                type_rid = self.get_type_obj().get_rid()
+                type_name = self.get_type_obj().get_table_name()
+            else:
+                type_rid = 'unkown_rid'
+                type_name = 'unknown_table_name'
+            int_len = len(self.internal_array)
+            begin = array_str[:50]
+            end = array_str[-50:]
+            return 'DotNetArray: type_obj={}:{}, len={}, begin={}, end={}'.format(type_name,
+                                                                                  type_rid,
+                                                                                  int_len,
+                                                                                  begin, end)
         return 'DotnetArray: type_obj={}:{} len={}, content={}'.format(self.get_type_obj().get_table_name(), self.get_type_obj().get_rid(),
                                                                        len(self.internal_array), array_str)
 
@@ -1158,9 +1167,7 @@ cdef class DotNetString(DotNetObject):
     def __init__(self, emulator_obj, str_data, str_encoding='utf-16le'):
         DotNetObject.__init__(self, emulator_obj)
         self.str_encoding = str_encoding
-        print('before sanitize {} {}'.format(str_data, type(str_data[0])))
         self.str_data = self.__sanitize_data(str_data)
-        print(5)
 
     cpdef str get_str_data_as_str(self):
         return self.get_str_data_as_bytes().decode(self.get_str_encoding())
@@ -1175,7 +1182,6 @@ cdef class DotNetString(DotNetObject):
         cdef object item
         cdef bytes b_data
         cdef bint skip_next_value
-        print(1)
         if isinstance(str_data, DotNetArray) or isinstance(str_data, list) or isinstance(str_data, bytes) or isinstance(str_data, bytearray):
             usable_data = list()
             if isinstance(str_data, bytes) or isinstance(str_data, bytearray):
@@ -1188,7 +1194,6 @@ cdef class DotNetString(DotNetObject):
                     for x in range(len(str_data)):
                         item = net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), str_data[x])
                         usable_data.append(item)
-                print(2)
                 return usable_data
             else:
                 skip_next_value = False
@@ -1214,10 +1219,8 @@ cdef class DotNetString(DotNetObject):
                             usable_data.append(net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), b_data[1]))
                         else:
                             usable_data.append(net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), item))
-                print(3)
                 return usable_data         
         else:
-            print(4)
             raise net_exceptions.InvalidArgumentsException()
 
     cpdef bytes get_str_data_as_bytes(self):
@@ -1266,7 +1269,6 @@ cdef class DotNetString(DotNetObject):
                     else:
                         base_encoding = element.get_str_encoding()
                     base_str += element.get_str_data()
-
                 return DotNetString(app_domain.get_emulator_obj(), base_str, base_encoding)
 
             else:
@@ -1276,7 +1278,7 @@ cdef class DotNetString(DotNetObject):
             if arg2 != None and arg3 != None:
                 finished_str = DotNetString.Concat(app_domain, DotNetString.Concat(app_domain, array.ToString(), arg2.ToString()), arg3.ToString())
                 return finished_str
-
+            
             #I dont really like this, but it should work for now. FIXME - this could fail with weird parameters (non byte array)
             if isinstance(arg2, net_emu_coretypes.DotNetNumber) and (arg2.is_uint16() or arg2.is_int16()):
                 result = DotNetString(app_domain.get_emulator_obj(), array.get_str_data() + [net_emu_coretypes.DotNetChar(app_domain.get_emulator_obj(), arg2)], array.get_str_encoding())

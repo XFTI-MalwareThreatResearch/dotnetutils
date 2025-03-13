@@ -522,13 +522,13 @@ cdef class DotNetEmulator:
                 state_str += '{}: {}\n'.format(hex(key), hex(value))
             else:
                 state_str += '{}: {} - {}\n'.format(hex(key), str(value), type(value))
-
         state_str += 'Printing stack:\n'
         for value in self.stack:
             if hasattr(value, 'dtype') and self.print_hex:
                 state_str += hex(value) + '\n'
             else:
                 state_str += '{} - {}\n'.format(str(value), type(value))
+
         state_str += 'Last Instruction Execution Time (perf_counter_ns): {}\n'.format(
             self.__last_instr_end - self.__last_instr_start)
         state_str += 'Current EIP: {} Current Offset: {}\n'.format(
@@ -1143,7 +1143,9 @@ cdef class DotNetEmulator:
     cdef bint handle_mul_instruction(self, net_cil_disas.Instruction instr) except *:
         value2 = self.stack.pop()
         value1 = self.stack.pop()
-        self.stack.append((value1 * value2).astype(value1.dtype))
+        result = (value1 * value2).astype(value1.dtype)
+        result = py_net_emu_types.DotNetNumber(self, result.dtype, result)
+        self.stack.append(result)
         return True
     
     cdef bint handle_neg_instruction(self, net_cil_disas.Instruction instr) except *:
