@@ -13,9 +13,8 @@ dependencies = [
     "numpy<2",
     "Cython>=3.0.11",
     "pycryptodome>=3.21.0",
-    "cysignals"
 ]
 
 [build-system]
-requires = ["setuptools", "cython", "wheel", "numpy", "cysignals"]
+requires = ["setuptools", "cython", "wheel", "numpy"]
 build-backend = "setuptools.build_meta"
