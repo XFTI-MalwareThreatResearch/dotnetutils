@@ -5,7 +5,6 @@ import os
 from dotnetutils cimport dotnetpefile, net_tokens, net_row_objects, net_emulator, net_cil_disas
 from dotnetutils cimport net_opcodes, net_utils, net_table_objects, net_structs, net_utils, net_emu_types
 from dotnetutils import net_graphing, net_exceptions
-from cysignals.signals cimport sig_check
 
 from cpython.datetime cimport datetime
 
@@ -1017,10 +1016,6 @@ cpdef bytes remove_useless_functions(bytes data) except *:
             instr_arg = instr.get_argument()
             dotnet.patch_instruction(method_obj, useless_methods[instr_arg.get_rid()], instr.get_instr_offset(),
                                      len(instr))
-            try:
-                sig_check()
-            except KeyboardInterrupt:
-                os._exit(0)
 
     # Check for useless memberref calls.
 
@@ -1069,10 +1064,6 @@ cpdef bytes remove_useless_functions(bytes data) except *:
                                          * b'\x00') + patch
                                 dotnet.patch_instruction(
                                     method, patch, instr.get_instr_offset(), len(instr))
-    try:
-        sig_check()
-    except KeyboardInterrupt:
-        os._exit(0)
     return dotnet.reconstruct_executable()
 
 cdef bint has_prefix(bytes type_name):
