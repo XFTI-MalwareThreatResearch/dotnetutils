@@ -10,7 +10,6 @@ from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from logging import getLogger
 from ctypes import sizeof
 from cpython.datetime cimport datetime
-from cpython.memoryview cimport memoryview
 from libc.stdint cimport uintptr_t
 from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
 logger = getLogger(__name__)
@@ -578,7 +577,7 @@ cdef class DotNetPeFile:
             raise net_exceptions.InvalidMetadataException
         curr_exe_data = net_patch.apply_pe_fixups(self.get_pe(), curr_exe_data,
                                                   self.get_pe().get_rva_from_offset(self.get_heap('#~').get_start_offset()),
-                                                  len(metadata_heap_data) - self.get_metadata_dir().get_metadata_heap_size(), self)
+                                                  len(metadata_heap_data) - self.get_metadata_dir().get_metadata_heap_size(), self, True)
         curr_exe_data = curr_exe_data[:self.get_heap('#~').get_start_offset()] + metadata_heap_data + curr_exe_data[self.get_heap(
             '#~').get_start_offset() + self.get_metadata_dir().get_metadata_heap_size():]
 
@@ -597,7 +596,7 @@ cdef class DotNetPeFile:
 
         curr_exe_data = net_patch.apply_pe_fixups(curr_dpe.get_pe(), curr_exe_data,
                                                   curr_dpe.get_pe().get_rva_from_offset(orig_strings_heap.get_offset()),
-                                                  len(strings_data) - orig_strings_heap.get_size(), curr_dpe)
+                                                  len(strings_data) - orig_strings_heap.get_size(), curr_dpe, True)
         curr_strings = curr_dpe.get_heap('#Strings')
         curr_exe_data = curr_exe_data[:curr_strings.get_offset()] + strings_data + curr_exe_data[
                                                                              curr_strings.get_offset() + curr_strings.get_size():]
@@ -615,7 +614,7 @@ cdef class DotNetPeFile:
 
             curr_exe_data = net_patch.apply_pe_fixups(curr_dpe.get_pe(), curr_exe_data,
                                                     curr_dpe.get_pe().get_rva_from_offset(current_us_heap.get_offset()),
-                                                    len(us_data) - current_us_heap.get_size(), curr_dpe)
+                                                    len(us_data) - current_us_heap.get_size(), curr_dpe, True)
             curr_exe_data = bytes(curr_exe_data[:current_us_heap.get_offset()] + us_data + curr_exe_data[current_us_heap.get_offset() + current_us_heap.get_size():])
             self.set_exe_data(curr_exe_data)
             return curr_exe_data

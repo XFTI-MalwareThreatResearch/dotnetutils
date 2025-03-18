@@ -252,8 +252,8 @@ cdef extern from *:
     } DIRECTORYOFFSET_STRUCT;
     """
     ctypedef struct DIRECTORYOFFSET_STRUCT:
-        uint32_t NameOffset
-        uint32_t NameIsString
+        uint32_t OffsetToDirectory
+        uint32_t DataIsDirectory
 
 ctypedef union OFFSETTODATA_RSRC:
     uint32_t OffsetToData

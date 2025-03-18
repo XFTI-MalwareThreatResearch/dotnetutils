@@ -1,5 +1,6 @@
 #cython: language_level=3
 from dotnetutils cimport dotnetpefile, net_table_objects
+from dotnetutils.net_structs cimport IMAGE_COR20_HEADER
 
 
 cdef class MetaDataHeader:
@@ -30,7 +31,8 @@ cdef class MetaDataDirectory:
     Represents the metadata directory.   
     """
     cdef dotnetpefile.DotNetPeFile dotnetpe
-    cdef object net_header
+    cdef IMAGE_COR20_HEADER net_header
+    cdef unsigned int net_header_offset
     cdef MetaDataHeader metadata_header
     cdef net_table_objects.MetadataTableHeader metadata_table_header
     cdef dict heaps
@@ -47,4 +49,4 @@ cdef class MetaDataDirectory:
     cpdef object get_heap(self, str name)
     cpdef dict get_heaps(self)
     cpdef int get_metadata_heap_size(self)
-    cpdef object get_net_header(self)
+    cpdef IMAGE_COR20_HEADER get_net_header(self)

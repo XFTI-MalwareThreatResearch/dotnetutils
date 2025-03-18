@@ -1,11 +1,13 @@
 #cython: language_level=3
 
 import pefile
-from dotnetutils.net_structs import IMAGE_COR20_HEADER
+from dotnetutils.net_structs cimport IMAGE_COR20_HEADER, IMAGE_DATA_DIRECTORY, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR
 from dotnetutils import net_exceptions
 from dotnetutils cimport dotnetpefile
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing
+from cpython.memoryview cimport memoryview
+from libc.stdint cimport uintptr_t
 
 
 cdef class MetaDataHeader:
@@ -104,7 +106,6 @@ cdef class MetaDataDirectory:
     """
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe):
         self.dotnetpe = dotnetpe
-        self.net_header = None
         self.metadata_header = None
         self.metadata_table_header = None
         self.heaps = dict()
@@ -113,7 +114,7 @@ cdef class MetaDataDirectory:
         self.metadata_file_size = 0
         self.is_valid_directory = self.process_directory(self.dotnetpe.get_exe_data())
 
-    cpdef object get_net_header(self):
+    cpdef IMAGE_COR20_HEADER get_net_header(self):
         return self.net_header
 
     cpdef object get_heap(self, str name):
@@ -132,12 +133,18 @@ cdef class MetaDataDirectory:
         return name not in self.heaps.keys()
 
     cdef bint process_directory(self, bytes file_data) except *:
-        pe = pefile.PE(data=file_data)
-        com_table_directory = pe.OPTIONAL_HEADER.DATA_DIRECTORY[
-            pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']]
-        com_offset = pe.get_physical_by_rva(com_table_directory.VirtualAddress)
-        self.net_header = IMAGE_COR20_HEADER.from_buffer_copy(file_data, com_offset)
-        self.net_header.set_file_offset(com_offset)
+        cdef dotnetpefile.PeFile pe = dotnetpefile.PeFile(file_data)
+        cdef IMAGE_DATA_DIRECTORY com_table_directory = pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
+        cdef unsigned int com_offset = pe.get_physical_by_rva(com_table_directory.VirtualAddress)
+        cdef memoryview file_data_view = memoryview(file_data)
+        cdef IMAGE_COR20_HEADER * cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>file_data_view.data + com_offset)
+        cdef IMAGE_DATA_DIRECTORY metadata_dir
+        cdef unsigned int metadata_offset
+        cdef unsigned int file_offset
+        cdef unsigned int size
+        cdef bytes name
+        self.net_header = cor_header[0]
+        self.net_header_offset = com_offset
         metadata_dir = self.net_header.MetaData
         metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
         self.metadata_header = MetaDataHeader(self.dotnetpe, file_data, metadata_offset)

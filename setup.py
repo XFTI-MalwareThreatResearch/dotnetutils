@@ -18,6 +18,7 @@ ext_modules = cythonize([
     Extension("dotnetutils.net_utils", ["dotnetutils/net_utils.pyx"], include_dirs=[numpy.get_include()]),
     Extension("dotnetutils.net_emu_types", ["dotnetutils/net_emu_types.pyx"], include_dirs=[numpy.get_include()]),
     Extension("dotnetutils.net_row_objects", ["dotnetutils/net_row_objects.pyx"], include_dirs=[numpy.get_include()]),
+    Extension("dotnetutils.net_patch", ["dotnetutils/net_patch.pyx"], include_dirs=[numpy.get_include()]),
 ], annotate=True)
 
 setup(
