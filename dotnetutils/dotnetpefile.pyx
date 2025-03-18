@@ -11,6 +11,7 @@ from logging import getLogger
 from ctypes import sizeof
 from cpython.datetime cimport datetime
 from cpython.memoryview cimport memoryview
+from libc.stdint cimport uintptr_t
 from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
 logger = getLogger(__name__)
 
@@ -24,21 +25,21 @@ cdef class PeFile:
         cdef memoryview dos_view = memoryview(file_data)
         cdef IMAGE_DOS_HEADER * dos_header = <IMAGE_DOS_HEADER*>dos_view.data
         cdef IMAGE_NT_HEADERS32 * nt_headers = NULL
-        if dos_header.Magic != 0x5A4D:
-            raise ValueError('dos_header.Magic != MZ')
+        if dos_header.e_magic != 0x5A4D:
+            raise ValueError('dos_header.e_magic != MZ')
         if len(file_data) <= dos_header.e_lfanew:
             raise ValueError("e_lfanew >= len(file_data)")
 
         self.__nt_headers_offset = dos_header.e_lfanew
-        nt_headers = <IMAGE_NT_HEADERS32*> (dos_view.data + self.__nt_headers_offset)
-        if nt_headers.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+        nt_headers = <IMAGE_NT_HEADERS32*> (<uintptr_t>dos_view.data + self.__nt_headers_offset)
+        if nt_headers.OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC:
             self.__parse_64(file_data)
         else:
             self.__parse_32(file_data)
 
     cdef void __parse_64(self, bytes file_data):
         cdef memoryview nt_view = memoryview(file_data)
-        cdef IMAGE_NT_HEADERS64 *nt_headers = <IMAGE_NT_HEADERS64*> (nt_view.data + self.__nt_headers_offset)
+        cdef IMAGE_NT_HEADERS64 *nt_headers = <IMAGE_NT_HEADERS64*> (<uintptr_t>nt_view.data + self.__nt_headers_offset)
         cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
         cdef int sechdr_offset
         self.__image_base = nt_headers.OptionalHeader.ImageBase
@@ -51,7 +52,7 @@ cdef class PeFile:
 
     cdef void __parse_32(self, bytes file_data):
         cdef memoryview nt_view = memoryview(file_data)
-        cdef IMAGE_NT_HEADERS32 *nt_headers = <IMAGE_NT_HEADERS32*> (nt_view.data + self.__nt_headers_offset)
+        cdef IMAGE_NT_HEADERS32 *nt_headers = <IMAGE_NT_HEADERS32*> (<uintptr_t>nt_view.data + self.__nt_headers_offset)
         cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
         cdef int sechdr_offset
         self.__is_64bit = False
@@ -85,10 +86,10 @@ cdef class PeFile:
         cdef IMAGE_NT_HEADERS64 * nt_headers64 = NULL
         
         if self.__is_64bit:
-            nt_headers64 = <IMAGE_NT_HEADERS64*>self.__file_view.data + self.__nt_headers_offset
+            nt_headers64 = <IMAGE_NT_HEADERS64*>(<uintptr_t>self.__file_view.data + self.__nt_headers_offset)
             return nt_headers64.OptionalHeader.DataDirectory[idx]
         else:
-            nt_headers32 = <IMAGE_NT_HEADERS32*>self.__file_view.data + self.__nt_headers_offset
+            nt_headers32 = <IMAGE_NT_HEADERS32*>(<uintptr_t>self.__file_view.data + self.__nt_headers_offset)
             return nt_headers32.OptionalHeader.DataDirectory[idx]
 
         
@@ -368,14 +369,14 @@ cdef class DotNetPeFile:
         cdef bytes rsrc_name
         cdef bytes rsrc_data
         cdef IMAGE_DATA_DIRECTORY * resources_dir
+        cdef IMAGE_DATA_DIRECTORY com_table_directory
         results = list()
         resources = self.get_metadata_table('ManifestResource')
         if resources:
-            com_table_directory = self.get_pe().OPTIONAL_HEADER.DATA_DIRECTORY[
-                pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']]
+            com_table_directory = self.get_pe().get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
             com_offset = self.get_pe().get_physical_by_rva(com_table_directory.VirtualAddress)
             com_offset += 24
-            resources_dir = <IMAGE_DATA_DIRECTORY*>self.get_pe().get_data_view().data + com_offset
+            resources_dir = <IMAGE_DATA_DIRECTORY*>(<uintptr_t>self.get_pe().get_data_view().data + com_offset)
             resources_offset = self.get_pe().get_physical_by_rva(resources_dir.VirtualAddress)
             for item in resources:
                 if item['Implementation'].get_raw_value() == 0:
@@ -759,7 +760,7 @@ cpdef DotNetPeFile try_get_dotnetpe(str file_path='', bytes pe_data=bytes(), bin
         if not dotnetpe.metadata_dir.is_valid_directory:
             return None
         return dotnetpe
-    except (net_exceptions.NotADotNetFile, pefile.PEFormatError):
+    except (net_exceptions.NotADotNetFile, ValueError):
         return None
     except net_exceptions.TooManyMethodParameters:
         logger.error(
