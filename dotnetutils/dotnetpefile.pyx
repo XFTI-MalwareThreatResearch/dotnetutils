@@ -2,17 +2,107 @@
 
 import os
 import re
-import pefile
 from dotnetutils cimport net_tokens
 from dotnetutils import net_exceptions, net_patch
 from dotnetutils cimport net_row_objects, net_table_objects
-from dotnetutils.net_structs import IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, DotNetResourceSet
+from dotnetutils.net_structs import DotNetResourceSet
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from logging import getLogger
 from ctypes import sizeof
 from cpython.datetime cimport datetime
+from cpython.memoryview cimport memoryview
+from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
 logger = getLogger(__name__)
 
+cdef class PeFile:
+    def __init__(self, bytes file_data):
+        self.__file_data = file_data
+        self.__file_view = memoryview(self.__file_data)
+        self.__parse(file_data)
+
+    cdef void __parse(self, bytes file_data) except *:
+        cdef memoryview dos_view = memoryview(file_data)
+        cdef IMAGE_DOS_HEADER * dos_header = <IMAGE_DOS_HEADER*>dos_view.data
+        cdef IMAGE_NT_HEADERS32 * nt_headers = NULL
+        if dos_header.Magic != 0x5A4D:
+            raise ValueError('dos_header.Magic != MZ')
+        if len(file_data) <= dos_header.e_lfanew:
+            raise ValueError("e_lfanew >= len(file_data)")
+
+        self.__nt_headers_offset = dos_header.e_lfanew
+        nt_headers = <IMAGE_NT_HEADERS32*> (dos_view.data + self.__nt_headers_offset)
+        if nt_headers.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+            self.__parse_64(file_data)
+        else:
+            self.__parse_32(file_data)
+
+    cdef void __parse_64(self, bytes file_data):
+        cdef memoryview nt_view = memoryview(file_data)
+        cdef IMAGE_NT_HEADERS64 *nt_headers = <IMAGE_NT_HEADERS64*> (nt_view.data + self.__nt_headers_offset)
+        cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
+        cdef int sechdr_offset
+        self.__image_base = nt_headers.OptionalHeader.ImageBase
+        self.__is_64bit = True
+        sechdr_offset = self.__nt_headers_offset + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader
+        for x in range(nt_headers.FileHeader.NumberOfSections):
+            sec_hdr = <IMAGE_SECTION_HEADER*> sechdr_offset
+            self.__sections.append(sec_hdr[0])
+            sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
+
+    cdef void __parse_32(self, bytes file_data):
+        cdef memoryview nt_view = memoryview(file_data)
+        cdef IMAGE_NT_HEADERS32 *nt_headers = <IMAGE_NT_HEADERS32*> (nt_view.data + self.__nt_headers_offset)
+        cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
+        cdef int sechdr_offset
+        self.__is_64bit = False
+        self.__image_base = nt_headers.OptionalHeader.ImageBase
+        sechdr_offset = self.__nt_headers_offset + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader
+        for x in range(nt_headers.FileHeader.NumberOfSections):
+            sec_hdr = <IMAGE_SECTION_HEADER*> sechdr_offset
+            self.__sections.append(sec_hdr[0])
+            sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
+
+    cpdef int get_offset_from_rva(self, int rva):
+        cdef IMAGE_SECTION_HEADER sec_hdr
+        cdef int sec_size
+        for x in range(len(self.__sections)):
+            sec_hdr = self.__sections[x]
+            sec_size = max(sec_hdr.SizeOfRawData, sec_hdr.Misc.VirtualSize)
+            if sec_hdr.VirtualAddress <= rva < (sec_hdr.VirtualAddress + sec_size):
+                return rva - sec_hdr.VirtualAddress + sec_hdr.PointerToRawData
+        return -1
+
+    cpdef int get_rva_from_offset(self, int offset):
+        cdef IMAGE_SECTION_HEADER sec_hdr
+        for x in range(len(self.__sections)):
+            sec_hdr = self.__sections[x]
+            if sec_hdr.PointerToRawData <= offset < (sec_hdr.PointerToRawData + sec_hdr.SizeOfRawData):
+                return offset - sec_hdr.PointerToRawData + sec_hdr.VirtualAddress
+        return -1
+
+    cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, int idx):
+        cdef IMAGE_NT_HEADERS32 * nt_headers32 = NULL
+        cdef IMAGE_NT_HEADERS64 * nt_headers64 = NULL
+        
+        if self.__is_64bit:
+            nt_headers64 = <IMAGE_NT_HEADERS64*>self.__file_view.data + self.__nt_headers_offset
+            return nt_headers64.OptionalHeader.DataDirectory[idx]
+        else:
+            nt_headers32 = <IMAGE_NT_HEADERS32*>self.__file_view.data + self.__nt_headers_offset
+            return nt_headers32.OptionalHeader.DataDirectory[idx]
+
+        
+    cpdef bint is_64bit(self):
+        return self.__is_64bit
+
+    cpdef list get_sections(self):
+        return self.__sections
+
+    cpdef int get_elfanew(self):
+        return self.__nt_headers_offset
+
+    cdef memoryview get_data_view(self):
+        return self.__file_view
 
 cdef class DotNetPeFile:
     def __init__(self, str file_path='', bytes pe_data=bytes(), bint no_processing=False):
@@ -21,6 +111,7 @@ cdef class DotNetPeFile:
         :param file_path: The file path to the file
         :param pe_data: The raw bytes of the PE file
         """
+        cdef IMAGE_DATA_DIRECTORY com_table_directory
         if  len(file_path) == 0 and len(pe_data) == 0:
             raise net_exceptions.InvalidArgumentsException
 
@@ -33,12 +124,11 @@ cdef class DotNetPeFile:
             self.exe_data = fd.read()
             fd.close()
         try:
-            self.pe = pefile.PE(data=self.exe_data)
-        except pefile.PEFormatError:
+            self.pe = PeFile(self.exe_data)
+        except ValueError:
             raise net_exceptions.NotADotNetFile
         try:
-            com_table_directory = self.pe.OPTIONAL_HEADER.DATA_DIRECTORY[
-                pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']]
+            com_table_directory = self.pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
             if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
                 raise net_exceptions.NotADotNetFile
         except IndexError:
@@ -92,15 +182,15 @@ cdef class DotNetPeFile:
         Internal use only.  Sets exe_data property and reinitializes pe property.
         """
         self.exe_data = bytes(exe_data)
-        self.pe = pefile.PE(data=exe_data)
+        self.pe = PeFile(exe_data)
 
-    cpdef object get_pe(self):
+    cpdef PeFile get_pe(self):
         """
         Obtains a pefile.PE object representing the current executable.
         """
         return self.pe
 
-    cpdef object get_cor20_header(self):
+    cpdef IMAGE_COR20_HEADER get_cor20_header(self):
         """
         Obtains the COR20 header.
         """
@@ -277,6 +367,7 @@ cdef class DotNetPeFile:
         cdef unsigned long resources_size
         cdef bytes rsrc_name
         cdef bytes rsrc_data
+        cdef IMAGE_DATA_DIRECTORY * resources_dir
         results = list()
         resources = self.get_metadata_table('ManifestResource')
         if resources:
@@ -284,7 +375,7 @@ cdef class DotNetPeFile:
                 pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']]
             com_offset = self.get_pe().get_physical_by_rva(com_table_directory.VirtualAddress)
             com_offset += 24
-            resources_dir = IMAGE_DATA_DIRECTORY.from_buffer_copy(self.get_exe_data(), com_offset)
+            resources_dir = <IMAGE_DATA_DIRECTORY*>self.get_pe().get_data_view().data + com_offset
             resources_offset = self.get_pe().get_physical_by_rva(resources_dir.VirtualAddress)
             for item in resources:
                 if item['Implementation'].get_raw_value() == 0:

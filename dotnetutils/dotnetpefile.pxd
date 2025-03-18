@@ -3,15 +3,46 @@ from dotnetutils cimport net_metadata
 from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_table_objects
 
+from cpython.memoryview cimport memoryview
+from dotnetutils.net_structs cimport IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER
+
+cdef class PeFile:
+    cdef list __sections
+    cdef int __image_base
+    cdef int __nt_headers_offset
+    cdef bint __is_64bit
+    cdef bytes __file_data
+    cdef memoryview __file_view
+
+    cpdef bint is_64bit(self)
+
+    cdef void __parse(self, bytes file_data) except *
+
+    cdef void __parse_64(self, bytes file_data)
+
+    cdef void __parse_32(self, bytes file_data)
+    
+    cpdef int get_offset_from_rva(self, int rva)
+
+    cpdef int get_rva_from_offset(self, int offset)
+
+    cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, int idx)
+
+    cpdef list get_sections(self)
+
+    cpdef int get_elfanew(self)
+
+    cdef memoryview get_data_view(self)
+
 cdef class DotNetPeFile:
     cdef str file_path
     cdef bytes exe_data
-    cdef object pe
     cdef net_metadata.MetaDataDirectory metadata_dir
     cdef int debug_counter
     cdef list added_strings
     cdef bytes original_exe_data
     cdef str logging_str
+    cdef PeFile pe
 
     cpdef net_row_objects.MethodDef get_entry_point(self)
 
@@ -61,11 +92,11 @@ cdef class DotNetPeFile:
 
     cpdef int get_processor_bits(self)
 
-    cpdef object get_cor20_header(self)
+    cpdef IMAGE_COR20_HEADER get_cor20_header(self)
 
     cpdef object get_token_value(self, unsigned long token)
 
-    cpdef object get_pe(self)
+    cpdef PeFile get_pe(self)
 
     cpdef void set_exe_data(self, bytes exe_data)
 

@@ -1,5 +1,283 @@
 #cython: language_level=3
 cimport numpy
+from libc.stdint cimport uint16_t, uint32_t, uint8_t, uint64_t
+
+
+"""
+Structures required to parse .NET metadata headers.
+"""
+
+ctypedef struct IMAGE_DOS_HEADER:
+    uint16_t e_magic
+    uint16_t e_cblp
+    uint16_t e_cp
+    uint16_t e_crlc
+    uint16_t e_cparhdr
+    uint16_t e_minalloc
+    uint16_t e_maxalloc
+    uint16_t e_ss
+    uint16_t e_sp
+    uint16_t e_csum
+    uint16_t e_ip
+    uint16_t e_cs
+    uint16_t e_lfarlc
+    uint16_t e_ovno
+    uint16_t e_res[4]
+    uint16_t e_oemid
+    uint16_t e_oeminfo
+    uint16_t e_res2[10]
+    uint32_t e_lfanew
+
+ctypedef struct IMAGE_FILE_HEADER:
+    uint16_t Machine
+    uint16_t NumberOfSections
+    uint32_t TimeDateStamp
+    uint32_t PointerToSymbolTable
+    uint32_t NumberOfSymbols
+    uint16_t SizeOfOptionalHeader
+    uint16_t Characteristics
+
+ctypedef struct IMAGE_DATA_DIRECTORY:
+    uint32_t VirtualAddress
+    uint32_t Size
+
+ctypedef struct COR20_METADATA_TABLE_HEADER:
+    uint32_t Reserved
+    uint8_t MajorVersion
+    uint8_t MinorVersion
+    uint8_t HeapOffsetSizes
+    uint8_t Reserved2
+    uint64_t Valid
+    uint64_t Sorted
+
+ctypedef union COR20_ENTRYPOINT_UNION:
+    uint32_t EntryPointToken
+    uint32_t EntryPointRVA
+
+ctypedef struct IMAGE_COR20_HEADER:
+    uint32_t cb
+    uint16_t MajorRuntimeVersion
+    uint16_t MinorRuntimeVersion
+    IMAGE_DATA_DIRECTORY MetaData
+    uint32_t Flags
+    COR20_ENTRYPOINT_UNION EntryPoint
+    IMAGE_DATA_DIRECTORY Resources
+    IMAGE_DATA_DIRECTORY StrongNameSignature
+    IMAGE_DATA_DIRECTORY CodeManagerTable
+    IMAGE_DATA_DIRECTORY VTableFixups
+    IMAGE_DATA_DIRECTORY ExportAddressTableJumps
+    IMAGE_DATA_DIRECTORY ManagedNativeHeader
+
+cdef int IMAGE_NUMBEROF_DATA_DIRECTORY_ENTRIES = 16
+
+ctypedef struct IMAGE_OPTIONAL_HEADER32:
+    uint16_t Magic
+    uint8_t MajorLinkerVersion
+    uint8_t MinorLinkerVersion
+    uint32_t SizeOfCode
+    uint32_t SizeOfInitializedData
+    uint32_t SizeOfUninintializedData
+    uint32_t AddressOfEntryPoint
+    uint32_t BaseOfCode
+    uint32_t BaseOfData
+    uint32_t ImageBase
+    uint32_t SectionAlignment
+    uint32_t FileAlignment
+    uint16_t MajorOperatingSystemVersion
+    uint16_t MinorOperatingSystemVersion
+    uint16_t MajorImageVersion
+    uint16_t MinorImageVersion
+    uint16_t MajorSubsystemVersion
+    uint16_t MinorSubsystemVersion
+    uint32_t Win32VersionValue
+    uint32_t SizeOfImage
+    uint32_t SizeOfHeaders
+    uint32_t CheckSum
+    uint16_t SubSystem
+    uint16_t DllCharacteristics
+    uint32_t SizeOfStackReserve
+    uint32_t SizeOfStackCommit
+    uint32_t SizeOfHeapReserve
+    uint32_t SizeOfHeapCommit
+    uint32_t LoaderFlags
+    uint32_t NumberOfRvaAndSizes
+    IMAGE_DATA_DIRECTORY DataDirectory[16]
+
+ctypedef struct IMAGE_OPTIONAL_HEADER64:
+    uint16_t Magic
+    uint8_t MajorLinkerVersion
+    uint8_t MinorLinkerVersion
+    uint32_t SizeOfCode
+    uint32_t SizeOfInitializedData
+    uint32_t SizeOfUninintializedData
+    uint32_t AddressOfEntryPoint
+    uint32_t BaseOfCode
+    uint32_t BaseOfData
+    uint64_t ImageBase
+    uint32_t SectionAlignment
+    uint32_t FileAlignment
+    uint16_t MajorOperatingSystemVersion
+    uint16_t MinorOperatingSystemVersion
+    uint16_t MajorImageVersion
+    uint16_t MinorImageVersion
+    uint16_t MajorSubsystemVersion
+    uint16_t MinorSubsystemVersion
+    uint32_t Win32VersionValue
+    uint32_t SizeOfImage
+    uint32_t SizeOfHeaders
+    uint32_t CheckSum
+    uint16_t SubSystem
+    uint16_t DllCharacteristics
+    uint64_t SizeOfStackReserve
+    uint64_t SizeOfStackCommit
+    uint64_t SizeOfHeapReserve
+    uint64_t SizeOfHeapCommit
+    uint32_t LoaderFlags
+    uint32_t NumberOfRvaAndSizes
+    IMAGE_DATA_DIRECTORY DataDirectory[16]
+
+ctypedef union Misc_Union:
+    uint32_t PhysicalAddress
+    uint32_t VirtualSize
+
+cdef int IMAGE_SIZEOF_SHORT_NAME = 8
+
+ctypedef struct IMAGE_SECTION_HEADER:
+    char Name[8]
+    Misc_Union Misc
+    uint32_t VirtualAddress
+    uint32_t SizeOfRawData
+    uint32_t PointerToRawData
+    uint32_t PointerToRelocations
+    uint32_t PointerToLineNumbers
+    uint16_t NumberOfRelocations
+    uint16_t NumberOfLinenumbers
+    uint32_t Characteristics
+
+ctypedef struct IMAGE_NT_HEADERS32:
+    uint32_t Signature
+    IMAGE_FILE_HEADER FileHeader
+    IMAGE_OPTIONAL_HEADER32 OptionalHeader
+
+ctypedef struct IMAGE_NT_HEADERS64:
+    uint32_t Signature
+    IMAGE_FILE_HEADER FileHeader
+    IMAGE_OPTIONAL_HEADER64 OptionalHeader
+
+cdef int IMAGE_DIRECTORY_ENTRY_ARCHITECTURE = 7
+cdef int IMAGE_DIRECTORY_ENTRY_BASERELOC = 5
+cdef int IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT = 11
+cdef int IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR = 14
+cdef int IMAGE_DIRECTORY_ENTRY_DEBUG = 6
+cdef int IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT = 13
+cdef int IMAGE_DIRECTORY_ENTRY_EXCEPTION = 3
+cdef int IMAGE_DIRECTORY_ENTRY_EXPORT = 0
+cdef int IMAGE_DIRECTORY_ENTRY_GLOBALPTR = 8
+cdef int IMAGE_DIRECTORY_ENTRY_IAT = 12
+cdef int IMAGE_DIRECTORY_ENTRY_IMPORT = 1
+cdef int IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG = 10
+cdef int IMAGE_DIRECTORY_ENTRY_RESOURCE = 2
+cdef int IMAGE_DIRECTORY_ENTRY_SECURITY = 4
+cdef int IMAGE_DIRECTORY_ENTRY_TLS = 9
+
+ctypedef struct IMAGE_BASE_RELOCATION:
+    uint32_t VirtualAddress
+    uint32_t BlockSize
+
+ctypedef union DUMMYUNIONIAT:
+    uint32_t Characteristics
+    uint32_t OriginalFirstThunk
+
+ctypedef struct IMAGE_IMPORT_DESCRIPTOR:
+    DUMMYUNIONIAT DUMMYUNIONNAME
+    uint32_t TimeDateStamp
+    uint32_t ForwarderChain
+    uint32_t Name
+    uint32_t FirstThunk
+
+ctypedef union thunk_u1_32:
+    uint32_t Function
+    uint32_t Ordinal
+    uint32_t AddressOfData
+    uint32_t ForwarderString1
+
+ctypedef union thunk_u1_64:
+    uint64_t Function
+    uint64_t Ordinal
+    uint64_t AddressOfData
+    uint64_t ForwarderString1
+
+ctypedef struct IMAGE_THUNK_DATA32:
+    thunk_u1_32 u1
+
+ctypedef struct IMAGE_THUNK_DATA64:
+    thunk_u1_64 u1
+
+cdef int IMAGE_ORDINAL_FLAG32 = 0x80000000
+cdef int IMAGE_ORDINAL_FLAG64 = 0x8000000000000000
+
+cdef int IMAGE_SCN_CNT_CODE = 0x20
+cdef int IMAGE_SCN_MEM_READ = 0x40000000
+cdef int IMAGE_SCN_CNT_INITIALIZED_DATA = 0x40
+cdef int IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x80
+
+ctypedef struct IMAGE_RESOURCE_DIRECTORY:
+    uint32_t Characteristics
+    uint32_t TimeDateStamp
+    uint16_t MajorVersion
+    uint16_t MinorVersion
+    uint16_t NumberOfNamedEntries
+    uint16_t NumberOfIdEntries
+cdef extern from *:
+    """
+    typedef struct NAMEOFFSET_STRUCT_T {
+        uint32_t NameOffset: 31;
+        uint32_t NameIsString: 1;
+    } NAMEOFFSET_STRUCT;
+    """
+    ctypedef struct NAMEOFFSET_STRUCT:
+        uint32_t NameOffset
+        uint32_t NameIsString
+
+ctypedef union NAME_RSRC:
+    NAMEOFFSET_STRUCT NameOffset
+    uint32_t Name
+    uint16_t Id
+
+cdef extern from *:
+    """
+    typedef struct DIRECTORYOFFSET_STRUCT_T {
+        uint32_t OffsetToDirectory: 31;
+        uint32_t DataIsDirectory: 1;
+    } DIRECTORYOFFSET_STRUCT;
+    """
+    ctypedef struct DIRECTORYOFFSET_STRUCT:
+        uint32_t NameOffset
+        uint32_t NameIsString
+
+ctypedef union OFFSETTODATA_RSRC:
+    uint32_t OffsetToData
+    DIRECTORYOFFSET_STRUCT OffsetToDirectory
+
+ctypedef struct IMAGE_RESOURCE_DIRECTORY_ENTRY:
+    NAME_RSRC Name
+    OFFSETTODATA_RSRC OffsetToData
+
+ctypedef struct IMAGE_RESOURCE_DATA_ENTRY:
+    uint32_t OffsetToData
+    uint32_t Size
+    uint32_t CodePage
+    uint32_t Reserved
+
+ctypedef struct IMAGE_DEBUG_DIRECTORY:
+    uint32_t Characteristics
+    uint32_t TimeDateStamp
+    uint16_t MajorVersion
+    uint16_t MinorVersion
+    uint32_t Type
+    uint32_t SizeOfData
+    uint32_t AddressOfRawData
+    uint32_t PointerToRawData
 
 cdef class DotNetDataReader:
     cdef int __data_len
