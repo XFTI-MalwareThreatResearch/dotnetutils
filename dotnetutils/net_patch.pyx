@@ -112,6 +112,7 @@ cdef bytes insert_blank_userstrings64(dotnetpefile.DotNetPeFile dotnetpe, bytes 
     cdef int new_data_va
     cdef int stream_amt_offset
     cdef int new_data_offset
+    cdef bytes number_of_streams_bytes
     new_exe_data = bytearray(exe_data)
     PyObject_GetBuffer(new_exe_data, &exe_data_view, PyBUF_ANY_CONTIGUOUS)
     dos_header = <IMAGE_DOS_HEADER*>exe_data_view.buf
@@ -120,8 +121,8 @@ cdef bytes insert_blank_userstrings64(dotnetpefile.DotNetPeFile dotnetpe, bytes 
     metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
     streams_offset = metadata_offset + 12
     number_of_streams = metadata_offset + 12
-    number_of_streams = exe_data[number_of_streams:number_of_streams + 4]
-    length_of_str = int.from_bytes(number_of_streams, 'little')
+    number_of_streams_bytes = exe_data[number_of_streams:number_of_streams + 4]
+    length_of_str = int.from_bytes(number_of_streams_bytes, 'little')
     streams_offset += length_of_str + 6
     number_of_streams = int.from_bytes(exe_data[streams_offset:streams_offset + 2], 'little')
     #change the number of streams later.
@@ -159,17 +160,17 @@ cdef bytes insert_blank_userstrings64(dotnetpefile.DotNetPeFile dotnetpe, bytes 
             current_offset += 1
         current_offset += (4 - (current_offset % 4))
         
-    new_exe_data = apply_pe_fixups(dotnetpe.get_pe(), new_exe_data, dotnetpe.get_pe().get_rva_from_offset(new_header_offset), len(new_streamheader), dotnetpe, False)
+    new_exe_data = bytearray(apply_pe_fixups(dotnetpe.get_pe(), bytes(new_exe_data), dotnetpe.get_pe().get_rva_from_offset(new_header_offset), len(new_streamheader), dotnetpe, False))
     new_exe_data = new_exe_data[:new_header_offset] + new_streamheader + new_exe_data[new_header_offset:]
     new_data_offset = us_offset + metadata_offset + len(new_streamheader)
     new_pe = dotnetpefile.PeFile(bytes(new_exe_data))
     new_data_va = new_pe.get_rva_from_offset(new_data_offset)
-    new_exe_data = apply_pe_fixups(new_pe, new_exe_data, new_data_va, 1, dotnetpe, False)
+    new_exe_data = bytearray(apply_pe_fixups(new_pe, bytes(new_exe_data), new_data_va, 1, dotnetpe, False))
     new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
     stream_amt_offset = streams_offset - 2
     new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
     PyBuffer_Release(&exe_data_view)
-    return new_exe_data
+    return bytes(new_exe_data)
 
 cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe, bytes exe_data):
     """
@@ -645,7 +646,7 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
                                                                                                    optional_end_offset:]
 
     # now for the COR20 header.
-    net_header_offset = dotnetpe.get_metadata_dir().get_net_header().get_file_offset()
+    net_header_offset = dotnetpe.get_cor_header_offset()
     cor_header = <IMAGE_COR20_HEADER*> (<uintptr_t>old_exe_view.buf + net_header_offset)
     cor_header.MetaData.VirtualAddress = get_fixed_rva(old_pe, old_exe_data, cor_header.MetaData.VirtualAddress,
                                                        va_addr, difference)

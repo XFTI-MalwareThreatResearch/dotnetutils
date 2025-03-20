@@ -113,7 +113,6 @@ ctypedef struct IMAGE_OPTIONAL_HEADER64:
     uint32_t SizeOfUninitializedData
     uint32_t AddressOfEntryPoint
     uint32_t BaseOfCode
-    uint32_t BaseOfData
     uint64_t ImageBase
     uint32_t SectionAlignment
     uint32_t FileAlignment

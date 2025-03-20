@@ -35,6 +35,8 @@ cdef class PeFile:
             del actually_added['Misc']['PhysicalAddress']
         if len(actually_added['Name']) != 8:
             actually_added['Name'] = actually_added['Name'] + (b'\x00' * (8 - len(actually_added['Name'])))
+        if len(actually_added['Name']) != 8:
+            actually_added['Name'] = actually_added['Name'][:8]
         self.__sections.append(actually_added)
 
     cdef void __parse(self) except *:
@@ -55,7 +57,7 @@ cdef class PeFile:
     cdef void __parse_64(self):
         cdef IMAGE_NT_HEADERS64 *nt_headers = <IMAGE_NT_HEADERS64*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
         cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
-        cdef int sechdr_offset
+        cdef unsigned int sechdr_offset
         self.__image_base = nt_headers.OptionalHeader.ImageBase
         self.__is_64bit = True
         sechdr_offset = self.__nt_headers_offset + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader
@@ -67,7 +69,7 @@ cdef class PeFile:
     cdef void __parse_32(self):
         cdef IMAGE_NT_HEADERS32 *nt_headers = <IMAGE_NT_HEADERS32*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
         cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
-        cdef int sechdr_offset
+        cdef unsigned int sechdr_offset
         self.__is_64bit = False
         self.__image_base = nt_headers.OptionalHeader.ImageBase
         sechdr_offset = self.__nt_headers_offset + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader
