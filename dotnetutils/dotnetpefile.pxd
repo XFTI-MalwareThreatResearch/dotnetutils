@@ -4,27 +4,31 @@ from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_table_objects
 
 from cpython.memoryview cimport memoryview
-from dotnetutils.net_structs cimport IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER
+from cpython.buffer cimport Py_buffer
+from libc.stdint cimport uintptr_t
+from dotnetutils.net_structs cimport IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, IMAGE_SECTION_HEADER
 
 cdef class PeFile:
     cdef list __sections
-    cdef int __image_base
-    cdef int __nt_headers_offset
+    cdef unsigned long  __image_base
+    cdef unsigned int __nt_headers_offset
     cdef bint __is_64bit
-    cdef bytes __file_data
-    cdef memoryview __file_view
+    cdef bytearray __file_data
+    cdef Py_buffer __file_view
 
     cpdef bint is_64bit(self)
 
-    cdef void __parse(self, bytes file_data) except *
+    cdef void __parse(self) except *
 
-    cdef void __parse_64(self, bytes file_data)
+    cdef void __parse_64(self)
 
-    cdef void __parse_32(self, bytes file_data)
+    cdef __add_section(self, IMAGE_SECTION_HEADER * sec_hdr)
+
+    cdef void __parse_32(self)
     
-    cpdef int get_offset_from_rva(self, int rva)
+    cpdef unsigned int get_offset_from_rva(self, unsigned int rva)
 
-    cpdef int get_rva_from_offset(self, int offset)
+    cpdef unsigned int get_rva_from_offset(self, unsigned int offset)
 
     cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, int idx)
 
@@ -32,7 +36,9 @@ cdef class PeFile:
 
     cpdef int get_elfanew(self)
 
-    cdef memoryview get_data_view(self)
+    cdef uintptr_t get_data_view(self)
+
+    cpdef unsigned int get_physical_by_rva(self, unsigned int rva)
 
 cdef class DotNetPeFile:
     cdef str file_path
@@ -43,6 +49,9 @@ cdef class DotNetPeFile:
     cdef bytes original_exe_data
     cdef str logging_str
     cdef PeFile pe
+    cdef unsigned int __cor_header_offset
+
+    cpdef unsigned int get_cor_header_offset(self)
 
     cpdef net_row_objects.MethodDef get_entry_point(self)
 

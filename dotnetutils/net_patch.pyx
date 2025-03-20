@@ -3,8 +3,7 @@
 from dotnetutils import net_exceptions
 from dotnetutils cimport dotnetpefile
 from dotnetutils.net_utils cimport convert_pointer_to_bytes
-from cpython.memoryview cimport memoryview
-
+from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
 from libc.stdint cimport uintptr_t
 
 from cpython.bytes cimport PyBytes_FromStringAndSize
@@ -13,7 +12,7 @@ from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_SCN_CNT_CODE, I
 
 cdef bytes insert_blank_userstrings32(dotnetpefile.DotNetPeFile dotnetpe, bytes exe_data):
     cdef bytearray new_exe_data
-    cdef memoryview exe_data_view
+    cdef Py_buffer exe_data_view
     cdef IMAGE_DOS_HEADER * dos_header
     cdef IMAGE_NT_HEADERS32 * nt_headers
     cdef int metadata_offset
@@ -33,9 +32,9 @@ cdef bytes insert_blank_userstrings32(dotnetpefile.DotNetPeFile dotnetpe, bytes 
     cdef int stream_amt_offset
     cdef int new_data_offset
     new_exe_data = bytearray(exe_data)
-    exe_data_view = memoryview(exe_data)
-    dos_header = <IMAGE_DOS_HEADER*>exe_data_view.data
-    nt_headers = <IMAGE_NT_HEADERS32*>exe_data_view.data + dos_header.e_lfanew
+    PyObject_GetBuffer(new_exe_data, &exe_data_view, PyBUF_ANY_CONTIGUOUS)
+    dos_header = <IMAGE_DOS_HEADER*>exe_data_view.buf
+    nt_headers = <IMAGE_NT_HEADERS32*>exe_data_view.buf + dos_header.e_lfanew
 
     metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
     streams_offset = metadata_offset + 12
@@ -88,11 +87,12 @@ cdef bytes insert_blank_userstrings32(dotnetpefile.DotNetPeFile dotnetpe, bytes 
     new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
     stream_amt_offset = streams_offset - 2
     new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
+    PyBuffer_Release(&exe_data_view)
     return new_exe_data
 
 cdef bytes insert_blank_userstrings64(dotnetpefile.DotNetPeFile dotnetpe, bytes exe_data):
     cdef bytearray new_exe_data
-    cdef memoryview exe_data_view
+    cdef Py_buffer exe_data_view
     cdef IMAGE_DOS_HEADER * dos_header
     cdef IMAGE_NT_HEADERS64 * nt_headers
     cdef int metadata_offset
@@ -112,9 +112,9 @@ cdef bytes insert_blank_userstrings64(dotnetpefile.DotNetPeFile dotnetpe, bytes 
     cdef int stream_amt_offset
     cdef int new_data_offset
     new_exe_data = bytearray(exe_data)
-    exe_data_view = memoryview(exe_data)
-    dos_header = <IMAGE_DOS_HEADER*>exe_data_view.data
-    nt_headers = <IMAGE_NT_HEADERS64*>exe_data_view.data + dos_header.e_lfanew
+    PyObject_GetBuffer(new_exe_data, &exe_data_view, PyBUF_ANY_CONTIGUOUS)
+    dos_header = <IMAGE_DOS_HEADER*>exe_data_view.buf
+    nt_headers = <IMAGE_NT_HEADERS64*>(<uintptr_t>exe_data_view.buf + dos_header.e_lfanew)
 
     metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
     streams_offset = metadata_offset + 12
@@ -167,6 +167,7 @@ cdef bytes insert_blank_userstrings64(dotnetpefile.DotNetPeFile dotnetpe, bytes 
     new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
     stream_amt_offset = streams_offset - 2
     new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
+    PyBuffer_Release(&exe_data_view)
     return new_exe_data
 
 cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe, bytes exe_data):
@@ -180,17 +181,21 @@ cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe, bytes e
     else:
         return insert_blank_userstrings32(dotnetpe, exe_data)
 
-cdef void fixup_resource_data(int rsd_offset, bytes old_exe_data, dotnetpefile.DotNetPeFile old_pe, bytearray new_exe_data, int va_addr, int difference):
+cdef void fixup_resource_data(int rsd_offset, bytes old_exe_data, dotnetpefile.PeFile old_pe, bytearray new_exe_data, int va_addr, int difference):
     """
     Performs the required modifications on a IMAGE_RESOURCE_DATA_ENTRY structure.
     :param rsd_offset: the offset of the IMAGE_RESOURCE_DATA_ENTRY structure
     """
-    cdef memoryview old_exe_view = memoryview(old_exe_data)
-    cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * data_struct = <IMAGE_RESOURCE_DIRECTORY_ENTRY*>old_exe_view.data + rsd_offset
-    cdef int rva = data_struct.OffsetToData.OffsetToData.OffsetToData
-    fixed_rva = get_fixed_rva(old_pe, new_exe_data, rva, va_addr, difference)
-    data_struct.OffsetToData.OffsetToData = fixed_rva
+    cdef Py_buffer old_exe_view
+    cdef IMAGE_RESOURCE_DATA_ENTRY * data_struct = NULL
+    cdef int rva = 0
+    PyObject_GetBuffer(bytearray(old_exe_data), &old_exe_view, PyBUF_ANY_CONTIGUOUS)
+    data_struct = <IMAGE_RESOURCE_DATA_ENTRY*>(<uintptr_t>old_exe_view.buf + <uintptr_t>rsd_offset)
+    rva = data_struct.OffsetToData
+    fixed_rva = get_fixed_rva(old_pe, bytes(new_exe_data), rva, va_addr, difference)
+    data_struct.OffsetToData = fixed_rva
     new_exe_data = new_exe_data[:rsd_offset] + convert_pointer_to_bytes(<uintptr_t>data_struct, sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)) + new_exe_data[rsd_offset + sizeof(IMAGE_RESOURCE_DATA_ENTRY):]
+    PyBuffer_Release(&old_exe_view)
 
 cdef void fixup_resource_directory(int rs_offset, int rs_rva, int orig_rs_offset, bytes old_exe_data, dotnetpefile.PeFile old_pe, bytearray new_exe_data, int va_addr, int difference):
     """
@@ -199,14 +204,16 @@ cdef void fixup_resource_directory(int rs_offset, int rs_rva, int orig_rs_offset
     :param rs_rva: the rva of the resource dir
     :param orig_rs_offset: the original resource offset
     """
-    cdef memoryview old_exe_view = memoryview(old_exe_data)
-    cdef IMAGE_RESOURCE_DIRECTORY * rsrc_dir = <IMAGE_RESOURCE_DIRECTORY*>old_exe_view.data + rs_offset
+    cdef Py_buffer old_exe_view
+    cdef IMAGE_RESOURCE_DIRECTORY * rsrc_dir = NULL
     cdef unsigned int usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
     cdef int x
     cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * sub_entry = NULL
     cdef unsigned int r_offset
+    PyObject_GetBuffer(bytearray(old_exe_data), &old_exe_view, PyBUF_ANY_CONTIGUOUS)
+    rsrc_dir = <IMAGE_RESOURCE_DIRECTORY*>(<uintptr_t>old_exe_view.buf + <uintptr_t>rs_offset)
     for x in range(rsrc_dir.NumberOfNamedEntries + rsrc_dir.NumberOfIdEntries):
-        sub_entry = <IMAGE_RESOURCE_DIRECTORY_ENTRY*> old_exe_view.data + usable_rs_offset
+        sub_entry = <IMAGE_RESOURCE_DIRECTORY_ENTRY*> (<uintptr_t>old_exe_view.buf + <uintptr_t>usable_rs_offset)
         if sub_entry.OffsetToData.OffsetToDirectory.DataIsDirectory:
             r_offset = orig_rs_offset + sub_entry.OffsetToData.OffsetToDirectory.OffsetToDirectory
             fixup_resource_directory(r_offset, rs_rva, orig_rs_offset, old_exe_data, old_pe, new_exe_data, va_addr, difference)
@@ -217,11 +224,12 @@ cdef void fixup_resource_directory(int rs_offset, int rs_rva, int orig_rs_offset
                                                                             usable_rs_offset + sizeof(
                                                                                 IMAGE_RESOURCE_DIRECTORY_ENTRY):]
         usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
+    PyBuffer_Release(&old_exe_view)
 
 cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, int va_addr, int difference, dotnetpefile.DotNetPeFile dotnetpe, bint in_streams):
     cdef int section_offset
     cdef IMAGE_NT_HEADERS32 * nt_headers = NULL
-    cdef memoryview old_exe_view = memoryview(old_exe_data)
+    cdef Py_buffer old_exe_view
     cdef bint passed_target_section
     cdef IMAGE_SECTION_HEADER * prev_section_header = NULL
     cdef int target_rawsize_difference
@@ -270,11 +278,13 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     cdef unsigned int x
     cdef unsigned int orig_offset
     cdef bytearray name
-    cdef unsigned int new_size
-    cdef unsigned int new_offset
+    cdef bytes new_size
+    cdef bytes new_offset
     cdef bytes padding
+    cdef bytes number_of_streams_bytes
     new_exe_data = bytearray(old_exe_data)
-    nt_headers = <IMAGE_NT_HEADERS32*>old_exe_view.data + old_pe.get_elfanew()
+    PyObject_GetBuffer(new_exe_data, &old_exe_view, PyBUF_ANY_CONTIGUOUS)
+    nt_headers = <IMAGE_NT_HEADERS32*>(<uintptr_t>old_exe_view.buf + old_pe.get_elfanew())
     section_offset = old_pe.get_elfanew() + sizeof(IMAGE_FILE_HEADER) + 4 + nt_headers.FileHeader.SizeOfOptionalHeader
     passed_target_section = False
     target_rawsize_difference = 0
@@ -284,7 +294,7 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     size_of_initialized_data = 0
     size_of_uninitialized_data = 0
     for _ in range(nt_headers.FileHeader.NumberOfSections):
-        section_header = <IMAGE_SECTION_HEADER*> old_exe_view.data + section_offset
+        section_header = <IMAGE_SECTION_HEADER*> (<uintptr_t>old_exe_view.buf + section_offset)
         if section_header.VirtualAddress <= va_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
             passed_target_section = True
             old_rawsize = section_header.SizeOfRawData
@@ -327,21 +337,21 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     size_of_image += (nt_headers.OptionalHeader.SectionAlignment - (
                 size_of_image % nt_headers.OptionalHeader.SectionAlignment))
     # once the sections are fixed, fix the optional header
-    nt_headers.OptionalHeader.AddressOfEntryPoint = get_fixed_rva(old_pe, new_exe_data,
+    nt_headers.OptionalHeader.AddressOfEntryPoint = get_fixed_rva(old_pe, bytes(new_exe_data),
                                                                   nt_headers.OptionalHeader.AddressOfEntryPoint,
                                                                   va_addr, difference)
     for x in range(nt_headers.OptionalHeader.NumberOfRvaAndSizes):
         data_dir = nt_headers.OptionalHeader.DataDirectory[x]
         if data_dir.VirtualAddress != 0:
-            data_dir.VirtualAddress = get_fixed_rva(old_pe, new_exe_data, data_dir.VirtualAddress, va_addr, difference)
+            data_dir.VirtualAddress = get_fixed_rva(old_pe, bytes(new_exe_data), data_dir.VirtualAddress, va_addr, difference)
     nt_headers.OptionalHeader.SizeOfCode = size_of_code
     nt_headers.OptionalHeader.SizeOfInitializedData = size_of_initialized_data
     nt_headers.OptionalHeader.SizeOfUninitializedData = size_of_uninitialized_data
     nt_headers.OptionalHeader.SizeOfImage = size_of_image
-    nt_headers.OptionalHeader.BaseOfCode = get_fixed_rva(old_pe, new_exe_data, nt_headers.OptionalHeader.BaseOfCode,
+    nt_headers.OptionalHeader.BaseOfCode = get_fixed_rva(old_pe, bytes(new_exe_data), nt_headers.OptionalHeader.BaseOfCode,
                                                          va_addr, difference)
     #THIS IS 32 bit ONLY!!!
-    nt_headers.OptionalHeader.BaseOfData = get_fixed_rva(old_pe, new_exe_data, nt_headers.OptionalHeader.BaseOfData,
+    nt_headers.OptionalHeader.BaseOfData = get_fixed_rva(old_pe, bytes(new_exe_data), nt_headers.OptionalHeader.BaseOfData,
                                                         va_addr, difference)
     # paste in the optional header
     optional_offset = old_pe.get_elfanew() + 4 + sizeof(IMAGE_FILE_HEADER)
@@ -352,8 +362,8 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
                                                                                                    optional_end_offset:]
 
     # now for the COR20 header.
-    net_header_offset = dotnetpe.get_metadata_dir().get_net_header().get_file_offset()
-    cor_header = <IMAGE_COR20_HEADER*> old_exe_view.data + net_header_offset
+    net_header_offset = dotnetpe.get_cor_header_offset()
+    cor_header = <IMAGE_COR20_HEADER*> (<uintptr_t>old_exe_view.buf + net_header_offset)
     cor_header.MetaData.VirtualAddress = get_fixed_rva(old_pe, old_exe_data, cor_header.MetaData.VirtualAddress,
                                                        va_addr, difference)
     if cor_header.MetaData.VirtualAddress <= va_addr <= (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
@@ -389,8 +399,8 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
         reloc_offset = old_pe.get_offset_from_rva(reloc_va)
         offset = 0
         while offset < reloc_size:
-            base_reloc = <IMAGE_BASE_RELOCATION*> old_exe_view.data + reloc_offset + offset
-            base_reloc.VirtualAddress = get_fixed_rva(old_pe, new_exe_data, base_reloc.VirtualAddress, va_addr,
+            base_reloc = <IMAGE_BASE_RELOCATION*> (<uintptr_t>old_exe_view.buf + reloc_offset + offset)
+            base_reloc.VirtualAddress = get_fixed_rva(old_pe, bytes(new_exe_data), base_reloc.VirtualAddress, va_addr,
                                                       difference)
             new_exe_data = new_exe_data[:reloc_offset + offset] + convert_pointer_to_bytes(<uintptr_t>base_reloc, sizeof(IMAGE_BASE_RELOCATION)) + new_exe_data[
                                                                                       reloc_offset + offset + sizeof(
@@ -401,9 +411,9 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     debug_va = nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress
     if debug_va != 0:
         debug_offset = old_pe.get_offset_from_rva(debug_va)
-        debug_struct = <IMAGE_DEBUG_DIRECTORY*>old_exe_view.data + debug_offset
+        debug_struct = <IMAGE_DEBUG_DIRECTORY*>(<uintptr_t>old_exe_view.buf + debug_offset)
         current_va = debug_struct.AddressOfRawData
-        new_va = get_fixed_rva(old_pe, new_exe_data, current_va, va_addr, difference)
+        new_va = get_fixed_rva(old_pe, bytes(new_exe_data), current_va, va_addr, difference)
         if current_va != new_va:
             debug_struct.AddressOfRawData = new_va
             debug_struct.PointerToRawData += difference
@@ -415,14 +425,14 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
         imports_offset = old_pe.get_offset_from_rva(imports_offset)
 
         while True:
-            import_descriptor = <IMAGE_IMPORT_DESCRIPTOR*>old_exe_view.data + imports_offset
+            import_descriptor = <IMAGE_IMPORT_DESCRIPTOR*>(<uintptr_t>old_exe_view.buf + imports_offset)
             if import_descriptor.Name == 0:
                 break
             orig_name = import_descriptor.Name
-            import_descriptor.Name = get_fixed_rva(old_pe, new_exe_data, import_descriptor.Name, va_addr, difference)
+            import_descriptor.Name = get_fixed_rva(old_pe, bytes(new_exe_data), import_descriptor.Name, va_addr, difference)
             thunk_offset = old_pe.get_offset_from_rva(import_descriptor.FirstThunk)
             while True:
-                thunk_data = <IMAGE_THUNK_DATA32*>old_exe_view.data + thunk_offset
+                thunk_data = <IMAGE_THUNK_DATA32*>(<uintptr_t>old_exe_view.buf + thunk_offset)
                 if thunk_data.u1.AddressOfData == 0:
                     break
                 if (thunk_data.u1.AddressOfData & IMAGE_ORDINAL_FLAG32) == 0:
@@ -437,17 +447,17 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
 
             thunk_offset = old_pe.get_offset_from_rva(import_descriptor.DUMMYUNIONNAME.OriginalFirstThunk)
             while True:
-                thunk_data = <IMAGE_THUNK_DATA32*>old_exe_view.data + thunk_offset
+                thunk_data = <IMAGE_THUNK_DATA32*>(<uintptr_t>old_exe_view.buf + thunk_offset)
                 if thunk_data.u1.AddressOfData == 0:
                     break
                 if (thunk_data.u1.AddressOfData & IMAGE_ORDINAL_FLAG32) == 0:
                     # name import, fix.
-                    thunk_data.u1.AddressOfData = get_fixed_rva(old_pe, new_exe_data, thunk_data.u1.AddressOfData, va_addr,
+                    thunk_data.u1.AddressOfData = get_fixed_rva(old_pe, bytes(new_exe_data), thunk_data.u1.AddressOfData, va_addr,
                                                                 difference)
                 new_exe_data = new_exe_data[:thunk_offset] + convert_pointer_to_bytes(<uintptr_t>thunk_data, sizeof(IMAGE_THUNK_DATA32)) + new_exe_data[
                                                                                     thunk_offset + sizeof(IMAGE_THUNK_DATA32):]
                 thunk_offset += sizeof(IMAGE_THUNK_DATA32)
-            import_descriptor.DUMMYUNIONNAME.OriginalFirstThunk = get_fixed_rva(old_pe, new_exe_data,
+            import_descriptor.DUMMYUNIONNAME.OriginalFirstThunk = get_fixed_rva(old_pe, bytes(new_exe_data),
                                                                                 import_descriptor.DUMMYUNIONNAME.OriginalFirstThunk,
                                                                                 va_addr, difference)
             new_exe_data = new_exe_data[:imports_offset] + convert_pointer_to_bytes(<uintptr_t>import_descriptor, sizeof(IMAGE_IMPORT_DESCRIPTOR)) + new_exe_data[
@@ -465,8 +475,8 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     metadata_offset = old_pe.get_offset_from_rva(dotnetpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
     streams_offset = metadata_offset + 12
     number_of_streams = metadata_offset + 12
-    number_of_streams = old_exe_data[number_of_streams:number_of_streams + 4]
-    length_of_str = int.from_bytes(number_of_streams, 'little')
+    number_of_streams_bytes = old_exe_data[number_of_streams:number_of_streams + 4]
+    length_of_str = int.from_bytes(number_of_streams_bytes, 'little')
     streams_offset += length_of_str + 6
     number_of_streams = int.from_bytes(old_exe_data[streams_offset:streams_offset + 2], 'little')
     streams_offset += 2
@@ -498,12 +508,13 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     if amt_padding_needed != 0 and padding_offset != 0:
         padding = b'\x00' * amt_padding_needed
         new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
-    return new_exe_data
+    PyBuffer_Release(&old_exe_view)
+    return bytes(new_exe_data)
 
 cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, int va_addr, int difference, dotnetpefile.DotNetPeFile dotnetpe, bint in_streams):
     cdef int section_offset
     cdef IMAGE_NT_HEADERS64 * nt_headers = NULL
-    cdef memoryview old_exe_view = memoryview(old_exe_data)
+    cdef Py_buffer old_exe_view
     cdef bint passed_target_section
     cdef IMAGE_SECTION_HEADER * prev_section_header = NULL
     cdef int target_rawsize_difference
@@ -552,11 +563,13 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     cdef unsigned int x
     cdef unsigned int orig_offset
     cdef bytearray name
-    cdef unsigned int new_size
-    cdef unsigned int new_offset
+    cdef bytes new_size
+    cdef bytes new_offset
     cdef bytes padding
+    cdef bytes number_of_Streams_bytes
     new_exe_data = bytearray(old_exe_data)
-    nt_headers = <IMAGE_NT_HEADERS64*>old_exe_view.data + old_pe.get_elfanew()
+    PyObject_GetBuffer(new_exe_data, &old_exe_view, PyBUF_ANY_CONTIGUOUS)
+    nt_headers = <IMAGE_NT_HEADERS64*>(<uintptr_t>old_exe_view.buf + old_pe.get_elfanew())
     section_offset = old_pe.get_elfanew() + sizeof(IMAGE_FILE_HEADER) + 4 + nt_headers.FileHeader.SizeOfOptionalHeader
     passed_target_section = False
     target_rawsize_difference = 0
@@ -566,7 +579,7 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     size_of_initialized_data = 0
     size_of_uninitialized_data = 0
     for _ in range(nt_headers.FileHeader.NumberOfSections):
-        section_header = <IMAGE_SECTION_HEADER*> old_exe_view.data + section_offset
+        section_header = <IMAGE_SECTION_HEADER*> (<uintptr_t>old_exe_view.buf + section_offset)
         if section_header.VirtualAddress <= va_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
             passed_target_section = True
             old_rawsize = section_header.SizeOfRawData
@@ -609,18 +622,18 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     size_of_image += (nt_headers.OptionalHeader.SectionAlignment - (
                 size_of_image % nt_headers.OptionalHeader.SectionAlignment))
     # once the sections are fixed, fix the optional header
-    nt_headers.OptionalHeader.AddressOfEntryPoint = get_fixed_rva(old_pe, new_exe_data,
+    nt_headers.OptionalHeader.AddressOfEntryPoint = get_fixed_rva(old_pe, bytes(new_exe_data),
                                                                   nt_headers.OptionalHeader.AddressOfEntryPoint,
                                                                   va_addr, difference)
     for x in range(nt_headers.OptionalHeader.NumberOfRvaAndSizes):
         data_dir = nt_headers.OptionalHeader.DataDirectory[x]
         if data_dir.VirtualAddress != 0:
-            data_dir.VirtualAddress = get_fixed_rva(old_pe, new_exe_data, data_dir.VirtualAddress, va_addr, difference)
+            data_dir.VirtualAddress = get_fixed_rva(old_pe, bytes(new_exe_data), data_dir.VirtualAddress, va_addr, difference)
     nt_headers.OptionalHeader.SizeOfCode = size_of_code
     nt_headers.OptionalHeader.SizeOfInitializedData = size_of_initialized_data
     nt_headers.OptionalHeader.SizeOfUninitializedData = size_of_uninitialized_data
     nt_headers.OptionalHeader.SizeOfImage = size_of_image
-    nt_headers.OptionalHeader.BaseOfCode = get_fixed_rva(old_pe, new_exe_data, nt_headers.OptionalHeader.BaseOfCode,
+    nt_headers.OptionalHeader.BaseOfCode = get_fixed_rva(old_pe, bytes(new_exe_data), nt_headers.OptionalHeader.BaseOfCode,
                                                          va_addr, difference)
     # paste in the optional header
     optional_offset = old_pe.get_elfanew() + 4 + sizeof(IMAGE_FILE_HEADER)
@@ -632,7 +645,7 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
 
     # now for the COR20 header.
     net_header_offset = dotnetpe.get_metadata_dir().get_net_header().get_file_offset()
-    cor_header = <IMAGE_COR20_HEADER*> old_exe_view.data + net_header_offset
+    cor_header = <IMAGE_COR20_HEADER*> (<uintptr_t>old_exe_view.buf + net_header_offset)
     cor_header.MetaData.VirtualAddress = get_fixed_rva(old_pe, old_exe_data, cor_header.MetaData.VirtualAddress,
                                                        va_addr, difference)
     if cor_header.MetaData.VirtualAddress <= va_addr <= (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
@@ -668,8 +681,8 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
         reloc_offset = old_pe.get_offset_from_rva(reloc_va)
         offset = 0
         while offset < reloc_size:
-            base_reloc = <IMAGE_BASE_RELOCATION*> old_exe_view.data + reloc_offset + offset
-            base_reloc.VirtualAddress = get_fixed_rva(old_pe, new_exe_data, base_reloc.VirtualAddress, va_addr,
+            base_reloc = <IMAGE_BASE_RELOCATION*> (<uintptr_t>old_exe_view.buf + reloc_offset + offset)
+            base_reloc.VirtualAddress = get_fixed_rva(old_pe, bytes(new_exe_data), base_reloc.VirtualAddress, va_addr,
                                                       difference)
             new_exe_data = new_exe_data[:reloc_offset + offset] + convert_pointer_to_bytes(<uintptr_t>base_reloc, sizeof(IMAGE_BASE_RELOCATION)) + new_exe_data[
                                                                                       reloc_offset + offset + sizeof(
@@ -680,9 +693,9 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     debug_va = nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress
     if debug_va != 0:
         debug_offset = old_pe.get_offset_from_rva(debug_va)
-        debug_struct = <IMAGE_DEBUG_DIRECTORY*>old_exe_view.data + debug_offset
+        debug_struct = <IMAGE_DEBUG_DIRECTORY*>(<uintptr_t>old_exe_view.buf + debug_offset)
         current_va = debug_struct.AddressOfRawData
-        new_va = get_fixed_rva(old_pe, new_exe_data, current_va, va_addr, difference)
+        new_va = get_fixed_rva(old_pe, bytes(new_exe_data), current_va, va_addr, difference)
         if current_va != new_va:
             debug_struct.AddressOfRawData = new_va
             debug_struct.PointerToRawData += difference
@@ -694,14 +707,14 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
         imports_offset = old_pe.get_offset_from_rva(imports_offset)
 
         while True:
-            import_descriptor = <IMAGE_IMPORT_DESCRIPTOR*>old_exe_view.data + imports_offset
+            import_descriptor = <IMAGE_IMPORT_DESCRIPTOR*>(<uintptr_t>old_exe_view.buf + imports_offset)
             if import_descriptor.Name == 0:
                 break
             orig_name = import_descriptor.Name
-            import_descriptor.Name = get_fixed_rva(old_pe, new_exe_data, import_descriptor.Name, va_addr, difference)
+            import_descriptor.Name = get_fixed_rva(old_pe, bytes(new_exe_data), import_descriptor.Name, va_addr, difference)
             thunk_offset = old_pe.get_offset_from_rva(import_descriptor.FirstThunk)
             while True:
-                thunk_data = <IMAGE_THUNK_DATA64*>old_exe_view.data + thunk_offset
+                thunk_data = <IMAGE_THUNK_DATA64*>(<uintptr_t>old_exe_view.buf + thunk_offset)
                 if thunk_data.u1.AddressOfData == 0:
                     break
                 if (thunk_data.u1.AddressOfData & IMAGE_ORDINAL_FLAG64) == 0:
@@ -716,17 +729,17 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
 
             thunk_offset = old_pe.get_offset_from_rva(import_descriptor.DUMMYUNIONNAME.OriginalFirstThunk)
             while True:
-                thunk_data = <IMAGE_THUNK_DATA64*>old_exe_view.data + thunk_offset
+                thunk_data = <IMAGE_THUNK_DATA64*>(<uintptr_t>old_exe_view.buf + thunk_offset)
                 if thunk_data.u1.AddressOfData == 0:
                     break
                 if (thunk_data.u1.AddressOfData & IMAGE_ORDINAL_FLAG64) == 0:
                     # name import, fix.
-                    thunk_data.u1.AddressOfData = get_fixed_rva(old_pe, new_exe_data, thunk_data.u1.AddressOfData, va_addr,
+                    thunk_data.u1.AddressOfData = get_fixed_rva(old_pe, bytes(new_exe_data), thunk_data.u1.AddressOfData, va_addr,
                                                                 difference)
                 new_exe_data = new_exe_data[:thunk_offset] + convert_pointer_to_bytes(<uintptr_t>thunk_data, sizeof(IMAGE_THUNK_DATA64)) + new_exe_data[
                                                                                     thunk_offset + sizeof(IMAGE_THUNK_DATA64):]
                 thunk_offset += sizeof(IMAGE_THUNK_DATA64)
-            import_descriptor.DUMMYUNIONNAME.OriginalFirstThunk = get_fixed_rva(old_pe, new_exe_data,
+            import_descriptor.DUMMYUNIONNAME.OriginalFirstThunk = get_fixed_rva(old_pe, bytes(new_exe_data),
                                                                                 import_descriptor.DUMMYUNIONNAME.OriginalFirstThunk,
                                                                                 va_addr, difference)
             new_exe_data = new_exe_data[:imports_offset] + convert_pointer_to_bytes(<uintptr_t>import_descriptor, sizeof(IMAGE_IMPORT_DESCRIPTOR)) + new_exe_data[
@@ -744,8 +757,8 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     metadata_offset = old_pe.get_offset_from_rva(dotnetpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
     streams_offset = metadata_offset + 12
     number_of_streams = metadata_offset + 12
-    number_of_streams = old_exe_data[number_of_streams:number_of_streams + 4]
-    length_of_str = int.from_bytes(number_of_streams, 'little')
+    number_of_streams_bytes = old_exe_data[number_of_streams:number_of_streams + 4]
+    length_of_str = int.from_bytes(number_of_streams_bytes, 'little')
     streams_offset += length_of_str + 6
     number_of_streams = int.from_bytes(old_exe_data[streams_offset:streams_offset + 2], 'little')
     streams_offset += 2
@@ -777,7 +790,8 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     if amt_padding_needed != 0 and padding_offset != 0:
         padding = b'\x00' * amt_padding_needed
         new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
-    return new_exe_data
+    PyBuffer_Release(&old_exe_view)
+    return bytes(new_exe_data)
 
 cpdef bytes apply_pe_fixups(dotnetpefile.PeFile old_pe, bytes old_exe_data, int va_addr, int difference, dotnetpefile.DotNetPeFile dotnetpe, bint in_streams):
     """
@@ -807,7 +821,7 @@ cpdef bytes apply_pe_fixups(dotnetpefile.PeFile old_pe, bytes old_exe_data, int 
     else:
         return apply_pe_fixups_32(old_pe, old_exe_data, va_addr, difference, dotnetpe, in_streams)
 
-cdef int get_fixed_rva(dotnetpefile.PeFile old_pe, bytes new_data, int addr, int old_userstrings_va, int userstrings_difference):
+cdef unsigned int get_fixed_rva(dotnetpefile.PeFile old_pe, bytes new_data, int addr, int old_userstrings_va, int userstrings_difference):
     """
     Fix an RVA accounting for new data
     :param old_pe: the old pefile.PE object
@@ -821,7 +835,7 @@ cdef int get_fixed_rva(dotnetpefile.PeFile old_pe, bytes new_data, int addr, int
     cdef bint passed_text = False
     cdef IMAGE_SECTION_HEADER * target_section = NULL
     cdef IMAGE_SECTION_HEADER section
-    cdef memoryview exe_data_view
+    cdef Py_buffer exe_data_view
     cdef IMAGE_DOS_HEADER * dos_header
     cdef IMAGE_NT_HEADERS32 * nt_headers
     cdef IMAGE_SECTION_HEADER * section_header
@@ -860,19 +874,21 @@ cdef int get_fixed_rva(dotnetpefile.PeFile old_pe, bytes new_data, int addr, int
         return addr
 
     # any other section, add the old and new section difference
-    exe_data_view = memoryview(new_data)
-    dos_header = <IMAGE_DOS_HEADER*>exe_data_view.data
-    nt_headers = <IMAGE_NT_HEADERS32*>exe_data_view.data + dos_header.e_lfanew
+    PyObject_GetBuffer(new_data, &exe_data_view, PyBUF_ANY_CONTIGUOUS)
+    dos_header = <IMAGE_DOS_HEADER*>(<uintptr_t>exe_data_view.buf)
+    nt_headers = <IMAGE_NT_HEADERS32*>(<uintptr_t>exe_data_view.buf + dos_header.e_lfanew)
     section_offset = dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader
     for x in range(nt_headers.FileHeader.NumberOfSections):
-        section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>exe_data_view.data + section_offset)
+        section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>exe_data_view.buf + section_offset)
         if section_header.Name == old_section.Name:
             new_section = section_header
             break
         section_offset += sizeof(IMAGE_SECTION_HEADER)
-
+    
     if not new_section:
+        PyBuffer_Release(&exe_data_view)
         raise net_exceptions.InvalidVirtualAddressException
 
     difference = new_section.VirtualAddress - old_section.VirtualAddress
+    PyBuffer_Release(&exe_data_view)
     return addr + difference

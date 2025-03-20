@@ -6,15 +6,17 @@ from dotnetutils import net_exceptions
 from dotnetutils cimport dotnetpefile
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing
-from cpython.memoryview cimport memoryview
 from libc.stdint cimport uintptr_t
+from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
 
 
 cdef class MetaDataHeader:
     """
     Represents the header at the beginning of the section where .NET stores metadata.
     """
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, bytes file_data, int offset):
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, bytes file_data, long offset):
+        if offset == -1:
+            raise ValueError('invalid metadataheader offset')
         self.start_offset = offset
         self.signature = 0x424A534
         self.majorversion = 0x1
@@ -136,16 +138,18 @@ cdef class MetaDataDirectory:
         cdef dotnetpefile.PeFile pe = dotnetpefile.PeFile(file_data)
         cdef IMAGE_DATA_DIRECTORY com_table_directory = pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
         cdef unsigned int com_offset = pe.get_physical_by_rva(com_table_directory.VirtualAddress)
-        cdef memoryview file_data_view = memoryview(file_data)
-        cdef IMAGE_COR20_HEADER * cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>file_data_view.data + com_offset)
+        cdef Py_buffer file_data_view
+        cdef IMAGE_COR20_HEADER * cor_header = NULL
         cdef IMAGE_DATA_DIRECTORY metadata_dir
         cdef unsigned int metadata_offset
         cdef unsigned int file_offset
         cdef unsigned int size
         cdef bytes name
+        PyObject_GetBuffer(file_data, &file_data_view, PyBUF_ANY_CONTIGUOUS)
+        cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>file_data_view.buf + <uintptr_t>com_offset)
         self.net_header = cor_header[0]
         self.net_header_offset = com_offset
-        metadata_dir = self.net_header.MetaData
+        metadata_dir = cor_header.MetaData
         metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
         self.metadata_header = MetaDataHeader(self.dotnetpe, file_data, metadata_offset)
         for file_offset, size, name in self.metadata_header.get_stream_headers():
@@ -168,9 +172,9 @@ cdef class MetaDataDirectory:
                 # Dont throw exceptions on unknown streams, parse it as a generic stream.
                 if self.__validate_stream_not_there(name.decode('ascii')):
                     self.heaps[name.decode('ascii')] = net_processing.Stream((file_offset, size, name), file_data, self.dotnetpe)
-
         if not (self.metadata_file_offset != 0 and self.metadata_file_size != 0):
             raise net_exceptions.InvalidMetadataException
+        PyBuffer_Release(&file_data_view)
         return True
 
     cdef void process_metadata_heap(self, bint dont_process):

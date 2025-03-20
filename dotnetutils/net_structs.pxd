@@ -68,7 +68,8 @@ ctypedef struct IMAGE_COR20_HEADER:
     IMAGE_DATA_DIRECTORY ExportAddressTableJumps
     IMAGE_DATA_DIRECTORY ManagedNativeHeader
 
-cdef int IMAGE_NUMBEROF_DATA_DIRECTORY_ENTRIES = 16
+cdef enum:
+    IMAGE_NUMBEROF_DATA_DIRECTORY_ENTRIES = 16
 
 ctypedef struct IMAGE_OPTIONAL_HEADER32:
     uint16_t Magic
@@ -76,7 +77,7 @@ ctypedef struct IMAGE_OPTIONAL_HEADER32:
     uint8_t MinorLinkerVersion
     uint32_t SizeOfCode
     uint32_t SizeOfInitializedData
-    uint32_t SizeOfUninintializedData
+    uint32_t SizeOfUninitializedData
     uint32_t AddressOfEntryPoint
     uint32_t BaseOfCode
     uint32_t BaseOfData
@@ -109,7 +110,7 @@ ctypedef struct IMAGE_OPTIONAL_HEADER64:
     uint8_t MinorLinkerVersion
     uint32_t SizeOfCode
     uint32_t SizeOfInitializedData
-    uint32_t SizeOfUninintializedData
+    uint32_t SizeOfUninitializedData
     uint32_t AddressOfEntryPoint
     uint32_t BaseOfCode
     uint32_t BaseOfData
@@ -140,7 +141,8 @@ ctypedef union Misc_Union:
     uint32_t PhysicalAddress
     uint32_t VirtualSize
 
-cdef int IMAGE_SIZEOF_SHORT_NAME = 8
+cdef enum:
+    IMAGE_SIZEOF_SHORT_NAME = 8
 
 ctypedef struct IMAGE_SECTION_HEADER:
     char Name[8]
@@ -164,21 +166,22 @@ ctypedef struct IMAGE_NT_HEADERS64:
     IMAGE_FILE_HEADER FileHeader
     IMAGE_OPTIONAL_HEADER64 OptionalHeader
 
-cdef int IMAGE_DIRECTORY_ENTRY_ARCHITECTURE = 7
-cdef int IMAGE_DIRECTORY_ENTRY_BASERELOC = 5
-cdef int IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT = 11
-cdef int IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR = 14
-cdef int IMAGE_DIRECTORY_ENTRY_DEBUG = 6
-cdef int IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT = 13
-cdef int IMAGE_DIRECTORY_ENTRY_EXCEPTION = 3
-cdef int IMAGE_DIRECTORY_ENTRY_EXPORT = 0
-cdef int IMAGE_DIRECTORY_ENTRY_GLOBALPTR = 8
-cdef int IMAGE_DIRECTORY_ENTRY_IAT = 12
-cdef int IMAGE_DIRECTORY_ENTRY_IMPORT = 1
-cdef int IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG = 10
-cdef int IMAGE_DIRECTORY_ENTRY_RESOURCE = 2
-cdef int IMAGE_DIRECTORY_ENTRY_SECURITY = 4
-cdef int IMAGE_DIRECTORY_ENTRY_TLS = 9
+cdef enum: 
+    IMAGE_DIRECTORY_ENTRY_ARCHITECTURE = 7
+    IMAGE_DIRECTORY_ENTRY_BASERELOC = 5
+    IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT = 11
+    IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR = 14
+    IMAGE_DIRECTORY_ENTRY_DEBUG = 6
+    IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT = 13
+    IMAGE_DIRECTORY_ENTRY_EXCEPTION = 3
+    IMAGE_DIRECTORY_ENTRY_EXPORT = 0
+    IMAGE_DIRECTORY_ENTRY_GLOBALPTR = 8
+    IMAGE_DIRECTORY_ENTRY_IAT = 12
+    IMAGE_DIRECTORY_ENTRY_IMPORT = 1
+    IMAGE_DIRECTORY_ENTRY_LOAD_CONFIG = 10
+    IMAGE_DIRECTORY_ENTRY_RESOURCE = 2
+    IMAGE_DIRECTORY_ENTRY_SECURITY = 4
+    IMAGE_DIRECTORY_ENTRY_TLS = 9
 
 ctypedef struct IMAGE_BASE_RELOCATION:
     uint32_t VirtualAddress
@@ -213,13 +216,15 @@ ctypedef struct IMAGE_THUNK_DATA32:
 ctypedef struct IMAGE_THUNK_DATA64:
     thunk_u1_64 u1
 
-cdef int IMAGE_ORDINAL_FLAG32 = 0x80000000
-cdef int IMAGE_ORDINAL_FLAG64 = 0x8000000000000000
+cdef enum:
+    IMAGE_ORDINAL_FLAG32 = 0x80000000
+    IMAGE_ORDINAL_FLAG64 = 0x8000000000000000
 
-cdef int IMAGE_SCN_CNT_CODE = 0x20
-cdef int IMAGE_SCN_MEM_READ = 0x40000000
-cdef int IMAGE_SCN_CNT_INITIALIZED_DATA = 0x40
-cdef int IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x80
+cdef enum:
+    IMAGE_SCN_CNT_CODE = 0x20
+    IMAGE_SCN_MEM_READ = 0x40000000
+    IMAGE_SCN_CNT_INITIALIZED_DATA = 0x40
+    IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x80
 
 ctypedef struct IMAGE_RESOURCE_DIRECTORY:
     uint32_t Characteristics
@@ -228,6 +233,7 @@ ctypedef struct IMAGE_RESOURCE_DIRECTORY:
     uint16_t MinorVersion
     uint16_t NumberOfNamedEntries
     uint16_t NumberOfIdEntries
+
 cdef extern from *:
     """
     typedef struct NAMEOFFSET_STRUCT_T {
