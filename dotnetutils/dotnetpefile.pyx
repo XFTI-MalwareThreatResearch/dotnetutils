@@ -102,12 +102,19 @@ cdef class PeFile:
 
     cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, int idx):
         cdef IMAGE_NT_HEADERS32 * nt_headers32 = NULL
-        cdef IMAGE_NT_HEADERS64 * nt_headers64 = NULL        
+        cdef IMAGE_NT_HEADERS64 * nt_headers64 = NULL
+        cdef IMAGE_DATA_DIRECTORY blank
+        blank.VirtualAddress = 0
+        blank.Size = 0
         if self.__is_64bit:
             nt_headers64 = <IMAGE_NT_HEADERS64*>(<uintptr_t>self.__file_view.buf + self.__nt_headers_offset)
+            if idx >= nt_headers64.OptionalHeader.NumberOfRvaAndSizes:
+                return blank
             return nt_headers64.OptionalHeader.DataDirectory[idx]
         else:
             nt_headers32 = <IMAGE_NT_HEADERS32*>(<uintptr_t>self.__file_view.buf + self.__nt_headers_offset)
+            if idx >= nt_headers32.OptionalHeader.NumberOfRvaAndSizes:
+                return blank
             return nt_headers32.OptionalHeader.DataDirectory[idx]
 
         
