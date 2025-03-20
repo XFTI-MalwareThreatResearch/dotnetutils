@@ -13,6 +13,7 @@ from cpython.datetime cimport datetime
 from libc.stdint cimport uintptr_t, uint32_t
 from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
+from cpython.bytes cimport PyBytes_FromStringAndSize
 
 logger = getLogger(__name__)
 
@@ -727,14 +728,18 @@ cdef class DotNetPeFile:
         except net_exceptions.InvalidTokenException:
             return None
 
-    def set_entry_point(self, ep_token):
+    cpdef set_entry_point(self, unsigned int ep_token):
         """
         Sets metadata token "ep_token" as the entry point.
         """
-        new_net_header = self.metadata_dir.get_net_header()
+        cdef IMAGE_COR20_HEADER new_net_header = self.metadata_dir.get_net_header()
+        cdef bytes new_cor_bytes
+        cdef bytes current_exe_data
+        cdef bytes new_exe_data
         new_net_header.EntryPoint.EntryPointToken = ep_token
         current_exe_data = self.get_exe_data()
-        new_exe_data = current_exe_data[:new_net_header.get_file_offset()] + bytes(new_net_header) + current_exe_data[new_net_header.get_file_offset() + new_net_header.cb:]
+        new_cor_bytes = PyBytes_FromStringAndSize(<char*>&new_net_header, sizeof(IMAGE_COR20_HEADER))
+        new_exe_data = current_exe_data[:self.get_cor_header_offset()] + new_cor_bytes + current_exe_data[self.get_cor_header_offset() + new_net_header.cb:]
         self.set_exe_data(new_exe_data)
 
     cpdef object get_token_value(self, unsigned long token):

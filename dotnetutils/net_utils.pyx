@@ -12,9 +12,6 @@ from cpython.bytes cimport PyBytes_FromStringAndSize
 cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size):
     return PyBytes_FromStringAndSize(<char*>address, <Py_ssize_t>size)
 
-
-
-
 cdef class TypeSig:
     def __init__(self, net_structs.CorElementType element_type):
         self.__element_type = element_type

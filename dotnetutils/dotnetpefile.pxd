@@ -123,5 +123,7 @@ cdef class DotNetPeFile:
 
     cpdef str get_log_str(self)
 
+    cpdef set_entry_point(self, unsigned int ep_token)
+
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path=*, bytes pe_data=*, bint dont_process=*)
