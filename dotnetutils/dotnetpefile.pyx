@@ -2,6 +2,7 @@
 
 import os
 import re
+import pefile
 from dotnetutils cimport net_tokens
 from dotnetutils import net_exceptions, net_patch
 from dotnetutils cimport net_row_objects, net_table_objects
@@ -53,7 +54,6 @@ cdef class PeFile:
             self.__parse_64()
         else:
             self.__parse_32()
-        self.__parse_versioninfo()
 
     cdef void __parse_64(self):
         cdef IMAGE_NT_HEADERS64 *nt_headers = <IMAGE_NT_HEADERS64*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
@@ -66,36 +66,6 @@ cdef class PeFile:
             sec_hdr = <IMAGE_SECTION_HEADER*> (self.get_data_view() + sechdr_offset)
             self.__add_section(sec_hdr)
             sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
-
-    cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * __find_rsrc_by_id(self, IMAGE_RESOURCE_DIRECTORY * dirent, unsigned int rs_offset, unsigned int orig_rs_offset, unsigned int id):
-        cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * rsrc_dir_ent = NULL
-        cdef IMAGE_RESOURCE_DATA_ENTRY * rsrc_data_ent = NULL
-        cdef unsigned int rsrc_offset = 0
-        cdef unsigned int x = 0
-        cdef usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
-        cdef unsigned int r_offset
-        cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * result = NULL
-        for x in range(dirent.NumberOfNamedEntries + dirent.NumberOfIdEntries):
-            rsrc_dir_ent = <IMAGE_RESOURCE_DIRECTORY_ENTRY*> (<uintptr_t>self.get_data_view() + <uintptr_t>usable_rs_offset)
-            if not rsrc_dir_ent.Name.NameOffset.NameIsString and rsrc_dir_ent.Name.Id == id:
-                return rsrc_dir_ent
-            if rsrc_dir_ent.OffsetToData.OffsetToDirectory.DataIsDirectory:
-                r_offset = orig_rs_offset + rsrc_dir_ent.OffsetToData.OffsetToDirectory.OffsetToDirectory
-                result = self.__find_rsrc_by_id(<IMAGE_RESOURCE_DIRECTORY*>(<uintptr_t>self.get_data_view() + <uintptr_t>r_offset), r_offset, orig_rs_offset, id)
-                if result != NULL:
-                    return result
-            usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
-        return NULL
-
-
-
-    cdef void __parse_versioninfo(self):
-        cdef IMAGE_DATA_DIRECTORY rsrc_dir = self.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_RESOURCE)
-        cdef unsigned int va_addr = rsrc_dir.VirtualAddress
-        cdef unsigned int va_offset = 0
-        if va_addr != 0:
-            va_offset = self.get_offset_from_rva(va_addr)
-            #self.__find_rsrc_by_id(<IMAGE_RESOURCE_DIRECTORY*>(<uintptr_t>self.get_data_view() + <uintptr_t>va_offset), va_offset, va_offset, 16)
 
     cdef void __parse_32(self):
         cdef IMAGE_NT_HEADERS32 *nt_headers = <IMAGE_NT_HEADERS32*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
@@ -198,6 +168,7 @@ cdef class DotNetPeFile:
         self.logging_str = ''
         self.original_exe_data = bytes(self.exe_data)
         self.metadata_dir = net_metadata.MetaDataDirectory(self)
+        self.__versioninfo_str = None
         if not self.metadata_dir.is_valid_directory:
             return
         self.metadata_dir.process_metadata_heap(no_processing)
@@ -805,15 +776,18 @@ cdef class DotNetPeFile:
             return None
 
     cpdef str get_productversion(self):
-        pe = self.get_pe()
-        for fileinfo in pe.FileInfo:
-            for item in fileinfo:
-                if hasattr(item, 'StringTable'):
-                    for st in item.StringTable:
-                        for entry in st.entries.items():
-                            if entry[0] == b'ProductVersion':
-                                return entry[1].decode()
-        return ''
+        #this is used so little times that we may as well just use PeFile for it.
+        if self.__versioninfo_str == None:
+            pe = pefile.PE(data=self.get_exe_data())
+            for fileinfo in pe.FileInfo:
+                for item in fileinfo:
+                    if hasattr(item, 'StringTable'):
+                        for st in item.StringTable:
+                            for entry in st.entries.items():
+                                if entry[0] == b'ProductVersion':
+                                    return entry[1].decode()
+            self.__versioninfo_str = ''
+        return self.__versioninfo_str
 
 
 #TODO: Multiple methods can have the same full name - e.x when overriding parameters.

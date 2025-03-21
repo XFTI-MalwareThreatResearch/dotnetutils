@@ -16,8 +16,6 @@ cdef class PeFile:
     cdef bytearray __file_data
     cdef Py_buffer __file_view
 
-    cdef void __parse_versioninfo(self)
-
     cpdef bint is_64bit(self)
 
     cdef void __parse(self) except *
@@ -41,10 +39,9 @@ cdef class PeFile:
     cdef uintptr_t get_data_view(self)
 
     cpdef unsigned int get_physical_by_rva(self, unsigned int rva)
-    
-    cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * __find_rsrc_by_id(self, IMAGE_RESOURCE_DIRECTORY * dirent, unsigned int rs_offset, unsigned int orig_rs_offset, unsigned int id)
 
 cdef class DotNetPeFile:
+    cdef str __versioninfo_str
     cdef str file_path
     cdef bytes exe_data
     cdef net_metadata.MetaDataDirectory metadata_dir

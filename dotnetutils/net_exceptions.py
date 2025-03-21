@@ -3,8 +3,8 @@ class DotNetUtilsException(Exception):
         Exception.__init__(self, "Generic Dotnetutils Exception")
 
 class InvalidAssemblyException(DotNetUtilsException):
-    def __init__(self):
-        Exception.__init__(self, "Invalid IL assembly detected")
+    def __init__(self, token=0):
+        Exception.__init__(self, "Invalid IL assembly detected on method {}".format(hex(token)))
 
 
 class InvalidTokenException(DotNetUtilsException):
@@ -51,8 +51,8 @@ class DeserializationException(DotNetUtilsException):
 
 
 class InvalidHeaderException(DotNetUtilsException):
-    def __init__(self):
-        Exception.__init__(self, "Failed to process header.")
+    def __init__(self, token=0):
+        Exception.__init__(self, "Failed to process header. Method Token {}".format(hex(token)))
 
 
 class InvalidMetadataException(DotNetUtilsException):

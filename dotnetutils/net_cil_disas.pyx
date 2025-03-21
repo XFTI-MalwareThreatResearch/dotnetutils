@@ -343,6 +343,7 @@ cdef class MethodDisassembler:
         cdef int num_clauses
         start = self.__reader.read_byte()
         val = start & 7
+        import binascii
         if val == 2 or val == 6:
             self.flags = 0
             self.header_size = 1
@@ -469,7 +470,7 @@ cdef class MethodDisassembler:
             self.parse_header()
 
             if self.header_size == 0 or self.code_size == 0:
-                raise net_exceptions.InvalidHeaderException
+                raise net_exceptions.InvalidHeaderException(self.method_obj.get_token())
 
             self.__reader.seek(self.header_size, io.SEEK_SET)
             while index < self.code_size:

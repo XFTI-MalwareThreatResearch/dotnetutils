@@ -588,8 +588,3 @@ ctypedef struct VS_VERSIONINFO:
     uint16_t wLength
     uint16_t wValueLength
     uint16_t wType
-    wchar_t szKey[16]
-    uint16_t Padding1
-    VS_FIXEDFILEINFO Value
-    uint16_t Padding2
-    uint16_t Children
