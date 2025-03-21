@@ -11,7 +11,7 @@ from logging import getLogger
 from ctypes import sizeof
 from cpython.datetime cimport datetime
 from libc.stdint cimport uintptr_t, uint32_t
-from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
+from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_RESOURCE_DIRECTORY_ENTRY, VS_VERSIONINFO, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
 from cpython.bytes cimport PyBytes_FromStringAndSize
 
@@ -53,6 +53,7 @@ cdef class PeFile:
             self.__parse_64()
         else:
             self.__parse_32()
+        self.__parse_versioninfo()
 
     cdef void __parse_64(self):
         cdef IMAGE_NT_HEADERS64 *nt_headers = <IMAGE_NT_HEADERS64*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
@@ -65,6 +66,36 @@ cdef class PeFile:
             sec_hdr = <IMAGE_SECTION_HEADER*> (self.get_data_view() + sechdr_offset)
             self.__add_section(sec_hdr)
             sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
+
+    cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * __find_rsrc_by_id(self, IMAGE_RESOURCE_DIRECTORY * dirent, unsigned int rs_offset, unsigned int orig_rs_offset, unsigned int id):
+        cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * rsrc_dir_ent = NULL
+        cdef IMAGE_RESOURCE_DATA_ENTRY * rsrc_data_ent = NULL
+        cdef unsigned int rsrc_offset = 0
+        cdef unsigned int x = 0
+        cdef usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
+        cdef unsigned int r_offset
+        cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * result = NULL
+        for x in range(dirent.NumberOfNamedEntries + dirent.NumberOfIdEntries):
+            rsrc_dir_ent = <IMAGE_RESOURCE_DIRECTORY_ENTRY*> (<uintptr_t>self.get_data_view() + <uintptr_t>usable_rs_offset)
+            if not rsrc_dir_ent.Name.NameOffset.NameIsString and rsrc_dir_ent.Name.Id == id:
+                return rsrc_dir_ent
+            if rsrc_dir_ent.OffsetToData.OffsetToDirectory.DataIsDirectory:
+                r_offset = orig_rs_offset + rsrc_dir_ent.OffsetToData.OffsetToDirectory.OffsetToDirectory
+                result = self.__find_rsrc_by_id(<IMAGE_RESOURCE_DIRECTORY*>(<uintptr_t>self.get_data_view() + <uintptr_t>r_offset), r_offset, orig_rs_offset, id)
+                if result != NULL:
+                    return result
+            usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
+        return NULL
+
+
+
+    cdef void __parse_versioninfo(self):
+        cdef IMAGE_DATA_DIRECTORY rsrc_dir = self.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_RESOURCE)
+        cdef unsigned int va_addr = rsrc_dir.VirtualAddress
+        cdef unsigned int va_offset = 0
+        if va_addr != 0:
+            va_offset = self.get_offset_from_rva(va_addr)
+            #self.__find_rsrc_by_id(<IMAGE_RESOURCE_DIRECTORY*>(<uintptr_t>self.get_data_view() + <uintptr_t>va_offset), va_offset, va_offset, 16)
 
     cdef void __parse_32(self):
         cdef IMAGE_NT_HEADERS32 *nt_headers = <IMAGE_NT_HEADERS32*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
@@ -117,7 +148,6 @@ cdef class PeFile:
                 return blank
             return nt_headers32.OptionalHeader.DataDirectory[idx]
 
-        
     cpdef bint is_64bit(self):
         return self.__is_64bit
 
@@ -409,7 +439,7 @@ cdef class DotNetPeFile:
             com_table_directory = self.get_pe().get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
             com_offset = self.get_pe().get_physical_by_rva(com_table_directory.VirtualAddress)
             com_offset += 24
-            resources_dir = <IMAGE_DATA_DIRECTORY*>(<uintptr_t>self.get_pe().get_data_view().buf + com_offset)
+            resources_dir = <IMAGE_DATA_DIRECTORY*>(<uintptr_t>self.get_pe().get_data_view() + com_offset)
             resources_offset = self.get_pe().get_physical_by_rva(resources_dir.VirtualAddress)
             for item in resources:
                 if item['Implementation'].get_raw_value() == 0:

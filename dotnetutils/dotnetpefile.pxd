@@ -6,7 +6,7 @@ from dotnetutils cimport net_table_objects
 from cpython.memoryview cimport memoryview
 from cpython.buffer cimport Py_buffer
 from libc.stdint cimport uintptr_t
-from dotnetutils.net_structs cimport IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, IMAGE_SECTION_HEADER
+from dotnetutils.net_structs cimport IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, IMAGE_SECTION_HEADER, IMAGE_RESOURCE_DIRECTORY_ENTRY
 
 cdef class PeFile:
     cdef list __sections
@@ -15,6 +15,8 @@ cdef class PeFile:
     cdef bint __is_64bit
     cdef bytearray __file_data
     cdef Py_buffer __file_view
+
+    cdef void __parse_versioninfo(self)
 
     cpdef bint is_64bit(self)
 
@@ -39,6 +41,8 @@ cdef class PeFile:
     cdef uintptr_t get_data_view(self)
 
     cpdef unsigned int get_physical_by_rva(self, unsigned int rva)
+    
+    cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * __find_rsrc_by_id(self, IMAGE_RESOURCE_DIRECTORY * dirent, unsigned int rs_offset, unsigned int orig_rs_offset, unsigned int id)
 
 cdef class DotNetPeFile:
     cdef str file_path

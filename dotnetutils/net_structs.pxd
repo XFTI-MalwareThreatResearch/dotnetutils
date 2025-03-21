@@ -1,6 +1,7 @@
 #cython: language_level=3
 cimport numpy
 from libc.stdint cimport uint16_t, uint32_t, uint8_t, uint64_t
+from libc.stddef cimport wchar_t
 
 
 """
@@ -567,3 +568,28 @@ cpdef enum COMIMAGE_FLAGS:
     COMIMAGE_FLAGS_ILONLY = 0x00000001
     COMIMAGE_FLAGS_32BITREQUIRED = 0x00000002
     COMIMAGE_FLAGS_32BITPREFERRED = 0x00020000
+
+ctypedef struct VS_FIXEDFILEINFO:
+    uint32_t dwSignature
+    uint32_t dwStrucVersion
+    uint32_t dwFileVersionMS
+    uint32_t dwFileVersionLS
+    uint32_t dwProductVersionMS
+    uint32_t dwProductVersionLS
+    uint32_t dwFileFlagsMask
+    uint32_t dwFileFlags
+    uint32_t dwFileOS
+    uint32_t dwFileType
+    uint32_t dwFileSubtype
+    uint32_t dwFileDateMS
+    uint32_t dwFileDateLS
+
+ctypedef struct VS_VERSIONINFO:
+    uint16_t wLength
+    uint16_t wValueLength
+    uint16_t wType
+    wchar_t szKey[16]
+    uint16_t Padding1
+    VS_FIXEDFILEINFO Value
+    uint16_t Padding2
+    uint16_t Children
