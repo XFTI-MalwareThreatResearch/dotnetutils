@@ -8,7 +8,6 @@ from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
 from typing import Union
-from cysignals.signals cimport sig_check
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
@@ -58,10 +57,6 @@ cdef class RowObject:
             index += 1
 
     cpdef ColumnValue get_column(self, str col_name) except *:
-        try:
-            sig_check()
-        except KeyboardInterrupt:
-            os._exit(0)
         if not hasattr(col_name, 'lower'):
             raise net_exceptions.ObjectTypeException
         return <ColumnValue>self.values[col_name.lower()]
@@ -312,10 +307,6 @@ cdef class ColumnValue:
         :return: The processed value corresponding to the column
         """
         #check if value was changed
-        try:
-            sig_check()
-        except KeyboardInterrupt:
-            os._exit(0)
         if self.changed_value != None:
             return self.changed_value
         if self.__has_no_value:

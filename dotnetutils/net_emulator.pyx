@@ -14,7 +14,6 @@ from collections import defaultdict
 from dotnetutils import net_structs as py_net_structs
 from dotnetutils cimport net_utils, net_tokens, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
 from dotnetutils import net_emu_coretypes as py_net_emu_types
-from cysignals.signals cimport sig_check
 
 tlock = threading.Lock()
 

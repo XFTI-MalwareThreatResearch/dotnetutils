@@ -2,8 +2,11 @@
 from dotnetutils cimport dotnetpefile
 from dotnetutils cimport net_structs
 from dotnetutils cimport net_row_objects
+from libc.stdint cimport uintptr_t
 
 cdef convert_to_uint(value1)
+
+cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size)
 
 cdef class TypeSig:
     cdef net_structs.CorElementType __element_type

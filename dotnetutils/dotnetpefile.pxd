@@ -3,15 +3,56 @@ from dotnetutils cimport net_metadata
 from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_table_objects
 
+from cpython.memoryview cimport memoryview
+from cpython.buffer cimport Py_buffer
+from libc.stdint cimport uintptr_t
+from dotnetutils.net_structs cimport IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, IMAGE_SECTION_HEADER, IMAGE_RESOURCE_DIRECTORY_ENTRY
+
+cdef class PeFile:
+    cdef list __sections
+    cdef unsigned long  __image_base
+    cdef unsigned int __nt_headers_offset
+    cdef bint __is_64bit
+    cdef bytearray __file_data
+    cdef Py_buffer __file_view
+
+    cpdef bint is_64bit(self)
+
+    cdef void __parse(self) except *
+
+    cdef void __parse_64(self)
+
+    cdef __add_section(self, IMAGE_SECTION_HEADER * sec_hdr)
+
+    cdef void __parse_32(self)
+    
+    cpdef unsigned int get_offset_from_rva(self, unsigned int rva)
+
+    cpdef unsigned int get_rva_from_offset(self, unsigned int offset)
+
+    cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, int idx)
+
+    cpdef list get_sections(self)
+
+    cpdef int get_elfanew(self)
+
+    cdef uintptr_t get_data_view(self)
+
+    cpdef unsigned int get_physical_by_rva(self, unsigned int rva)
+
 cdef class DotNetPeFile:
+    cdef str __versioninfo_str
     cdef str file_path
     cdef bytes exe_data
-    cdef object pe
     cdef net_metadata.MetaDataDirectory metadata_dir
     cdef int debug_counter
     cdef list added_strings
     cdef bytes original_exe_data
     cdef str logging_str
+    cdef PeFile pe
+    cdef unsigned int __cor_header_offset
+
+    cpdef unsigned int get_cor_header_offset(self)
 
     cpdef net_row_objects.MethodDef get_entry_point(self)
 
@@ -61,11 +102,11 @@ cdef class DotNetPeFile:
 
     cpdef int get_processor_bits(self)
 
-    cpdef object get_cor20_header(self)
+    cpdef IMAGE_COR20_HEADER get_cor20_header(self)
 
     cpdef object get_token_value(self, unsigned long token)
 
-    cpdef object get_pe(self)
+    cpdef PeFile get_pe(self)
 
     cpdef void set_exe_data(self, bytes exe_data)
 
@@ -82,6 +123,8 @@ cdef class DotNetPeFile:
     cpdef void add_log_msg(self, str msg)
 
     cpdef str get_log_str(self)
+
+    cpdef set_entry_point(self, unsigned int ep_token)
 
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path=*, bytes pe_data=*, bint dont_process=*)

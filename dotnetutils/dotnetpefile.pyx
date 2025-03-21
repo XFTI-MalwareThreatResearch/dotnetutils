@@ -6,14 +6,132 @@ import pefile
 from dotnetutils cimport net_tokens
 from dotnetutils import net_exceptions, net_patch
 from dotnetutils cimport net_row_objects, net_table_objects
-from dotnetutils.net_structs import IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, DotNetResourceSet
+from dotnetutils.net_structs import DotNetResourceSet
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from logging import getLogger
 from ctypes import sizeof
 from cpython.datetime cimport datetime
-from cysignals.signals cimport sig_check
+from libc.stdint cimport uintptr_t, uint32_t
+from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_RESOURCE_DIRECTORY_ENTRY, VS_VERSIONINFO, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
+from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
+from cpython.bytes cimport PyBytes_FromStringAndSize
+
 logger = getLogger(__name__)
 
+cdef class PeFile:
+    def __cinit__(self, bytes file_data):
+        self.__file_data = bytearray(file_data)
+        self.__sections = list()
+        PyObject_GetBuffer(self.__file_data, &self.__file_view, PyBUF_ANY_CONTIGUOUS)
+        self.__parse()
+
+    def __dealloc__(self):
+        PyBuffer_Release(&self.__file_view)
+
+    cdef __add_section(self, IMAGE_SECTION_HEADER * sec_hdr):
+        cdef dict actually_added = sec_hdr[0]
+        if 'PhysicalAddress' in actually_added['Misc']:
+            #Strip out PhysicalAddress since we arent dealing with object files here.
+            #Allows for proper transitions between cython IMAGE_SECTION_HEADER and dict.
+            del actually_added['Misc']['PhysicalAddress']
+        if len(actually_added['Name']) != 8:
+            actually_added['Name'] = actually_added['Name'] + (b'\x00' * (8 - len(actually_added['Name'])))
+        if len(actually_added['Name']) != 8:
+            actually_added['Name'] = actually_added['Name'][:8]
+        self.__sections.append(actually_added)
+
+    cdef void __parse(self) except *:
+        cdef IMAGE_DOS_HEADER * dos_header = <IMAGE_DOS_HEADER*>self.get_data_view()
+        cdef IMAGE_NT_HEADERS32 * nt_headers = NULL
+        if dos_header.e_magic != 0x5A4D:
+            raise ValueError('dos_header.e_magic != MZ')
+        if len(self.__file_data) <= dos_header.e_lfanew:
+            raise ValueError("e_lfanew >= len(file_data)")
+
+        self.__nt_headers_offset = dos_header.e_lfanew
+        nt_headers = <IMAGE_NT_HEADERS32*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
+        if nt_headers.OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+            self.__parse_64()
+        else:
+            self.__parse_32()
+
+    cdef void __parse_64(self):
+        cdef IMAGE_NT_HEADERS64 *nt_headers = <IMAGE_NT_HEADERS64*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
+        cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
+        cdef unsigned int sechdr_offset
+        self.__image_base = nt_headers.OptionalHeader.ImageBase
+        self.__is_64bit = True
+        sechdr_offset = self.__nt_headers_offset + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader
+        for x in range(nt_headers.FileHeader.NumberOfSections):
+            sec_hdr = <IMAGE_SECTION_HEADER*> (self.get_data_view() + sechdr_offset)
+            self.__add_section(sec_hdr)
+            sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
+
+    cdef void __parse_32(self):
+        cdef IMAGE_NT_HEADERS32 *nt_headers = <IMAGE_NT_HEADERS32*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
+        cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
+        cdef unsigned int sechdr_offset
+        self.__is_64bit = False
+        self.__image_base = nt_headers.OptionalHeader.ImageBase
+        sechdr_offset = self.__nt_headers_offset + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader
+        for x in range(nt_headers.FileHeader.NumberOfSections):
+            sec_hdr = <IMAGE_SECTION_HEADER*> (self.get_data_view() + sechdr_offset)
+            self.__add_section(sec_hdr)
+            sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
+
+    cpdef unsigned int get_offset_from_rva(self, unsigned int rva):
+        cdef IMAGE_SECTION_HEADER sec_hdr
+        cdef int sec_size
+        cdef dict sec_hdr_dict
+        for x in range(len(self.__sections)):
+            sec_hdr_dict = self.__sections[x]
+            sec_hdr = sec_hdr_dict
+            sec_size = max(sec_hdr.SizeOfRawData, sec_hdr.Misc.VirtualSize)
+            if sec_hdr.VirtualAddress <= rva < (sec_hdr.VirtualAddress + sec_size):
+                return sec_hdr.PointerToRawData + (rva - sec_hdr.VirtualAddress)
+        return -1
+
+    cpdef unsigned int get_rva_from_offset(self, unsigned int offset):
+        cdef IMAGE_SECTION_HEADER sec_hdr
+        cdef dict sec_hdr_dict
+        for x in range(len(self.__sections)):
+            sec_hdr_dict = self.__sections[x]
+            sec_hdr = sec_hdr_dict
+            if sec_hdr.PointerToRawData <= offset < (sec_hdr.PointerToRawData + sec_hdr.SizeOfRawData):
+                return sec_hdr.VirtualAddress + (offset - sec_hdr.PointerToRawData)
+        return -1
+
+    cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, int idx):
+        cdef IMAGE_NT_HEADERS32 * nt_headers32 = NULL
+        cdef IMAGE_NT_HEADERS64 * nt_headers64 = NULL
+        cdef IMAGE_DATA_DIRECTORY blank
+        blank.VirtualAddress = 0
+        blank.Size = 0
+        if self.__is_64bit:
+            nt_headers64 = <IMAGE_NT_HEADERS64*>(<uintptr_t>self.__file_view.buf + self.__nt_headers_offset)
+            if idx >= nt_headers64.OptionalHeader.NumberOfRvaAndSizes:
+                return blank
+            return nt_headers64.OptionalHeader.DataDirectory[idx]
+        else:
+            nt_headers32 = <IMAGE_NT_HEADERS32*>(<uintptr_t>self.__file_view.buf + self.__nt_headers_offset)
+            if idx >= nt_headers32.OptionalHeader.NumberOfRvaAndSizes:
+                return blank
+            return nt_headers32.OptionalHeader.DataDirectory[idx]
+
+    cpdef bint is_64bit(self):
+        return self.__is_64bit
+
+    cpdef list get_sections(self):
+        return self.__sections
+
+    cpdef int get_elfanew(self):
+        return self.__nt_headers_offset
+
+    cdef uintptr_t get_data_view(self):
+        return <uintptr_t>self.__file_view.buf
+
+    cpdef unsigned int get_physical_by_rva(self, unsigned int rva):
+        return self.get_offset_from_rva(rva)
 
 cdef class DotNetPeFile:
     def __init__(self, str file_path='', bytes pe_data=bytes(), bint no_processing=False):
@@ -22,6 +140,7 @@ cdef class DotNetPeFile:
         :param file_path: The file path to the file
         :param pe_data: The raw bytes of the PE file
         """
+        cdef IMAGE_DATA_DIRECTORY com_table_directory
         if  len(file_path) == 0 and len(pe_data) == 0:
             raise net_exceptions.InvalidArgumentsException
 
@@ -34,24 +153,29 @@ cdef class DotNetPeFile:
             self.exe_data = fd.read()
             fd.close()
         try:
-            self.pe = pefile.PE(data=self.exe_data)
-        except pefile.PEFormatError:
+            self.pe = PeFile(self.exe_data)
+        except ValueError:
             raise net_exceptions.NotADotNetFile
         try:
-            com_table_directory = self.pe.OPTIONAL_HEADER.DATA_DIRECTORY[
-                pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']]
+            com_table_directory = self.pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
             if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
                 raise net_exceptions.NotADotNetFile
         except IndexError:
             raise net_exceptions.NotADotNetFile
+        self.__cor_header_offset = self.pe.get_offset_from_rva(com_table_directory.VirtualAddress)
+        self.added_strings = list()
+        self.debug_counter = 0
+        self.logging_str = ''
         self.original_exe_data = bytes(self.exe_data)
         self.metadata_dir = net_metadata.MetaDataDirectory(self)
+        self.__versioninfo_str = None
         if not self.metadata_dir.is_valid_directory:
             return
         self.metadata_dir.process_metadata_heap(no_processing)
-        self.debug_counter = 0
-        self.added_strings = list()
-        self.logging_str = ''
+
+
+    cpdef unsigned int get_cor_header_offset(self):
+        return self.__cor_header_offset
 
     cpdef void add_log_msg(self, str msg):
         self.logging_str += msg
@@ -93,15 +217,15 @@ cdef class DotNetPeFile:
         Internal use only.  Sets exe_data property and reinitializes pe property.
         """
         self.exe_data = bytes(exe_data)
-        self.pe = pefile.PE(data=exe_data)
+        self.pe = PeFile(exe_data)
 
-    cpdef object get_pe(self):
+    cpdef PeFile get_pe(self):
         """
         Obtains a pefile.PE object representing the current executable.
         """
         return self.pe
 
-    cpdef object get_cor20_header(self):
+    cpdef IMAGE_COR20_HEADER get_cor20_header(self):
         """
         Obtains the COR20 header.
         """
@@ -278,14 +402,15 @@ cdef class DotNetPeFile:
         cdef unsigned long resources_size
         cdef bytes rsrc_name
         cdef bytes rsrc_data
+        cdef IMAGE_DATA_DIRECTORY * resources_dir
+        cdef IMAGE_DATA_DIRECTORY com_table_directory
         results = list()
         resources = self.get_metadata_table('ManifestResource')
         if resources:
-            com_table_directory = self.get_pe().OPTIONAL_HEADER.DATA_DIRECTORY[
-                pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR']]
+            com_table_directory = self.get_pe().get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
             com_offset = self.get_pe().get_physical_by_rva(com_table_directory.VirtualAddress)
             com_offset += 24
-            resources_dir = IMAGE_DATA_DIRECTORY.from_buffer_copy(self.get_exe_data(), com_offset)
+            resources_dir = <IMAGE_DATA_DIRECTORY*>(<uintptr_t>self.get_pe().get_data_view() + com_offset)
             resources_offset = self.get_pe().get_physical_by_rva(resources_dir.VirtualAddress)
             for item in resources:
                 if item['Implementation'].get_raw_value() == 0:
@@ -442,10 +567,6 @@ cdef class DotNetPeFile:
                                 if orig_col_obj.get_col_type().is_fixed_value() and orig_col_obj.get_col_type().get_fixed_size() != -1:
                                     if orig_col_obj.get_changed_value() != None:
                                         orig_col_obj.set_raw_value(orig_col_obj.get_changed_value())
-        try:
-            sig_check()
-        except KeyboardInterrupt:
-            os._exit(0)
 
         #add any extra strings to our fake #Strings heap.
         for str_val in self.added_strings:
@@ -461,10 +582,6 @@ cdef class DotNetPeFile:
         for item in original_strings_items:
             if len(item) != 0:
                 strings_stream.append_item(item)
-        try:
-            sig_check()
-        except KeyboardInterrupt:
-            os._exit(0)
         #so now that weve applied all the changes to the various streams, go through each of them and ensure that the heap_offset_size is updated.
         for heap_name, heap_value in self.get_heaps().items():
             if isinstance(heap_value, net_processing.Stream):
@@ -495,15 +612,11 @@ cdef class DotNetPeFile:
             raise net_exceptions.InvalidMetadataException
         curr_exe_data = net_patch.apply_pe_fixups(self.get_pe(), curr_exe_data,
                                                   self.get_pe().get_rva_from_offset(self.get_heap('#~').get_start_offset()),
-                                                  len(metadata_heap_data) - self.get_metadata_dir().get_metadata_heap_size(), self)
+                                                  len(metadata_heap_data) - self.get_metadata_dir().get_metadata_heap_size(), self, True)
         curr_exe_data = curr_exe_data[:self.get_heap('#~').get_start_offset()] + metadata_heap_data + curr_exe_data[self.get_heap(
             '#~').get_start_offset() + self.get_metadata_dir().get_metadata_heap_size():]
 
         curr_exe_data = bytes(curr_exe_data)
-        try:
-            sig_check()
-        except KeyboardInterrupt:
-            os._exit(0)
 
         curr_dpe = DotNetPeFile(pe_data=curr_exe_data, no_processing=True)
 
@@ -518,15 +631,11 @@ cdef class DotNetPeFile:
 
         curr_exe_data = net_patch.apply_pe_fixups(curr_dpe.get_pe(), curr_exe_data,
                                                   curr_dpe.get_pe().get_rva_from_offset(orig_strings_heap.get_offset()),
-                                                  len(strings_data) - orig_strings_heap.get_size(), curr_dpe)
+                                                  len(strings_data) - orig_strings_heap.get_size(), curr_dpe, True)
         curr_strings = curr_dpe.get_heap('#Strings')
         curr_exe_data = curr_exe_data[:curr_strings.get_offset()] + strings_data + curr_exe_data[
                                                                              curr_strings.get_offset() + curr_strings.get_size():]
         curr_exe_data = bytes(curr_exe_data)
-        try:
-            sig_check()
-        except KeyboardInterrupt:
-            os._exit(0)
         if self.has_heap('#US'):
             curr_dpe = DotNetPeFile(pe_data=curr_exe_data)
             current_us_heap = curr_dpe.get_heap('#US')
@@ -540,7 +649,7 @@ cdef class DotNetPeFile:
 
             curr_exe_data = net_patch.apply_pe_fixups(curr_dpe.get_pe(), curr_exe_data,
                                                     curr_dpe.get_pe().get_rva_from_offset(current_us_heap.get_offset()),
-                                                    len(us_data) - current_us_heap.get_size(), curr_dpe)
+                                                    len(us_data) - current_us_heap.get_size(), curr_dpe, True)
             curr_exe_data = bytes(curr_exe_data[:current_us_heap.get_offset()] + us_data + curr_exe_data[current_us_heap.get_offset() + current_us_heap.get_size():])
             self.set_exe_data(curr_exe_data)
             return curr_exe_data
@@ -629,14 +738,18 @@ cdef class DotNetPeFile:
         except net_exceptions.InvalidTokenException:
             return None
 
-    def set_entry_point(self, ep_token):
+    cpdef set_entry_point(self, unsigned int ep_token):
         """
         Sets metadata token "ep_token" as the entry point.
         """
-        new_net_header = self.metadata_dir.get_net_header()
+        cdef IMAGE_COR20_HEADER new_net_header = self.metadata_dir.get_net_header()
+        cdef bytes new_cor_bytes
+        cdef bytes current_exe_data
+        cdef bytes new_exe_data
         new_net_header.EntryPoint.EntryPointToken = ep_token
         current_exe_data = self.get_exe_data()
-        new_exe_data = current_exe_data[:new_net_header.get_file_offset()] + bytes(new_net_header) + current_exe_data[new_net_header.get_file_offset() + new_net_header.cb:]
+        new_cor_bytes = PyBytes_FromStringAndSize(<char*>&new_net_header, sizeof(IMAGE_COR20_HEADER))
+        new_exe_data = current_exe_data[:self.get_cor_header_offset()] + new_cor_bytes + current_exe_data[self.get_cor_header_offset() + new_net_header.cb:]
         self.set_exe_data(new_exe_data)
 
     cpdef object get_token_value(self, unsigned long token):
@@ -663,15 +776,18 @@ cdef class DotNetPeFile:
             return None
 
     cpdef str get_productversion(self):
-        pe = self.get_pe()
-        for fileinfo in pe.FileInfo:
-            for item in fileinfo:
-                if hasattr(item, 'StringTable'):
-                    for st in item.StringTable:
-                        for entry in st.entries.items():
-                            if entry[0] == b'ProductVersion':
-                                return entry[1].decode()
-        return ''
+        #this is used so little times that we may as well just use PeFile for it.
+        if self.__versioninfo_str == None:
+            pe = pefile.PE(data=self.get_exe_data())
+            for fileinfo in pe.FileInfo:
+                for item in fileinfo:
+                    if hasattr(item, 'StringTable'):
+                        for st in item.StringTable:
+                            for entry in st.entries.items():
+                                if entry[0] == b'ProductVersion':
+                                    return entry[1].decode()
+            self.__versioninfo_str = ''
+        return self.__versioninfo_str
 
 
 #TODO: Multiple methods can have the same full name - e.x when overriding parameters.
@@ -685,7 +801,7 @@ cpdef DotNetPeFile try_get_dotnetpe(str file_path='', bytes pe_data=bytes(), bin
         if not dotnetpe.metadata_dir.is_valid_directory:
             return None
         return dotnetpe
-    except (net_exceptions.NotADotNetFile, pefile.PEFormatError):
+    except (net_exceptions.NotADotNetFile, ValueError):
         return None
     except net_exceptions.TooManyMethodParameters:
         logger.error(
