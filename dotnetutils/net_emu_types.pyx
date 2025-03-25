@@ -466,7 +466,7 @@ cdef class DotNetMemoryStream(DotNetObject):
     cpdef object Read(self, DotNetArray buffer, object offset, object count):
         cdef Py_ssize_t x
         for x in range(count):
-            buffer[offset + x] = net_emu_coretypes.DotNetUInt8(self.internal_data[self.position + x])
+            buffer[offset + x] = net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), self.internal_data[self.position + x])
         self.position += count
         return count
 
