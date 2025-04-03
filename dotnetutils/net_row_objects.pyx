@@ -346,7 +346,7 @@ cdef class ColumnValue:
         """
         return self.changed_value
 
-    cpdef int get_raw_value(self) except *:
+    cpdef unsigned int get_raw_value(self) except *:
         """
         Obtain the raw, unprocessed value.
         :return: the raw value
@@ -359,7 +359,7 @@ cdef class ColumnValue:
         """
         return self.changed_value != None and self.changed_value != self.original_value
     
-    cpdef void set_raw_value(self, int new_value):
+    cpdef void set_raw_value(self, unsigned int new_value):
         """
         Set the raw value of the column.
         """
@@ -374,7 +374,7 @@ cdef class ColumnValue:
         :return:
         """
         cdef str tbl_name
-        cdef int tbl_rid
+        cdef unsigned int tbl_rid
         try:
             tbl_name, tbl_rid = self.col_type.decode_token(self.raw_value)
             return tbl_name

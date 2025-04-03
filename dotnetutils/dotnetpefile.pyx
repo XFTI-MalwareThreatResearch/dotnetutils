@@ -600,8 +600,6 @@ cdef class DotNetPeFile:
                     if len(guid_stream.get_data()) > 0xFFFF:
                         self.get_metadata_dir().get_metadata_table_header().set_heap_offset_size(net_structs.BITMASK_GUID, 4)
                     heap_id = net_structs.BITMASK_GUID
-                if heap_id == None:
-                    raise net_exceptions.InvalidHeapNameException
         #begin patching in various streams.  Start with the metadata heap.
         #problem: we cant patch the stuff in individually.  Has to be all or nothing.
         curr_exe_data = self.get_exe_data()

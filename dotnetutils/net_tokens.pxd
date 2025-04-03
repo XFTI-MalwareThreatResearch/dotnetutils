@@ -19,11 +19,11 @@ cdef class CodedToken(BaseToken):
     cdef int bits
     cdef int mask
 
-    cpdef tuple decode_token(self, int token)
+    cpdef tuple decode_token(self, unsigned int token)
 
     cpdef int encode_token(self, net_row_objects.RowObject row_obj)
 
-    cpdef str get_token_table(self, int token)
+    cpdef str get_token_table(self, unsigned int token)
 
     cpdef int get_bits(self)
 
@@ -32,12 +32,12 @@ cdef class CodedToken(BaseToken):
 cdef class SingleTableCodedToken(BaseToken):
     cdef str table_name
 
-    cpdef tuple decode_token(self, int token)
+    cpdef tuple decode_token(self, unsigned int token)
 
 
 cdef class SignatureToken(BaseToken):
 
-    cpdef tuple decode_token(self, int token)
+    cpdef tuple decode_token(self, unsigned int token)
 
     cpdef int encode_token(self, str table_name, int table_rid)
 
