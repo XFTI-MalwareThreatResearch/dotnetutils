@@ -35,7 +35,7 @@ cdef class CodedToken(BaseToken):
         if len(self.get_token_types()) == 0 and not self.is_fixed_value():
             raise net_exceptions.InvalidTokenException('CodedToken', 0)
 
-    cpdef tuple decode_token(self, int token):
+    cpdef tuple decode_token(self, unsigned int token):
         if self.is_stream():
             return self.get_token_types()[0], token
         elif self.is_fixed_value():
@@ -55,7 +55,7 @@ cdef class CodedToken(BaseToken):
         coded_token = (row_obj.get_rid() << self.bits) | index
         return coded_token
 
-    cpdef str get_token_table(self, int token):
+    cpdef str get_token_table(self, unsigned int token):
         if self.is_stream():
             return self.get_token_types()[0]
         elif not self.is_fixed_value():
@@ -88,7 +88,7 @@ cdef class SingleTableCodedToken(BaseToken):
         BaseToken.__init__(self, [table_name], False, False, -1)
         self.table_name = table_name
 
-    cpdef tuple decode_token(self, int token):
+    cpdef tuple decode_token(self, unsigned int token):
         return self.table_name, token
     
     def __str__(self):
@@ -99,7 +99,7 @@ cdef class SignatureToken(BaseToken):
     def __init__(self):
         BaseToken.__init__(self, list(), False, False, -1)
 
-    cpdef tuple decode_token(self, int token):
+    cpdef tuple decode_token(self, unsigned int token):
         token_type = (token >> 24)
         token_val = (token & 0x00FFFFFF)
         if token_type == 0x11:

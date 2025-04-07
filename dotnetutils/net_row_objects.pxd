@@ -42,7 +42,7 @@ cdef class RowObject:
 
 cdef class ColumnValue:
     cdef unsigned int col_size
-    cdef unsigned long raw_value
+    cdef unsigned int raw_value
     cdef str col_name
     cdef RowObject row_obj
     cdef net_tokens.BaseToken col_type
@@ -81,11 +81,11 @@ cdef class ColumnValue:
 
     cpdef object get_changed_value(self)
 
-    cpdef int get_raw_value(self) except *
+    cpdef unsigned int get_raw_value(self) except *
     
     cpdef bint was_value_changed(self)
     
-    cpdef void set_raw_value(self, int new_value)
+    cpdef void set_raw_value(self, unsigned int new_value)
 
     cpdef str get_value_table_name(self)
         

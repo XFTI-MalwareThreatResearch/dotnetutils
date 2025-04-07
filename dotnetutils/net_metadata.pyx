@@ -153,6 +153,8 @@ cdef class MetaDataDirectory:
         metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
         self.metadata_header = MetaDataHeader(self.dotnetpe, file_data, metadata_offset)
         for file_offset, size, name in self.metadata_header.get_stream_headers():
+            #TODO: need to do a better job of supporting streams that arent actually there. (Duplicate streams)
+            #Also need to work out issues where reconstruct_executable() is called on binaries with custom heaps / streams
             if name == b'#~' or name == b'#-':
                 self.metadata_file_offset = file_offset
                 self.metadata_file_size = size
