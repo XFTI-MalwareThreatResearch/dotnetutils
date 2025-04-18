@@ -34,6 +34,8 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
         return b'System.String'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_VOID:
         return b'System.Void'
+    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
+        return b'System.Boolean'
     raise net_exceptions.OperationNotSupportedException()
 
 cdef class RowObject:
