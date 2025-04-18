@@ -3,6 +3,10 @@ from dotnetutils cimport net_tokens
 from dotnetutils cimport dotnetpefile, net_structs, net_row_objects, net_cil_disas
 from dotnetutils import net_exceptions
 
+from logging import getLogger
+
+logger = getLogger(__name__)
+
 
 cdef get_single_table_index_size(int table_id, list row_amt_list):
     row_amt = 0
@@ -482,7 +486,11 @@ cdef class MethodDefTable(TableObject):
         cdef net_row_objects.RowObject instr_arg
         for method_obj in self:
             if method_obj.has_body():
-                disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
+                try:
+                    disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
+                except Exception as e:
+                    logger.warn('Error processing method {}.  Its possible the method is encrypted.'.format(hex(method_obj.get_token())))
+                    disasm_obj = None
                 if disasm_obj != None:
                     for x in range(len(disasm_obj)):
                         instr = disasm_obj[x]
