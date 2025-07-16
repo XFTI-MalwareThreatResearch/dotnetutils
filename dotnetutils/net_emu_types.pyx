@@ -1530,7 +1530,10 @@ cdef class DotNetMethodBase(DotNetMemberInfo):
 cdef class DotNetDelegate(DotNetObject):
     def __init__(self, emulator_obj, dn_type, dn_methodinfo):
         DotNetObject.__init__(self, emulator_obj)
-        self.dn_type = dn_type
+        if not isinstance(dn_type, DotNetNull):
+            self.dn_type = dn_type
+        else:
+            self.dn_type = None
         self.dn_methodinfo = dn_methodinfo
 
     @staticmethod
