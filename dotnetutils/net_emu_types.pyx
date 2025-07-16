@@ -1534,7 +1534,10 @@ cdef class DotNetDelegate(DotNetObject):
             self.dn_type = dn_type
         else:
             self.dn_type = None
-        self.dn_methodinfo = dn_methodinfo
+        if isinstance(dn_methodinfo, DotNetMethodInfo):
+            self.dn_methodinfo = dn_methodinfo
+        else:
+            self.dn_methodinfo = DotNetMethodInfo(emulator_obj, dn_methodinfo)
 
     @staticmethod
     def CreateDelegate(app_domain, dotnet_type, dotnet_methodinfo):
