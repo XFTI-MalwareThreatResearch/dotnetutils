@@ -589,15 +589,15 @@ cdef class DotNetPeFile:
                     continue  #just to be safe.
                 heap_id = None
                 if heap_name == '#Blob':
-                    if len(blob_stream.get_data()) > 0xFFFF:
+                    if len(blob_stream.get_data()) > 65536:
                         self.get_metadata_dir().get_metadata_table_header().set_heap_offset_size(net_structs.BITMASK_BLOB, 4)
                     heap_id = net_structs.BITMASK_BLOB
                 elif heap_name == '#Strings':
-                    if len(strings_stream.get_data()) > 0xFFFF:
+                    if len(strings_stream.get_data()) > 65536:
                         self.get_metadata_dir().get_metadata_table_header().set_heap_offset_size(net_structs.BITMASK_STRINGS, 4)
                     heap_id = net_structs.BITMASK_STRINGS
                 elif heap_name == '#GUID':
-                    if len(guid_stream.get_data()) > 0xFFFF:
+                    if len(guid_stream.get_data()) > 65536:
                         self.get_metadata_dir().get_metadata_table_header().set_heap_offset_size(net_structs.BITMASK_GUID, 4)
                     heap_id = net_structs.BITMASK_GUID
         #begin patching in various streams.  Start with the metadata heap.

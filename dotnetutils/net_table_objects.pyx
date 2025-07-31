@@ -8,7 +8,7 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 
-cdef get_single_table_index_size(int table_id, list row_amt_list):
+cdef int get_single_table_index_size(int table_id, list row_amt_list):
     row_amt = 0
     for tbl_id, count in row_amt_list:
         if tbl_id == table_id:
@@ -16,13 +16,14 @@ cdef get_single_table_index_size(int table_id, list row_amt_list):
             break
     if row_amt == 0:
         return 2
-    if row_amt > 0xFFFF:
+    if row_amt >= 65536: #2^16 as per ECMA Partition 2 section 24.2.6
         return 4
     return 2
 
 
-cdef get_multiple_table_index_size(list potential_table_ids, list row_amt_list, int bits_used):
-    max_value = 0xFFFF >> bits_used
+cdef int get_multiple_table_index_size(list potential_table_ids, list row_amt_list, int bits_used):
+    #TODO may need to refwork this function.
+    max_value = 65536 >> bits_used
     for ident in potential_table_ids:
         row_amt = 0
         for tbl_id, count in row_amt_list:
@@ -802,6 +803,7 @@ cdef class MetadataHeap:
     cdef void parse_tables(self, bytes file_data):
         cdef unsigned long tables_curr_offset
         cdef int table_id
+        cdef int single_table_id
         cdef int table_amt_rows
         cdef str tbl_name
         cdef dict col_type_handler
@@ -851,7 +853,8 @@ cdef class MetadataHeap:
                             size_of_value = self.table_header.get_heap_offset_size(bitmask)
                         else:
                             if len(field_type.get_token_types()) == 1:
-                                size_of_value = get_single_table_index_size(table_id, self.table_header.table_amt_rows)
+                                single_table_id = get_table_id_from_name(field_type.get_token_types()[0])
+                                size_of_value = get_single_table_index_size(single_table_id, self.table_header.table_amt_rows)
                             else:
                                 table_ids = list()
                                 for table_name in field_type.get_token_types():
@@ -867,7 +870,6 @@ cdef class MetadataHeap:
                                 size_of_value = get_multiple_table_index_size(table_ids,
                                                                               self.table_header.table_amt_rows,
                                                                               field_type.get_bits())
-                    
                     field_value = int.from_bytes(file_data[tables_curr_offset:tables_curr_offset + size_of_value], 'little', signed=False)
                     raw_row.append(field_value)
                     

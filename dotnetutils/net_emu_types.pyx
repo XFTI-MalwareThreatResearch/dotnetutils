@@ -1245,7 +1245,7 @@ cdef class DotNetString(DotNetObject):
         return self.str_encoding
 
     def ToCharArray(self):
-        type_obj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Char')
+        type_obj = self.get_emulator_obj().get_dotnetpe().get_type_by_full_name(b'System.Char')
         result = DotNetArray(self.get_emulator_obj(), len(self.str_data), type_obj=type_obj, initialize=False)
         result.set_internal_array(list(self.str_data))
         return result
