@@ -56,7 +56,6 @@ cdef class MetaDataHeader:
         current_offset += 2
 
         for x in range(self.num_streams):
-            original_shdr_offset = current_offset
             offset = int.from_bytes(file_data[current_offset:current_offset + 4], 'little')
             current_offset += 4
             size = int.from_bytes(file_data[current_offset:current_offset + 4], 'little')
