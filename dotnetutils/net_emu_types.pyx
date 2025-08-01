@@ -1244,6 +1244,12 @@ cdef class DotNetString(DotNetObject):
     cpdef str get_str_encoding(self):
         return self.str_encoding
 
+    def ToCharArray(self):
+        type_obj = self.get_emulator_obj().get_dotnetpe().get_type_by_full_name(b'System.Char')
+        result = DotNetArray(self.get_emulator_obj(), len(self.str_data), type_obj=type_obj, initialize=False)
+        result.set_internal_array(list(self.str_data))
+        return result
+
     @staticmethod
     def Empty(app_domain):
         return DotNetString(app_domain.get_emulator_obj(), bytes(), 'utf-16le')
@@ -1530,8 +1536,14 @@ cdef class DotNetMethodBase(DotNetMemberInfo):
 cdef class DotNetDelegate(DotNetObject):
     def __init__(self, emulator_obj, dn_type, dn_methodinfo):
         DotNetObject.__init__(self, emulator_obj)
-        self.dn_type = dn_type
-        self.dn_methodinfo = dn_methodinfo
+        if not isinstance(dn_type, DotNetNull):
+            self.dn_type = dn_type
+        else:
+            self.dn_type = None
+        if isinstance(dn_methodinfo, DotNetMethodInfo):
+            self.dn_methodinfo = dn_methodinfo
+        else:
+            self.dn_methodinfo = DotNetMethodInfo(emulator_obj, dn_methodinfo)
 
     @staticmethod
     def CreateDelegate(app_domain, dotnet_type, dotnet_methodinfo):

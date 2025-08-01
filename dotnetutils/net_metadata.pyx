@@ -64,6 +64,7 @@ cdef class MetaDataHeader:
             while file_data[current_offset] != 0:
                 name += bytes([file_data[current_offset]])
                 current_offset += 1
+            
             current_offset += (4 - (current_offset % 4))
             self.streamheaders.append([self.start_offset + offset, size, name])
         self.end_offset = current_offset
