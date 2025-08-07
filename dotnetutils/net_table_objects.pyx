@@ -496,7 +496,7 @@ cdef class MethodDefTable(TableObject):
                     for x in range(len(disasm_obj)):
                         instr = disasm_obj[x]
                         instr_name = instr.get_name()
-                        if instr_name == 'call' or instr_name == 'callvirt':
+                        if instr_name == 'call' or instr_name == 'callvirt' or instr_name == 'newobj':
                             #handle method references here.
                             instr_arg = instr.get_argument()
                             if instr_arg != None:
