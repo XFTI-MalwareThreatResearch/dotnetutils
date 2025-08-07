@@ -11,7 +11,7 @@ cpdef bytes remove_unk_obf_1_obfuscation(bytes exe_data)
 
 cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data)
 
-cpdef bytes remove_useless_conditionals(bytes exe_data)
+cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=*)
 
 cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj)
 

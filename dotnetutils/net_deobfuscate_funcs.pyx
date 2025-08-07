@@ -464,7 +464,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
     return dotnet.reconstruct_executable()
 
 
-cpdef bytes remove_useless_conditionals(bytes exe_data):
+cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=[]):
     """
     Removes conditionals that will either always be true or always false
     currently handles the following cases:
@@ -483,12 +483,13 @@ cpdef bytes remove_useless_conditionals(bytes exe_data):
     cdef long long num_instrs
     cdef net_cil_disas.Instruction prev_instr2
     cdef net_table_objects.MethodDefTable methods
+    cdef bint check_target_methods = len(target_method_rids) != 0
 
     dotnet = dotnetpefile.DotNetPeFile(pe_data=exe_data)
     methods = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
     for y in range(len(methods)):
         method_obj = <net_row_objects.MethodDef>methods.get(y + 1)
-        if not method_obj.has_body():
+        if not method_obj.has_body() or (check_target_methods and method_obj.get_rid() not in target_method_rids):
             continue
 
         # make sure were creating a fresh copy every time.
