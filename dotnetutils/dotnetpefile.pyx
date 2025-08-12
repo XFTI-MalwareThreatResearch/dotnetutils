@@ -418,6 +418,8 @@ cdef class DotNetPeFile:
                     resource_size = int.from_bytes(self.get_exe_data()[resource_offset:resource_offset + 4], 'little')
                     resource_offset += 4
                     rsrc_name = item['Name'].get_value()
+                    if len(self.get_exe_data()) < (resource_offset + resource_size):
+                        raise Exception('not enough data to parse out resource')
                     rsrc_data = self.get_exe_data()[resource_offset:resource_offset + resource_size]
                     results.append(DotNetResourceSet(rsrc_data, self, force_name=rsrc_name))
         return results

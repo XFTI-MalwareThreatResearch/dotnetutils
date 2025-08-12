@@ -367,12 +367,16 @@ cdef bytes apply_pe_fixups_32(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     cor_header = <IMAGE_COR20_HEADER*> (<uintptr_t>old_exe_view.buf + net_header_offset)
     cor_header.MetaData.VirtualAddress = get_fixed_rva(old_pe, old_exe_data, cor_header.MetaData.VirtualAddress,
                                                        va_addr, difference)
-    if cor_header.MetaData.VirtualAddress <= va_addr <= (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
+    if cor_header.MetaData.VirtualAddress <= va_addr < (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
         #FIXME: while this fixes the issue regarding inserting blank strings stream,
         #I think it may hypothetically cause other issues.  Not sure.  Might need to remove <= and replace with < again.
         cor_header.MetaData.Size = cor_header.MetaData.Size + difference
     cor_header.Resources.VirtualAddress = get_fixed_rva(old_pe, old_exe_data, cor_header.Resources.VirtualAddress,
                                                         va_addr, difference)
+    if cor_header.Resources.VirtualAddress <= va_addr < (cor_header.Resources.VirtualAddress + cor_header.Resources.Size):
+        #FIXME: while this fixes the issue regarding inserting blank strings stream,
+        #I think it may hypothetically cause other issues.  Not sure.  Might need to remove <= and replace with < again.
+        cor_header.Resources.Size = cor_header.Resources.Size + difference
     cor_header.StrongNameSignature.VirtualAddress = get_fixed_rva(old_pe, old_exe_data,
                                                                   cor_header.StrongNameSignature.VirtualAddress,
                                                                   va_addr, difference)
@@ -661,12 +665,16 @@ cdef bytes apply_pe_fixups_64(dotnetpefile.PeFile old_pe, bytes old_exe_data, in
     cor_header = <IMAGE_COR20_HEADER*> (<uintptr_t>old_exe_view.buf + net_header_offset)
     cor_header.MetaData.VirtualAddress = get_fixed_rva(old_pe, old_exe_data, cor_header.MetaData.VirtualAddress,
                                                        va_addr, difference)
-    if cor_header.MetaData.VirtualAddress <= va_addr <= (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
+    if cor_header.MetaData.VirtualAddress <= va_addr < (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
         #FIXME: while this fixes the issue regarding inserting blank strings stream,
         #I think it may hypothetically cause other issues.  Not sure.  Might need to remove <= and replace with < again.
         cor_header.MetaData.Size = cor_header.MetaData.Size + difference
     cor_header.Resources.VirtualAddress = get_fixed_rva(old_pe, old_exe_data, cor_header.Resources.VirtualAddress,
                                                         va_addr, difference)
+    if cor_header.Resources.VirtualAddress <= va_addr < (cor_header.Resources.VirtualAddress + cor_header.Resources.Size):
+        #FIXME: while this fixes the issue regarding inserting blank strings stream,
+        #I think it may hypothetically cause other issues.  Not sure.  Might need to remove <= and replace with < again.
+        cor_header.Resources.Size = cor_header.Resources.Size + difference
     cor_header.StrongNameSignature.VirtualAddress = get_fixed_rva(old_pe, old_exe_data,
                                                                   cor_header.StrongNameSignature.VirtualAddress,
                                                                   va_addr, difference)
