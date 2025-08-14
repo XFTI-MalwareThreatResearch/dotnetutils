@@ -1815,7 +1815,6 @@ cdef class DotNetEmulator:
                 elif ins_op == net_opcodes.Opcodes.Stloc or ins_op == net_opcodes.Opcodes.Stloc_0 or ins_op == net_opcodes.Opcodes.Stloc_1 or ins_op == net_opcodes.Opcodes.Stloc_2 or ins_op == net_opcodes.Opcodes.Stloc_3 or ins_op == net_opcodes.Opcodes.Stloc_S:
                     self.handle_stloc_instruction(instr)
                 elif ins_op == net_opcodes.Opcodes.Stsfld:
-                    break
                     self.handle_stsfld_instruction(instr)
                 elif ins_op == net_opcodes.Opcodes.Sub or ins_op == net_opcodes.Opcodes.Sub_Ovf or ins_op == net_opcodes.Opcodes.Sub_Ovf_Un:
                     self.handle_sub_instruction(instr)
