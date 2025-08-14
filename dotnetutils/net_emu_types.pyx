@@ -356,6 +356,9 @@ cdef class DotNetDictionary(DotNetObject):
     def set_Item(self, param1, param2):
         self.__internal_dict[param1] = param2
 
+    def get_Item(self, param1):
+        return self.__internal_dict[param1]
+
     def Add(self, param1, param2):
         self.__internal_dict[param1] = param2
 
@@ -365,7 +368,8 @@ cdef class DotNetDictionary(DotNetObject):
     def get_Count(self):
         return net_emu_coretypes.DotNetInt32(self.get_emulator_obj(), len(self.__internal_dict))
 
-
+    def get_internal_dict(self):
+        return self.__internal_dict
 
 cdef class DotNetConcurrentDictionary(DotNetDictionary):
     def __init__(self, emulator_obj):
@@ -484,6 +488,14 @@ cdef class DotNetMemoryStream(DotNetObject):
         self.position += 1
         return result
 
+    def ReadBytes(self, count):
+        result = list()
+        for x in range(count):
+            result.append(self.ReadByte())
+        arr = DotNetArray(self.get_emulator_obj(), count, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'), initialize=False)
+        arr.set_internal_array(result)
+        return arr
+
     cpdef void Write(self, DotNetArray buffer, object offset, object count) except *:
         # expand the array if needed.
         cdef Py_ssize_t amount_needed
@@ -510,6 +522,9 @@ cdef class DotNetMemoryStream(DotNetObject):
     def __str__(self):
         return str(self.internal_data[:50]) + ' Object: ' + DotNetObject.__str__(self) + ' position: {}'.format(
             self.position)
+
+    def Close(self):
+        pass
 
 
 cdef class DotNetAssemblyName(DotNetObject):
@@ -875,6 +890,9 @@ cdef class DotNetMemberInfo(DotNetObject):
 
     def get_DeclaringType(self):
         return DotNetType(self.get_emulator_obj(), self.internal_method.get_parent_type())
+
+    def get_MetadataToken(self):
+        return net_emu_coretypes.DotNetInt32(self.get_emulator_obj(), self.internal_method.get_token())
 
 cdef class DotNetConsole(DotNetObject):
     def __init__(self, emulator_obj):
@@ -2965,6 +2983,12 @@ cdef class DotNetBinaryReader(DotNetObject):
 
     def Close(self):
         self.stream.Close()
+
+    def ReadInt32(self):
+        rbytes = self.ReadBytes(4)
+        arr = rbytes.get_internal_array()
+        number = int.from_bytes(arr, 'little', signed=True)
+        return net_emu_coretypes.DotNetInt32(self.get_emulator_obj(), number)
 
 
 cdef class DotNetMarshal(DotNetObject):
