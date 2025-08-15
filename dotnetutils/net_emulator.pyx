@@ -660,7 +660,7 @@ cdef class DotNetEmulator:
                         emu_method = getattr(type(obj_ref), method_name)
                     else:
                         if not hasattr(emulated_type, method_name):
-                            raise net_exceptions.EmulatorMethodNotFoundException(method_name)
+                            raise net_exceptions.EmulatorMethodNotFoundException('{}:{}'.format(emulated_type, method_name))
                         emu_method = getattr(emulated_type, method_name)
                 elif hasattr(emulated_type, method_name):
                     emu_method = getattr(emulated_type, method_name)
@@ -1880,7 +1880,7 @@ cdef class DotNetEmulator:
                 elif ins_op == net_opcodes.Opcodes.Cpobj:
                     raise net_exceptions.InstructionNotSupportedException(ins_name)
                 elif ins_op == net_opcodes.Opcodes.Div_Un:
-                    raise net_exceptions.InstructionNotSupportedException(ins_name)
+                    self.handle_div_instruction(instr)
                 elif ins_op == net_opcodes.Opcodes.Endfilter:
                     raise net_exceptions.InstructionNotSupportedException(ins_name)
                 elif ins_op == net_opcodes.Opcodes.Endfinally:

@@ -620,18 +620,30 @@ cdef class TypeDef(TypeDefOrRef):
         cdef int method_table_len
         cdef int method_index_end
         cdef net_table_objects.MethodDefTable method_table
+        cdef net_table_objects.TableObject methodptr_table = None
+        cdef net_table_objects.TableObject fieldptr_table = None
         cdef MethodDef method
         field_start_index = self['FieldList'].get_raw_value()
         fieldlist = list()
         metadata_heap = self.get_dotnetpe().get_heap('#~')
         if metadata_heap.has_table('Field') and self['FieldList'].get_raw_value() != 0:
-            field_end_index = len(metadata_heap.obtain_table('Field')) + 1
-            if metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
-                field_end_index = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)['fieldlist'].get_raw_value()
-            if not metadata_heap.obtain_table('Field').has_index(field_end_index):
+            if not self.get_dotnetpe().has_metadata_table('FieldPtr'):
                 field_end_index = len(metadata_heap.obtain_table('Field')) + 1
+                if metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
+                    field_end_index = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)['fieldlist'].get_raw_value()
+                if not metadata_heap.obtain_table('Field').has_index(field_end_index):
+                    field_end_index = len(metadata_heap.obtain_table('Field')) + 1
+            else:
+                fieldptr_table = self.get_dotnetpe().get_metadata_table('FieldPtr')
+                if metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
+                    field_end_index = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)['fieldlist'].get_raw_value()
+                if not metadata_heap.obtain_table('FieldPtr').has_index(field_end_index):
+                    field_end_index = len(fieldptr_table) + 1
             for x in range(field_start_index, field_end_index):
-                field_obj = metadata_heap.obtain_table('Field').get(x)
+                if fieldptr_table is None:
+                    field_obj = metadata_heap.obtain_table('Field').get(x)
+                else:
+                    field_obj = fieldptr_table.get(x)['Field'].get_value()
                 if field_obj:
                     field_obj._set_parent_type(self)
                     fieldlist.append(field_obj)
@@ -639,16 +651,29 @@ cdef class TypeDef(TypeDefOrRef):
         if metadata_heap.has_table('MethodDef') and self['MethodList'].get_raw_value() != 0:
             methodlist = list()
             method_start_index = self['MethodList'].get_raw_value()
-            method_table_len = len(metadata_heap.obtain_table('MethodDef')) + 1
-            method_index_end = method_table_len
-            method_table = metadata_heap.obtain_table('MethodDef')
-            if  metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
-                method_index_end = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)[
-                    'methodlist'].get_raw_value()
-            if not metadata_heap.obtain_table('MethodDef').has_index(method_index_end):
-                method_index_end = len(metadata_heap.obtain_table('MethodDef')) + 1
+            if not self.get_dotnetpe().has_metadata_table('MethodPtr'):
+                method_table_len = len(metadata_heap.obtain_table('MethodDef')) + 1
+                method_index_end = method_table_len
+                method_table = metadata_heap.obtain_table('MethodDef')
+                if  metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
+                    method_index_end = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)[
+                        'methodlist'].get_raw_value()
+                if not metadata_heap.obtain_table('MethodDef').has_index(method_index_end):
+                    method_index_end = len(metadata_heap.obtain_table('MethodDef')) + 1
+            else:
+                methodptr_table = self.get_dotnetpe().get_metadata_table('MethodPtr')
+                method_table_len = len(methodptr_table) + 1
+                method_index_end = method_table_len
+                if  metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
+                    method_index_end = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)[
+                        'methodlist'].get_raw_value()
+                if not metadata_heap.obtain_table('MethodDef').has_index(method_index_end):
+                    method_index_end = method_table_len
             for x in range(method_start_index, method_index_end):
-                method = method_table.get(x)
+                if methodptr_table is not None:
+                    method = methodptr_table.get(x)['Method'].get_value()
+                else:
+                    method = method_table.get(x)
                 method._set_parent_type(self)
                 methodlist.append(method)
             self['MethodList'].set_formatted_value(methodlist)
@@ -1099,23 +1124,37 @@ cdef class MethodDef(MethodDefOrRef):
         cdef int params_list_len
         cdef int params_list_start
         cdef list paramlist
+        cdef net_table_objects.TableObject paramptr_table = None
 
         # process paramslist
         metadata_heap = self.get_dotnetpe().get_heap('#~')
         if metadata_heap.has_table('Param'):
-            params_list_len = len(metadata_heap.obtain_table('Param'))
-            params_list_end = params_list_len + 1
-
-            if metadata_heap.obtain_table('MethodDef').has_index(self.get_rid() + 1):
-                params_list_end = metadata_heap.obtain_table('MethodDef').get(self.get_rid() + 1).values[
-                    'paramlist'].get_raw_value()
-            if not metadata_heap.obtain_table('Param').has_index(params_list_end):
+            if not self.get_dotnetpe().has_metadata_table('ParamPtr'):
+                params_list_len = len(metadata_heap.obtain_table('Param'))
                 params_list_end = params_list_len + 1
+
+                if metadata_heap.obtain_table('MethodDef').has_index(self.get_rid() + 1):
+                    params_list_end = metadata_heap.obtain_table('MethodDef').get(self.get_rid() + 1).values[
+                        'paramlist'].get_raw_value()
+                if not metadata_heap.obtain_table('Param').has_index(params_list_end):
+                    params_list_end = params_list_len + 1
+            else:
+                paramptr_table = self.get_dotnetpe().get_metadata_table('ParamPtr')
+                params_list_len = len(paramptr_table)
+                params_list_end = params_list_len + 1
+
+                if metadata_heap.obtain_table('MethodDef').has_index(self.get_rid() + 1):
+                    params_list_end = metadata_heap.obtain_table('MethodDef').get(self.get_rid() + 1).values[
+                        'paramlist'].get_raw_value()
+                if not paramptr_table.has_index(params_list_end):
+                    params_list_end = params_list_len + 1
             params_list_start = self.values['paramlist'].get_raw_value()
             paramlist = list()
-            #for x in range(params_list_start, params_list_end):
-            #    paramlist.append(metadata_heap.obtain_table('Param').get(x))
-            paramlist.extend(metadata_heap.obtain_table('Param')[params_list_start:params_list_end])
+            for x in range(params_list_start, params_list_end):
+                if paramptr_table is not None:
+                    paramlist.append(paramptr_table.get(x)['Param'].get_value())
+                else:
+                    paramlist.append(metadata_heap.obtain_table('Param').get(x))
             self['ParamList'].set_formatted_value(paramlist)
 
     cpdef list get_param_types(self):
@@ -1662,17 +1701,32 @@ cdef class PropertyMap(RowObject):
         cdef int property_list_len
         cdef int property_list_start
         cdef list propertylist
+        cdef net_table_objects.TableObject propertyptr_table = None
         cdef int x
-        property_list_len = len(self.get_dotnetpe().get_metadata_table('Property'))
-        property_list_end = property_list_len
-        if self.get_rid() + 1 < len(self.get_dotnetpe().get_metadata_table('PropertyMap')):
-            property_list_end = self.get_dotnetpe().get_metadata_table('PropertyMap').get(self.get_rid() + 1)['PropertyList'].get_raw_value()
-        if property_list_end > property_list_len:
+        if not self.get_dotnetpe().has_metadata_table('PropertyPtr'):
+            property_list_len = len(self.get_dotnetpe().get_metadata_table('Property')) + 1
             property_list_end = property_list_len
+            if self.get_rid() + 1 < len(self.get_dotnetpe().get_metadata_table('PropertyMap')):
+                property_list_end = self.get_dotnetpe().get_metadata_table('PropertyMap').get(self.get_rid() + 1)['PropertyList'].get_raw_value()
+            if property_list_end > property_list_len:
+                property_list_end = property_list_len
+        else:
+            propertyptr_table = self.get_dotnetpe().get_metadata_table('PropertyPtr')
+            property_list_len = len(propertyptr_table) + 1
+            property_list_end = property_list_len
+            if self.get_rid() + 1 < len(self.get_dotnetpe().get_metadata_table('PropertyMap')):
+                property_list_end = self.get_dotnetpe().get_metadata_table('PropertyMap').get(self.get_rid() + 1)['PropertyList'].get_raw_value()
+            if not propertyptr_table.has_index(property_list_end):
+                property_list_end = property_list_len
+
+
         property_list_start = self['PropertyList'].get_raw_value()
         propertylist = list()
         for x in range(property_list_start, property_list_end):
-            propertylist.append(self.get_dotnetpe().get_metadata_table('Property').get(x))
+            if propertyptr_table is not None:
+                propertylist.append(propertyptr_table.get(x)['Property'].get_value())
+            else:
+                propertylist.append(self.get_dotnetpe().get_metadata_table('Property').get(x))
         self['PropertyList'].set_formatted_value(propertylist)
 
     cpdef RowObject get_parent(self):
