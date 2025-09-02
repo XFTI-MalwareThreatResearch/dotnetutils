@@ -1683,9 +1683,9 @@ cdef class DotNetEmulator:
                             emu.run_function()
             else:
                 self.executed_cctors.can_execute(self.method_obj)
-        if self.caller is not None:
-            if self.print_debug:
-                self.print_current_state()
+        #if self.caller is not None:
+        #    if self.print_debug:
+        #        self.print_current_state()
         while self.current_eip < len(self.disasm_obj):
             self.should_break = False
             instr = self.disasm_obj.get_instr_at_offset(self.current_offset)

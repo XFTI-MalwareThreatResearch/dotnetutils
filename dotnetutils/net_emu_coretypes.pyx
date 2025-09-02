@@ -268,6 +268,9 @@ class DotNetNumber:
     def is_int16(self):
         return self.__numpy_dtype.itemsize == 2 and self.__numpy_dtype.kind == 'i'
 
+    def __str__(self):
+        return hex(self)
+
 class DotNetInt8(DotNetNumber):
     def __init__(self, emulator_obj, value_obj):
         DotNetNumber.__init__(self, emulator_obj, numpy.dtype(numpy.int8), value_obj)

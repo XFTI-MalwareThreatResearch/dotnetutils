@@ -135,33 +135,33 @@ cdef class DotNetObject:
             raise net_exceptions.ObjectTypeException
         type_sig = field_sig.get_type_sig()
         if isinstance(type_sig, net_utils.CorLibTypeSig):
-            if type_sig.get_element_type() == net_structs.ELEMENT_TYPE_I:
+            if type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I:
                 self.set_field(field_rid, net_emu_coretypes.DotNetInt32(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_I1:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I1:
                 self.set_field(field_rid, net_emu_coretypes.DotNetInt8(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_I2:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I2:
                 self.set_field(field_rid, net_emu_coretypes.DotNetInt16(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_I4:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I4:
                 self.set_field(field_rid, net_emu_coretypes.DotNetInt32(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_I8:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I8:
                 self.set_field(field_rid, net_emu_coretypes.DotNetInt64(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_U:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U:
                 self.set_field(field_rid, net_emu_coretypes.DotNetUInt32(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_U1:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U1:
                 self.set_field(field_rid, net_emu_coretypes.DotNetUInt8(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_U2:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U2:
                 self.set_field(field_rid, net_emu_coretypes.DotNetUInt16(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_U4:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U4:
                 self.set_field(field_rid, net_emu_coretypes.DotNetUInt32(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_U8:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U8:
                 self.set_field(field_rid, net_emu_coretypes.DotNetUInt64(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_R4:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R4:
                 self.set_field(field_rid, net_emu_coretypes.DotNetSingle(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_R8:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R8:
                 self.set_field(field_rid, net_emu_coretypes.DotNetDouble(self.get_emulator_obj(), 0))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_STRING:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_STRING:
                 self.set_field(field_rid, DotNetString.Empty(self.get_emulator_obj().get_appdomain()))
-            elif type_sig.get_element_type() == net_structs.ELEMENT_TYPE_BOOLEAN:
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
                 self.set_field(field_rid, net_emu_coretypes.DotNetBoolean(self.get_emulator_obj(), False))
             else:
                 raise Exception('unknown corlibtype for initialize_field: {}'.format(type_sig.get_element_type()))
@@ -3041,9 +3041,11 @@ cdef class DotNetGCHandle(DotNetObject):
         self.__type = _type
 
     def get_Target(self):
-        ref = self
-        if isinstance(ref, ArrayAddress):
-            ref = ref.get_obj_ref()
+        cdef DotNetGCHandle ref = None
+        if isinstance(self, ArrayAddress):
+            ref = self.get_obj_ref()
+        else:
+            ref = self
         return ref.__target
 
     @staticmethod
