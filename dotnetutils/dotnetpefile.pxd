@@ -1,16 +1,18 @@
 #cython: language_level=3
+#distutils: language=c++
 from dotnetutils cimport net_metadata
 from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_table_objects
+from dotnetutils cimport net_processing
 
 from cpython.memoryview cimport memoryview
 from cpython.buffer cimport Py_buffer
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport uintptr_t, uint64_t, int64_t
 from dotnetutils.net_structs cimport IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, IMAGE_SECTION_HEADER, IMAGE_RESOURCE_DIRECTORY_ENTRY
 
 cdef class PeFile:
     cdef list __sections
-    cdef unsigned long  __image_base
+    cdef uint64_t  __image_base
     cdef unsigned int __nt_headers_offset
     cdef bint __is_64bit
     cdef bytearray __file_data
@@ -26,11 +28,11 @@ cdef class PeFile:
 
     cdef void __parse_32(self)
     
-    cpdef unsigned int get_offset_from_rva(self, unsigned int rva)
+    cpdef uint64_t get_offset_from_rva(self, uint64_t rva)
 
-    cpdef unsigned int get_rva_from_offset(self, unsigned int offset)
+    cpdef uint64_t get_rva_from_offset(self, uint64_t offset)
 
-    cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, int idx)
+    cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, unsigned int idx)
 
     cpdef list get_sections(self)
 
@@ -38,21 +40,30 @@ cdef class PeFile:
 
     cdef uintptr_t get_data_view(self)
 
-    cpdef unsigned int get_physical_by_rva(self, unsigned int rva)
+    cpdef bytes get_file_data(self)
+
+    cpdef uint64_t get_physical_by_rva(self, uint64_t rva)
+
+    cdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction)
+
+    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams)
+
+    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams)
+
+    cdef void __update_metadata_rvas(self, uint64_t va_addr, int difference, DotNetPeFile dpe)
 
 cdef class DotNetPeFile:
     cdef str __versioninfo_str
     cdef str file_path
     cdef bytes exe_data
     cdef net_metadata.MetaDataDirectory metadata_dir
-    cdef int debug_counter
     cdef list added_strings
     cdef bytes original_exe_data
-    cdef str logging_str
     cdef PeFile pe
-    cdef unsigned int __cor_header_offset
+    cdef uint64_t __cor_header_offset
+    cdef int debug_counter
 
-    cpdef unsigned int get_cor_header_offset(self)
+    cpdef uint64_t get_cor_header_offset(self)
 
     cpdef net_row_objects.MethodDef get_entry_point(self)
 
@@ -60,7 +71,7 @@ cdef class DotNetPeFile:
 
     cpdef net_row_objects.TypeRef get_typeref_by_full_name(self, bytes full_name)
 
-    cpdef int delete_user_string(self, int us_index)
+    cpdef int delete_user_string(self, unsigned int us_index)
 
     cpdef bytes reconstruct_executable(self) except *
 
@@ -86,7 +97,7 @@ cdef class DotNetPeFile:
 
     cpdef dict get_heaps(self)
 
-    cpdef object get_heap(self, str name)
+    cpdef net_processing.HeapObject get_heap(self, str name)
 
     cpdef bint has_metadata_table(self, str name)
 
@@ -108,7 +119,7 @@ cdef class DotNetPeFile:
 
     cpdef PeFile get_pe(self)
 
-    cpdef void set_exe_data(self, bytes exe_data)
+    cdef void set_exe_data(self, bytes exe_data)
 
     cpdef void add_string(self, str string) except *
 
@@ -118,13 +129,10 @@ cdef class DotNetPeFile:
 
     cpdef bytes get_original_exe_data(self)
 
-    cpdef str get_productversion(self)
-
-    cpdef void add_log_msg(self, str msg)
-
-    cpdef str get_log_str(self)
+    cpdef str get_product_version(self)
 
     cpdef set_entry_point(self, unsigned int ep_token)
+
 
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path=*, bytes pe_data=*, bint dont_process=*)

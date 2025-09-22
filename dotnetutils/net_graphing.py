@@ -640,7 +640,7 @@ class FunctionGraph:
                 next_block = switch_block.get_next()[-1]
             index = len(usable_child_block.get_instrs()) - 2
             num_index = 4 + (value * 4)
-            instr_offset = switch_block.get_last_instr().arguments[num_index:num_index + 4]
+            instr_offset = switch_block.get_last_instr().get_arguments()[num_index:num_index + 4]
             new_instr1 = net_cil_disas.Instruction(net_opcodes.OpcodeCollection.get_opcode_by_name('nop'), self.__method_object.disassemble_method(),
                                                    offset=usable_child_block.get_last_instr().offset)
             new_instr2 = net_cil_disas.Instruction(net_opcodes.OpcodeCollection.get_opcode_by_name('br'), self.__method_object.disassemble_method(),
@@ -914,7 +914,7 @@ class FunctionGraph:
                     # remove the switch, replace with jmp - for graphing purposes mostly.
                     index = len(usable_switch_block.get_instrs()) - 1
                     num_index = 4 + (value * 4)
-                    instr_offset = switch_block.get_last_instr().arguments[num_index:num_index + 4]
+                    instr_offset = switch_block.get_last_instr().get_arguments()[num_index:num_index + 4]
                     new_instr1 = net_cil_disas.Instruction(net_opcodes.OpcodeCollection.get_opcode_by_name('nop'), self.__method_object.disassemble_method(),
                                                         offset=switch_block.get_last_instr().offset)
                     new_instr2 = net_cil_disas.Instruction(net_opcodes.OpcodeCollection.get_opcode_by_name('br'), self.__method_object.disassemble_method(),

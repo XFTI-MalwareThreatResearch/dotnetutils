@@ -2,6 +2,26 @@ class DotNetUtilsException(Exception):
     def __init__(self):
         Exception.__init__(self, "Generic Dotnetutils Exception")
 
+class EmulatorExecutionException(DotNetUtilsException):
+    def __init__(self, emu_obj, msg):
+        self.__emu_obj = emu_obj
+        Exception.__init__(self, msg)
+    
+    def get_emu_obj(self):
+        return self.__emu_obj
+    
+class EmulatorTimeoutException(EmulatorExecutionException):
+    def __init__(self, emu_obj):
+        EmulatorExecutionException.__init__(self, emu_obj, 'Emulator execution timed out.')
+
+class EmulatorEndExecutionException(DotNetUtilsException):
+    def __init__(self, emu_obj):
+        Exception.__init__(self, "Emulator end")
+        self.__emu_obj = emu_obj
+    
+    def get_emu_obj(self):
+        return self.__emu_obj
+
 class InvalidAssemblyException(DotNetUtilsException):
     def __init__(self, token=0):
         Exception.__init__(self, "Invalid IL assembly detected on method {}".format(hex(token)))

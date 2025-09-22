@@ -1,7 +1,13 @@
 #cython: language_level=3
+#distutils: language=c++
+
 import io
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_utils, net_table_objects
+from cpython.ref cimport PyObject, Py_INCREF
+
+from cython.operator cimport dereference
+from libcpp.utility cimport pair
 
 
 cpdef get_total_method_size(data):
@@ -69,7 +75,7 @@ cpdef get_total_method_size(data):
 
 cdef class Instruction:
 
-    def __init__(self, net_opcodes.OpCode opcode_one, MethodDisassembler disasm_obj, int offset=0, int instr_index=-1):
+    def __init__(self, net_opcodes.OpCode opcode_one, MethodDisassembler disasm_obj, unsigned int offset=0, unsigned int instr_index=<unsigned int>-1):
         """
         Represents a full instruction, including the arguments.
         :param opcode_one: The first opcode in the instruction
@@ -77,8 +83,8 @@ cdef class Instruction:
         :param offset: The 0 index offset of the instruction in the method.
         """
         self.opcode_one = opcode_one
-        self.arguments = list()
         self.instr_size = -1
+        self.arguments = b''
         self.offset = offset
         self.__saved_argument = None
         self.__disasm_obj = disasm_obj
@@ -88,15 +94,17 @@ cdef class Instruction:
         """
         Obtain the size in bytes of a instruction (same as len())
         """
+        if self.instr_size == -1:
+            raise Exception('instruction size not initialized')
         return self.instr_size
 
-    cpdef int get_instr_index(self):
+    cpdef unsigned int get_instr_index(self):
         """
         Obtain the index of an instruction within a method body.
         """
         return self.instr_index
 
-    cpdef int get_instr_offset(self):
+    cpdef unsigned int get_instr_offset(self):
         """
         Obtain the byte offset from the start of the method's code of an instruction.
         """
@@ -108,7 +116,11 @@ cdef class Instruction:
         :param argument: The byte argument to add
         :return: None
         """
-        self.arguments.append(argument)
+        self.arguments += bytes([argument])
+        self.__saved_argument = None #Reset saved argument for this.
+
+    cdef void __set_arguments(self, bytes arguments):
+        self.arguments = arguments
 
     cpdef str get_name(self):
         """
@@ -118,9 +130,15 @@ cdef class Instruction:
         return self.opcode_one.get_name()
 
     cpdef bint is_twobyte_opcode(self):
+        """
+        Returns True if the opcode is represented by two bytes instead of one.
+        """
         return self.opcode_one.is_two_byte_opcode()
 
     cpdef net_opcodes.Opcodes get_opcode(self):
+        """
+        Obtains the OpCode representing the instruction.
+        """
         return self.opcode_one.obtain_opcode()
 
     cpdef object get_argument(self):
@@ -181,7 +199,7 @@ cdef class Instruction:
         """
         Obtain the array of raw bytes that represents an instruction's arguments.
         """
-        return bytes(self.arguments)
+        return self.arguments
 
     cdef void setup_instr_size(self, int instr_size):
         """
@@ -206,6 +224,7 @@ cdef class Instruction:
         """
         :return: The full length of the instruction
         """
+        cdef int args_len
         if self.instr_size != -1:
             return self.instr_size
         args_len = 0
@@ -247,6 +266,9 @@ cdef class Instruction:
         return self.opcode_one.is_branch_opcode()
 
     cpdef bint is_argument_signed(self):
+        """
+        Returns true if the operand for the instruction is expected to be signed.
+        """
         if self.has_token_argument():
             return True
 
@@ -271,10 +293,10 @@ cdef class MethodDisassembler:
         self.method_obj = method
         if not force_data:
             self.__reader: net_structs.DotNetDataReader = net_structs.DotNetDataReader(self.method_obj.get_method_data())
-            self.instrs = self.disassemble_loop()
+            self.disassemble_loop()
         else:
             self.__reader: net_structs.DotNetDataReader = net_structs.DotNetDataReader(force_data)
-            self.instrs = self.disassemble_loop()
+            self.disassemble_loop()
 
     cpdef object get_method(self):
         """
@@ -292,7 +314,11 @@ cdef class MethodDisassembler:
         """
         Obtains a list of instructions.  The instructions will be in order of instruction index.
         """
-        return list(self.instrs.values())
+        cdef list result = list()
+        cdef unsigned int i = 0
+        for i in range(self.instrs.size()):
+            result.append(<Instruction>self.instrs.at(i))
+        return result
 
     cpdef tuple get_arg_token_properties(self, Instruction instr):
         """
@@ -445,15 +471,14 @@ cdef class MethodDisassembler:
                     if sect_flags & net_structs.CorILMethod.Sect_MoreSects == 0:
                         break
 
-    cdef dict disassemble_loop(self):
+    cdef void disassemble_loop(self):
         """
         Disassemble the instructions in the method
         :param data: the method's data
         :return: A list of instructions, otherwise InvalidAssemblyException
         """
-        cdef int index
-        cdef dict results
-        cdef int instr_index
+        cdef int index = 0
+        cdef int instr_index = 0
         cdef int orig_index
         cdef int opcode_one
         cdef net_opcodes.OpCode usable_opcode
@@ -464,11 +489,9 @@ cdef class MethodDisassembler:
         cdef int amt_of_extra
         cdef int x
         index = 0
-        results = dict()
         instr_index = 0
         try:
             self.parse_header()
-
             if self.header_size == 0 or self.code_size == 0:
                 raise net_exceptions.InvalidHeaderException(self.method_obj.get_token())
 
@@ -510,38 +533,51 @@ cdef class MethodDisassembler:
 
 
                 instr.setup_instr_size(index - orig_index)
-                results[orig_index] = instr
+                Py_INCREF(instr)
+                self.offsets[orig_index] = instr_index
+                self.instrs.push_back(<PyObject*>instr)
                 instr_index += 1
         except Exception:
             raise net_exceptions.InvalidAssemblyException()
-        return results
 
     def __iter__(self):
-        return iter(self.instrs.values())
+        return iter(self.get_list_of_instrs())
 
     def __len__(self):
-        return len(self.instrs)
+        return self.instrs.size()
 
-    def __getitem__(self, item):
+    def __getitem__(self, Py_ssize_t item):
         """
         Obtain an instruction in the method by its INDEX.
         """
-        return self.get_list_of_instrs()[item]
+        cdef Instruction result = <Instruction>self.instrs.at(item)
+        return result
 
     cpdef Instruction get_instr_at_offset(self, int offset):
         """
         Obtain an instruction in the method by its offset within the method's code.
         """
-        return self.instrs[offset]
+        cdef pair[int, int] res = dereference(self.offsets.find(offset))
+        cdef Instruction result = <Instruction>self.instrs.at(res.second)
+        return <Instruction>result
 
     cpdef int get_instr_offset(self, int instr_index):
         """
         Obtain the offset of instruction at index instr_index.
         """
-        return self.get_list_of_instrs()[instr_index].get_instr_offset()
+        cdef Instruction instr = <Instruction>self.instrs.at(instr_index)
+        return instr.get_instr_offset()
 
-    cpdef int get_instr_index_by_offset(self, int instr_offset):
+    cpdef unsigned int get_instr_index_by_offset(self, unsigned int instr_offset):
         """
         Obtain the index of the instruction at offset instr_offset.
         """
-        return self.instrs[instr_offset].get_instr_index()
+        cdef pair[int, int] res = dereference(self.offsets.find(instr_offset))
+        return res.second
+
+    cpdef Instruction get_instr_at_index(self, int index):
+        """
+        Obtains an Instruction at a specified index.
+        """
+        cdef Instruction result = <Instruction>self.instrs.at(index)
+        return result

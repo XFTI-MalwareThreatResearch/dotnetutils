@@ -1,4 +1,7 @@
 #cython: language_level=3
+#distutils: language=c++
+
+
 from dotnetutils cimport net_row_objects
 
 cdef class BaseToken:

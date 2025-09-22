@@ -1,13 +1,11 @@
 #cython: language_level=3
+#distutils: language=c++
+
 
 import ctypes
 import io
 import re
 from dotnetutils import net_exceptions
-
-cimport numpy
-
-import numpy as py_numpy
 
 import binascii
 
@@ -15,7 +13,7 @@ cdef class DotNetDataReader:
     def __init__(self, bytes data):
         self.__data = data
         self.__current_pos = 0
-        self.__data_len = len(data)
+        self.__data_len = <int>len(data)
 
     cpdef bint is_end(self):
         return self.tell() >= self.__data_len
@@ -37,57 +35,56 @@ cdef class DotNetDataReader:
 
         self.__current_pos = new_pos
 
-
     cpdef int tell(self):
         return self.__current_pos
 
-    cpdef numpy.uint8_t read_byte(self):
-        return <numpy.uint8_t>self.read_single_byte()
+    cpdef unsigned char read_byte(self):
+        return <unsigned char>self.read_single_byte()
 
-    cpdef numpy.int8_t read_sbyte(self):
-        return <numpy.int8_t>self.read_single_byte()
+    cpdef char read_sbyte(self):
+        return <char>self.read_single_byte()
 
-    cpdef numpy.int16_t read_int16(self):
-        return <numpy.int16_t>int.from_bytes(self.read(2), 'little', signed=True)
+    cpdef short read_int16(self):
+        return <short>int.from_bytes(self.read(2), 'little', signed=True)
 
-    cpdef numpy.int64_t read_int64(self):
-        return <numpy.int64_t>int.from_bytes(self.read(8), 'little', signed=True)
+    cpdef int64_t read_int64(self):
+        return <int64_t>int.from_bytes(self.read(8), 'little', signed=True)
 
-    cpdef numpy.uint16_t read_uint16(self):
-        return <numpy.uint16_t>int.from_bytes(self.read(2), 'little', signed=False)
+    cpdef unsigned short read_uint16(self):
+        return <unsigned short>int.from_bytes(self.read(2), 'little', signed=False)
 
-    cpdef numpy.uint64_t read_uint64(self):
-        return <numpy.uint64_t>int.from_bytes(self.read(8), 'little', signed=False)
+    cpdef uint64_t read_uint64(self):
+        return <uint64_t>int.from_bytes(self.read(8), 'little', signed=False)
 
     cpdef list read_decimal(self):
-        cdef numpy.int32_t one
-        cdef numpy.int32_t two
-        cdef numpy.int32_t three
-        cdef numpy.int32_t four
+        cdef int one
+        cdef int two
+        cdef int three
+        cdef int four
         one = self.read_int32()
         two = self.read_int32()
         three = self.read_int32()
         four = self.read_int32()
         return [one, two, three, four]
 
-    cpdef numpy.float32_t read_single(self):
+    cpdef float read_single(self):
         cdef bytes data
         data = self.read(4)
-        return <numpy.float32_t>int.from_bytes(data, 'little', signed=True)
+        return <float>int.from_bytes(data, 'little', signed=True)
 
-    cpdef numpy.float64_t read_double(self):
+    cpdef double read_double(self):
         cdef bytes data
         data = self.read(8)
-        return <numpy.float64_t>int.from_bytes(data, 'little', signed=True)
+        return <double>int.from_bytes(data, 'little', signed=True)
     
     cpdef bint read_boolean(self):
         return self.read_byte() != 0
 
-    cpdef numpy.uint16_t read_char(self):
+    cpdef unsigned short read_char(self):
         return self.read_uint16()
 
     cpdef str read_serialized_string(self, encoding='utf-8'):
-        cdef numpy.uint32_t length
+        cdef unsigned int length
         cdef bytes str_data
         length = self.read_encoded_uint32()
         if length <= 0:
@@ -95,18 +92,18 @@ cdef class DotNetDataReader:
         str_data = self.read(length)
         return str_data.decode(encoding)
 
-    cpdef numpy.int32_t read_int32(self):
+    cpdef int read_int32(self):
         cdef bytes data
         data = self.read(4)
-        return <numpy.int32_t>int.from_bytes(data, 'little', signed=True)
+        return <int>int.from_bytes(data, 'little', signed=True)
 
-    cpdef numpy.uint32_t read_uint32(self):
+    cpdef unsigned int read_uint32(self):
         cdef bytes data
         data = self.read(4)
-        return <numpy.uint32_t>int.from_bytes(data, 'little', signed=False)
+        return <unsigned int>int.from_bytes(data, 'little', signed=False)
 
-    cpdef numpy.uint32_t read_encoded_uint32(self):
-        cdef numpy.uint32_t val
+    cpdef unsigned int read_encoded_uint32(self):
+        cdef unsigned int val
         cdef int bits
         cdef int x
         cdef int b
@@ -114,14 +111,14 @@ cdef class DotNetDataReader:
         bits = 0
         for x in range(5):
             b = self.read(1)[0]
-            val |= (<numpy.uint32_t>(b & 0x7f)) << bits
+            val |= (<unsigned int>(b & 0x7f)) << bits
             if ((b & 0x80) == 0):
                 return val
             bits += 7
         raise net_exceptions.DotNetIOException
     
-    cpdef numpy.uint32_t read_compressed_uint(self):
-        cdef numpy.uint32_t num
+    cpdef unsigned int read_compressed_uint(self):
+        cdef unsigned int num
         cdef int shift
         cdef int read_val
         num = 0
@@ -134,8 +131,8 @@ cdef class DotNetDataReader:
                 break
         return num
 
-    cpdef numpy.int32_t read_encoded_int32(self):
-        cdef numpy.int32_t val
+    cpdef int read_encoded_int32(self):
+        cdef int val
         cdef int bits
         cdef int b
         cdef int x
@@ -143,7 +140,7 @@ cdef class DotNetDataReader:
         bits = 0
         for x in range(5):
             b = self.read(1)[0]
-            val |= (<numpy.int32_t>(b & 0x7f)) << bits
+            val |= (<int>(b & 0x7f)) << bits
             if ((b & 0x80) == 0):
                 return val
             bits += 7
@@ -815,5 +812,5 @@ class DotNetResourceSet:
         Used to check if a data could belong to a formatted .NET Resource.
         """
         reader = io.BytesIO(data)
-        magic = py_numpy.uint32(int.from_bytes(reader.read(4), 'little'))
+        magic = int.from_bytes(reader.read(4), 'little', signed=False)
         return magic == 0xBEEFCACE

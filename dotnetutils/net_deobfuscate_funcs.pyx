@@ -1,4 +1,5 @@
 #cython: language_level=3
+#distutils: language=c++
 
 import os
 
@@ -64,7 +65,7 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
     cdef unsigned long xref_index
     cdef net_row_objects.MethodDef method_obj
     cdef net_cil_disas.MethodDisassembler disasm_obj
-    cdef unsigned long instr_index
+    cdef long instr_index
     cdef bint invert_ops
     cdef bint passed_checks
     cdef unsigned long start_offset
@@ -121,7 +122,7 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
                                                     # ok so we can just nop this entre thing out.
                                                     nop_buf = b'\x00' * (end_offset - start_offset)
                                                     dotnet.patch_instruction(method_obj, nop_buf, start_offset,
-                                                                                len(nop_buf))
+                                                                                end_offset - start_offset)
                                                 else:
                                                     start_offset = disasm_obj[instr_index].get_instr_offset()
                                                     end_offset = disasm_obj[
@@ -135,7 +136,7 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
                                                         br_opcode = 0x38
                                                     # its always going to be true and jump so just replace it with br.s
                                                     dotnet.patch_instruction(method_obj, nop_buf, start_offset,
-                                                                                len(nop_buf))
+                                                                                end_offset - start_offset)
                                                     dotnet.patch_instruction(method_obj,
                                                                                 bytes([br_opcode]) +
                                                                                 int.to_bytes(
@@ -145,7 +146,7 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
                                                                                     signed=True),
                                                                                 disasm_obj[
                                                                                     instr_index + 11].get_instr_offset(),
-                                                                                len(disasm_obj[instr_index + 11]))
+                                                                                    disasm_obj[instr_index + 11].get_instr_size())
 
 cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
     cdef net_row_objects.MethodDef method_obj
@@ -157,7 +158,7 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
     cdef net_utils.MethodSig arg_sig
     cdef net_row_objects.MethodDefOrRef prev_method_obj
     cdef net_cil_disas.MethodDisassembler disasm_obj
-    cdef unsigned long x
+    cdef long x
     cdef net_cil_disas.Instruction prev_instr
     cdef dict method_strings
     cdef net_emulator.DotNetEmulator emu_obj
@@ -221,7 +222,7 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
                 if instr.get_name() == 'ldsfld' and instr.get_argument() in delegate_mapping.keys():
                     if disasm_obj[x + 1].get_name() == 'callvirt' and disasm_obj[x + 1].get_argument()[
                         'Name'].get_value() == b'Invoke':
-                        total_len = len(instr) + len(disasm_obj[x + 1])
+                        total_len = instr.get_instr_size() + disasm_obj[x + 1].get_instr_size()
                         resulting_string = method_strings[delegate_mapping[instr.get_argument()]]
                         if resulting_string not in string_mapping:
                             new_index = dotnet.get_heap('#US').append_item(resulting_string)
@@ -229,7 +230,7 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
                         else:
                             new_index = string_mapping[resulting_string]
                         ldstr_instr = b'\x72' + int.to_bytes(new_index, 3, 'little', signed=False) + b'\x70'
-                        ldstr_instr += (b'\x00' * (total_len - len(ldstr_instr)))
+                        ldstr_instr += (b'\x00' * (total_len - ldstr_instr.get_instr_size()))
                         dotnet.patch_instruction(method_obj, ldstr_instr, instr.get_instr_offset(), total_len)
 
 
@@ -274,7 +275,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
     cdef unsigned long method_rid
     cdef unsigned long instr_index
     cdef net_cil_disas.MethodDisassembler disasm_obj
-    cdef unsigned long x
+    cdef long x
     cdef net_cil_disas.Instruction instr
     cdef bint no_ceq_instr
     cdef bint has_ldc_i4
@@ -335,8 +336,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                         second_data = ldtoken_second.get_argument().get_data()
                                                         if first_data == second_data:
                                                             start_offset = disasm_obj[x].get_instr_offset()
-                                                            end_offset = disasm_obj[x + 12].get_instr_offset() + len(
-                                                                disasm_obj[x + 12])
+                                                            end_offset = disasm_obj[x + 12].get_instr_offset() + disasm_obj[x + 12].get_instr_size()
                                                             nop_buffer = b'\x00' * (end_offset - start_offset)
                                                             br_arg_length = 1
                                                             br_opcode = 0x2b
@@ -345,7 +345,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                 br_opcode = 0x38
                                                             # its always going to be true and jump so just replace it with br.s
                                                             dotnet.patch_instruction(method_obj, nop_buffer,
-                                                                                     start_offset, len(nop_buffer))
+                                                                                     start_offset, end_offset - start_offset)
                                                             dotnet.patch_instruction(method_obj,
                                                                                      bytes([br_opcode]) +
                                                                                      int.to_bytes(
@@ -355,15 +355,14 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                                          signed=True),
                                                                                      disasm_obj[
                                                                                          x + 13].get_instr_offset(),
-                                                                                     len(disasm_obj[x + 13]))
+                                                                                     disasm_obj[x + 13].get_instr_size())
                                                         else:
                                                             # its never going to jump, just nop everything out.
                                                             start_offset = disasm_obj[x].get_instr_offset()
-                                                            end_offset = disasm_obj[x + 13].get_instr_offset() + len(
-                                                                disasm_obj[x + 13])
+                                                            end_offset = disasm_obj[x + 13].get_instr_offset() + disasm_obj[x + 13].get_instr_size()
                                                             nop_buffer = b'\x00' * (end_offset - start_offset)
                                                             dotnet.patch_instruction(method_obj, nop_buffer,
-                                                                                     start_offset, len(nop_buffer))
+                                                                                     start_offset, end_offset - start_offset)
 
                                                     elif has_ldc_i4 and disasm_obj[x + 12].get_name() == 'ceq' and (
                                                             x + 15) < len(disasm_obj):
@@ -377,8 +376,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                     if first_data != second_data:
                                                                         start_offset = disasm_obj[x].get_instr_offset()
                                                                         end_offset = disasm_obj[
-                                                                                         x + 14].get_instr_offset() + len(
-                                                                            disasm_obj[x + 14])
+                                                                                         x + 14].get_instr_offset() + disasm_obj[x + 14].get_instr_size()
                                                                         nop_buffer = b'\x00' * (
                                                                                     end_offset - start_offset)
                                                                         br_arg_length = 1
@@ -389,7 +387,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                         # its always going to be true and jump so just replace it with br.s
                                                                         dotnet.patch_instruction(method_obj, nop_buffer,
                                                                                                  start_offset,
-                                                                                                 len(nop_buffer))
+                                                                                                 end_offset - start_offset)
                                                                         dotnet.patch_instruction(method_obj,
                                                                                                  bytes([br_opcode]) +
                                                                                                  int.to_bytes(
@@ -400,19 +398,18 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                                                      signed=True),
                                                                                                  disasm_obj[
                                                                                                      x + 15].get_instr_offset(),
-                                                                                                 len(disasm_obj[
-                                                                                                         x + 15]))
+                                                                                                 disasm_obj[
+                                                                                                         x + 15].get_instr_size())
                                                                     else:
                                                                         # its never going to jump, just nop everything out.
                                                                         start_offset = disasm_obj[x].get_instr_offset()
                                                                         end_offset = disasm_obj[
-                                                                                         x + 15].get_instr_offset() + len(
-                                                                            disasm_obj[x + 15])
+                                                                                         x + 15].get_instr_offset() + disasm_obj[x + 15].get_instr_size()
                                                                         nop_buffer = b'\x00' * (
                                                                                     end_offset - start_offset)
                                                                         dotnet.patch_instruction(method_obj, nop_buffer,
                                                                                                  start_offset,
-                                                                                                 len(nop_buffer))
+                                                                                                 end_offset - start_offset)
                                                     elif not has_ldc_i4 and (x + 15) < len(disasm_obj):
                                                         if disasm_obj[x + 11].get_name().startswith('stloc'):
                                                             if disasm_obj[x + 12].get_name().startswith('ldloc'):
@@ -436,7 +433,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                         # its always going to be true and jump so just replace it with br.s
                                                                         dotnet.patch_instruction(method_obj, nop_buffer,
                                                                                                  start_offset,
-                                                                                                 len(nop_buffer))
+                                                                                                 end_offset - start_offset)
                                                                         dotnet.patch_instruction(method_obj,
                                                                                                  bytes([br_opcode]) +
                                                                                                  int.to_bytes(
@@ -447,24 +444,23 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                                                      signed=True),
                                                                                                  disasm_obj[
                                                                                                      x + 13].get_instr_offset(),
-                                                                                                 len(disasm_obj[
-                                                                                                         x + 15]))
+                                                                                                 disasm_obj[
+                                                                                                     x + 15].get_instr_size())
                                                                     else:
                                                                         # its never going to jump, just nop everything out.
                                                                         start_offset = disasm_obj[x].get_instr_offset()
                                                                         end_offset = disasm_obj[
-                                                                                         x + 13].get_instr_offset() + len(
-                                                                            disasm_obj[x + 13])
+                                                                                         x + 13].get_instr_offset() + disasm_obj[x + 13].get_instr_size()
                                                                         nop_buffer = b'\x00' * (
                                                                                     end_offset - start_offset)
                                                                         dotnet.patch_instruction(method_obj, nop_buffer,
                                                                                                  start_offset,
-                                                                                                 len(nop_buffer))
+                                                                                                 end_offset - start_offset)
 
     return dotnet.reconstruct_executable()
 
 
-cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=[]):
+cpdef bytes remove_useless_conditionals(bytes exe_data):
     """
     Removes conditionals that will either always be true or always false
     currently handles the following cases:
@@ -473,9 +469,8 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
     cdef dotnetpefile.DotNetPeFile dotnet
     cdef net_row_objects.MethodDef method_obj
     cdef net_cil_disas.MethodDisassembler disas_obj
-    cdef list instr_list
-    cdef unsigned long x
-    cdef unsigned long y
+    cdef long x
+    cdef long y
     cdef net_cil_disas.Instruction instr
     cdef net_cil_disas.Instruction prev_instr
     cdef long long number
@@ -483,24 +478,22 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
     cdef long long num_instrs
     cdef net_cil_disas.Instruction prev_instr2
     cdef net_table_objects.MethodDefTable methods
-    cdef bint check_target_methods = len(target_method_rids) != 0
 
     dotnet = dotnetpefile.DotNetPeFile(pe_data=exe_data)
     methods = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
     for y in range(len(methods)):
         method_obj = <net_row_objects.MethodDef>methods.get(y + 1)
-        if not method_obj.has_body() or (check_target_methods and method_obj.get_rid() not in target_method_rids):
+        if not method_obj.has_body():
             continue
 
         # make sure were creating a fresh copy every time.
         disas_obj = method_obj.disassemble_method()
-        instr_list = disas_obj.get_list_of_instrs()
         for x in range(len(disas_obj)):
-            instr = instr_list[x]
+            instr = disas_obj.get_instr_at_index(x)
             if x == 0:
                 continue
             if instr.get_name() == 'brtrue.s':
-                prev_instr = instr_list[x - 1]
+                prev_instr = disas_obj.get_instr_at_index(x - 1)
                 if prev_instr.get_name().startswith('ldc.i4.'):
                     number = prev_instr.get_argument()
                     if number != 0:
@@ -508,28 +501,28 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(method_obj,
                                                  b'\x2B' +
                                                  int.to_bytes(
                                                      num_instrs, 1, 'little', signed=True),
-                                                 instr_offset + len(prev_instr), len(instr))
+                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                     else:
                         # if its never going to make the jump, just nop both out.
                         instr_offset = prev_instr.get_instr_offset()
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                 elif prev_instr.get_name() == 'ldnull':
                     # if its never going to make the jump, just nop both out.
                     instr_offset = prev_instr.get_instr_offset()
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                        method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                        method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                 elif prev_instr == 'dup' and x > 1:
-                    prev_instr2 = instr_list[x - 2]
+                    prev_instr2 = disas_obj.get_instr_at_index(x - 2)
                     # run the check again on the instruction before that.
                     if prev_instr2.get_name().startswith('ldc.i4.'):
                         number = prev_instr2.get_argument()
@@ -538,29 +531,29 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                             num_instrs = instr.get_argument()
                             instr_offset = prev_instr.get_instr_offset()
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                             dotnet.patch_instruction(method_obj,
                                                      b'\x2B' +
                                                      int.to_bytes(
                                                          num_instrs, 1, 'little', signed=True),
-                                                     instr_offset + len(prev_instr), len(instr))
+                                                     instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                         else:
                             # if its never going to make the jump, just nop both out.
                             instr_offset = prev_instr.get_instr_offset()
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                                method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                     elif prev_instr2.get_name() == 'ldnull':
                         # if its never going to make the jump, just nop both out.
                         instr_offset = prev_instr.get_instr_offset()
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
 
             elif instr.get_name() == 'brfalse.s':
-                prev_instr = instr_list[x - 1]
+                prev_instr = disas_obj.get_instr_at_index(x - 1)
                 if prev_instr.get_name().startswith('ldc.i4.'):
                     number = prev_instr.get_argument()
                     if number == 0:
@@ -568,32 +561,32 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(method_obj,
                                                  b'\x2B' +
                                                  int.to_bytes(
                                                      num_instrs, 1, 'little', signed=True),
-                                                 instr_offset + len(prev_instr), len(instr))
+                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                     else:
                         # if its never going to make the jump, just nop both out.
                         instr_offset = prev_instr.get_instr_offset()
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                 elif prev_instr.get_name() == 'ldnull':
                     # its always going to make the jmp, just replace both instructions with a br.s
                     num_instrs = instr.get_argument()
                     instr_offset = prev_instr.get_instr_offset()
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                        method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                     dotnet.patch_instruction(method_obj,
                                              b'\x2B' +
                                              int.to_bytes(
                                                  num_instrs, 1, 'little', signed=True),
-                                             instr_offset + len(prev_instr), len(instr))
+                                             instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                 elif prev_instr.get_name() == 'dup' and x > 1:
-                    prev_instr2 = instr_list[x - 2]
+                    prev_instr2 = disas_obj.get_instr_at_index(x - 2)
                     if prev_instr2.get_name().startswith('ldc.i4.'):
                         number = prev_instr2.get_argument()
                         if number == 0:
@@ -601,32 +594,32 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                             num_instrs = instr.get_argument()
                             instr_offset = prev_instr.get_instr_offset()
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                             dotnet.patch_instruction(method_obj,
                                                      b'\x2B' +
                                                      int.to_bytes(
                                                          num_instrs, 1, 'little', signed=True),
-                                                     instr_offset + len(prev_instr), len(instr))
+                                                     instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                         else:
                             # if its never going to make the jump, just nop both out.
                             instr_offset = prev_instr.get_instr_offset()
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                                method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                     elif prev_instr2.get_name() == 'ldnull':
                         # its always going to make the jmp, just replace both instructions with a br.s
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(method_obj,
                                                  b'\x2B' +
                                                  int.to_bytes(
                                                      num_instrs, 1, 'little', signed=True),
-                                                 instr_offset + len(prev_instr), len(instr))
+                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
             elif instr.get_name() == 'brtrue':
-                prev_instr = instr_list[x - 1]
+                prev_instr = disas_obj.get_instr_at_index(x - 1)
                 if prev_instr.get_name().startswith('ldc.i4.'):
                     number = prev_instr.get_argument()
                     if number != 0:
@@ -635,30 +628,30 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                         instr_offset = prev_instr.get_instr_offset()
 
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(method_obj,
                                                  b'\x38' +
                                                  int.to_bytes(
                                                      num_instrs, 4, 'little', signed=True),
-                                                 instr_offset + len(prev_instr), len(instr))
+                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                     else:
                         instr_offset = prev_instr.get_instr_offset()
 
                         # if its never going to make the jump, just nop both out.
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                 elif prev_instr.get_name() == 'ldnull':
                     instr_offset = prev_instr.get_instr_offset()
 
                     # if its never going to make the jump, just nop both out.
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                        method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                        method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                 elif prev_instr.get_name() == 'dup' and x > 1:
-                    prev_instr2 = instr_list[x - 2]
+                    prev_instr2 = disas_obj.get_instr_at_index(x - 2)
                     if prev_instr2.get_name().startswith('ldc.i4.'):
                         number = prev_instr2.get_argument()
                         if number != 0:
@@ -667,30 +660,30 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                             instr_offset = prev_instr.get_instr_offset()
 
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                             dotnet.patch_instruction(method_obj,
                                                      b'\x38' +
                                                      int.to_bytes(
                                                          num_instrs, 4, 'little', signed=True),
-                                                     instr_offset + len(prev_instr), len(instr))
+                                                     instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                         else:
                             instr_offset = prev_instr.get_instr_offset()
 
                             # if its never going to make the jump, just nop both out.
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                                method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                     elif prev_instr2.get_name() == 'ldnull':
                         instr_offset = prev_instr.get_instr_offset()
 
                         # if its never going to make the jump, just nop both out.
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
             elif instr.get_name() == 'brfalse':
-                prev_instr = instr_list[x - 1]
+                prev_instr = disas_obj.get_instr_at_index(x - 1)
                 if prev_instr.get_name().startswith('ldc.i4.'):
                     number = prev_instr.get_argument()
                     if number == 0:
@@ -699,34 +692,34 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                         instr_offset = prev_instr.get_instr_offset()
 
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(method_obj,
                                                  b'\x38' +
                                                  int.to_bytes(
                                                      num_instrs, 4, 'little', signed=True),
-                                                 instr_offset + len(prev_instr), len(instr))
+                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                     else:
                         # if its never going to make the jump, just nop both out.
                         instr_offset = prev_instr.get_instr_offset()
 
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                 elif prev_instr.get_name() == 'ldnull':
                     # its always going to make the jmp, just replace both instructions with a br.s
                     num_instrs = instr.get_argument()
                     instr_offset = prev_instr.get_instr_offset()
 
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                        method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                     dotnet.patch_instruction(method_obj,
                                              b'\x38' +
                                              int.to_bytes(
                                                  num_instrs, 4, 'little', signed=True),
-                                             instr_offset + len(prev_instr), len(instr))
+                                             instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                 elif prev_instr.get_name() == 'dup' and x > 1:
-                    prev_instr2 = instr_list[x - 2]
+                    prev_instr2 = disas_obj.get_instr_at_index(x - 2)
                     if prev_instr2.get_name().startswith('ldc.i4.'):
                         number = prev_instr2.get_argument()
                         if number == 0:
@@ -735,32 +728,32 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                             instr_offset = prev_instr.get_instr_offset()
 
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                             dotnet.patch_instruction(method_obj,
                                                      b'\x38' +
                                                      int.to_bytes(
                                                          num_instrs, 4, 'little', signed=True),
-                                                     instr_offset + len(prev_instr), len(instr))
+                                                     instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                         else:
                             # if its never going to make the jump, just nop both out.
                             instr_offset = prev_instr.get_instr_offset()
 
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * len(instr), instr_offset + len(prev_instr), len(instr))
+                                method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
                     elif prev_instr2.get_name() == 'ldnull':
                         # its always going to make the jmp, just replace both instructions with a br.s
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
 
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * len(prev_instr), instr_offset, len(prev_instr))
+                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
                         dotnet.patch_instruction(method_obj,
                                                  b'\x38' +
                                                  int.to_bytes(
                                                      num_instrs, 4, 'little', signed=True),
-                                                 instr_offset + len(prev_instr), len(instr))
+                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
 
     return dotnet.reconstruct_executable()
 
@@ -772,8 +765,7 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
     cdef list method_args_grabbed
     cdef list allowed_instrs
     cdef bytes potential_data
-    cdef list instr_list
-    cdef unsigned long x
+    cdef long x
     cdef net_cil_disas.Instruction instr
     cdef str instr_name
     cdef net_row_objects.MethodDefOrRef inner_method
@@ -786,7 +778,7 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
     cdef net_utils.TypeSig inner_return_sig
     cdef net_row_objects.TypeDefOrRef expected_tdef
     cdef net_utils.ClassSig outer_return_type
-    cdef unsigned long y
+    cdef long y
     cdef net_utils.TypeSig param1
     cdef net_utils.TypeSig param2
     if method_obj.method_has_this():
@@ -796,10 +788,9 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
     allowed_instrs = ['call', 'callvirt', 'newobj', 'ret', 'ldarg', 'ldarg.0', 'ldarg.1', 'ldarg.2', 'ldarg.3',
                         'ldarg.s', 'nop']
     potential_data = None
-    instr_list = disasm_obj.get_list_of_instrs()
     for x in range(len(disasm_obj)):
         # first check if all the first few instructions are ldargs.
-        instr = instr_list[x]
+        instr = disasm_obj.get_instr_at_index(x)
         if instr.get_name() not in allowed_instrs:
             return bytes()
 
@@ -970,7 +961,6 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     cdef unsigned long instr_index
     cdef net_row_objects.MethodDef method_obj
     cdef net_cil_disas.MethodDisassembler method_disasm
-    cdef list instr_list
     cdef net_cil_disas.Instruction instr
     cdef net_row_objects.MethodDefOrRef instr_arg
     cdef net_row_objects.MemberRef memberref
@@ -980,8 +970,8 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     cdef bytes patch
     cdef net_table_objects.MethodDefTable method_table
     cdef net_table_objects.MemberRefTable memberref_table
-    cdef unsigned long x
-    cdef unsigned long y
+    cdef long x
+    cdef long y
     cdef list useless_rids
     cdef list useless_xrefs
     cdef tuple xref_info
@@ -1012,11 +1002,10 @@ cpdef bytes remove_useless_functions(bytes data) except *:
             instr_index = xref_info[1]
             method_obj = dotnet.get_method_by_rid(method_rid)
             method_disasm = method_obj.disassemble_method()
-            instr_list = method_disasm.get_list_of_instrs()
-            instr = instr_list[instr_index]
+            instr = method_disasm.get_instr_at_index(instr_index)
             instr_arg = instr.get_argument()
             dotnet.patch_instruction(method_obj, useless_methods[instr_arg.get_rid()], instr.get_instr_offset(),
-                                     len(instr))
+                                     instr.get_instr_size())
 
     # Check for useless memberref calls.
 
@@ -1028,10 +1017,9 @@ cpdef bytes remove_useless_functions(bytes data) except *:
                 for method_rid, instr_index in memberref.get_xrefs():
                     method_obj = dotnet.get_method_by_rid(method_rid)
                     method_disasm = method_obj.disassemble_method()
-                    instr_list = method_disasm.get_list_of_instrs()
-                    instr = instr_list[instr_index]
+                    instr = method_disasm.get_instr_at_index(instr_index)
                     dotnet.patch_instruction(method_obj, useless_methods[method_impl.get_rid()],
-                                             instr.get_instr_offset(), len(instr))
+                                             instr.get_instr_offset(), instr.get_instr_size())
 
     # now search for junk methods
 
@@ -1039,9 +1027,8 @@ cpdef bytes remove_useless_functions(bytes data) except *:
         method = method_table.get(x)
         if method.has_body():
             disasm_obj = method.disassemble_method()
-            instr_list = disasm_obj.get_list_of_instrs()
-            for y in range(len(instr_list)):
-                instr = instr_list[y]
+            for y in range(len(disasm_obj)):
+                instr = disasm_obj.get_instr_at_index(y)
                 if instr.get_name() == 'call' or instr.get_name() == 'callvirt':
                     arg_obj = instr.get_argument()
                     if isinstance(arg_obj, net_row_objects.MethodDef) and arg_obj.has_body():
@@ -1053,18 +1040,18 @@ cpdef bytes remove_useless_functions(bytes data) except *:
                                 # replace with ldc.i4.1 instruction
                                 patch = bytes(
                                     [net_opcodes.Opcodes.Ldc_I4_1])
-                                patch = ((len(instr) - len(patch))
+                                patch = ((instr.get_instr_size() - len(patch))
                                          * b'\x00') + patch
                                 dotnet.patch_instruction(
-                                    method, patch, instr.get_instr_offset(), len(instr))
+                                    method, patch, instr.get_instr_offset(), instr.get_instr_size())
                             elif junk_id == 2:
                                 # replace with ldnull instruction.
                                 patch = bytes(
                                     [net_opcodes.Opcodes.Ldnull])
-                                patch = ((len(instr) - len(patch))
+                                patch = ((instr.get_instr_size() - len(patch))
                                          * b'\x00') + patch
                                 dotnet.patch_instruction(
-                                    method, patch, instr.get_instr_offset(), len(instr))
+                                    method, patch, instr.get_instr_offset(), instr.get_instr_size())
     return dotnet.reconstruct_executable()
 
 cdef bint has_prefix(bytes type_name):
@@ -1101,8 +1088,8 @@ cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.
     cdef net_row_objects.TypeDefOrRef interface
     cdef net_row_objects.TypeDefOrRef int_obj
     cdef net_row_objects.TypeDefOrRef tdefref
-    cdef unsigned long x
-    cdef unsigned long y
+    cdef long x
+    cdef long y
     cdef list methods
     cdef list interfaces
     if type_obj == None:
@@ -1201,7 +1188,7 @@ cpdef bytes cleanup_names(bytes data,
     cdef str table_name
     cdef unsigned long table_rid
     cdef bytes name
-    cdef unsigned long u_index
+    cdef long u_index
     cdef list typedefs
     cdef dict changed_namespaces
     cdef net_row_objects.TypeDef typedef
@@ -1236,9 +1223,9 @@ cpdef bytes cleanup_names(bytes data,
     cdef net_row_objects.TypeDefOrRef iface_obj
     cdef list checked_types
     cdef net_row_objects.TypeDefOrRef parent_type
-    cdef unsigned long x
-    cdef unsigned long y
-    cdef unsigned long z
+    cdef long x
+    cdef long y
+    cdef long z
     cdef list methods_list
     cdef net_table_objects.TableObject param_table
     cdef net_table_objects.TableObject table_obj1

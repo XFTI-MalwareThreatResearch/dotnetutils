@@ -1,6 +1,9 @@
 #cython: language_level=3
-cimport numpy
-from libc.stdint cimport uint16_t, uint32_t, uint8_t, uint64_t
+#distutils: language=c++
+
+
+
+from libc.stdint cimport uint16_t, uint32_t, uint8_t, uint64_t, int64_t
 from libc.stddef cimport wchar_t
 
 
@@ -192,7 +195,7 @@ ctypedef union DUMMYUNIONIAT:
     uint32_t OriginalFirstThunk
 
 ctypedef struct IMAGE_IMPORT_DESCRIPTOR:
-    DUMMYUNIONIAT DUMMYUNIONNAME
+    DUMMYUNIONIAT DUMMYUNIONNAME1
     uint32_t TimeDateStamp
     uint32_t ForwarderChain
     uint32_t Name
@@ -216,10 +219,8 @@ ctypedef struct IMAGE_THUNK_DATA32:
 ctypedef struct IMAGE_THUNK_DATA64:
     thunk_u1_64 u1
 
-cdef enum:
-    IMAGE_ORDINAL_FLAG32 = 0x80000000
-    IMAGE_ORDINAL_FLAG64 = 0x8000000000000000
-
+cdef uint64_t IMAGE_ORDINAL_FLAG32 = 0x80000000
+cdef uint64_t IMAGE_ORDINAL_FLAG64 = 0x8000000000000000
 cdef enum:
     IMAGE_SCN_CNT_CODE = 0x20
     IMAGE_SCN_MEM_READ = 0x40000000
@@ -293,23 +294,23 @@ cdef class DotNetDataReader:
     cpdef bint is_end(self)
     cpdef void seek(self, int offset, int where)
     cpdef int tell(self)
-    cpdef numpy.uint8_t read_byte(self)
-    cpdef numpy.int8_t read_sbyte(self)
-    cpdef numpy.int16_t read_int16(self)
-    cpdef numpy.int64_t read_int64(self)
-    cpdef numpy.uint16_t read_uint16(self)
-    cpdef numpy.uint64_t read_uint64(self)
+    cpdef unsigned char read_byte(self)
+    cpdef char read_sbyte(self)
+    cpdef short read_int16(self)
+    cpdef int64_t read_int64(self)
+    cpdef unsigned short read_uint16(self)
+    cpdef uint64_t read_uint64(self)
     cpdef list read_decimal(self)
-    cpdef numpy.float32_t read_single(self)
-    cpdef numpy.float64_t read_double(self)
+    cpdef float read_single(self)
+    cpdef double read_double(self)
     cpdef bint read_boolean(self)
-    cpdef numpy.uint16_t read_char(self)
+    cpdef unsigned short read_char(self)
     cpdef str read_serialized_string(self, encoding=*)
-    cpdef numpy.int32_t read_int32(self)
-    cpdef numpy.uint32_t read_uint32(self)
-    cpdef numpy.uint32_t read_encoded_uint32(self)
-    cpdef numpy.uint32_t read_compressed_uint(self)
-    cpdef numpy.int32_t read_encoded_int32(self)
+    cpdef int read_int32(self)
+    cpdef unsigned int read_uint32(self)
+    cpdef unsigned int read_encoded_uint32(self)
+    cpdef unsigned int read_compressed_uint(self)
+    cpdef int read_encoded_int32(self)
     cpdef bytes read(self, int amt=*)
     cpdef bytes read_all(self)
     cpdef int read_single_byte(self)

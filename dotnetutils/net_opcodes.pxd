@@ -1,4 +1,6 @@
 #cython: language_level=3
+#distutils: language=c++
+
 
 cpdef enum Opcodes:
     Invalid = -1
@@ -149,6 +151,7 @@ cpdef enum Opcodes:
     Ldelem_U2 = 0x93
     Ldelem_I4 = 0x94
     Ldelem_U4 = 0x95
+    Ldelem_U8 = 0x96
     Ldelem_I8 = 0x96
     Ldelem_I = 0x97
     Ldelem_R4 = 0x98

@@ -1,66 +1,103 @@
 #cython: language_level=3
+#distutils: language=c++
 
-from dotnetutils import net_exceptions
-from dotnetutils cimport dotnetpefile
-import shutil
+import warnings
 import binascii
-import os
+from dotnetutils import net_exceptions
+from dotnetutils cimport dotnetpefile, net_tokens, net_table_objects, net_structs, net_row_objects
+from libcpp.vector cimport vector
+from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
+from dotnetutils cimport net_cil_disas, net_opcodes
 
-
-cdef class Stream:
-    def __init__(self, raw_data, exe_data, dotnetpe, dummy=False):
-        """
-        Represents a stream
-        :param raw_data: The raw data representing the stream
-        :param exe_data: The exe's data
-        :param dummy: Is this a dummy object?  Used for patching.
-        """
-        if not dummy:
-            self.offset = raw_data[0]
-            self.size = raw_data[1]
-            self.name = raw_data[2]
-            self.data = bytes(exe_data[self.offset:self.offset + self.size])
-        else:
-            self.name = None
-            self.data = bytes()
-            self.size = 0
-            self.offset = 0
+cdef class HeapObject:
+    def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
+        self.offset = offset
+        self.size = size
+        self.name = name
         self.dotnetpe = dotnetpe
+        self.items = dict()
+        if offset == -1 or name is None or size == -1:
+            self.offset = 0
+            self.name = None
+            self.size = size
+        self.read()
 
-    cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self):
+    cdef void update_offset(self, int offset):
+        self.offset = offset
+    
+    cdef void update_size(self, int size):
+        self.size = size
+
+    cpdef int get_offset_of_item(self, object item):
+        cdef int offset = 0
+        cdef object test = None
+        for offset, test in self.items.items():
+            if item == test:
+                return offset
+        return -1
+
+    cpdef bint is_offset_referenced(self, int offset):
+        return False
+
+    cdef unsigned long read_compressed_int(self, bytes data):
+        cdef unsigned long result = data[0]
+        if (result & 0x80) == 0:
+            pass
+        elif (result & 0xC0) == 0x80:
+            result = ((result & 0x3F) << 8) | data[1]
+        else:
+            result = ((result & 0x1F) << 24) | (data[1] << 16) | (data[2] << 8) | data[3]
+        return result
+
+    cdef int read_compressed_int_size(self, bytes data):
+        cdef int result
+        cdef int size = data[0]
+        if (size & 0x80) == 0:
+            return 1
+        elif (size & 0xC0) == 0x80:
+            return 2
+        else:
+            return 4
+
+    cdef bytes compress_integer(self, unsigned long number):
+        cdef int b0 = 0
+        cdef int b1 = 0
+        cdef int b2 = 0
+        cdef int b3 = 0
+        if number <= 0x7F:
+            return bytes([number & 0x7F])
+        elif number <= 0x3FFF:
+            b0 = <int>(0x80 | ((number >> 8) & 0x3F))
+            b1 = <int>(number & 0xFF)
+            return bytes([b0, b1])
+        else:
+            # 110vvvvv vvvvvvvv vvvvvvvv vvvvvvvv
+            b0 = <int>(0xC0 | ((number >> 24) & 0x1F))
+            b1 = <int>((number >> 16) & 0xFF)
+            b2 = <int>((number >> 8) & 0xFF)
+            b3 = <int>(number & 0xFF)
+            return bytes([b0, b1, b2, b3])
+
+    cdef void update(self, int old_value, int new_value, int difference):
+        raise net_exceptions.FeatureNotImplementedException()
+
+    cdef dotnetpefile.DotNetPeFile get_dotnetpe(self):
         return self.dotnetpe
 
-    def __len__(self):
-        return len(self.data)
+    cpdef bytes to_bytes(self):
+        return self.raw_data
+    
+    cdef void read(self):
+        self.raw_data = self.get_dotnetpe().get_exe_data()[self.offset:self.offset+self.size]
 
-    cpdef bytes get_item(self, unsigned long index):
-        """
-        Obtain an item from the stream
-        :param index: raw index to obtain
-        :return: The obtained item
-        """
-        return None
+    cpdef list get_items(self):
+        return self.items.values()
 
-    cpdef void set_item(self, unsigned long index, bytes value):
-        """
-        Sets an item in a stream
-        :param index: raw index to set
-        :param value: value to set
-        :return: None
-        """
-        pass
-
-    cpdef unsigned long del_item(self, unsigned long index):
-        """
-        Delete item at index
-        """
-        return -1
+    cpdef dict get_items_dict(self):
+        return self.items
 
     cpdef bytes get_name(self):
         return self.name
-
-    cpdef bytes get_data(self):
-        return self.data
 
     cpdef int get_offset(self):
         return self.offset
@@ -68,397 +105,830 @@ cdef class Stream:
     cpdef int get_size(self):
         return self.size
 
-    cpdef Stream make_copy(self):
-        """
-        Make a dummy copy of the object
-        """
-        return type(self)(None, self.data, dummy=True)
-
-    def __copy__(self):
-        return self.make_copy()
-
-    cpdef Py_ssize_t find_index(self, bytes item):
-        """
-        Find the index where item is located in the stream
-        """
-        return 0
+    cpdef int replace_item(self, int offset, object item):
+        raise net_exceptions.FeatureNotImplementedException()
     
-    cpdef bint has_item(self, bytes item):
-        return self.find_index(item) != -1 #THis should work since most heaps start with a few zero bytes.
+    cpdef int append_item(self, object item):
+        raise net_exceptions.FeatureNotImplementedException()
 
-cdef class StringStream(Stream):
+    cpdef object get_item(self, int offset):
+        raise net_exceptions.FeatureNotImplementedException()
 
-    def __init__(self, raw_data, exe_data, dotnetpe, dummy=False):
-        Stream.__init__(self, raw_data, exe_data, dotnetpe, dummy)
-        if dummy:
-            self.data = bytes([0])
+    cpdef bint has_offset(self, int offset):
+        return offset in self.items
 
-    cpdef bytes get_item(self, unsigned long index):
-        """
-        Obtains an item at index in the strings stream
-        """
-        cdef unsigned long start
-        cdef bytes result
-        start = index
-        result = bytes()
-        while self.data[start] != 0x0:
-            result += bytes([self.data[start]])
-            start += 1
-        return result
+    cpdef bint has_item(self, object item):
+        return item in self.items.values()
 
-    cpdef Py_ssize_t find_index(self, bytes item):
-        """
-        Attempts to determine the index of an item within the #Strings stream.
-        """
-        cdef Py_ssize_t result
-        result = self.data.find(item + b'\x00')
-        return result
-
-    cpdef unsigned long del_item(self, unsigned long index):
-        cdef bytes item
-        cdef unsigned long item_len
-        item = self.get_item(index)
-        item_len = len(item) + 1
-        self.data = self.data[:index] + self.data[index + item_len:]
-        return item_len
-
-    cpdef list get_items(self):
-        """
-        Gets all items from the strings stream
-        """
-        cdef list results
-        cdef bytes current
-        cdef unsigned long index
-        results = list()
-        current = b''
-        index = 0
-        while index < len(self.data):
-            if self.data[index] == 0:
-                results.append(current)
-                current = b''
-            else:
-                current += bytes([self.data[index]])
-            index += 1
-        return results
-
-    cpdef void set_item(self, unsigned long index, bytes value):
-        """
-        NOTE: This function does not do anything
-        Figuring out how to specifically set an item within the streams
-        gets rediculously complicated so to fix that I would recommend
-        just using del_item and append_item.  It results in the same outcome.
-        """
-        pass
-
-    cpdef unsigned long append_item(self, bytes value):
-        """
-        Appends an item to the strings stream
-        This was a workaround of sorts to get around the complexities
-        of set_item - appending doesn't require redoing every stream index
-        """
-        cdef unsigned long index
-        index = len(self.data)
-        self.data += value + bytes([0])
-        return index
-
-
-cdef class BlobStream(Stream):
-
-    def __init__(self, raw_data, exe_data, dotnetpe, dummy=False):
-        Stream.__init__(self, raw_data, exe_data, dotnetpe, dummy)
-        if dummy:
-            self.data = bytes([0]) #TODO: is this correct?
-
-    cpdef bytes get_item(self, unsigned long index):
-        """
-        Obtains an item at index in the Blob stream
-        """
-        cdef unsigned long size
-        cdef unsigned long usable_index
-        if index >= len(self.data):
-            return None
-        size = self.data[index]
-        usable_index = index
-        if (size & 0x80) == 0:
-            usable_index += 1
-        elif (size & 0xC0) == 0x80:
-            size = ((size & 0x3F) << 8) | self.data[index + 1]
-            usable_index += 2
-        else:
-            size = ((size & 0x1F) << 24) | (self.data[index + 1] << 16) | (self.data[index + 2] << 8) | self.data[
-                index + 3]
-            usable_index += 4
-        return self.data[usable_index:usable_index + size]
-        
-    cpdef unsigned long del_item(self, unsigned long index):
-        cdef unsigned long usable_index
-        cdef unsigned long size
-        cdef unsigned long old_size
-        size = self.data[index]
-        usable_index = index
-        if (size & 0x80) == 0:
-            usable_index += 1
-        elif (size & 0xC0) == 0x80:
-            size = ((size & 0x3F) << 8) | self.data[index + 1]
-            usable_index += 2
-        else:
-            size = ((size & 0x1F) << 24) | (self.data[index + 1] << 16) | (self.data[index + 2] << 8) | self.data[
-                index + 3]
-            usable_index += 4
-        old_size = len(self.data)
-        self.data = self.data[:index] + self.data[usable_index + size:]
-        return old_size - len(self.data)
-    
-    cpdef Py_ssize_t find_index(self, bytes item):
-        cdef unsigned long value
-        cdef bytes data
-        value = len(item)
-        data = bytes()
-        if value <= 0x7F:
-            data += bytes([value])
-        elif value <= 0x3FFF:
-            data += bytes([((value >> 8) | 0x80) & 0xFF, value & 0xFF])
-        elif value <= 0x1FFFFFFF:
-            data += bytes([((value >> 24) | 0xC0) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF])
-        else:
-            return -1
-        
-        data += item
-        return self.data.find(data)
-
-    cpdef unsigned long append_item(self, bytes raw_value):
-        cdef unsigned long index
-        cdef unsigned long value
-        index = len(self.data)
-        value = len(raw_value)
-        if value <= 0x7F:
-            self.data += bytes([value])
-        elif value <= 0x3FFF:
-            self.data += bytes([((value >> 8) | 0x80) & 0xFF, value & 0xFF])
-        elif value <= 0x1FFFFFFF:
-            self.data += bytes([((value >> 24) | 0xC0) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF])
-        else:
-            raise net_exceptions.CannotCompressSizeException
-        self.data += raw_value
-        return index
-
-
-cdef class GuidStream(Stream):
-    cpdef bytes get_item(self, unsigned long index):
-        """
-        Obtains an item at index in the GUID stream
-        """
-        return self.data[index:index + 16]
-
-    cpdef unsigned long append_item(self, bytes raw_value):
-        if not len(raw_value) == 16:
-            raise net_exceptions.InvalidArgumentsException("16 bytes", f"{len(raw_value)} bytes")
-        self.data += raw_value
-        return 0
-
-    cpdef unsigned long del_item(self, unsigned long index):
-        self.data = self.data[:index] + self.data[index + 16:]
-        return 16
-    
-    cpdef Py_ssize_t find_index(self, bytes item):
-        cdef Py_ssize_t index
-        cdef bytes potential_item
-        index = 0
-        while index < len(self.data):
-            potential_item = self.data[index:index+16]
-            if potential_item == item:
-                return index
-            index += 16
-        return -1
-
-
-cdef class UserStringsStream(Stream):
-
-    cpdef bytes get_item(self, unsigned long index):
-        """
-        Obtains an item from the user strings stream
-        """
-        cdef unsigned long size
-        cdef unsigned long usable_index
-        size = self.data[index]
-        usable_index = index
-        if (size & 0x80) == 0:
-            usable_index += 1
-        elif (size & 0xC0) == 0x80:
-            size = ((size & 0x3F) << 8) | self.data[index + 1]
-            usable_index += 2
-        else:
-            size = ((size & 0x1F) << 24) | (self.data[index + 1] << 16) | (self.data[index + 2] << 8) | self.data[
-                index + 3]
-            usable_index += 4
-        return self.data[usable_index:usable_index + size - 1]
-
-    cpdef list get_items(self):
-        """
-        Obtains all items from the user strings stream
-        """
-        cdef unsigned long index
-        cdef list results
-        cdef unsigned long size
-        cdef unsigned long usable_index
-        cdef bytes string
-        index = 1
-        results = list()
-        while index < len(self.data):
-            size = self.data[index]
-            usable_index = index
-            if (size & 0x80) == 0:
-                usable_index += 1
-            elif (size & 0xC0) == 0x80:
-                size = ((size & 0x3F) << 8) | self.data[index + 1]
-                usable_index += 2
-            else:
-                size = ((size & 0x1F) << 24) | (self.data[index + 1] << 16) | (self.data[index + 2] << 8) | self.data[
-                    index + 3]
-                usable_index += 4
-
-            string = self.data[usable_index: usable_index + size - 1]
-            if len(string) != 0:
-                results.append(string)
-
-            index = usable_index + size
-        return results
-
-    cpdef unsigned long del_item(self, unsigned long index):
-        """
-        Deletes an item from the User strings stream
-        Dont call this method directly, some cleanup is needed to make this work.
-        """
-        cdef unsigned long size
-        cdef unsigned long usable_index
-        cdef unsigned long old_size
-        size = self.data[index]
-        usable_index = index
-        if (size & 0x80) == 0:
-            usable_index += 1
-        elif (size & 0xC0) == 0x80:
-            size = ((size & 0x3F) << 8) | self.data[index + 1]
-            usable_index += 2
-        else:
-            size = ((size & 0x1F) << 24) | (self.data[index + 1] << 16) | (self.data[index + 2] << 8) | self.data[
-                index + 3]
-            usable_index += 4
-        old_size = len(self.data)
-
-        self.data = self.data[:index] + self.data[usable_index + size:]
-        return old_size - len(self.data)
-
-    cpdef unsigned long append_item_dns(self, object str_item):
-        """
-        param should be only net_emu_types.DotNetString
-        Useful for situations where strings are not exactly readable characters.
-        """
-        """
-        Appends an item to the user strings stream.
-        """
-        cdef bytes usable
-        cdef unsigned long index
-        cdef unsigned long value
-        cdef int high_bit
-        cdef unsigned long x
-        cdef int val
-        if str_item.get_str_encoding() == 'utf-16le':
-            usable = bytes(str_item.get_str_data_as_bytes())
-        else:
-            usable = bytes(str_item.get_str_data_as_bytes().decode(str_item.get_str_encoding()).encode('utf-16le'))
-        if len(self.data) == 0:
-            self.data = bytes([0])
-        if usable.startswith(b'\xFF\xFE'):
-            usable = usable.lstrip(b'\xFF\xFE')  # strip the byte order mark
-        index = len(self.data)
-        value = len(usable) + 1
-        if value <= 0x7F:
-            self.data += bytes([value])
-        elif value <= 0x3FFF:
-            self.data += bytes([((value >> 8) | 0x80) & 0xFF, value & 0xFF])
-        elif value <= 0x1FFFFFFF:
-            self.data += bytes([((value >> 24) | 0xC0) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF])
-        else:
-            raise net_exceptions.CannotCompressSizeException
-        self.data += usable
-        if not self.data.endswith(b'\x00'):
-            self.data += bytes([0])
-        high_bit = 0
-        for x in range(len(usable)):
-            if x % 2 == 0:
-                val = usable[x]
-                if 0x1 <= val <= 0x8:
-                    high_bit = 1
-                if 0x0E <= val <= 0x1F:
-                    high_bit = 1
-                if val == 0x27 or val == 0x2D:
-                    high_bit = 1
-            else:
-                if usable[x] > 0:
-                    high_bit = 1
-            if high_bit == 1:
-                break
-
-        self.data += bytes([high_bit])
-        return index
-
-
-    cpdef unsigned long append_item(self, bytes bstring):
-        """
-        Appends an item to the user strings stream.
-        """
-        cdef bytes usable
-        cdef unsigned long index
-        cdef unsigned long value
-        cdef int high_bit
-        cdef unsigned long x
-        cdef int val
-        cdef bytes data_add_buf
-        try:
-            usable = bstring.decode().encode('utf-16le')
-            # TODO: This may be causing issues - maybe just have the user ensure that the strings are UTF-16LE?
-        except UnicodeDecodeError:
-            usable = bstring
-        if len(self.data) == 0:
-            self.data = bytes([0])
-        if usable.startswith(b'\xFF\xFE'):
-            usable = usable.lstrip(b'\xFF\xFE')  # strip the byte order mark
-        index = len(self.data)
-        value = len(usable) + 1
-        data_add_buf = bytes()
-        if value <= 0x7F:
-            data_add_buf += bytes([value])
-        elif value <= 0x3FFF:
-            data_add_buf += bytes([((value >> 8) | 0x80) & 0xFF, value & 0xFF])
-        elif value <= 0x1FFFFFFF:
-            data_add_buf += bytes([((value >> 24) | 0xC0) & 0xFF, (value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF])
-        else:
-            raise net_exceptions.CannotCompressSizeException
-        data_add_buf += usable
-        if not data_add_buf.endswith(b'\x00'):
-            data_add_buf += bytes([0])
-        high_bit = 0
-        for x in range(len(usable)):
-            if x % 2 == 0:
-                val = usable[x]
-                if 0x1 <= val <= 0x8:
-                    high_bit = 1
-                if 0x0E <= val <= 0x1F:
-                    high_bit = 1
-                if val == 0x27 or val == 0x2D:
-                    high_bit = 1
-            else:
-                if usable[x] > 0:
-                    high_bit = 1
-            if high_bit == 1:
-                break
-
-        data_add_buf += bytes([high_bit])
-        self.data += data_add_buf
-        return index
-    
-    cpdef Py_ssize_t find_index(self, bytes item):
-        return -1 #Not actually needed to be implemented as of now. TODO.
+    cpdef int del_item(self, int offset):
+        raise net_exceptions.FeatureNotImplementedException()
 
     def __len__(self):
-        return len(self.data)
+        return len(self.raw_data)
+
+cdef class StringHeapObject(HeapObject):
+    def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
+        HeapObject.__init__(self, offset, size, name, dotnetpe)
+        self.metadata_references = dict()
+        self.__build_metadata_references()
+
+    cpdef bint has_offset(self, int offset):
+        return offset > 0 and offset < self.get_size()
+
+    cdef void read(self):
+        cdef int index = 0
+        cdef int start_offset = 0
+        cdef bytes current = bytes()
+        self.amt_trailing_zeroes = 0
+        self.raw_data = self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size]
+        
+        while index < len(self.raw_data):
+            if self.raw_data[index] == 0:
+                if start_offset == index and start_offset > 0:
+                    break
+                #Make sure we ignore the trailing zeroes.  If we map them things get messy.  
+                current = self.raw_data[start_offset:index + 1]
+                self.items[start_offset] = current
+                start_offset = index + 1
+            index += 1
+        index = <int>len(self.raw_data) - 1
+        while self.raw_data[index] == 0:
+            self.amt_trailing_zeroes += 1
+            index -= 1
+
+        self.amt_trailing_zeroes -= 1
+
+    cdef void __build_metadata_references(self):
+        cdef str table_name = None
+        cdef dict table_types = None
+        cdef str col_name = None
+        cdef net_tokens.BaseToken token = None
+        for table_name, table_types in net_table_objects.NET_METADATA_TABLE_HANDLERS.values():
+            for col_name, token in table_types.items():
+                if token == net_tokens.get_StringsStream():
+                    if table_name not in self.metadata_references:
+                        self.metadata_references[table_name] = list()
+                    self.metadata_references[table_name].append(col_name)
+
+    cpdef bint is_offset_referenced(self, int offset):
+        cdef str table_name = None
+        cdef list col_names = None
+        cdef str col_name = None
+        cdef net_table_objects.TableObject table_obj = None
+        cdef net_row_objects.RowObject row_obj = None
+        cdef net_row_objects.ColumnValue col_val = None
+        for table_name, col_names in self.metadata_references.items():
+            table_obj = self.get_dotnetpe().get_metadata_table(table_name)
+            if table_obj is None:
+                continue
+            for row_obj in table_obj:
+                for col_name in col_names:
+                    col_val = row_obj.get_column(col_name)
+                    if <int>col_val.get_raw_value() == offset:
+                        return True
+
+        return False
+
+    cdef void update(self, int old_value, int new_value, int difference):
+        cdef int offset = 0
+        cdef Py_ssize_t x = 0
+        cdef Py_ssize_t y = 0
+        cdef Py_ssize_t z = 0
+        cdef str table_name = None
+        cdef list col_names = None
+        cdef str col_name = None
+        cdef bytes old_item = None
+        cdef net_row_objects.ColumnValue col_val = None
+        cdef net_table_objects.TableObject table_object = None
+        cdef net_row_objects.RowObject row_object = None
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        cdef int heap_offset_size = 0
+        #If new_value is -1, treat it as a removal.
+        #First update the listings in the stream itself
+        #self.raw_data should already be taken care of by the caller.
+        if difference == 0:
+            return
+        for offset in sorted(self.items.keys()):
+            if offset > old_value:
+                old_item = self.items[offset]
+                del self.items[offset]
+                self.items[offset + difference] = old_item
+        #Next update the tokens within the metadata tables
+        #Strings items can only really be in the metadata heap as far as im aware.
+        for table_name, col_names in self.metadata_references.items():
+            table_object = self.get_dotnetpe().get_metadata_table(table_name)
+            if table_object is None:
+                continue
+            for row_object in table_object:
+                for col_name in col_names:
+                    col_val = row_object.get_column(col_name)
+                    if col_val.get_raw_value() == <unsigned int>old_value and new_value == -1:
+                        warnings.warn('Attempting to delete a #Strings object that is still in use')
+                    if col_val.get_raw_value() > <unsigned int>old_value:
+                        col_val.set_raw_value(col_val.get_raw_value() + difference)
+        heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS)
+        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 4)
+        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 2)
+        
+    def __len__(self):
+        return len(self.raw_data)
+
+    #Something to note: sometimes compilers will pack two strings together - e.x get_Is64BitOperatingSystem and System.
+    #These methods dont really handle that and I dont really want to support that.
+    cpdef int replace_item(self, int offset, object item):
+        cdef bytes b = <bytes> item
+        cdef bytes old_item = None
+        cdef int difference = 0
+        cdef bytes bitem = None
+        cdef int off = 0
+        if b[-1] != 0:
+            b += b'\x00'
+        if offset not in self.items:
+            raise net_exceptions.InvalidArgumentsException()
+        old_item = self.items[offset]
+        difference = <int>(len(b) - len(old_item))
+        #first replace in raw_data
+        self.raw_data = self.raw_data[:offset] + b + self.raw_data[offset + len(old_item):]
+        self.items[offset] = b
+        self.update(offset, offset, difference)
+        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+        return difference
+
+    cpdef int append_item(self, object item):
+        cdef bytes b = <bytes> item
+        cdef int new_offset = <int>len(self.raw_data)
+        cdef int potential = 0
+        if b[-1] != 0:
+            b += b'\x00'
+        potential = self.get_offset_of_item(b)
+        if potential == -1:
+            #we need to make sure were appending at the last item.
+            if self.amt_trailing_zeroes > 0:
+                #Take care of any extra 0s on the end.
+                self.raw_data = self.raw_data[:-1 * self.amt_trailing_zeroes]
+                new_offset = <int>len(self.raw_data)
+            self.items[new_offset] = b
+            self.raw_data += b
+            if self.amt_trailing_zeroes > 0:
+                self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(b), self.get_dotnetpe(), True, True)
+            return new_offset
+        else:
+            return potential
+
+    cpdef object get_item(self, int offset):
+        cdef bytes result = None
+        cdef int index = offset
+        if not self.has_offset(offset):
+            return None
+        if offset in self.items:
+            result = <bytes>self.items[offset]
+            result = result[:-1]
+            return result
+        else:
+            #we have a case here where two strings are concated together.
+            #Just read the string as bytes from the raw data for now.
+            result = bytes()
+            while index < self.get_size() and self.raw_data[index] != 0:
+                result += bytes([self.raw_data[index]])
+                index += 1
+            return result
+
+    cpdef list get_items(self):
+        cdef list result = list()
+        cdef bytes item = None
+        for item in self.items.values():
+            result.append(item[:-1])
+        return result
+
+    cpdef int del_item(self, int offset):
+        cdef bytes item = self.items[offset]
+        cdef int difference = -1 * <int>len(item)
+        cdef int off = 0
+        if offset not in self.items:
+            raise net_exceptions.InvalidArgumentsException()
+        if not self.is_offset_referenced(offset):
+            self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
+            del self.items[offset]
+            self.update(offset, -1, difference)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+            return difference
+        else:
+            warnings.warn('Attempting to delete a string item that is currently referenced')
+            return 0
+
+cdef class BlobHeapObject(HeapObject):
+    def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
+        HeapObject.__init__(self, offset, size, name, dotnetpe)
+        self.metadata_references = dict()
+        self.__build_metadata_references()
+
+    cdef void read(self):
+        cdef int index = 0
+        self.raw_data = self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size]
+        cdef unsigned long cpressed_int = 0
+        cdef int cpressed_size = 0
+        cdef bytes data = None
+        while index < len(self.raw_data):
+            cpressed_int = self.read_compressed_int(self.raw_data[index:])
+            cpressed_size = self.read_compressed_int_size(self.raw_data[index:])
+            data = self.raw_data[index: index + cpressed_size + cpressed_int]
+            self.items[index] = data
+            index += <int>len(data)
+
+    cdef void __build_metadata_references(self):
+        cdef str table_name = None
+        cdef dict table_types = None
+        cdef str col_name = None
+        cdef net_tokens.BaseToken token = None
+        for table_name, table_types in net_table_objects.NET_METADATA_TABLE_HANDLERS.values():
+            for col_name, token in table_types.items():
+                if token == net_tokens.get_BlobStream():
+                    if table_name not in self.metadata_references:
+                        self.metadata_references[table_name] = list()
+                    self.metadata_references[table_name].append(col_name)
+
+    cpdef bint is_offset_referenced(self, int offset):
+        cdef str table_name = None
+        cdef list col_names = None
+        cdef str col_name = None
+        cdef net_table_objects.TableObject table_obj = None
+        cdef net_row_objects.RowObject row_obj = None
+        cdef net_row_objects.ColumnValue col_val = None
+        for table_name, col_names in self.metadata_references.items():
+            table_obj = self.get_dotnetpe().get_metadata_table(table_name)
+            if table_obj is None:
+                continue
+            for row_obj in table_obj:
+                for col_name in col_names:
+                    col_val = row_obj.get_column(col_name)
+                    if <int>col_val.get_raw_value() == offset:
+                        return True
+
+        return False
+
+    cdef void update(self, int old_value, int new_value, int difference):
+        cdef int offset = 0
+        cdef Py_ssize_t x = 0
+        cdef Py_ssize_t y = 0
+        cdef Py_ssize_t z = 0
+        cdef str table_name = None
+        cdef list col_names = None
+        cdef str col_name = None
+        cdef bytes old_item = None
+        cdef net_row_objects.ColumnValue col_val = None
+        cdef net_table_objects.TableObject table_object = None
+        cdef net_row_objects.RowObject row_object = None
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        #If new_value is -1, treat it as a removal.
+        #First update the listings in the stream itself
+        #self.raw_data should already be taken care of by the caller.
+        for offset in sorted(self.items.keys()):
+            if offset > old_value:
+                old_item = self.items[offset]
+                del self.items[offset]
+                self.items[offset + difference] = old_item
+        #Next update the tokens within the metadata tables
+        for table_name, col_names in self.metadata_references.items():
+            table_object = self.get_dotnetpe().get_metadata_table(table_name)
+            if table_object is None:
+                continue
+            for row_object in table_object:
+                for col_name in col_names:
+                    col_val = row_object.get_column(col_name)
+                    if col_val.get_raw_value() == <unsigned int>old_value and new_value == -1:
+                        warnings.warn('Attempting to delete a blob value that is still in use.')
+                    if col_val.get_raw_value() > <unsigned int>old_value:
+                        col_val.set_raw_value(col_val.get_raw_value() + difference)
+        heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB)
+        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 4)
+        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 2)
+        
+    def __len__(self):
+        return len(self.raw_data)
+
+    cpdef int replace_item(self, int offset, object item):
+        cdef bytes b = <bytes> item
+        cdef bytes compressed_size = self.compress_integer(<unsigned long>len(b))
+        cdef bytes orig_item = self.items[offset]
+        cdef bytes final = compressed_size + b
+        cdef bytes bitem = None
+        cdef int difference = <int>(len(final) - len(orig_item))
+        self.items[offset] = final
+        self.raw_data = self.raw_data[:offset] + compressed_size + b + self.raw_data[offset + len(orig_item):]
+        self.update(offset, offset, difference)
+        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+        return difference
+
+    cpdef bint has_item(self, object item):
+        raise (self.compress_integer(<unsigned long>len(item)) + item) in self.items.values()
+
+    cpdef int append_item(self, object item):
+        cdef int offset = <int>len(self.raw_data)
+        cdef bytes final = self.compress_integer(<unsigned long>len(item)) + <bytes>item
+        cdef int potential = self.get_offset_of_item(final)
+        if potential == -1:
+            self.items[offset] = final
+            self.raw_data += final
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(final), self.get_dotnetpe(), True, True)
+            return offset
+        else:
+            return potential
+
+    cpdef object get_item(self, int offset):
+        cdef bytes result = self.items[offset]
+        return result[self.read_compressed_int_size(result):]
+    
+    cpdef int del_item(self, int offset):
+        cdef bytes item = <bytes>self.items[offset]
+        cdef int difference = <int>len(item) * -1
+        cdef int off = 0
+        if not self.is_offset_referenced(offset):
+            del self.items[offset]
+            self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
+            self.update(offset, -1, difference)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+            return difference
+        else:
+            warnings.warn('Attempting to delete an item that is currently referenced')
+            return 0
+
+    cpdef list get_items(self):
+        cdef list result = list()
+        cdef bytes item = None
+        for item in self.items.values():
+            result.append(item[self.read_compressed_int_size(item):])
+        return result
+
+cdef class GuidHeapObject(HeapObject):
+    def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
+        HeapObject.__init__(self, offset, size, name, dotnetpe)
+        self.metadata_references = dict()
+        self.__build_metadata_references()
+
+    cdef void __build_metadata_references(self):
+        cdef str table_name = None
+        cdef dict table_types = None
+        cdef str col_name = None
+        cdef net_tokens.BaseToken token = None
+        for table_name, table_types in net_table_objects.NET_METADATA_TABLE_HANDLERS.values():
+            for col_name, token in table_types.items():
+                if token == net_tokens.get_GuidStream():
+                    if table_name not in self.metadata_references:
+                        self.metadata_references[table_name] = list()
+                    self.metadata_references[table_name].append(col_name)
+
+    cpdef bint is_offset_referenced(self, int offset):
+        cdef str table_name = None
+        cdef list col_names = None
+        cdef str col_name = None
+        cdef net_table_objects.TableObject table_obj = None
+        cdef net_row_objects.RowObject row_obj = None
+        cdef net_row_objects.ColumnValue col_val = None
+        for table_name, col_names in self.metadata_references.items():
+            table_obj = self.get_dotnetpe().get_metadata_table(table_name)
+            if table_obj is None:
+                continue
+            for row_obj in table_obj:
+                for col_name in col_names:
+                    col_val = row_obj.get_column(col_name)
+                    if <int>col_val.get_raw_value() == offset:
+                        return True
+
+        return False
+
+    cdef void update(self, int old_value, int new_value, int difference):
+        cdef int offset = 0
+        cdef Py_ssize_t x = 0
+        cdef Py_ssize_t y = 0
+        cdef Py_ssize_t z = 0
+        cdef str table_name = None
+        cdef list col_names = None
+        cdef str col_name = None
+        cdef bytes old_item = None
+        cdef net_row_objects.ColumnValue col_val = None
+        cdef net_table_objects.TableObject table_object = None
+        cdef net_row_objects.RowObject row_object = None
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        #If new_value is -1, treat it as a removal.
+        #First update the listings in the stream itself
+        #self.raw_data should already be taken care of by the caller.
+        for offset in sorted(self.items.keys()):
+            if offset > old_value:
+                old_item = self.items[offset]
+                del self.items[offset]
+                self.items[offset + difference] = old_item
+        #Next update the tokens within the metadata tables
+        for table_name, col_names in self.metadata_references.items():
+            table_object = self.get_dotnetpe().get_metadata_table(table_name)
+            if table_object is None:
+                continue
+            for row_object in table_object:
+                for col_name in col_names:
+                    col_val = row_object.get_column(col_name)
+                    if col_val.get_raw_value() == <unsigned int>old_value and new_value == -1:
+                        warnings.warn('Attempting to delete a guid value that is still in use.')
+                    if col_val.get_raw_value() > <unsigned int>old_value:
+                        col_val.set_raw_value(col_val.get_raw_value() + difference)
+
+        heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID)
+        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 4)
+        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 2)
+
+    cdef void read(self):
+        cdef int index = 0
+        cdef bytes data = None
+        self.raw_data = self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size]
+        while index < len(self.raw_data):
+            data = self.raw_data[index:index+16]
+            self.items[index] = data
+            index += 16
+
+    cpdef object get_item(self, int offset):
+        if not self.has_offset(offset):
+            return None
+        return self.items[offset]
+
+    cpdef int del_item(self, int offset):
+        cdef int difference = 16
+        cdef int off = 0
+        if not self.is_offset_referenced(offset):
+            del self.items[offset]
+            self.raw_data = self.raw_data[:offset] + self.raw_data[offset + 16:]
+            self.update(offset, offset, difference)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+            return difference
+        else:
+            warnings.warn('Attempting to delete a guid item that is currently referenced.')
+            return 0
+
+    cpdef int replace_item(self, int offset, object item):
+        if len(item) != 16:
+            raise Exception()
+        self.items[offset] = item
+        self.raw_data = self.raw_data[:offset] + item + self.raw_data[offset + 16:]
+        return 0
+
+    cpdef int append_item(self, object item):
+        if len(item) != 16:
+            raise Exception()
+        cdef int offset = <int>len(self.raw_data)
+        cdef int potential = self.get_offset_of_item(item)
+        if potential == -1:
+            self.items[offset] = item
+            self.raw_data += item
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(item), self.get_dotnetpe(), True, True)
+            return offset
+        return potential
+
+cdef class UserStringsHeapObject(HeapObject):
+    def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
+        HeapObject.__init__(self, offset, size, name, dotnetpe)
+        self.warned = False
+
+    cdef void _fill_methods(self):
+        cdef net_table_objects.MethodDefTable table = self.get_dotnetpe().get_metadata_table('MethodDef')
+        cdef net_row_objects.MethodDef mdef = None
+        if table is None:
+            return
+        for mdef in table:
+            Py_INCREF(mdef)
+            self.methods.push_back(<PyObject*>mdef)
+
+    cdef bytes sanitize_input(self, bytes data):
+        cdef bytes b = data
+        cdef Py_ssize_t i = 0
+        cdef int high_bit = 0
+        cdef int hi = 0
+        cdef int lo = 0
+        if b[0] == 0xFF and b[1] == 0xFE: #Strip BOM
+            b = b[2:]
+        
+        for i in range(0, len(b), 2):
+            lo = b[i]
+            hi = b[i+1]
+            if hi != 0:
+                high_bit = 1
+                break
+            if (0x01 <= lo <= 0x08 or
+                0x0E <= lo <= 0x1F or
+                lo in (0x27, 0x2D, 0x7F)):
+                high_bit = 1
+                break
+        b += bytes([high_bit])
+        return self.compress_integer(<unsigned long>len(b)) + b
+
+    def __dealloc__(self):
+        for x in range(self.methods.size()):
+            Py_XDECREF(self.methods[x])
+        self.methods.clear()
+
+    cdef void read(self):
+        cdef int index = 0
+        cdef bytes item = None
+        cdef unsigned long cpres_len = 0
+        cdef int cpres_size = 0
+        self.amt_trailing_zeroes = 0
+        self.raw_data = self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size]
+        while index < len(self.raw_data):
+            cpres_size = self.read_compressed_int_size(self.raw_data[index:])
+            cpres_len = self.read_compressed_int(self.raw_data[index:])
+            item = self.raw_data[index:index + cpres_size + cpres_len]
+            self.items[index] = item
+            index += cpres_size + cpres_len
+        self.amt_trailing_zeroes = <int>len(self.raw_data) - index
+
+    cdef void update(self, int old_value, int new_value, int difference):
+        cdef net_table_objects.MethodDefTable table_object = self.get_dotnetpe().get_metadata_table('MethodDef')
+        cdef net_row_objects.MethodDef method = None
+        cdef net_cil_disas.MethodDisassembler disasm = None
+        cdef Py_ssize_t y = 0
+        cdef size_t x = 0
+        cdef net_cil_disas.Instruction instr = None
+        cdef int argument_token = 0
+        cdef bytes new_instr = None
+        cdef int off = 0
+        cdef bytes item = None
+        cdef bytes instr_argument = None
+
+        for off, item in sorted(self.items.items()):
+            if off > old_value:
+                del self.items[off]
+                self.items[off + difference] = item
+
+        if not self.warned:
+            warnings.warn('Hot patching #US items will only change references in present code.  This may cause issues if code is encrypted.')
+            self.warned = True
+        for x in range(self.methods.size()):
+            method = <net_row_objects.MethodDef>self.methods.at(x)
+            if method.has_body():
+                disasm = method.disassemble_method()
+                for y in range(len(disasm)):
+                    instr = disasm.get_instr_at_index(<int>y)
+                    if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
+                        #This isnt a good idea.  rework instruction arguments a bit to prevent the python calls here.
+                        argument_token = int.from_bytes(bytes(instr.get_arguments()), 'little')
+                        argument_token = net_tokens.get_Signature().decode_token(argument_token)[1]
+                        if argument_token == old_value and new_value == -1:
+                            warnings.warn('Attempting to delete a #US token that is still in use.')
+                        if argument_token > old_value:
+                            argument_token += difference
+                            argument_token = net_tokens.get_Signature().encode_token('#US', argument_token)
+                            instr_argument = int.to_bytes(argument_token, 4, 'little')
+                            instr.__set_arguments(instr_argument)
+                            new_instr = b'\x72' + instr_argument
+                            self.get_dotnetpe().patch_instruction(method, new_instr, instr.get_instr_offset(), <unsigned long>len(instr))
+
+    cpdef bint is_offset_referenced(self, int offset):
+        cdef int argument = 0
+        cdef net_row_objects.MethodDef method_obj = None
+        cdef unsigned int index = 0
+        cdef Py_ssize_t x = 0
+        cdef net_cil_disas.MethodDisassembler disasm_obj = None
+        cdef net_cil_disas.Instruction instr = None
+        for index in range(self.methods.size()):
+            method_obj = <net_row_objects.MethodDef>self.methods.at(index)
+            if method_obj.has_body():
+                disasm_obj = method_obj.disassemble_method()
+                for x in range(len(disasm_obj)):
+                    instr = disasm_obj.get_instr_at_index(<int>x)
+                    if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
+                        #TODO: cleanup how instruction arguments work.
+                        argument = int.from_bytes(bytes(instr.get_arguments()), 'little')
+                        if argument == offset:
+                            return True
+        return False
+
+    cdef void register_method(self, net_row_objects.MethodDef method):
+        #For if method patching is ever allowed.
+        Py_INCREF(method)
+        self.methods.push_back(<PyObject*>method)
+
+    cpdef object get_item(self, int offset):
+        cdef bytes item = None
+        if not self.has_offset(offset):
+            return None
+        item = <bytes>self.items[offset]
+        return item[self.read_compressed_int_size(item):][:-1] #strip flag mark.
+
+    cpdef int del_item(self, int offset):
+        if not self.has_offset(offset):
+            return 0
+        cdef bytes old_item = self.items[offset]
+        cdef int difference = <int>len(old_item) * -1
+        cdef int off = 0
+        if not self.is_offset_referenced(offset):
+            self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(old_item):]
+            del self.items[offset]
+            self.update(offset, -1, difference)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+            return difference
+        else:
+            warnings.warn('cant delete item because its referenced')
+            return 0
+
+    cpdef int replace_item(self, int offset, object item):
+        if not self.has_offset(offset):
+            return 0
+        cdef bytes old_item = self.items[offset]
+        cdef bytes b = <bytes>item
+        cdef bytes final = self.sanitize_input(b)
+        cdef int difference = <int>(len(final) - len(old_item))
+        cdef int off = 0
+        cdef bytes bitem = None
+        self.items[offset] = final
+        self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(old_item):]
+        self.update(offset, offset, difference)
+        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+        return difference
+
+    cpdef int append_item(self, object item):
+        cdef bytes b = <bytes>item
+        cdef bytes final = None
+        cdef int new_offset = <int>len(self.raw_data)
+        cdef int potential = 0
+        final = self.sanitize_input(b)
+        potential = self.get_offset_of_item(final)
+        if potential == -1:
+            if self.amt_trailing_zeroes > 0:
+                #Take care of any extra 0s on the end.
+                self.raw_data = self.raw_data[:-1 * self.amt_trailing_zeroes]
+                new_offset = <int>len(self.raw_data)
+            self.raw_data += final
+            if self.amt_trailing_zeroes > 0:
+                self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
+            self.items[new_offset] = final
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(final), self.get_dotnetpe(), True, True)
+            return new_offset
+        else:
+            return potential #Dont append if it already exists.
+
+    cpdef list get_items(self):
+        cdef list result = list()
+        cdef bytes item = None
+        for item in self.items.values():
+            result.append(item[self.read_compressed_int_size(item):][:-1])
+        return result
+
+cdef class MetadataTableHeapObject(HeapObject):
+    
+    def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
+        HeapObject.__init__(self, offset, size, name, dotnetpe)
+
+    cpdef net_table_objects.MetadataTableHeader get_header(self):
+        return self.header
+
+    cdef void read(self):
+        cdef unsigned long tables_curr_offset = 0
+        cdef int table_id
+        cdef int table_amt_rows
+        cdef str tbl_name
+        cdef dict col_type_handler
+        cdef list obj_rows
+        cdef bint fill_sizes
+        cdef list sizes
+        cdef int x
+        cdef list raw_row
+        cdef unsigned long row_offset
+        cdef str field_name
+        cdef net_tokens.BaseToken field_type
+        cdef int size_of_value
+        cdef net_structs.CorHeapBitmask bitmask
+        cdef list table_ids
+        cdef int identifier
+        cdef unsigned long field_value
+        cdef unsigned long rid
+        cdef int ref_table_id
+        cdef net_table_objects.TableObject current_table = None
+        cdef bytes file_data = self.get_dotnetpe().get_exe_data()
+        cdef unsigned long table_start_offset = 0
+        cdef unsigned long actual_table_size = 0
+        cdef unsigned long expected_table_size = 0
+        self.header = self.get_dotnetpe().get_metadata_dir().get_metadata_table_header()
+        self.end_offset = 0
+        tables_curr_offset = self.header.end_offset
+        table_start_offset = tables_curr_offset
+        self.raw_data = file_data[self.offset:self.offset+self.size]
+        for table_id, table_amt_rows in self.header.table_amt_rows:
+            if table_id not in net_table_objects.NET_METADATA_TABLE_HANDLERS:
+                raise net_exceptions.FeatureNotImplementedException('Unknown table {}'.format(table_id))
+            tbl_name, col_type_handler = net_table_objects.NET_METADATA_TABLE_HANDLERS[table_id]
+            current_table = net_table_objects.NET_METADATA_TABLE_TYPES[tbl_name](self.dotnetpe, tbl_name, table_id)
+            fill_sizes = True
+            sizes = list()
+            for x in range(table_amt_rows):
+                raw_row = list()
+                row_offset = tables_curr_offset
+
+                for field_name, field_type in col_type_handler.items():
+                    if fill_sizes and len(sizes) == len(col_type_handler):
+                        fill_sizes = False
+                    if field_type is None:
+                        raise net_exceptions.InvalidMetadataException
+                    if field_type.get_fixed_size() != -1:
+                        size_of_value = field_type.get_fixed_size()
+                    else:
+                        if field_type.is_stream():
+                            if field_type.get_token_types()[0] == '#Blob':
+                                bitmask = net_structs.CorHeapBitmask.BITMASK_BLOB
+                            elif field_type.get_token_types()[0] == '#GUID':
+                                bitmask = net_structs.CorHeapBitmask.BITMASK_GUID
+                            elif field_type.get_token_types()[0] == '#Strings':
+                                bitmask = net_structs.CorHeapBitmask.BITMASK_STRINGS
+                            else:
+                                raise net_exceptions.FeatureNotImplementedException()
+                            size_of_value = self.get_header().get_heap_offset_size(bitmask)
+                        else:
+                            if len(field_type.get_token_types()) == 1:
+                                ref_table_id = net_table_objects.get_table_id_from_name(field_type.get_token_types()[0])
+                                size_of_value = net_table_objects.get_single_table_index_size(ref_table_id, self.get_header().table_amt_rows)
+                            else:
+                                table_ids = list()
+                                for table_name in field_type.get_token_types():
+                                    if table_name == '':
+                                        continue
+
+                                    identifier = net_table_objects.get_table_id_from_name(table_name)
+                                    if identifier == -1:
+                                        raise net_exceptions.FeatureNotImplementedException()
+
+                                    table_ids.append(identifier)
+                                
+                                size_of_value = net_table_objects.get_multiple_table_index_size(table_ids,
+                                                                              self.get_header().table_amt_rows,
+                                                                              field_type.get_bits())
+                    
+                    field_value = int.from_bytes(file_data[tables_curr_offset:tables_curr_offset + size_of_value], 'little', signed=False)
+                    raw_row.append(field_value)
+                    
+                    tables_curr_offset += size_of_value
+
+                    if fill_sizes:
+                        sizes.append(size_of_value)
+                raw_row.append(row_offset)
+                rid = x + 1
+                current_table.add_row(net_row_objects.get_rowobject_for_table(tbl_name)(self.dotnetpe, raw_row, rid, sizes,
+                                                                                 col_type_handler, tbl_name))
+            self.items[tbl_name] = current_table
+        self.end_offset = tables_curr_offset
+        self.amt_padding = 0
+        expected_table_size = (self.get_size() - (self.header.end_offset - self.header.start_offset))
+        actual_table_size = tables_curr_offset - table_start_offset
+        if actual_table_size < expected_table_size:
+            self.amt_padding = expected_table_size - actual_table_size
+
+    cpdef object get_item(self, int offset):
+        raise Exception() #Not allowed use get_table()
+
+    cpdef int del_item(self, int offset):
+        raise Exception() #Not allowed
+
+    cpdef int replace_item(self, int offset, object item):
+        raise Exception() #Not allowed
+
+    cpdef int append_item(self, object item):
+        raise Exception() #Not allowed
+
+    cpdef net_table_objects.TableObject get_table(self, str name):
+        if name not in self.items:
+            return None
+        return self.items[name]
+
+    cdef void process_tables(self):
+        cdef net_table_objects.TableObject table = None
+        for table in self.items.values():
+            table.process()
+
+    cpdef bint has_table(self, str name):
+        return name in self.items
+
+    cpdef list present_tables(self):
+        return self.items.keys()
+
+    cpdef dict get_tables(self):
+        return self.items
+    
+    cpdef int get_start_offset(self):
+        return self.get_offset()
+
+    def __iter__(self):
+        return iter(self.items.values())
+
+    cpdef bytes to_bytes(self):
+        cdef bytes result
+        cdef int table_id
+        cdef int amt_rows
+        cdef str table_name
+        cdef bytes table_bytes
+        result = self.get_header().to_bytes()
+        for table_id, amt_rows in self.get_header().table_amt_rows:
+            table_name, _ = net_table_objects.NET_METADATA_TABLE_HANDLERS[table_id]
+            table_bytes = self.get_table(table_name).to_bytes()
+            result += table_bytes
+        return result + (b'\x00' * self.amt_padding)

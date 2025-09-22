@@ -1,80 +1,128 @@
 #cython: language_level=3
-from dotnetutils cimport dotnetpefile
+#distutils: language=c++
 
-cdef class Stream:
+from dotnetutils cimport dotnetpefile
+from dotnetutils cimport net_table_objects
+from dotnetutils cimport net_row_objects
+from libcpp.vector cimport vector
+from cpython.ref cimport PyObject
+
+cdef class HeapObject:
     cdef int offset
     cdef int size
     cdef bytes name
-    cdef bytes data
+    cdef bytes raw_data
+    cdef dict items
     cdef dotnetpefile.DotNetPeFile dotnetpe
 
-    cpdef bytes get_item(self, unsigned long index)
+    cdef void update_offset(self, int offset)
+    
+    cdef void update_size(self, int size)
+    
+    cdef void update(self, int old_value, int new_value, int difference)
 
-    cpdef void set_item(self, unsigned long index, bytes value)
+    cpdef int get_offset_of_item(self, object item)
 
-    cpdef unsigned long del_item(self, unsigned long index)
+    cpdef bint is_offset_referenced(self, int offset)
 
+    cdef int read_compressed_int_size(self, bytes data)
+
+    cdef unsigned long read_compressed_int(self, bytes data)
+
+    cdef bytes compress_integer(self, unsigned long number)
+
+    cdef void read(self)
+
+    cpdef bytes to_bytes(self)
+
+    cdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
+    
     cpdef bytes get_name(self)
-
-    cpdef bytes get_data(self)
 
     cpdef int get_offset(self)
 
     cpdef int get_size(self)
 
-    cpdef Stream make_copy(self)
-
-    cpdef Py_ssize_t find_index(self, bytes item)
+    cpdef int replace_item(self, int offset, object item)
     
-    cpdef bint has_item(self, bytes item)
+    cpdef int append_item(self, object item)
 
-    cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
+    cpdef object get_item(self, int offset)
 
-cdef class StringStream(Stream):
+    cpdef bint has_item(self, object item)
 
-    cpdef bytes get_item(self, unsigned long index)
+    cpdef bint has_offset(self, int offset)
 
-    cpdef Py_ssize_t find_index(self, bytes item)
-
-    cpdef unsigned long del_item(self, unsigned long index)
+    cpdef int del_item(self, int offset)
 
     cpdef list get_items(self)
 
-    cpdef void set_item(self, unsigned long index, bytes value)
+    cpdef dict get_items_dict(self)
 
-    cpdef unsigned long append_item(self, bytes value)
+cdef class StringHeapObject(HeapObject):
+    cdef dict metadata_references
+    cdef int amt_trailing_zeroes
 
-cdef class BlobStream(Stream):
+    cdef void __build_metadata_references(self)
 
-    cpdef bytes get_item(self, unsigned long index)
-        
-    cpdef unsigned long del_item(self, unsigned long index)
+    cpdef bint has_offset(self, int offset)
+
+    cdef void read(self)
+
+    cpdef bytes to_bytes(self)
+
+    cdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
     
-    cpdef Py_ssize_t find_index(self, bytes item)
+    cpdef bytes get_name(self)
 
-    cpdef unsigned long append_item(self, bytes raw_value)
+    cpdef int get_offset(self)
 
+    cpdef int get_size(self)
 
-cdef class GuidStream(Stream):
-    cpdef bytes get_item(self, unsigned long index)
-
-    cpdef unsigned long append_item(self, bytes raw_value)
-
-    cpdef unsigned long del_item(self, unsigned long index)
+    cpdef int replace_item(self, int offset, object item)
     
-    cpdef Py_ssize_t find_index(self, bytes item)
+    cpdef int append_item(self, object item)
 
+    cpdef object get_item(self, int offset)
 
-cdef class UserStringsStream(Stream):
+cdef class BlobHeapObject(HeapObject):
+    cdef dict metadata_references
 
-    cpdef bytes get_item(self, unsigned long index)
+    cdef void __build_metadata_references(self)
 
-    cpdef list get_items(self)
+cdef class GuidHeapObject(HeapObject):
+    cdef dict metadata_references
 
-    cpdef unsigned long del_item(self, unsigned long index)
+    cdef void __build_metadata_references(self)
 
-    cpdef unsigned long append_item(self, bytes bstring)
+cdef class UserStringsHeapObject(HeapObject):
+    cdef vector[PyObject*] methods
+    cdef bint warned
+    cdef int amt_trailing_zeroes
 
-    cpdef unsigned long append_item_dns(self, object str_item)
-    
-    cpdef Py_ssize_t find_index(self, bytes item)
+    cdef void _fill_methods(self)
+
+    cdef bytes sanitize_input(self, bytes data)
+
+    cdef void register_method(self, net_row_objects.MethodDef method)
+
+cdef class MetadataTableHeapObject(HeapObject):
+    cdef net_table_objects.MetadataTableHeader header
+    cdef int end_offset
+    cdef int amt_padding
+
+    cpdef net_table_objects.MetadataTableHeader get_header(self)
+
+    cpdef net_table_objects.TableObject get_table(self, str name)
+
+    cdef void process_tables(self)
+
+    cpdef bint has_table(self, str name)
+
+    cpdef list present_tables(self)
+
+    cpdef bytes to_bytes(self)
+
+    cpdef dict get_tables(self)
+
+    cpdef int get_start_offset(self)

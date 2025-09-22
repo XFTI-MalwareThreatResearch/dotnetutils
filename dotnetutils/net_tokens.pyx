@@ -1,4 +1,6 @@
 #cython: language_level=3
+#distutils: language=c++
+
 
 """
 A lot of values in the MetaData tables are represented as tokens
@@ -49,7 +51,8 @@ cdef class CodedToken(BaseToken):
                 raise net_exceptions.InvalidTokenException('CodedToken', token)
 
     cpdef int encode_token(self, net_row_objects.RowObject row_obj):
-        index = self.get_token_types().index(row_obj.get_table_name())
+        cdef int index = <int>self.get_token_types().index(row_obj.get_table_name())
+        cdef int coded_token = 0
         if index < 0:
             return -1
         coded_token = (row_obj.get_rid() << self.bits) | index

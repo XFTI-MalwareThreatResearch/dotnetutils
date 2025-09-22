@@ -1,5 +1,18 @@
 #cython: language_level=3
+#distutils: language=c++
+
 from dotnetutils cimport net_row_objects, net_cil_disas, net_utils, net_emu_types, dotnetpefile
+from libcpp.unordered_map cimport unordered_map
+from libcpp.vector cimport vector
+from cpython.object cimport PyObject
+from libc.stdint cimport uint64_t, uint16_t
+
+ctypedef net_emu_types.DotNetObject (*emu_func_type)(net_emu_types.DotNetObject, list)
+ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator)
+ctypedef net_emu_types.DotNetObject (*static_func_type)(EmulatorAppDomain, list)
+ctypedef bint (*emu_instr_handler_type)(DotNetEmulator)
+
+cdef void __init_handlers()
 
 cdef class CctorRegistry:
     cdef list __executed_cctors
@@ -14,8 +27,21 @@ cdef class EmulatorAppDomain:
     cdef DotNetEmulator __emu_obj
     cdef int __current_thread_num
     cdef DotNetEmulator __current_emulator
+    cdef dotnetpefile.DotNetPeFile __starter_dpe
     cdef dotnetpefile.DotNetPeFile __calling_dotnetpe
     cdef dotnetpefile.DotNetPeFile __executing_dotnetpe
+    cdef unordered_map[int, static_func_type] __static_functions
+    cdef unordered_map[int, newobj_func_type] __newobj_ctors
+
+    cdef static_func_type get_static_func(self, int token)
+
+    cdef newobj_func_type get_ctor_func(self, int token)
+
+    cdef bint has_ctor_func(self, int token)
+
+    cdef bint has_static_func(self, int token)
+
+    cdef void register_static_functions(self)
 
     cpdef int get_thread_id(self)
 
@@ -51,12 +77,14 @@ cdef class EmulatorAppDomain:
 
 cdef class DotNetStack:
     cdef DotNetEmulator __emulator
-    cdef list __internal_stack
+    cdef vector[PyObject*] __internal_stack
     cdef int __max_stack_size
 
-    cdef void append(self, object obj)
+    cdef void append(self, net_emu_types.DotNetObject obj)
 
-    cpdef object pop(self)
+    cpdef net_emu_types.DotNetObject pop(self)
+
+    cpdef net_emu_types.DotNetObject peek(self)
 
     cpdef void clear(self)
 
@@ -70,15 +98,17 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.MethodDisassembler disasm_obj
     cdef public list method_params
     cdef public int end_offset
-    cdef public dict static_fields
+    cdef unordered_map[int, PyObject*] static_fields
     cdef public DotNetStack stack
-    cdef dict localvars
+    cdef vector[PyObject*] localvars
     cdef public int end_method_rid
     cdef CctorRegistry executed_cctors
-    cdef public int current_eip
-    cdef public Py_ssize_t current_offset
-    cdef unsigned long long __last_instr_start
-    cdef unsigned long long __last_instr_end
+    cdef public unsigned int current_eip
+    cdef public unsigned int current_offset
+    cdef uint64_t __last_instr_start
+    cdef uint64_t __last_instr_end
+    cdef uint64_t start_time
+    cdef int timeout_seconds
     cdef DotNetEmulator caller
     cdef public int end_eip
     cdef bint should_break
@@ -99,6 +129,10 @@ cdef class DotNetEmulator:
     cdef EmulatorAppDomain app_domain
     cdef int print_debug_level
     cdef net_emu_types.DotNetThread running_thread
+    cdef bint __is_64bit
+    cdef net_cil_disas.Instruction instr
+
+    cdef bint is_64bit(self)
 
     cpdef net_emu_types.DotNetThread get_current_thread(self)
 
@@ -108,165 +142,24 @@ cdef class DotNetEmulator:
 
     cdef void initialize_locals(self)
 
+    cpdef net_emu_types.DotNetObject get_local(self, int idx)
+
+    cdef void set_local(self, int idx, net_emu_types.DotNetObject obj)
+
     cdef void print_string(self, str string, int print_debug_level)
 
     cpdef void print_current_state(self)
 
-    cpdef object get_static_field(self, int idno)
+    cpdef net_emu_types.DotNetObject get_static_field(self, int idno)
 
     cpdef CctorRegistry get_executed_cctors(self)
 
-    cpdef void set_static_field(self, int idno, object val)
+    cpdef void set_static_field(self, int idno, net_emu_types.DotNetObject val)
 
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDef method_obj, list method_params=*, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*)
 
-    cdef object __get_default_value(self, net_utils.TypeSig type_sig)
+    cdef net_emu_types.DotNetObject _get_default_value(self, net_utils.TypeSig type_sig)
 
-    cdef bint handle_general_jump(self, net_cil_disas.Instruction instr, Py_ssize_t force_offset) except *
-
-    cdef bint handle_brfalse_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_brtrue_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_call_instruction(self, net_cil_disas.Instruction instr, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj,
-                                str force_extern_type_name) except *
-
-    cdef bint handle_callvirt_instruction(self, net_cil_disas.Instruction instr, bint force_virtcall=*, net_row_objects.TypeDefOrRef force_virt_type=*) except *
-
-    cdef bint handle_ceq_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_cgt_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_cgt_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_clt_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_clt_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_add_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_and_instruction(self, net_cil_disas.Instruction instr) except *
-    
-    cdef bint handle_conv_i_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_conv_r_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_conv_u_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldarg_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldelem_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldc_i4_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldc_i8_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldc_r4_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldc_r8_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldloc_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_beq_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_bge_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_bge_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_bgt_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_bgt_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_div_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_dup_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldsfld_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldstr_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldtoken_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_mul_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_neg_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_newarr_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ble_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ble_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_blt_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_blt_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_bne_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldfld_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_or_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_not_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ret_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_shl_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_shr_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_shr_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_stfld_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_stind_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_stloc_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_stsfld_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_sub_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_switch_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_xor_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_stelem_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_rem_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_rem_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldind_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldelema_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_box_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_castclass_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_conv_r_un_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_initobj_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_isinst_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldflda_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldlen_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldloca_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldsflda_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_ldobj_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_leave_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_starg_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_stobj_instruction(self, net_cil_disas.Instruction instr) except *
-
-    cdef bint handle_unbox_any_instruction(self, net_cil_disas.Instruction instr) except *
+    cdef void print_instr(self, net_cil_disas.Instruction instr)
 
     cpdef void run_function(self) except *

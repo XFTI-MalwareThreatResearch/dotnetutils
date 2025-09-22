@@ -1,6 +1,9 @@
 #cython: language_level=3
+#distutils: language=c++
+
 
 from dotnetutils cimport dotnetpefile, net_utils, net_cil_disas, net_tokens, net_table_objects, net_structs
+from libc.stdint cimport uint64_t
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type)
 
@@ -12,7 +15,7 @@ cdef class RowObject:
     cdef str table_name
     cdef list sizes
 
-    cpdef ColumnValue get_column(self, str col_name) except *
+    cpdef ColumnValue get_column(self, str col_name)
     
     cpdef list get_sizes(self)
 
@@ -99,7 +102,9 @@ cdef class ColumnValue:
 
 cdef class TypeDefOrRef(RowObject):
 
-    cpdef MethodDef get_cctor_method(self)
+    cpdef MethodDef get_static_constructor(self)
+
+    cpdef list get_constructors(self)
 
     cpdef TypeDef get_enclosing_type(self)
 
@@ -150,7 +155,9 @@ cdef class TypeDef(TypeDefOrRef):
     cdef bint __is_valuetype
     cdef MethodDef __cctor_method
 
-    cpdef MethodDef get_cctor_method(self)
+    cpdef MethodDef get_static_constructor(self)
+
+    cpdef list get_constructors(self)
 
     cpdef TypeDef get_enclosing_type(self)
 
@@ -194,7 +201,7 @@ cdef class Field(RowObject):
 
     cpdef list get_xrefs(self)
 
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type)
 
@@ -237,7 +244,9 @@ cdef class TypeRef(TypeDefOrRef):
 
     cpdef list get_methods_by_name(self, bytes method_name)
 
-    cpdef MethodDef get_cctor_method(self)
+    cpdef MethodDef get_static_constructor(self)
+
+    cpdef list get_constructors(self)
 
     cpdef bytes get_full_name(self)
 
@@ -249,7 +258,7 @@ cdef class MethodDefOrRef(RowObject):
 
     cpdef list get_xrefs(self)
 
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type)
 
@@ -307,7 +316,7 @@ cdef class MethodDef(MethodDefOrRef):
 
     cpdef list get_xrefs(self)
 
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type)
 
@@ -387,7 +396,7 @@ cdef class MemberRef(MethodDefOrRef):
 
     cpdef list get_xrefs(self)
 
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef bint is_static_method(self)
 
@@ -407,7 +416,7 @@ cdef class MethodSpec(MethodDefOrRef):
 
     cpdef list get_xrefs(self)
     
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
 
 cdef class TypeSpec(TypeDefOrRef):

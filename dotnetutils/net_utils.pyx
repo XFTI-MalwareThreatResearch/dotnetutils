@@ -1,7 +1,9 @@
 #cython: language_level=3
+#distutils: language=c++
 
-import numpy
-from dotnetutils import net_exceptions, net_tokens
+
+from dotnetutils import net_exceptions
+from dotnetutils cimport net_tokens
 from dotnetutils cimport net_structs
 from dotnetutils cimport dotnetpefile
 from dotnetutils cimport net_row_objects
@@ -713,21 +715,6 @@ cdef class SignatureReader():
             return self.dotnetpe.get_metadata_table(table_name).get(table_rid)
         except:
             raise net_exceptions.InvalidSignatureException('TypeDefOrRef')
-
-cdef convert_to_uint(value1):
-    max_item_size = value1.itemsize
-    if max_item_size == 1:
-        un_value1 = numpy.uint8(value1)
-    elif max_item_size == 2:
-        un_value1 = numpy.uint16(value1)
-    elif max_item_size == 4:
-        un_value1 = numpy.uint32(value1)
-    elif max_item_size == 8:
-        un_value1 = numpy.uint64(value1)
-    else:
-        return None
-
-    return un_value1
 
 class GenericArgsSubstitutor:
     def __init__(self):
