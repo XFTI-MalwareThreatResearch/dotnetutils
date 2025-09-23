@@ -12,8 +12,9 @@ cdef class HeapObject:
     cdef int size
     cdef bytes name
     cdef bytes raw_data
-    cdef dict items
     cdef dotnetpefile.DotNetPeFile dotnetpe
+
+    cdef bytes read_item(self, int offset)
 
     cdef void update_offset(self, int offset)
     
@@ -110,6 +111,7 @@ cdef class MetadataTableHeapObject(HeapObject):
     cdef net_table_objects.MetadataTableHeader header
     cdef int end_offset
     cdef int amt_padding
+    cdef dict items
 
     cpdef net_table_objects.MetadataTableHeader get_header(self)
 
