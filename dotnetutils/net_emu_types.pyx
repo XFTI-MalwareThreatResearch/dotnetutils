@@ -46,7 +46,7 @@ cdef str remove_generics_from_name(str name):
     return actual_name
 
 # FIXME: add all cor sigs to these methods
-cdef get_cor_type_name(element_type):
+cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
         return b'System.Int8'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
@@ -71,7 +71,9 @@ cdef get_cor_type_name(element_type):
         return b'System.String'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_VOID:
         return b'System.Void'
-    raise net_exceptions.OperationNotSupportedException()
+    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_CHAR:
+        return b'System.Char'
+    raise Exception('element type not recognized {}'.format(element_type))
 
 
 cpdef get_cor_type_from_name(type_name):
@@ -669,7 +671,7 @@ cdef class DotNetNumber(DotNetObject):
         raise Exception('DotNetnUmber.Divide {} {}'.format(get_cor_type_name(self.get_num_type()), get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber xor(self, DotNetNumber number):
-        raise Exception('called DotNetNumber.xor for type {}'.format(get_cor_type_name(self.__num_type)))
+        raise Exception('called DotNetNumber.xor for type {} {}'.format(get_cor_type_name(self.__num_type), get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber andop(self, DotNetNumber number):
         raise Exception('DotNetNumber.andop for type {} {}'.format(get_cor_type_name(self.get_num_type()), get_cor_type_name(number.get_num_type())))
@@ -4972,6 +4974,33 @@ cdef class DotNetChar(DotNetUInt16):
             raise Exception()
         return res_obj
 
+    cdef DotNetNumber xor(self, DotNetNumber other):
+        cdef CorElementType other_type = other.get_num_type()
+        cdef DotNetChar result = DotNetChar(self.get_emulator_obj(), None)
+        cdef unsigned short val_one = self.as_ushort()
+        cdef int val_two = 0
+        if other_type == CorElementType.ELEMENT_TYPE_I4:
+            val_two = other.as_int()
+            val_one ^= val_two
+            result.from_ushort(val_one)
+        else:
+            raise Exception('xor {}'.format(get_cor_type_name(other_type)))
+        return result
+
+    cdef DotNetNumber shr(self, DotNetNumber other):
+        cdef CorElementType other_type = other.get_num_type()
+        cdef DotNetChar result = DotNetChar(self.get_emulator_obj(), None)
+        cdef unsigned short val_one = self.as_ushort()
+        cdef int val_two = 0
+        if other_type == CorElementType.ELEMENT_TYPE_I4:
+            val_two = other.as_int()
+            val_one >>= val_two
+            result.from_ushort(val_one)
+        else:
+            raise Exception('shr {}'.format(get_cor_type_name(other_type)))
+        return result
+
+
 
 #TODO: For NULL / DotNetNull removal make sure all python methods check if the value is null.
 #TODO likely another utility constructor.
@@ -6474,7 +6503,10 @@ cdef class DotNetString(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj, str_data, str str_encoding='utf-16le'):
         DotNetObject.__init__(self, emulator_obj)
         self.str_encoding = str_encoding
-        self.str_data = self.__sanitize_data(str_data)
+        if str_data is not None:
+            self.str_data = self.__sanitize_data(str_data)
+        else:
+            self.str_data = None
         self.add_function(b'Empty', <emu_func_type>self.Empty)
         self.add_function(b'IndexOf', <emu_func_type>self.IndexOf)
         self.add_function(b'StartsWith', <emu_func_type>self.StartsWith)
@@ -6485,6 +6517,15 @@ cdef class DotNetString(DotNetObject):
         self.add_function(b'Substring', <emu_func_type>self.Substring)
         self.add_function(b'Split', <emu_func_type>self.Split)
         self.add_function(b'ToString', <emu_func_type>self.ToString)
+        self.add_function(b'ctor', <emu_func_type>self.ctor)
+
+    cdef DotNetObject ctor(self, list args):
+        cdef DotNetArray arg = None
+        if not isinstance(args[0], DotNetArray):
+            raise net_exceptions.InvalidArgumentsException()
+        arg = args[0]
+        self.str_data = arg.get_internal_array()
+        return self
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.String' or DotNetObject.isinst(self, tdef)
@@ -9155,9 +9196,8 @@ cdef DotNetObject New_Dictionary(net_emulator.DotNetEmulator emulator_obj):
 cdef DotNetObject New_SortedList(net_emulator.DotNetEmulator emulator_obj):
     return DotNetSortedList(emulator_obj)
 
-#TODO: make sure this constructor fits.
 cdef DotNetObject New_String(net_emulator.DotNetEmulator emulator_obj):
-    return DotNetString(emulator_obj)
+    return DotNetString(emulator_obj, None, 'utf-16le')
 
 cdef DotNetObject New_StringBuilder(net_emulator.DotNetEmulator emulator_obj):
     return DotNetStringBuilder(emulator_obj)

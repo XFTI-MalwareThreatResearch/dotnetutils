@@ -576,7 +576,7 @@ cdef class UserStringsHeapObject(HeapObject):
         cdef int high_bit = 0
         cdef int hi = 0
         cdef int lo = 0
-        if b[0] == 0xFF and b[1] == 0xFE: #Strip BOM
+        if len(b) > 1 and b[0] == 0xFF and b[1] == 0xFE: #Strip BOM
             b = b[2:]
         
         for i in range(0, len(b), 2):
