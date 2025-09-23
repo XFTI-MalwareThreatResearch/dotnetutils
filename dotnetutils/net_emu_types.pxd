@@ -2347,7 +2347,7 @@ cdef struct EmuFuncMapping:
     static_func_type func_ptr
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[13]
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[16]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[17]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 
@@ -2376,5 +2376,5 @@ cdef DotNetObject New_MD5CryptoServiceProvider(net_emulator.DotNetEmulator emula
 
 cdef DotNetObject New_TripleDESCryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj)
 
-cdef const int AMT_OF_STATIC_FUNCTIONS = 16
+cdef const int AMT_OF_STATIC_FUNCTIONS = 17
 cdef const int AMT_OF_TYPES = 13

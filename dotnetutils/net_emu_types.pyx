@@ -675,7 +675,7 @@ cdef class DotNetNumber(DotNetObject):
         raise Exception('DotNetNumber.andop for type {} {}'.format(get_cor_type_name(self.get_num_type()), get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber orop(self, DotNetNumber number):
-        raise Exception()
+        raise Exception('orop DotNetNumber {} {}'.format(get_cor_type_name(self.get_num_type()), get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber neg(self):
         raise Exception()
@@ -3122,13 +3122,14 @@ cdef class DotNetInt64(DotNetNumber):
         return result
 
     cdef bint equals(self, DotNetNumber other):
+        cdef CorElementType other_type = other.get_num_type()
         cdef int64_t val_one = 0
         cdef int64_t val_two = 0
-        if other.get_num_type() == CorElementType.ELEMENT_TYPE_I8:
+        if other_type == CorElementType.ELEMENT_TYPE_I8:
             val_one = self.as_long()
             val_two = other.as_long()
             return val_one == val_two
-        raise Exception()
+        raise Exception('DotNetInt64.equals {}'.format(get_cor_type_name(other_type)))
 
     cdef bint notequals(self, DotNetNumber other):
         return not self.equals(other)
@@ -3143,13 +3144,14 @@ cdef class DotNetInt64(DotNetNumber):
         raise Exception()
 
     cdef bint lessthan(self, DotNetNumber other):
-        cdef int64_t val_one = 0
+        cdef CorElementType other_type = other.get_num_type()
+        cdef int64_t val_one = self.as_long()
         cdef int64_t val_two = 0
-        if other.get_num_type() == CorElementType.ELEMENT_TYPE_I8:
-            val_one = self.as_long()
+        cdef uint64_t val_three = 0
+        if other_type == CorElementType.ELEMENT_TYPE_I8 or other_type == CorElementType.ELEMENT_TYPE_U8:
             val_two = other.as_long()
             return val_one < val_two
-        raise Exception()
+        raise Exception('DotNetInt64.lessthan {}'.format(get_cor_type_name(other.get_num_type())))
 
     cdef bint greaterthan(self, DotNetNumber other):
         cdef int64_t val_one = 0
@@ -3271,6 +3273,18 @@ cdef class DotNetUInt8(DotNetNumber):
             result.from_uchar(val_one)
             return result
         raise Exception('rem other type {}'.format(get_cor_type_name(other_type)))
+
+    cdef DotNetNumber orop(self, DotNetNumber other):
+        cdef CorElementType other_type = other.get_num_type()
+        cdef DotNetUInt8 result = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef unsigned char val_one = self.as_uchar()
+        cdef unsigned char val_two = 0
+        if other_type == CorElementType.ELEMENT_TYPE_U1:
+            val_two = other.as_uchar()
+            val_one |= val_two
+            result.from_uchar(val_one)
+            return result
+        raise Exception('orop {}'.format(get_cor_type_name(other_type)))
 
     cdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
@@ -4449,13 +4463,14 @@ cdef class DotNetUInt64(DotNetNumber):
         return result
 
     cdef bint equals(self, DotNetNumber other):
+        cdef CorElementType other_type = other.get_num_type()
         cdef uint64_t val_one = 0
         cdef uint64_t val_two = 0
-        if other.get_num_type() == CorElementType.ELEMENT_TYPE_U8:
+        if other_type == CorElementType.ELEMENT_TYPE_U8 or other_type == CorElementType.ELEMENT_TYPE_I8:
             val_one = self.as_ulong()
             val_two = other.as_ulong()
             return val_one == val_two
-        raise Exception()
+        raise Exception('DotNetUint64 equals {}'.format(get_cor_type_name(other_type)))
 
     cdef bint notequals(self, DotNetNumber other):
         return not self.equals(other)
@@ -9183,7 +9198,7 @@ NET_EMULATE_TYPE_REGISTRATIONS[12].name = 'System.Security.Cryptography.TripleDE
 NET_EMULATE_TYPE_REGISTRATIONS[12].func_ptr = <newobj_func_type>&New_TripleDESCryptoServiceProvider
 
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[16]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[17]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -9216,4 +9231,6 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[14].name = 'System.Text.Encoding.get_UTF8'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[14].func_ptr = <static_func_type>&DotNetEncoding.get_UTF8
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[15].name = 'System.Windows.Forms.Application.get_ProductVersion'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[15].func_ptr = <static_func_type>&DotNetApplication.get_ProductVersion
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[16].name = 'System.String.Intern'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[16].func_ptr = <static_func_type>&DotNetString.Intern
 
