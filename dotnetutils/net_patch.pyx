@@ -14,7 +14,7 @@ from cpython.bytes cimport PyBytes_FromStringAndSize
 
 from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_SCN_CNT_CODE, IMAGE_OPTIONAL_HEADER32, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_ORDINAL_FLAG64, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_OPTIONAL_HEADER64, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_DATA_DIRECTORY, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_COR20_HEADER, IMAGE_BASE_RELOCATION, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64, IMAGE_DEBUG_DIRECTORY
 
-cdef bytes insert_blank_userstrings32(dotnetpefile.DotNetPeFile dotnetpe):
+cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     """
     NOTE: After running this method, dotnetpe will be stale.  Theres ways to fix this but they have downsides.
     In general, you should reinitialize the dotnetpe with the newly returned data.
@@ -78,112 +78,18 @@ cdef bytes insert_blank_userstrings32(dotnetpefile.DotNetPeFile dotnetpe):
         while new_exe_data[current_offset] != 0:
             current_offset += 1
         current_offset += (4 - (current_offset % 4))
-    dotnetpe.get_pe().update_va(dotnetpe.get_pe().get_rva_from_offset(new_header_offset), <int>len(new_streamheader), dotnetpe, True, False)
+    dotnetpe.get_pe().update_va(dotnetpe.get_pe().get_rva_from_offset(new_header_offset), <int>len(new_streamheader), dotnetpe, True, False, b'#~', dotnetpe.get_pe().get_sec_index_phys(new_header_offset))
     new_exe_data = bytearray(dotnetpe.get_exe_data())
     new_exe_data = new_exe_data[:new_header_offset] + new_streamheader + new_exe_data[new_header_offset:]
     dotnetpe.set_exe_data(bytes(new_exe_data))
     new_data_offset = us_offset + metadata_offset + <int>len(new_streamheader)
     new_data_va = dotnetpe.get_pe().get_rva_from_offset(new_data_offset)
-    dotnetpe.get_pe().update_va(new_data_va, 1, dotnetpe, True, False)
+    dotnetpe.get_pe().update_va(new_data_va, 1, dotnetpe, True, False, b'#US', dotnetpe.get_pe().get_sec_index_va(new_data_va))
     new_exe_data = bytearray(dotnetpe.get_exe_data())
     new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
     stream_amt_offset = streams_offset - 2
     new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
     return bytes(new_exe_data)
-
-cdef bytes insert_blank_userstrings64(dotnetpefile.DotNetPeFile dotnetpe):
-    cdef bytearray new_exe_data
-    cdef Py_buffer exe_data_view
-    cdef IMAGE_DOS_HEADER * dos_header
-    cdef IMAGE_NT_HEADERS64 * nt_headers
-    cdef uint64_t metadata_offset
-    cdef uint64_t streams_offset
-    cdef int number_of_streams
-    cdef int length_of_str
-    cdef uint64_t current_offset
-    cdef int x
-    cdef bytes name
-    cdef int us_size
-    cdef uint64_t new_header_offset
-    cdef uint64_t us_offset
-    cdef bytes new_streamheader
-    cdef uint64_t new_stream_offset
-    cdef uint64_t new_data_va
-    cdef uint64_t stream_amt_offset
-    cdef uint64_t new_data_offset
-    cdef bytes number_of_streams_bytes
-    cdef bytes exe_data = dotnetpe.get_pe().get_file_data()
-    new_exe_data = bytearray(exe_data)
-    PyObject_GetBuffer(new_exe_data, &exe_data_view, PyBUF_ANY_CONTIGUOUS)
-    dos_header = <IMAGE_DOS_HEADER*>exe_data_view.buf
-    nt_headers = <IMAGE_NT_HEADERS64*>(<uintptr_t>exe_data_view.buf + dos_header.e_lfanew)
-
-    metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
-    streams_offset = metadata_offset + 12
-    number_of_streams = <int>(metadata_offset + 12)
-    number_of_streams_bytes = exe_data[number_of_streams:number_of_streams + 4]
-    length_of_str = int.from_bytes(number_of_streams_bytes, 'little')
-    streams_offset += length_of_str + 6
-    number_of_streams = int.from_bytes(exe_data[streams_offset:streams_offset + 2], 'little')
-    #change the number of streams later.
-    streams_offset += 2
-    current_offset = streams_offset
-    for x in range(number_of_streams):
-        stream_offset = int.from_bytes(exe_data[current_offset:current_offset+4], 'little')
-        current_offset += 4
-        stream_size = int.from_bytes(exe_data[current_offset:current_offset+4], 'little')
-        current_offset += 4
-        name = bytes()
-        while exe_data[current_offset] != 0:
-            name += bytes([exe_data[current_offset]])
-            current_offset += 1
-        current_offset += (4 - (current_offset % 4))
-    #construct the new streamheader.
-    us_size = 1
-    new_header_offset = current_offset
-    us_offset = stream_offset + stream_size
-    new_streamheader = int.to_bytes(us_offset, 4, 'little') + int.to_bytes(us_size, 4, 'little')
-    new_streamheader += b'#US\x00'
-    #new_streamheader = int.to_bytes(us_offset + len(new_streamheader), 4, 'little') + new_streamheader[4:]
-    amt_to_align = (4 - ((current_offset + 12) % 4))
-    new_streamheader += b'\x00' * amt_to_align
-
-    new_streamheader = int.to_bytes(us_offset + len(new_streamheader), 4, 'little') + new_streamheader[4:]
-    #fix the offsets of streamhaeders
-    current_offset = streams_offset
-    for x in range(number_of_streams):
-        stream_offset = int.from_bytes(exe_data[current_offset:current_offset+4], 'little')
-        new_stream_offset = stream_offset + <int>len(new_streamheader)
-        new_exe_data = new_exe_data[:current_offset] + int.to_bytes(new_stream_offset, 4, 'little') + new_exe_data[current_offset + 4:]
-        current_offset += 8
-        while new_exe_data[current_offset] != 0:
-            current_offset += 1
-        current_offset += (4 - (current_offset % 4))
-    PyBuffer_Release(&exe_data_view)
-    #At this point we dont need exe_Data_view
-    dotnetpe.get_pe().update_va(dotnetpe.get_pe().get_rva_from_offset(new_header_offset), <int>len(new_streamheader), dotnetpe, False, False)
-    new_exe_data = bytearray(dotnetpe.get_exe_data())
-    new_exe_data = new_exe_data[:new_header_offset] + new_streamheader + new_exe_data[new_header_offset:]
-    dotnetpe.set_exe_data(bytes(new_exe_data))
-    new_data_offset = us_offset + metadata_offset + <int>len(new_streamheader)
-    new_data_va = dotnetpe.get_pe().get_rva_from_offset(new_data_offset)
-    dotnetpe.get_pe().update_va(new_data_va, 1, dotnetpe, False, False)
-    new_exe_data = bytearray(dotnetpe.get_exe_data())
-    new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
-    stream_amt_offset = streams_offset - 2
-    new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
-    return bytes(new_exe_data)
-
-cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
-    """
-    Patches a binary to insert a blank #US Stream
-    Some obfuscators dont have any strings so theres no #US.
-    FIXME: binaries patched by this method are currently unable to be executed.
-    """
-    if dotnetpe.get_pe().is_64bit():
-        return insert_blank_userstrings64(dotnetpe)
-    else:
-        return insert_blank_userstrings32(dotnetpe)
 
 cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference):
     """
@@ -238,7 +144,7 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
     cdef unsigned int section_offset
     cdef IMAGE_SECTION_HEADER * new_section = NULL
 
-    if addr == 0 or old_userstrings_va >= addr:
+    if addr == 0 or old_userstrings_va > addr:
         return addr
 
     # first get the section of the OLD VA

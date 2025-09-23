@@ -253,7 +253,7 @@ cdef class StringHeapObject(HeapObject):
         self.raw_data = self.raw_data[:offset] + b + self.raw_data[offset + len(old_item):]
         self.items[offset] = b
         self.update(offset, offset, difference)
-        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
         return difference
 
     cpdef int append_item(self, object item):
@@ -273,7 +273,7 @@ cdef class StringHeapObject(HeapObject):
             self.raw_data += b
             if self.amt_trailing_zeroes > 0:
                 self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(b), self.get_dotnetpe(), True, True)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(b), self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return new_offset
         else:
             return potential
@@ -313,7 +313,7 @@ cdef class StringHeapObject(HeapObject):
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             del self.items[offset]
             self.update(offset, -1, difference)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return difference
         else:
             warnings.warn('Attempting to delete a string item that is currently referenced')
@@ -421,7 +421,7 @@ cdef class BlobHeapObject(HeapObject):
         self.items[offset] = final
         self.raw_data = self.raw_data[:offset] + compressed_size + b + self.raw_data[offset + len(orig_item):]
         self.update(offset, offset, difference)
-        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
         return difference
 
     cpdef bint has_item(self, object item):
@@ -434,7 +434,7 @@ cdef class BlobHeapObject(HeapObject):
         if potential == -1:
             self.items[offset] = final
             self.raw_data += final
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(final), self.get_dotnetpe(), True, True)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(final), self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return offset
         else:
             return potential
@@ -451,7 +451,7 @@ cdef class BlobHeapObject(HeapObject):
             del self.items[offset]
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return difference
         else:
             warnings.warn('Attempting to delete an item that is currently referenced')
@@ -562,7 +562,7 @@ cdef class GuidHeapObject(HeapObject):
             del self.items[offset]
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + 16:]
             self.update(offset, offset, difference)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#GUID', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return difference
         else:
             warnings.warn('Attempting to delete a guid item that is currently referenced.')
@@ -583,7 +583,7 @@ cdef class GuidHeapObject(HeapObject):
         if potential == -1:
             self.items[offset] = item
             self.raw_data += item
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(item), self.get_dotnetpe(), True, True)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(item), self.get_dotnetpe(), True, True, b'#GUID', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return offset
         return potential
 
@@ -727,7 +727,7 @@ cdef class UserStringsHeapObject(HeapObject):
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(old_item):]
             del self.items[offset]
             self.update(offset, -1, difference)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return difference
         else:
             warnings.warn('cant delete item because its referenced')
@@ -745,7 +745,7 @@ cdef class UserStringsHeapObject(HeapObject):
         self.items[offset] = final
         self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(old_item):]
         self.update(offset, offset, difference)
-        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True)
+        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
         return difference
 
     cpdef int append_item(self, object item):
@@ -764,7 +764,7 @@ cdef class UserStringsHeapObject(HeapObject):
             if self.amt_trailing_zeroes > 0:
                 self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
             self.items[new_offset] = final
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(final), self.get_dotnetpe(), True, True)
+            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(final), self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return new_offset
         else:
             return potential #Dont append if it already exists.

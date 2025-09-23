@@ -175,13 +175,31 @@ cdef class PeFile:
         """
         return self.get_offset_from_rva(rva)
 
-    cdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction):
+    cdef int get_sec_index_va(self, uint64_t va_addr):
+        cdef dict sec_hdr = None
+        cdef int x = 0
+        for sec_hdr in self.get_sections():
+            if sec_hdr['VirtualAddress'] <= va_addr < (sec_hdr['VirtualAddress'] + sec_hdr['Misc']['VirtualSize']):
+                return x
+            x += 1
+        return -1
+
+    cdef int get_sec_index_phys(self, uint64_t offset):
+        cdef dict sec_hdr = None
+        cdef int x = 0
+        for sec_hdr in self.get_sections():
+            if sec_hdr['PointerToRawData'] <= offset < (sec_hdr['PointerToRawData'] + sec_hdr['SizeOfRawData']):
+                return x
+            x += 1
+        return -1
+
+    cdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index):
         if difference == 0:
             return
         if self.is_64bit():
-            self.__update_va64(va_addr, difference, dpe, in_streams)
+            self.__update_va64(va_addr, difference, dpe, in_streams, stream_name, sec_index)
         else:
-            self.__update_va32(va_addr, difference, dpe, in_streams)
+            self.__update_va32(va_addr, difference, dpe, in_streams, stream_name, sec_index)
 
         self.__update_metadata_rvas(va_addr, difference, dpe)
         if do_reconstruction:
@@ -209,7 +227,7 @@ cdef class PeFile:
                     cobj.set_raw_value(cobj.get_raw_value() + difference)
 
     #TODO: add support for exports
-    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams):
+    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index):
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
         cdef Py_buffer new_exe_view
         cdef IMAGE_DOS_HEADER * dos_header = NULL
@@ -270,7 +288,7 @@ cdef class PeFile:
         cdef int patch_var = 0
         cdef int * patch_ptr = NULL
         cdef net_processing.HeapObject heap_obj = None
-        cdef uint64_t va_offset = self.get_offset_from_rva(va_addr)
+        cdef uint64_t va_offset = self.get_offset_from_rva(va_addr)   
 
         PyObject_GetBuffer(new_exe_data, &new_exe_view, PyBUF_WRITABLE)
         dos_header = <IMAGE_DOS_HEADER*>new_exe_view.buf
@@ -279,8 +297,7 @@ cdef class PeFile:
         section_offset = self.get_elfanew() + sizeof(IMAGE_FILE_HEADER) + 4 + nt_headers.FileHeader.SizeOfOptionalHeader
         for x in range(nt_headers.FileHeader.NumberOfSections):
             section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
-
-            if section_header.VirtualAddress <= va_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
+            if sec_index == x:
                 old_rawsize = section_header.SizeOfRawData
                 new_rawsize = old_rawsize + difference
                 new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
@@ -451,7 +468,7 @@ cdef class PeFile:
                     streams_offset += 1
                 streams_offset += (4 - (streams_offset % 4))
                 stream_offset = metadata_offset + offset
-                if stream_offset <= va_offset < (stream_offset + size) and not passed_userstrings:
+                if name == stream_name and not passed_userstrings:
                     passed_userstrings = True
                     # fix the size of user strings stream
                     # append the stream data
@@ -476,7 +493,7 @@ cdef class PeFile:
         dpe.set_exe_data(bytes(new_exe_data))
         #TODO: make sure this can properly handle EXE files that have multiple fake heaps.
 
-    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams):
+    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index):
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
         cdef Py_buffer new_exe_view
         cdef IMAGE_DOS_HEADER * dos_header = NULL
@@ -547,7 +564,7 @@ cdef class PeFile:
         for x in range(nt_headers.FileHeader.NumberOfSections):
             section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
 
-            if section_header.VirtualAddress <= va_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
+            if sec_index == x:
                 old_rawsize = section_header.SizeOfRawData
                 new_rawsize = old_rawsize + difference
                 new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
@@ -717,7 +734,7 @@ cdef class PeFile:
                     streams_offset += 1
                 streams_offset += (4 - (streams_offset % 4))
                 stream_offset = metadata_offset + offset
-                if stream_offset <= va_offset < (stream_offset + size) and not passed_userstrings:
+                if name == stream_name and not passed_userstrings:
                     passed_userstrings = True
                     # fix the size of user strings stream
                     # append the stream data
@@ -809,7 +826,7 @@ cdef class DotNetPeFile:
         Intended to be used for adding markers that a deobfuscator has proccessed a file.
         """
         
-        self.added_strings.append(string.encode('ascii'))
+        self.get_heap('#Strings').append_item(string.encode('utf-8'))
 
     cdef void set_exe_data(self, bytes exe_data):
         """
@@ -1102,7 +1119,6 @@ cdef class DotNetPeFile:
     cpdef bytes reconstruct_executable(self) except *:
         """
         """
-        cdef str str_val = None
         cdef bytearray new_exe_data = bytearray(self.get_exe_data())
         cdef list heaps_by_offset = list()
         cdef int last_difference = 0
@@ -1110,8 +1126,6 @@ cdef class DotNetPeFile:
         cdef bytes new_data = None
         cdef int old_size = 0
         cdef bytes result = None
-        for str_val in self.added_strings:
-            self.get_heap('#Strings').append_item(str_val)
         
         #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
         for heap_obj in self.get_heaps().values():

@@ -44,13 +44,16 @@ cdef class PeFile:
 
     cpdef uint64_t get_physical_by_rva(self, uint64_t rva)
 
-    cdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction)
+    cdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index)
 
-    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams)
+    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index)
 
-    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams)
+    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index)
 
     cdef void __update_metadata_rvas(self, uint64_t va_addr, int difference, DotNetPeFile dpe)
+
+    cdef int get_sec_index_va(self, uint64_t va_addr)
+    cdef int get_sec_index_phys(self, uint64_t offset)
 
 cdef class DotNetPeFile:
     cdef str __versioninfo_str
