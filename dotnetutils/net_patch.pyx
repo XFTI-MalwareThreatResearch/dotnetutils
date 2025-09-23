@@ -78,13 +78,13 @@ cdef bytes insert_blank_userstrings32(dotnetpefile.DotNetPeFile dotnetpe):
         while new_exe_data[current_offset] != 0:
             current_offset += 1
         current_offset += (4 - (current_offset % 4))
-    dotnetpe.get_pe().update_va(dotnetpe.get_pe().get_rva_from_offset(new_header_offset), <int>len(new_streamheader), dotnetpe, False, False)
+    dotnetpe.get_pe().update_va(dotnetpe.get_pe().get_rva_from_offset(new_header_offset), <int>len(new_streamheader), dotnetpe, True, False)
     new_exe_data = bytearray(dotnetpe.get_exe_data())
     new_exe_data = new_exe_data[:new_header_offset] + new_streamheader + new_exe_data[new_header_offset:]
     dotnetpe.set_exe_data(bytes(new_exe_data))
     new_data_offset = us_offset + metadata_offset + <int>len(new_streamheader)
     new_data_va = dotnetpe.get_pe().get_rva_from_offset(new_data_offset)
-    dotnetpe.get_pe().update_va(new_data_va, 1, dotnetpe, False, False)
+    dotnetpe.get_pe().update_va(new_data_va, 1, dotnetpe, True, False)
     new_exe_data = bytearray(dotnetpe.get_exe_data())
     new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
     stream_amt_offset = streams_offset - 2

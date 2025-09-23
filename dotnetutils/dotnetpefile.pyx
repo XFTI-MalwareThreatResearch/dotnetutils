@@ -259,6 +259,7 @@ cdef class PeFile:
         cdef uint64_t orig_offset = 0
         cdef int size = 0
         cdef uint64_t stream_offset = 0
+        cdef uint64_t orig_streams_offset = 0
         cdef bytes new_size = None
         cdef int amt_padding = 0
         cdef int padding_offset = 0
@@ -436,6 +437,7 @@ cdef class PeFile:
         number_of_streams = int.from_bytes(old_exe_data[streams_offset:streams_offset + 2], 'little')
         streams_offset += 2
         passed_userstrings = False
+        orig_streams_offset = streams_offset
         if in_streams:
             for x in range(number_of_streams):
                 orig_offset = streams_offset
@@ -462,6 +464,10 @@ cdef class PeFile:
                         raise Exception('null heap obj')
                     patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset]
                     patch_ptr[0] = <int>(offset + difference)
+            if orig_streams_offset <= va_offset <= streams_offset:
+                offset = int.from_bytes(old_exe_data[orig_streams_offset:orig_streams_offset+4], 'little')
+                patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_streams_offset]
+                patch_ptr[0] = <int>(offset+difference)
         #Let reconstruct executable handle updating heap offsets and sizes internally.
         PyBuffer_Release(&new_exe_view)
         if amt_padding != 0 and padding_offset != 0:
@@ -520,6 +526,7 @@ cdef class PeFile:
         cdef uint64_t orig_offset = 0
         cdef int size = 0
         cdef uint64_t stream_offset = 0
+        cdef uint64_t orig_streams_offset = 0
         cdef bytes new_size = None
         cdef int amt_padding = 0
         cdef int padding_offset = 0
@@ -696,6 +703,7 @@ cdef class PeFile:
         number_of_streams = int.from_bytes(old_exe_data[streams_offset:streams_offset + 2], 'little')
         streams_offset += 2
         passed_userstrings = False
+        orig_streams_offset = streams_offset
         if in_streams:
             for x in range(number_of_streams):
                 orig_offset = streams_offset
@@ -722,6 +730,10 @@ cdef class PeFile:
                         raise Exception('null heap obj')
                     patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset]
                     patch_ptr[0] = <int>(offset + difference)
+            if orig_streams_offset <= va_offset <= streams_offset:
+                offset = int.from_bytes(old_exe_data[orig_streams_offset:orig_streams_offset+4], 'little')
+                patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_streams_offset]
+                patch_ptr[0] = <int>(offset+difference)
         #Let reconstruct executable handle updating heap offsets and sizes internally.
         PyBuffer_Release(&new_exe_view)
         if amt_padding != 0 and padding_offset != 0:
