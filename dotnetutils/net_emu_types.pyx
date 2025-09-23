@@ -5555,7 +5555,7 @@ cdef class DotNetAssembly(DotNetObject):
         cdef DotNetObject other = <DotNetObject>args[0]
         cdef bint res_val = self.__eq__(other)
         cdef DotNetBoolean bool_obj = DotNetBoolean(self.get_emulator_obj(), None)
-        bool_obj.init_from_ptr(<unsigned char *>&res_val, sizeof(res_val))
+        bool_obj.from_bool(res_val)
         return bool_obj
 
     @staticmethod
@@ -5707,7 +5707,7 @@ cdef class DotNetArray(DotNetObject):
         #If I change how this is set up, it will save a literal ton of time.
         self.internal_array = []
         if initialize:
-            self.setup_default_value(0, int(size), True)
+            self.setup_default_value(0, size, True)
 
     cdef DotNetObject duplicate(self):
         cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), 0, self.get_type_obj(), initialize=False)
@@ -5803,19 +5803,37 @@ cdef class DotNetArray(DotNetObject):
         array_obj.setup_default_value(index.as_int(), length.as_int(), False)
         return None
 
-    cdef void reverse_internal(self):
-        self.internal_array = self.internal_array[::-1]
+    cdef void reverse_internal(self, int start, int end):
+        if start == -1 or end == -1:
+            self.internal_array = self.internal_array[::-1]
+        else:
+            self.internal_array = self.internal_array[:start] + self.internal_array[start:start+end][::-1] + self.internal_array[start+end:]
 
     @staticmethod
     cdef DotNetObject Reverse(net_emulator.EmulatorAppDomain app_domain, list args):
         cdef DotNetArray array = <DotNetArray>args[0]
-        array.reverse_internal()
+        cdef int start = -1
+        cdef int end = -1
+        cdef DotNetInt32 num = None
+        if len(args) == 3:
+            num = <DotNetInt32>args[1]
+            start = num.as_int()
+            num = <DotNetInt32>args[2]
+            end = num.as_int()
+        array.reverse_internal(start, end)
         return None
 
     def __getitem__(self, item):
-        obj_ref = item
+        cdef object obj_ref = item
+        cdef list obj = None
+        cdef DotNetArray result = None
         if isinstance(item, ArrayAddress):
             obj_ref = item.get_obj_ref()
+        if isinstance(item, slice):
+            obj = self.internal_array[obj_ref]
+            result = DotNetArray(self.get_emulator_obj(), 0, self.get_type_obj(), False)
+            result.set_internal_array(obj)
+            return result
         return self.internal_array[obj_ref]
 
     def __setitem__(self, key, newvalue):
@@ -6278,7 +6296,7 @@ cdef class DotNetBitConverter(DotNetObject):
     cdef DotNetObject IsLittleEndian(net_emulator.EmulatorAppDomain app_domain, list args):
         cdef bint res_val = sys.byteorder == 'little'
         cdef DotNetBoolean bval = DotNetBoolean(app_domain.get_emulator_obj(), None)
-        bval.init_from_ptr(<unsigned char *>&res_val, sizeof(res_val))
+        bval.from_bool(res_val)
         return bval
 
     @staticmethod
@@ -6290,7 +6308,7 @@ cdef class DotNetBitConverter(DotNetObject):
             start_index = args[1]
             usable_obj = usable_obj[start_index.as_int():]
         #TODO: get_Internal_array() will contain dotnetuint8s fixme
-        return DotNetInt32(app_domain.get_emulator_obj(), bytes(usable_obj.as_bytes()))
+        return DotNetInt32(app_domain.get_emulator_obj(), usable_obj.as_bytes()[:4])
 
     @staticmethod
     cdef DotNetObject GetBytes(net_emulator.EmulatorAppDomain app_domain, list args):
@@ -9198,7 +9216,7 @@ NET_EMULATE_TYPE_REGISTRATIONS[12].name = 'System.Security.Cryptography.TripleDE
 NET_EMULATE_TYPE_REGISTRATIONS[12].func_ptr = <newobj_func_type>&New_TripleDESCryptoServiceProvider
 
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[17]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[21]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -9233,4 +9251,11 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[15].name = 'System.Windows.Forms.Applicati
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[15].func_ptr = <static_func_type>&DotNetApplication.get_ProductVersion
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[16].name = 'System.String.Intern'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[16].func_ptr = <static_func_type>&DotNetString.Intern
-
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[17].name = 'System.BitConverter.IsLittleEndian'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[17].func_ptr = <static_func_type>&DotNetBitConverter.IsLittleEndian
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[18].name = 'System.BitConverter.ToInt32'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[18].func_ptr = <static_func_type>&DotNetBitConverter.ToInt32
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[19].name = 'System.Array.Reverse'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[19].func_ptr = <static_func_type>&DotNetArray.Reverse
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[20].name = 'System.Reflection.Assembly.GetCallingAssembly'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[20].func_ptr = <static_func_type>&DotNetAssembly.GetCallingAssembly

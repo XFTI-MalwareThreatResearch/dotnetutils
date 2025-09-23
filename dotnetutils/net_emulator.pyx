@@ -125,24 +125,24 @@ cdef void __init_handlers():
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ble_Un] = handle_ble_un_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Blt_Un] = handle_blt_un_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Switch] = handle_switch_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I1] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_U1] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I2] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_U2] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I4] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_U4] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I8] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_R4] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_R8] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_Ref] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_Ref] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I1] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I2] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I4] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I8] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_R4] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_R8] = handle_unsupported_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I1] = handle_ldind_i1_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_U1] = handle_ldind_u1_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I2] = handle_ldind_i2_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_U2] = handle_ldind_u2_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I4] = handle_ldind_i4_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_U4] = handle_ldind_u4_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I8] = handle_ldind_i8_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_I] = handle_ldind_i_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_R4] = handle_ldind_r4_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_R8] = handle_ldind_r8_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldind_Ref] = handle_ldind_ref_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_Ref] = handle_stind_ref_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I1] = handle_stind_i1_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I2] = handle_stind_i2_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I4] = handle_stind_i4_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I8] = handle_stind_i8_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_R4] = handle_stind_r4_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_R8] = handle_stind_r8_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Add] = handle_add_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Sub] = handle_sub_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Mul] = handle_mul_instruction
@@ -240,7 +240,7 @@ cdef void __init_handlers():
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Endfinally] = handle_unsupported_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Leave] = handle_leave_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Leave_S] = handle_leave_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I] = handle_unsupported_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stind_I] = handle_stind_i_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Conv_U] = handle_conv_u_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Prefix7] = handle_unsupported_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Prefix6] = handle_unsupported_instruction
@@ -286,6 +286,25 @@ cdef void __init_handlers():
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldelem_I] = handle_ldelem_i_instruction
     __is_handlers_initialized = True
 
+cdef int64_t handle_native_int(net_emu_types.DotNetNumber num):
+    """
+    Theres a series of issues where on 64 bit samples int32 will be pushed for various instructions instead of native int.
+    Thats handled here. its allowed but not technically up to spec.
+    """
+    cdef net_structs.CorElementType num_type = num.get_num_type()
+    cdef int64_t result = 0
+    if num_type == net_structs.CorElementType.ELEMENT_TYPE_I4:
+        result = <int64_t>num.as_int()
+    elif num_type == net_structs.CorElementType.ELEMENT_TYPE_I:
+        if num.get_emulator_obj().is_64bit():
+            result = num.as_long()
+        else:
+            result = <int64_t>num.as_int()
+    elif num_type == net_structs.CorElementType.ELEMENT_TYPE_U4:
+        result = <int64_t>num.as_uint()
+    else:
+        raise net_exceptions.FeatureNotImplementedException()
+    return result
 
 """
 These functions are for the most part instruction handlers
@@ -300,6 +319,158 @@ cdef bint handle_general_jump(DotNetEmulator emu): #Good
     emu.current_offset = expected_offset
     emu.current_eip = emu.disasm_obj.get_instr_index_by_offset(expected_offset)
     return True
+
+cdef bint handle_stind_i_instruction(DotNetEmulator emu):
+    cdef net_emu_types.DotNetNumber num_obj = emu.stack.pop()
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    if not num_obj.is_number() or not isinstance(addr_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    addr_obj.set_obj_ref(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I))
+    return False
+
+cdef bint handle_stind_i1_instruction(DotNetEmulator emu):
+    cdef net_emu_types.DotNetNumber num_obj = emu.stack.pop()
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    if not num_obj.is_number() or not isinstance(addr_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    addr_obj.set_obj_ref(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I1))
+    return False
+
+cdef bint handle_stind_i2_instruction(DotNetEmulator emu):
+    cdef net_emu_types.DotNetNumber num_obj = emu.stack.pop()
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    if not num_obj.is_number() or not isinstance(addr_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    addr_obj.set_obj_ref(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I2))
+    return False
+
+cdef bint handle_stind_i4_instruction(DotNetEmulator emu):
+    cdef net_emu_types.DotNetNumber num_obj = emu.stack.pop()
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    if not num_obj.is_number() or not isinstance(addr_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    addr_obj.set_obj_ref(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I4))
+    return False
+
+cdef bint handle_stind_i8_instruction(DotNetEmulator emu):
+    cdef net_emu_types.DotNetNumber num_obj = emu.stack.pop()
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    if not num_obj.is_number() or not isinstance(addr_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    addr_obj.set_obj_ref(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I8))
+    return False
+
+cdef bint handle_stind_r4_instruction(DotNetEmulator emu):
+    cdef net_emu_types.DotNetNumber num_obj = emu.stack.pop()
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    if not num_obj.is_number() or not isinstance(addr_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    addr_obj.set_obj_ref(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_R4))
+    return False
+
+cdef bint handle_stind_r8_instruction(DotNetEmulator emu):
+    cdef net_emu_types.DotNetNumber num_obj = emu.stack.pop()
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    if not num_obj.is_number() or not isinstance(addr_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    addr_obj.set_obj_ref(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_R8))
+    return False
+
+cdef bint handle_stind_ref_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress num_obj = emu.stack.pop()
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    if not isinstance(num_obj, net_emu_types.ArrayAddress) or not isinstance(addr_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    addr_obj.set_obj_ref(num_obj)
+    return False
+
+cdef bint handle_ldind_i_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I))
+    return False
+
+cdef bint handle_ldind_i1_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I1))
+    return False
+
+cdef bint handle_ldind_i2_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I2))
+    return False
+
+cdef bint handle_ldind_i4_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I4))
+    return False
+
+cdef bint handle_ldind_i8_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I8))
+    return False
+
+cdef bint handle_ldind_r4_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_R4))
+    return False
+
+cdef bint handle_ldind_r8_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_R8))
+    return False
+
+cdef bint handle_ldind_ref_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetObject num_obj = addr_obj.get_obj_ref()
+    if not isinstance(num_obj, net_emu_types.ArrayAddress):
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj)
+    return False
+
+cdef bint handle_ldind_u1_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U1))
+    return False
+
+cdef bint handle_ldind_u2_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U2))
+    return False
+
+cdef bint handle_ldind_u4_instruction(DotNetEmulator emu):
+    cdef net_emu_types.ArrayAddress addr_obj = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber num_obj = addr_obj.get_obj_ref()
+    if not num_obj.is_number():
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U4))
+    return False
 
 cdef bint handle_br_instruction(DotNetEmulator emu): #Good
     return handle_general_jump(emu)
@@ -673,16 +844,11 @@ cdef bint handle_ldarga_instruction(DotNetEmulator emu):
 
 #FIXME: we may have some typing issues with DotNetNumber when compiled for non 64 bit of python.
 cdef bint handle_ldelem_instruction(DotNetEmulator emu):
-    cdef net_emu_types.DotNetArray array_obj
-    cdef net_emu_types.DotNetObject result_obj
-    cdef net_emu_types.DotNetIntPtr index = emu.stack.pop()
+    cdef net_emu_types.DotNetObject result_obj = None
+    cdef net_emu_types.DotNetNumber index = emu.stack.pop()
+    cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
-    array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
+    cdef int64_t index_val = handle_native_int(index)
     result_obj = array_obj[index_val]
     result_obj.initialize_type(emu.instr.get_argument())
     emu.stack.append(result_obj)
@@ -693,15 +859,9 @@ cdef bint handle_ldelem_i_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I))
     return False
 
@@ -710,15 +870,9 @@ cdef bint handle_ldelem_i1_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I1))
     return False
 
@@ -727,15 +881,9 @@ cdef bint handle_ldelem_u1_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U1))
     return False
 
@@ -744,15 +892,9 @@ cdef bint handle_ldelem_i2_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I2))
     return False
 
@@ -761,15 +903,9 @@ cdef bint handle_ldelem_u2_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U2))
     return False
 
@@ -778,15 +914,9 @@ cdef bint handle_ldelem_i4_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I4))
     return False
 
@@ -795,15 +925,9 @@ cdef bint handle_ldelem_u4_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U4))
     return False
 
@@ -812,15 +936,9 @@ cdef bint handle_ldelem_ref_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(net_emu_types.ArrayAddress(emu, array_obj, num_obj, 0))
     return False
 
@@ -829,15 +947,9 @@ cdef bint handle_ldelem_i8_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I8))
     return False
 
@@ -846,15 +958,9 @@ cdef bint handle_ldelem_u8_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U8))
     return False
 
@@ -863,15 +969,9 @@ cdef bint handle_ldelem_r4_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.duplicate())
     return False
 
@@ -880,15 +980,9 @@ cdef bint handle_ldelem_r8_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num_obj = None
-    cdef int64_t index_val = 0 #For now we can assume were only supporting 64-bit systems where unsigned long is 8-bytes
+    cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
-    if emu.is_64bit():
-        index_val = index.as_long()
-    else:
-        index_val = <int64_t>index.as_int()
-
     num_obj = array_obj[index_val]
-
     emu.stack.append(num_obj.duplicate())
     return False
 
@@ -1047,11 +1141,8 @@ cdef bint handle_neg_instruction(DotNetEmulator emu):
 cdef bint handle_newarr_instruction(DotNetEmulator emu):
     cdef net_row_objects.TypeDefOrRef type_obj = emu.instr.get_argument()
     cdef net_emu_types.DotNetNumber amt_of_elem = emu.stack.pop()
-    cdef int64_t elem_val = 0
-    if emu.is_64bit():
-        elem_val = amt_of_elem.as_long()
-    else:
-        elem_val = <int64_t>amt_of_elem.as_int()
+    cdef net_structs.CorElementType num_type = amt_of_elem.get_num_type()
+    cdef int64_t elem_val = handle_native_int(amt_of_elem)
     cdef net_emu_types.DotNetArray value1 = net_emu_types.DotNetArray(emu, elem_val, type_obj)
     emu.stack.append(value1)
     return False
@@ -1217,87 +1308,71 @@ cdef bint handle_stelem_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
-    if not emu.is_64bit():
-        array_obj[index.as_int()] = value1
-    else:
-        array_obj[index.as_long()] = value1
+    cdef int64_t index_val = handle_native_int(index)
+    array_obj[index_val] = value1
     return False
 
 cdef bint handle_stelem_i_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
+    cdef int64_t index_val = handle_native_int(index)
     value1 = value1.cast(net_structs.CorElementType.ELEMENT_TYPE_I)
-    if not emu.is_64bit():
-        array_obj[index.as_int()] = value1
-    else:
-        array_obj[index.as_long()] = value1
+    array_obj[index_val] = value1
     return False
 
 cdef bint handle_stelem_i1_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
+    cdef int64_t index_val = handle_native_int(index)
     value1 = value1.cast(net_structs.CorElementType.ELEMENT_TYPE_I1)
-    if not emu.is_64bit():
-        array_obj[index.as_int()] = value1
-    else:
-        array_obj[index.as_long()] = value1
+    array_obj[index_val] = value1
     return False
 
 cdef bint handle_stelem_i2_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
+    cdef int64_t index_val = handle_native_int(index)
     value1 = value1.cast(net_structs.CorElementType.ELEMENT_TYPE_I2)
-    if not emu.is_64bit():
-        array_obj[index.as_int()] = value1
-    else:
-        array_obj[index.as_long()] = value1
+    array_obj[index_val] = value1
     return False
 
 cdef bint handle_stelem_i4_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
+    cdef int64_t index_val = handle_native_int(index)
     value1 = value1.cast(net_structs.CorElementType.ELEMENT_TYPE_I4)
-    if not emu.is_64bit():
-        array_obj[index.as_int()] = value1
-    else:
-        array_obj[index.as_long()] = value1
+    array_obj[index_val] = value1
     return False
 
 cdef bint handle_stelem_i8_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
+    cdef int64_t index_val = handle_native_int(index)
     value1 = value1.cast(net_structs.CorElementType.ELEMENT_TYPE_I8)
-    if not emu.is_64bit():
-        array_obj[index.as_int()] = value1
-    else:
-        array_obj[index.as_long()] = value1
+    array_obj[index_val] = value1
     return False
 
 cdef bint handle_stelem_r4_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
+    cdef int64_t index_val = handle_native_int(index)
     value1 = value1.cast(net_structs.CorElementType.ELEMENT_TYPE_R4)
-    if not emu.is_64bit():
-        array_obj[index.as_int()] = value1
-    else:
-        array_obj[index.as_long()] = value1
+    array_obj[index_val] = value1
     return False
 
 cdef bint handle_stelem_r8_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
+    cdef int64_t index_val = handle_native_int(index)
     value1 = value1.cast(net_structs.CorElementType.ELEMENT_TYPE_R8)
-    if not emu.is_64bit():
-        array_obj[index.as_int()] = value1
-    else:
-        array_obj[index.as_long()] = value1
+    array_obj[index_val] = value1
     return False
 
 cdef bint handle_rem_instruction(DotNetEmulator emu):
@@ -1317,14 +1392,7 @@ cdef bint handle_ldelema_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber index = emu.stack.pop()
     cdef net_emu_types.DotNetArray array_obj = emu.stack.pop()
     cdef net_emu_types.DotNetObject obj_ref = None
-    cdef int idx = 0
-    if index.get_num_type() == net_structs.CorElementType.ELEMENT_TYPE_I:
-        if emu.is_64bit():
-            idx = <int>index.as_long() #TODO: fix typing here.
-        else:
-            idx = <int>index.as_int()
-    else:
-        idx = <int>index.as_int()
+    cdef int idx = <int>handle_native_int(index) #TODO typing
     emu.stack.append(net_emu_types.ArrayAddress(emu, array_obj, idx, 0))
     return False
 
@@ -1766,8 +1834,10 @@ cdef class DotNetEmulator:
         
         if not __is_handlers_initialized:
             __init_handlers()
-
-        self.timeout_seconds = timeout
+        if timeout > 0:
+            self.timeout_ns = <uint64_t>(timeout * 1000000000ULL)
+        else:
+            self.timeout_ns = 0
         self.start_time = 0
 
     def __dealloc__(self):
@@ -1841,10 +1911,7 @@ cdef class DotNetEmulator:
         if isinstance(type_sig, net_utils.CorLibTypeSig):
             element_type = type_sig.get_element_type()
             if element_type == net_structs.CorElementType.ELEMENT_TYPE_I:
-                if not self.is_64bit():
-                    num = net_emu_types.DotNetInt32(self, None)
-                else:
-                    num = net_emu_types.DotNetInt64(self, None)
+                num = net_emu_types.DotNetIntPtr(self, None)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
                 num = net_emu_types.DotNetInt8(self, None)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I2:
@@ -1854,10 +1921,7 @@ cdef class DotNetEmulator:
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I8:
                 num = net_emu_types.DotNetInt64(self, None)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U:
-                if not self.is_64bit():
-                    num = net_emu_types.DotNetUInt32(self, None)
-                else:
-                    num = net_emu_types.DotNetUInt64(self, None)
+                num = net_emu_types.DotNetUIntPtr(self, None)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
                 num = net_emu_types.DotNetUInt8(self, None)
             elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U2:
@@ -1925,7 +1989,7 @@ cdef class DotNetEmulator:
         new_emu.end_method_rid = end_method_rid
         new_emu.end_eip = end_eip
         new_emu.start_time = self.start_time
-        new_emu.timeout_seconds = self.timeout_seconds
+        new_emu.timeout_ns = self.timeout_ns
         new_emu.print_debug_children = self.print_debug_children
         if self.print_debug_children:
             new_emu.print_debug = self.print_debug
@@ -2027,10 +2091,9 @@ cdef class DotNetEmulator:
         cdef bint debug_print = False
         cdef DotNetEmulator emu = None
         cdef emu_instr_handler_type emu_instr_handler = NULL
-        cdef bint has_timeout = self.timeout_seconds > 0
+        cdef bint has_timeout = self.timeout_ns > 0
         if self.caller is None and has_timeout:
             self.start_time = _perf_counter_ns()
-
         self.get_appdomain().set_current_emulator(self)
         self.get_appdomain().set_executing_dotnetpe(self.method_obj.get_dotnetpe())
         self.initialize_locals()
@@ -2079,11 +2142,13 @@ cdef class DotNetEmulator:
                 if do_normal_offsets:
                     self.current_eip += 1
                     self.current_offset += self.instr.get_instr_size()
+
                 if self.print_debug or has_timeout:
                     self.__last_instr_end = _perf_counter_ns()
 
                 if has_timeout:
-                    if ((self.__last_instr_end - self.start_time) / 1e9) > self.timeout_seconds:
+                    if (self.__last_instr_end - self.start_time) > self.timeout_ns:
+                        print('timing out')
                         raise net_exceptions.EmulatorTimeoutException(self)
             except net_exceptions.InstructionNotSupportedException as e:
                 if self.break_on_unsupported:

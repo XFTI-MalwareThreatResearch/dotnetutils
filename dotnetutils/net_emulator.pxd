@@ -108,7 +108,7 @@ cdef class DotNetEmulator:
     cdef uint64_t __last_instr_start
     cdef uint64_t __last_instr_end
     cdef uint64_t start_time
-    cdef int timeout_seconds
+    cdef uint64_t timeout_ns
     cdef DotNetEmulator caller
     cdef public int end_eip
     cdef bint should_break
