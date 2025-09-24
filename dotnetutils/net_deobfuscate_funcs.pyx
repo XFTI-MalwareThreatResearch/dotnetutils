@@ -1316,7 +1316,7 @@ cpdef bytes cleanup_names(bytes data,
             if typedef.get_column('TypeNamespace').get_value_as_bytes() not in changed_namespaces:
                 old_value = typedef.get_column('TypeNamespace').get_value_as_bytes()
                 new_value = 'NameSpace{}'.format(
-                    namespace_count).encode('ascii')
+                    namespace_count).encode('utf-8')
                 typedef.get_column('TypeNamespace').change_value(new_value)
                 namespace_count += 1
                 changed_namespaces[old_value] = new_value
@@ -1328,7 +1328,7 @@ cpdef bytes cleanup_names(bytes data,
         # check the type name
         if change_type_names and not has_prefix(typedef.get_column('TypeName').get_value_as_bytes()) and typedef.get_column('TypeName').get_value_as_bytes() not in blacklisted_types:
             typedef.get_column('TypeName').change_value(
-                'Class{}'.format(class_count).encode('ascii'))
+                'Class{}'.format(class_count).encode('utf-8'))
             class_count += 1
 
         # check methods
@@ -1360,7 +1360,8 @@ cpdef bytes cleanup_names(bytes data,
             param_table = dotnetpe.get_metadata_table('Param')
             for x in range(1, len(param_table) + 1):
                 param = param_table.get(x)
-                if has_prefix(param.get_column('Name').get_value_as_bytes()):
+                new_name = param.get_column('Name').get_value_as_bytes()
+                if new_name is not None and has_prefix(new_name):
                     continue
                 param.get_column('Name').change_value(
                     'param{}'.format(param_count).encode('ascii'))

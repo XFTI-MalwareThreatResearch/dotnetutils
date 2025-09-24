@@ -4979,9 +4979,14 @@ cdef class DotNetChar(DotNetUInt16):
         cdef DotNetChar result = DotNetChar(self.get_emulator_obj(), None)
         cdef unsigned short val_one = self.as_ushort()
         cdef int val_two = 0
+        cdef unsigned int val_three = 0
         if other_type == CorElementType.ELEMENT_TYPE_I4:
             val_two = other.as_int()
             val_one ^= val_two
+            result.from_ushort(val_one)
+        elif other_type == CorElementType.ELEMENT_TYPE_U4:
+            val_three = other.as_uint()
+            val_one ^= val_three
             result.from_ushort(val_one)
         else:
             raise Exception('xor {}'.format(get_cor_type_name(other_type)))
@@ -8741,6 +8746,7 @@ cdef class DotNetComparison(DotNetObject):
     cpdef get_method_object(self):
         return self.__method_object
 
+"""
 cdef class DotNetGC(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetObject.__init__(self)
@@ -8781,6 +8787,8 @@ cdef class DotNetEnvironment(DotNetObject):
         if folder_enum.as_int() == 28:
             return DotNetString(app_domain.get_emulator_obj(), '%LocalAppData%'.encode('utf-16le'))
         raise net_exceptions.OperationNotSupportedException()
+
+"""
 
 cdef class DotNetResolveEventArgs(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -9256,7 +9264,7 @@ NET_EMULATE_TYPE_REGISTRATIONS[12].name = 'System.Security.Cryptography.TripleDE
 NET_EMULATE_TYPE_REGISTRATIONS[12].func_ptr = <newobj_func_type>&New_TripleDESCryptoServiceProvider
 
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[21]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[25]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -9299,3 +9307,11 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[19].name = 'System.Array.Reverse'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[19].func_ptr = <static_func_type>&DotNetArray.Reverse
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[20].name = 'System.Reflection.Assembly.GetCallingAssembly'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[20].func_ptr = <static_func_type>&DotNetAssembly.GetCallingAssembly
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[21].name = 'System.GC.Collect'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[21].func_ptr = <static_func_type>&DotNetGC.Collect
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[22].name = 'System.Environment.GetFolderPath'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[22].func_ptr = <static_func_type>&DotNetEnvironment.GetFolderPath
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[23].name = 'System.IO.Path.Combine'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[23].func_ptr = <static_func_type>&DotNetPath.Combine
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[24].name = 'System.Console.Write'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[24].func_ptr = <static_func_type>&DotNetConsole.Write

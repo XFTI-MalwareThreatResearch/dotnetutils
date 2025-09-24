@@ -76,6 +76,7 @@ cdef void __init_handlers():
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldarg_S] = handle_ldarg_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldarga_S] = handle_ldarga_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stloc_S] = handle_stloc_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stloc] = handle_stloc_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldnull] = handle_ldnull_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldc_I4_M1] = handle_ldc_i4_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldc_I4_0] = handle_ldc_i4_instruction
