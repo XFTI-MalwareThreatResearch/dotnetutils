@@ -98,7 +98,7 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.MethodDisassembler disasm_obj
     cdef public list method_params
     cdef public int end_offset
-    cdef unordered_map[int, PyObject*] static_fields
+    cdef dict static_fields
     cdef public DotNetStack stack
     cdef vector[PyObject*] localvars
     cdef public int end_method_rid

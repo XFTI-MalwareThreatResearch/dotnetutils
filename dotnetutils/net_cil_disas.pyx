@@ -537,8 +537,9 @@ cdef class MethodDisassembler:
                 self.offsets[orig_index] = instr_index
                 self.instrs.push_back(<PyObject*>instr)
                 instr_index += 1
-        except Exception:
-            raise net_exceptions.InvalidAssemblyException()
+        except Exception as e:
+            raise e
+            #raise net_exceptions.InvalidAssemblyException()
 
     def __iter__(self):
         return iter(self.get_list_of_instrs())

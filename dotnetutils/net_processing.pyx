@@ -113,7 +113,7 @@ cdef class HeapObject:
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef bint has_offset(self, int offset):
-        return 0 < offset < self.get_size()
+        return 0 < offset <= self.get_size()
 
     cpdef bint has_item(self, object item):
         cdef Py_ssize_t offset = self.raw_data.find(<bytes>item)

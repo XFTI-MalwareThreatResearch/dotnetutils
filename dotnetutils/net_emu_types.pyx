@@ -5108,7 +5108,7 @@ cdef class DotNetType(DotNetObject):
         return isinstance(other, DotNetType) and self.get_type_handle() == other.get_type_handle()
 
     cdef DotNetObject get_Assembly(self, list args):
-        cdef net_row_objects.RowObject module_obj = self.get_type_handle().get_dotnetpe().get_metadata_table('Assembly').get(0)
+        cdef net_row_objects.RowObject module_obj = self.get_type_handle().get_dotnetpe().get_metadata_table('Assembly').get(1)
         return DotNetAssembly(self.get_emulator_obj(), module_obj)
 
 
@@ -5405,7 +5405,7 @@ cdef class DotNetAssemblyName(DotNetObject):
 
     cdef DotNetObject GetPublicKeyToken(self, list args):
         cdef net_row_objects.RowObject module_obj = self.assembly.get_module().get_dotnetpe().get_metadata_table(
-            'Assembly').get(0)
+            'Assembly').get(1)
         cdef bytes public_key
         cdef object sha_hash
         cdef bytes hashed_key
@@ -5502,7 +5502,7 @@ cdef class DotNetAssembly(DotNetObject):
         cdef str pkeytoken
         cdef str string_name
         dpe = self.get_module().get_dotnetpe()
-        assembly_obj = dpe.get_metadata_table('Assembly').get(0)
+        assembly_obj = dpe.get_metadata_table('Assembly').get(1)
         name = assembly_obj['Name'].get_value().decode('utf-8')
         version = '{}.{}.{}'.format(assembly_obj['MajorVersion'].get_value(), assembly_obj['MinorVersion'].get_value(), assembly_obj['BuildNumber'].get_value())
 
@@ -5525,14 +5525,14 @@ cdef class DotNetAssembly(DotNetObject):
     cdef DotNetObject GetExecutingAssembly(net_emulator.EmulatorAppDomain app_domain, list args):
         cdef DotNetAssembly dotnetassembly
         dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(),
-            app_domain.get_executing_dotnetpe().get_metadata_table('Assembly').get(0))
+            app_domain.get_executing_dotnetpe().get_metadata_table('Assembly').get(1))
         dotnetassembly.set_type_obj(app_domain.get_executing_dotnetpe().get_type_by_full_name(
             b'System.Reflection.Assembly'))
         return dotnetassembly
 
     @staticmethod
     cdef DotNetObject GetCallingAssembly(net_emulator.EmulatorAppDomain app_domain, list args):
-        cdef DotNetAssembly dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(), app_domain.get_calling_dotnetpe().get_metadata_table('Assembly').get(0))
+        cdef DotNetAssembly dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(), app_domain.get_calling_dotnetpe().get_metadata_table('Assembly').get(1))
         dotnetassembly.set_type_obj(app_domain.get_calling_dotnetpe().get_type_by_full_name(b'System.Reflection.Assembly'))
         return dotnetassembly
 
@@ -9264,7 +9264,7 @@ NET_EMULATE_TYPE_REGISTRATIONS[12].name = 'System.Security.Cryptography.TripleDE
 NET_EMULATE_TYPE_REGISTRATIONS[12].func_ptr = <newobj_func_type>&New_TripleDESCryptoServiceProvider
 
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[25]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[27]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -9315,3 +9315,7 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[23].name = 'System.IO.Path.Combine'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[23].func_ptr = <static_func_type>&DotNetPath.Combine
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[24].name = 'System.Console.Write'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[24].func_ptr = <static_func_type>&DotNetConsole.Write
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[25].name = 'System.Threading.Monitor.Enter'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[25].func_ptr = <static_func_type>&DotNetMonitor.Enter
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[26].name = 'System.Threading.Monitor.Exit'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[26].func_ptr = <static_func_type>&DotNetMonitor.Exit

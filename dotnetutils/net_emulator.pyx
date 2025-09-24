@@ -509,6 +509,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef newobj_func_type newobj_func = NULL
     cdef net_emu_types.DotNetObject obj_ref
     cdef net_emu_types.ArrayAddress obj_ref_initial
+    cdef net_row_objects.TypeSpec tspec = None
     cdef unsigned int x = 0
     
     if force_method_obj:
@@ -568,8 +569,12 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             static_emu_func = emu.get_appdomain().get_static_func(method_obj.get_token())
             dot_obj = None
         elif method_name == b'.ctor' and is_newobj: #newobj instructions only.
-            if emu.get_appdomain().has_ctor_func(method_obj.get_parent_type().get_token()):
-                newobj_func = emu.get_appdomain().get_ctor_func(method_obj.get_parent_type().get_token())
+            parent_type = method_obj.get_parent_type()
+            if parent_type is not None and isinstance(parent_type, net_row_objects.TypeSpec):
+                tspec = parent_type
+                parent_type = tspec.get_type()
+            if parent_type is not None and emu.get_appdomain().has_ctor_func(parent_type.get_token()):
+                newobj_func = emu.get_appdomain().get_ctor_func(parent_type.get_token())
                 dot_obj = newobj_func(emu)
             else:
                 raise Exception('Unable to handle token: unknown ctor {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token())))
@@ -1601,6 +1606,7 @@ cdef class EmulatorAppDomain:
         cdef int x
         cdef bytes mapping_name
         cdef bytes full_name
+        cdef bytes test_name
         for x in range(net_emu_types.AMT_OF_TYPES):
             newobj_mapping = net_emu_types.NET_EMULATE_TYPE_REGISTRATIONS[x]
             mapping_name = newobj_mapping.name[:strlen(newobj_mapping.name)]
@@ -1609,10 +1615,10 @@ cdef class EmulatorAppDomain:
                 full_name = ref_obj.get_full_name()
                 if full_name == mapping_name:
                     self.__newobj_ctors[ref_obj.get_token()] = newobj_mapping.func_ptr
-                else:
-                    if b'\'' in full_name:
-                        if mapping_name == full_name.split(b'\'')[0]:
-                            self.__newobj_ctors[ref_obj.get_token()] = newobj_mapping.func_ptr
+                elif full_name.startswith(mapping_name):
+                    test_name = full_name.lstrip(mapping_name)
+                    if test_name.startswith(b'`'):
+                        self.__newobj_ctors[ref_obj.get_token()] = newobj_mapping.func_ptr
         
         for x in range(net_emu_types.AMT_OF_STATIC_FUNCTIONS):
             func_mapping = net_emu_types.NET_EMULATE_STATIC_FUNC_REGISTRATIONS[x]
@@ -1667,10 +1673,8 @@ cdef class EmulatorAppDomain:
         return self.load_dotnetpe_as_assembly(dotnetpefile.DotNetPeFile(pe_data=data))
 
     cpdef net_emu_types.DotNetAssembly load_dotnetpe_as_assembly(self, dotnetpefile.DotNetPeFile dpe):
-        cdef net_row_objects.RowObject asm_obj
-        cdef net_emu_types.DotNetAssembly result
-        asm_obj = dpe.get_metadata_table('Assembly').get(0)
-        result = net_emu_types.DotNetAssembly(self.get_emulator_obj(), asm_obj)
+        cdef net_row_objects.RowObject asm_obj = dpe.get_metadata_table('Assembly').get(1)
+        cdef net_emu_types.DotNetAssembly result = net_emu_types.DotNetAssembly(self.get_emulator_obj(), asm_obj)
         if len(self.__loaded_assemblies) == 0:
             self.original_assembly = result
         self.__loaded_assemblies.append(result)
@@ -1723,6 +1727,7 @@ cdef class EmulatorAppDomain:
                 result_obj = emu_obj.get_stack().pop()
                 if isinstance(result_obj, net_emu_types.DotNetAssembly):
                     return result_obj.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)"""
+        print('rsrc name {}'.format(rsrc_name))
         return self.original_assembly.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
 
 cdef class DotNetStack:
@@ -1787,6 +1792,7 @@ cdef class DotNetEmulator:
         
         if method_params is None:
             method_params = []
+        self.static_fields = dict()
         self.method_obj = method_obj
         self.disasm_obj = self.method_obj.disassemble_method()
         self.method_params = list(method_params)
@@ -1885,7 +1891,7 @@ cdef class DotNetEmulator:
         """
         Obtain a static field from the emulator by id number.
         """
-        if self.static_fields.find(idno) == self.static_fields.end():
+        if idno not in self.static_fields:
             return None
         return <net_emu_types.DotNetObject>self.static_fields[idno]
 
@@ -1896,12 +1902,7 @@ cdef class DotNetEmulator:
         return self.executed_cctors
 
     cpdef void set_static_field(self, int idno, net_emu_types.DotNetObject val):
-        cdef net_emu_types.DotNetObject prev_val = None
-        Py_INCREF(val)
-        if self.static_fields.find(idno) != self.static_fields.end():
-            prev_val = <net_emu_types.DotNetObject>self.static_fields[idno]
-            Py_XDECREF(<PyObject*>prev_val)
-        self.static_fields[idno] = <PyObject*>val
+        self.static_fields[idno] = val
 
     cdef net_emu_types.DotNetObject _get_default_value(self, net_utils.TypeSig type_sig):
         cdef net_structs.CorElementType element_type
@@ -2017,7 +2018,8 @@ cdef class DotNetEmulator:
         cdef state_str = ''
         cdef net_emu_types.DotNetObject value = None
         cdef unsigned int key = 0
-        cdef pair[int, PyObject*] kv
+        cdef int idno = 0
+        cdef net_emu_types.DotNetObject obj = None
         if isinstance(self.method_obj, net_row_objects.MethodDef):
             state_str += 'Emulator Method: {}:{}\n'.format(self.method_obj.get_table_name(), self.method_obj.get_rid())
         else:
@@ -2026,8 +2028,8 @@ cdef class DotNetEmulator:
         if self.method_obj.method_has_this() and len(self.method_params) >= 1:
             state_str += 'This Object: {}\n'.format(str(self.method_params[0]))
         state_str += 'Printing static variables:\n'
-        for kv in self.static_fields:
-            state_str += '{}: {} - {}\n'.format(hex(kv.first), str(<net_emu_types.DotNetObject>kv.second), type(<net_emu_types.DotNetObject>kv.second))
+        for idno, obj in self.static_fields.items():
+            state_str += '{}: {} - {}\n'.format(hex(idno), str(obj), type(obj))
         state_str += 'Printing local vars:\n'
         for key in range(self.localvars.size()):
             value = <net_emu_types.DotNetObject>self.localvars[key]

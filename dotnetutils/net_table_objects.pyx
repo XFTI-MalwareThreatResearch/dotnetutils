@@ -376,7 +376,7 @@ cdef class TableObject:
         RIDs are basically indexes but 1 based.
         """
         cdef net_row_objects.RowObject result = None
-        if <unsigned int>(index - 1) < self.rows.size():
+        if index > 0 and <unsigned int>(index - 1) < self.rows.size():
             result = <net_row_objects.RowObject>self.rows.at(index-1)
             return result
         else:
