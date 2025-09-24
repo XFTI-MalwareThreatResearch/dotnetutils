@@ -292,20 +292,8 @@ cdef int64_t handle_native_int(net_emu_types.DotNetNumber num):
     Theres a series of issues where on 64 bit samples int32 will be pushed for various instructions instead of native int.
     Thats handled here. its allowed but not technically up to spec.
     """
-    cdef net_structs.CorElementType num_type = num.get_num_type()
-    cdef int64_t result = 0
-    if num_type == net_structs.CorElementType.ELEMENT_TYPE_I4:
-        result = <int64_t>num.as_int()
-    elif num_type == net_structs.CorElementType.ELEMENT_TYPE_I:
-        if num.get_emulator_obj().is_64bit():
-            result = num.as_long()
-        else:
-            result = <int64_t>num.as_int()
-    elif num_type == net_structs.CorElementType.ELEMENT_TYPE_U4:
-        result = <int64_t>num.as_uint()
-    else:
-        raise net_exceptions.FeatureNotImplementedException()
-    return result
+    cdef net_emu_types.DotNetInt64 new_num = num.cast(net_structs.CorElementType.ELEMENT_TYPE_I8)
+    return new_num.as_long()
 
 """
 These functions are for the most part instruction handlers
@@ -724,13 +712,25 @@ cdef bint handle_cgt_instruction(DotNetEmulator emu): #Good
     return False 
 
 cdef bint handle_cgt_un_instruction(DotNetEmulator emu): #Good
-    cdef net_emu_types.DotNetNumber value2 = emu.stack.pop()
-    cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
+    cdef net_emu_types.DotNetObject value2 = emu.stack.pop()
+    cdef net_emu_types.DotNetObject value1 = emu.stack.pop()
     cdef net_emu_types.DotNetInt32 result = net_emu_types.DotNetInt32(emu, None)
-    if value1.convert_unsigned().greaterthan(value2.convert_unsigned()):
-        result.from_int(1)
+    cdef net_emu_types.DotNetNumber num2 = None
+    cdef net_emu_types.DotNetNumber num1 = None
+
+    #handle the case where were checking for nulls here.
+    if not value1.is_number() and not value2.is_number():
+        if value2.is_null() and not value1.is_null():
+            result.from_int(1)
+        else:
+            result.init_zero()
     else:
-        result.init_zero()
+        num1 = <net_emu_types.DotNetNumber> value1
+        num2 = <net_emu_types.DotNetNumber> value2
+        if num1.convert_unsigned().greaterthan(num2.convert_unsigned()):
+            result.from_int(1)
+        else:
+            result.init_zero()
     emu.stack.append(result)
     return False 
 
@@ -879,7 +879,7 @@ cdef bint handle_ldelem_i1_instruction(DotNetEmulator emu):
     cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
     num_obj = array_obj[index_val]
-    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I1))
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I1).cast(net_structs.CorElementType.ELEMENT_TYPE_I4))
     return False
 
 cdef bint handle_ldelem_u1_instruction(DotNetEmulator emu):
@@ -890,7 +890,7 @@ cdef bint handle_ldelem_u1_instruction(DotNetEmulator emu):
     cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
     num_obj = array_obj[index_val]
-    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U1))
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U1).cast(net_structs.CorElementType.ELEMENT_TYPE_I4))
     return False
 
 cdef bint handle_ldelem_i2_instruction(DotNetEmulator emu):
@@ -901,7 +901,7 @@ cdef bint handle_ldelem_i2_instruction(DotNetEmulator emu):
     cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
     num_obj = array_obj[index_val]
-    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I2))
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_I2).cast(net_structs.CorElementType.ELEMENT_TYPE_I4))
     return False
 
 cdef bint handle_ldelem_u2_instruction(DotNetEmulator emu):
@@ -912,7 +912,7 @@ cdef bint handle_ldelem_u2_instruction(DotNetEmulator emu):
     cdef int64_t index_val = handle_native_int(index)
     array_obj = <net_emu_types.DotNetArray>emu.stack.pop()
     num_obj = array_obj[index_val]
-    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U2))
+    emu.stack.append(num_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U2).cast(net_structs.CorElementType.ELEMENT_TYPE_I4))
     return False
 
 cdef bint handle_ldelem_i4_instruction(DotNetEmulator emu):
@@ -1295,7 +1295,8 @@ cdef bint handle_sub_instruction(DotNetEmulator emu):
 
 cdef bint handle_switch_instruction(DotNetEmulator emu):
     cdef list targets = emu.instr.get_argument()
-    cdef net_emu_types.DotNetUInt32 value1 = emu.stack.pop()
+    cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
+    value1 = value1.cast(net_structs.CorElementType.ELEMENT_TYPE_U4)
     if value1.as_uint() < len(targets):
         emu.current_offset = targets[value1.as_uint()]
         emu.current_eip = emu.disasm_obj.get_instr_index_by_offset(emu.current_offset)
@@ -1727,7 +1728,6 @@ cdef class EmulatorAppDomain:
                 result_obj = emu_obj.get_stack().pop()
                 if isinstance(result_obj, net_emu_types.DotNetAssembly):
                     return result_obj.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)"""
-        print('rsrc name {}'.format(rsrc_name))
         return self.original_assembly.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
 
 cdef class DotNetStack:
@@ -1853,6 +1853,8 @@ cdef class DotNetEmulator:
         for key in range(self.localvars.size()):
             Py_XDECREF(self.localvars[key])
         self.localvars.clear()
+        if self.static_fields is not None:
+            self.static_fields.clear()
 
     cdef bint is_64bit(self):
         return self.__is_64bit

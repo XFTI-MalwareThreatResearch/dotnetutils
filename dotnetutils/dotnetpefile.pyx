@@ -1046,7 +1046,6 @@ cdef class DotNetPeFile:
         cdef list resources = self.get_resources()
         for rsrc_obj in resources:
             for rsrc in rsrc_obj.get_resources():
-                print('checking rsrc name {} {}'.format(rsrc.get_name(), name))
                 if rsrc.get_name() == name:
                     return rsrc.get_data()
         return None

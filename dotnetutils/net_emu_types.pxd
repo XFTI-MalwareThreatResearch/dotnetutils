@@ -25,7 +25,7 @@ ctypedef DotNetObject (*newobj_func_type)(net_emulator.DotNetEmulator emulator_o
 #NOTE: probably can remove cython sigs for all methods that arent in DotNetObject, its going to be called as a python object anyway.
 cdef class DotNetObject:
     cdef net_emulator.DotNetEmulator __emulator_obj
-    cdef unordered_map[uint64_t, PyObject*] fields
+    cdef dict fields
     cdef net_row_objects.RowObject type_obj
     cdef net_utils.TypeSig type_sig_obj
     cdef list initialized_fields
@@ -2349,7 +2349,7 @@ cdef struct EmuFuncMapping:
     static_func_type func_ptr
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[13]
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[27]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 
@@ -2378,5 +2378,5 @@ cdef DotNetObject New_MD5CryptoServiceProvider(net_emulator.DotNetEmulator emula
 
 cdef DotNetObject New_TripleDESCryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj)
 
-cdef const int AMT_OF_STATIC_FUNCTIONS = 27
+cdef const int AMT_OF_STATIC_FUNCTIONS = 30
 cdef const int AMT_OF_TYPES = 13

@@ -164,6 +164,17 @@ cdef class StringHeapObject(HeapObject):
         cdef net_table_objects.TableObject table_obj = None
         cdef net_row_objects.RowObject row_obj = None
         cdef net_row_objects.ColumnValue col_val = None
+        cdef int start_offset = offset
+        cdef int end_offset = 0
+        if offset > 0:
+            if self.raw_data[offset-1] != 0:
+                while start_offset > 0 and self.raw_data[start_offset] != 0:
+                    start_offset -= 1
+        
+        end_offset = offset
+        while end_offset < self.get_size() and self.raw_data[end_offset] != 0:
+            end_offset += 1
+        #above is for partial reference handling, something specific to the #string heap.
         for table_name, col_names in self.metadata_references.items():
             table_obj = self.get_dotnetpe().get_metadata_table(table_name)
             if table_obj is None:
@@ -171,9 +182,8 @@ cdef class StringHeapObject(HeapObject):
             for row_obj in table_obj:
                 for col_name in col_names:
                     col_val = row_obj.get_column(col_name)
-                    if <int>col_val.get_raw_value() == offset:
+                    if start_offset <= <int>col_val.get_raw_value() <= end_offset:
                         return True
-
         return False
 
     cdef void update(self, int old_value, int new_value, int difference):
