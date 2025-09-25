@@ -1654,12 +1654,13 @@ cdef class EmulatorAppDomain:
             for ref_obj in self.__starter_dpe.get_metadata_table('TypeRef'):
                 #handle generics here
                 full_name = ref_obj.get_full_name()
-                if full_name == mapping_name:
-                    self.__newobj_ctors[ref_obj.get_token()] = newobj_mapping.func_ptr
-                elif full_name.startswith(mapping_name):
-                    test_name = full_name.lstrip(mapping_name)
-                    if test_name.startswith(b'`'):
+                if full_name is not None:
+                    if full_name == mapping_name:
                         self.__newobj_ctors[ref_obj.get_token()] = newobj_mapping.func_ptr
+                    elif full_name.startswith(mapping_name):
+                        test_name = full_name.lstrip(mapping_name)
+                        if test_name.startswith(b'`'):
+                            self.__newobj_ctors[ref_obj.get_token()] = newobj_mapping.func_ptr
         
         for x in range(net_emu_types.AMT_OF_STATIC_FUNCTIONS):
             func_mapping = net_emu_types.NET_EMULATE_STATIC_FUNC_REGISTRATIONS[x]

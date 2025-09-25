@@ -247,7 +247,7 @@ cdef class DotNetObject:
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R8:
                 num_obj = DotNetDouble(self.get_emulator_obj(), None)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_STRING:
-                self.set_field(field_rid, DotNetString.Empty(None, [self.get_emulator_obj().get_appdomain()]))
+                self.set_field(field_rid, DotNetString.Empty(self.get_emulator_obj().get_appdomain(), []))
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
                 num_obj = DotNetBoolean(self.get_emulator_obj(), None)
             else:
@@ -810,6 +810,12 @@ cdef class DotNetIntPtr(DotNetNumber):
 
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
         DotNetNumber.__init__(self, emu_obj, CorElementType.ELEMENT_TYPE_I, num_data)
+
+    @staticmethod
+    cdef DotNetObject Zero(net_emulator.EmulatorAppDomain app_domain, list args):
+        cdef DotNetIntPtr num = DotNetIntPtr(app_domain.get_emulator_obj(), None)
+        num.init_zero()
+        return num
 
     cdef DotNetObject duplicate(self):
         cdef DotNetIntPtr num = DotNetIntPtr(self.get_emulator_obj(), None)
@@ -5160,7 +5166,7 @@ cdef class DotNetType(DotNetObject):
         if not isinstance(self.type_handle, net_row_objects.TypeDef):
             raise net_exceptions.ObjectTypeException
         #There is going to have to be a ton of reimplementation to support this for TypeRefs.
-        assembly = DotNetAssembly.GetExecutingAssembly(None, [self.get_emulator_obj().get_appdomain()])
+        assembly = DotNetAssembly.GetExecutingAssembly(self.get_emulator_obj().get_appdomain(), [])
         return DotNetModule(self.get_emulator_obj(), assembly.get_module())
 
     cdef DotNetObject GetFields(self, list args):
@@ -5427,16 +5433,8 @@ cdef class DotNetStream(DotNetObject):
 
     cdef DotNetObject ReadBytes(self, list args):
         cdef DotNetInt32 count = <DotNetInt32>args[0]
-        cdef DotNetArray arr_obj
-        cdef bytes raw_obj
-        cdef list actual_obj
-        cdef Py_ssize_t x
-        cdef unsigned char item
-        cdef DotNetUInt8 number = None
-        arr_obj = DotNetArray(self.get_emulator_obj(), count, DotNetAssembly.GetExecutingAssembly(None, [self.get_emulator_obj().get_appdomain()]).get_module().get_dotnetpe().get_type_by_full_name(
-            b'System.Byte'), initialize=Flase)
-        arr_obj.set_internal_array(self._internal[self._position: self._position + count.as_int()])
-        self.__posiiton += count.as_int()
+        cdef DotNetArray arr_obj = self._internal[self._position: self._position + count.as_int()]
+        self._position += count.as_int()
         return arr_obj
 
     cdef DotNetObject Close(self, list args):
@@ -5610,7 +5608,7 @@ cdef class DotNetAssembly(DotNetObject):
         It throws an exception if it detects tampering with the binary, but it wont throw that exception if it cant get the location.
         Return a blank string to fool these checks.  Of note: this may need to be changed eventually if a binary comes along that actually requires this method to work. 
         """
-        return DotNetString.Empty(None, [self.get_emulator_obj().get_appdomain()])
+        return DotNetString.Empty(self.get_emulator_obj().get_appdomain(), [])
 
     @staticmethod
     cdef DotNetObject GetExecutingAssembly(net_emulator.EmulatorAppDomain app_domain, list args):
@@ -6458,7 +6456,7 @@ cdef class DotNetBitConverter(DotNetObject):
         cdef DotNetNumber number = <DotNetNumber> args[0]
 
         cdef DotNetArray dnr = DotNetArray(app_domain.get_emulator_obj(), number.__amt_bytes,
-                          DotNetAssembly.GetExecutingAssembly(None, [app_domain]).get_module().get_dotnetpe().get_type_by_full_name(b'System.Byte'),
+                          app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'),
                           initialize=False)
         cdef bytes b_data = number.as_bytes()
         cdef int x = 0
@@ -8632,28 +8630,6 @@ cdef class DotNetDynamicMethod(DotNetObject):
     cpdef has_return_value(self):
         type_obj = self.return_type.get_type_handle()
         return type_obj.get_full_name() != b'System.Void'
-
-#TODO need to properly implement IntPtr maybe
-cdef class DotNetIntPtr(DotNetObject):
-    def __init__(self, emulator_obj):
-        DotNetObject.__init__(self, emulator_obj)
-        self.add_function(b'.ctor', <emu_func_type>self.ctor)
-
-    cdef DotNetObject ctor(self, list args):
-        self.value = args[0]
-        return self
-
-    cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
-
-    cdef DotNetObject duplicate(self)
-
-    cdef void duplicate_into(self, DotNetObject result)
-
-    @staticmethod
-    cdef DotNetObject Zero(net_emulator.EmulatorAppDomain app_domain, list args):
-        cdef DotNetIntPtr num = DotNetIntPtr(app_domain.get_emulator_obj(), None)
-        num.init_zero()
-        return num
 """
 
 cdef class DotNetSortedList(DotNetList):
@@ -8681,18 +8657,15 @@ cdef class DotNetHashTable(DotNetConcurrentDictionary):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
+"""
+
 cdef class DotNetRSACryptoServiceProvider(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
-        self.use_machine_key_store = None
 
     @staticmethod
     cdef DotNetObject set_UseMachineKeyStore(net_emulator.EmulatorAppDomain app_domain, list args):
-        cdef DotNetBoolean new_val = <DotNetBoolean>args[0]
-        use_machine_key_store = new_val
-        return None
-
-"""
+        return None #I dont think this needs to do anything.
 
 cdef class DotNetBinaryReader(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -9345,10 +9318,14 @@ cdef DotNetObject New_MulticastDelegate(net_emulator.DotNetEmulator emulator_obj
     return DotNetMulticastDelegate(emulator_obj)
 
 cdef DotNetObject New_Object(net_emulator.DotNetEmulator emulator_obj):
-    raise Exception()
-    return DotNetObject(emulator_obj)
+    cdef DotNetObject obj = DotNetObject(emulator_obj)
+    obj.initialize_type(emulator_obj.get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Object'))
+    return obj
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[14]
+cdef DotNetObject New_BinaryReader(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetBinaryReader(emulator_obj)
+
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[16]
 NET_EMULATE_TYPE_REGISTRATIONS[0].name = 'System.Collections.Concurrent.ConcurrentDictionary'
 NET_EMULATE_TYPE_REGISTRATIONS[0].func_ptr = <newobj_func_type>&New_ConcurrentDictionary
 NET_EMULATE_TYPE_REGISTRATIONS[1].name = 'System.Collections.Generic.Dictionary'
@@ -9377,8 +9354,12 @@ NET_EMULATE_TYPE_REGISTRATIONS[12].name = 'System.Security.Cryptography.TripleDE
 NET_EMULATE_TYPE_REGISTRATIONS[12].func_ptr = <newobj_func_type>&New_TripleDESCryptoServiceProvider
 NET_EMULATE_TYPE_REGISTRATIONS[13].name = 'System.MulticastDelegate'
 NET_EMULATE_TYPE_REGISTRATIONS[13].func_ptr = <newobj_func_type>&New_MulticastDelegate
+NET_EMULATE_TYPE_REGISTRATIONS[14].name = 'System.Collections.Hashtable' #hashtable can be dropped in with dict, I think that works well enough.
+NET_EMULATE_TYPE_REGISTRATIONS[14].func_ptr = <newobj_func_type>&New_Dictionary
+NET_EMULATE_TYPE_REGISTRATIONS[15].name = 'System.IO.BinaryReader'
+NET_EMULATE_TYPE_REGISTRATIONS[15].func_ptr = <newobj_func_type>&New_BinaryReader
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[32]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -9439,4 +9420,8 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[28].name = 'System.Text.Encoding.get_Unico
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[28].func_ptr = <static_func_type>&DotNetEncoding.get_Unicode
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[29].name = 'System.Threading.Thread.get_CurrentThread'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[29].func_ptr = <static_func_type>&DotNetThread.get_CurrentThread
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30].name = 'System.IntPtr.Zero'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30].func_ptr = <static_func_type>&DotNetIntPtr.Zero
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[31].name = 'System.Security.Cryptography.RSACryptoServiceProvider.set_UseMachineKeyStore'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[31].func_ptr = <static_func_type>&DotNetRSACryptoServiceProvider.set_UseMachineKeyStore
 

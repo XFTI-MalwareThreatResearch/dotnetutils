@@ -205,6 +205,10 @@ cdef class DotNetNumber(DotNetObject):
     cdef bint greaterthanequals(self, DotNetNumber other)
 
 cdef class DotNetIntPtr(DotNetNumber):
+
+    @staticmethod
+    cdef DotNetObject Zero(net_emulator.EmulatorAppDomain app_domain, list args)
+
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
@@ -2098,17 +2102,6 @@ cdef class DotNetDynamicMethod(DotNetObject):
 
     cpdef has_return_value(self)
 
-cdef class DotNetIntPtr(DotNetObject):
-    cdef DotNetNumber value
-
-    cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
-
-    cdef DotNetObject duplicate(self)
-
-    cdef void duplicate_into(self, DotNetObject result)
-
-    @staticmethod
-    cdef DotNetObject Zero(net_emulator.EmulatorAppDomain app_domain, list args)
 """
 
 cdef class DotNetSortedList(DotNetList):
@@ -2122,13 +2115,11 @@ cdef class DotNetSortedList(DotNetList):
 cdef class DotNetHashTable(DotNetConcurrentDictionary):
     pass
 
-cdef class DotNetRSACryptoServiceProvider(DotNetObject):
-    cdef DotNetBoolean use_machine_key_store
+"""
 
+cdef class DotNetRSACryptoServiceProvider(DotNetObject):
     @staticmethod
     cdef DotNetObject set_UseMachineKeyStore(net_emulator.EmulatorAppDomain app_domain, list args)
-
-"""
 
 cdef class DotNetBinaryReader(DotNetObject):
     cdef DotNetStream stream
@@ -2348,8 +2339,8 @@ cdef struct EmuFuncMapping:
     const char * name
     static_func_type func_ptr
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[14]
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30]
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[16]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[32]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 
@@ -2379,5 +2370,8 @@ cdef DotNetObject New_MD5CryptoServiceProvider(net_emulator.DotNetEmulator emula
 cdef DotNetObject New_TripleDESCryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj)
 
 cdef DotNetObject New_MulticastDelegate(net_emulator.DotNetEmulator emulator_obj)
-cdef const int AMT_OF_STATIC_FUNCTIONS = 30
-cdef const int AMT_OF_TYPES = 14
+
+cdef DotNetObject New_BinaryReader(net_emulator.DotNetEmulator emulator_obj)
+
+cdef const int AMT_OF_STATIC_FUNCTIONS = 32
+cdef const int AMT_OF_TYPES = 16
