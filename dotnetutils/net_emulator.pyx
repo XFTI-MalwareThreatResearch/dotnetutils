@@ -1018,7 +1018,17 @@ cdef bint handle_ldc_r8_instruction(DotNetEmulator emu):
 
 cdef bint handle_ldloc_instruction(DotNetEmulator emu):
     cdef int index = emu.instr.get_argument()
-    emu.stack.append(emu.get_local(index))
+    cdef net_emu_types.DotNetObject local_obj = emu.get_local(index)
+    cdef net_emu_types.DotNetNumber num = None
+    cdef net_structs.CorElementType num_type = net_structs.CorElementType.ELEMENT_TYPE_VOID
+    if local_obj.is_number():
+        num = <net_emu_types.DotNetNumber>local_obj
+        # extend uint8, uint16, int8, int16
+        num_type = num.get_num_type()
+        if num_type == net_structs.CorElementType.ELEMENT_TYPE_I1 or num_type == net_structs.CorElementType.ELEMENT_TYPE_I2 or \
+            num_type == net_structs.CorElementType.ELEMENT_TYPE_U1 or num_type == net_structs.CorElementType.ELEMENT_TYPE_U2:
+            local_obj = num.cast(net_structs.CorElementType.ELEMENT_TYPE_I4)
+    emu.stack.append(local_obj)
     return False
 
 cdef bint handle_beq_instruction(DotNetEmulator emu):

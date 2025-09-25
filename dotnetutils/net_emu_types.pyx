@@ -568,7 +568,7 @@ cdef class DotNetNumber(DotNetObject):
             self._ptr = NULL
             self.__amt_bytes = 0
     
-    cdef bytes as_bytes(self):
+    cpdef bytes as_bytes(self):
         if self._ptr == NULL:
             return None
         return self._ptr[:self.__amt_bytes]

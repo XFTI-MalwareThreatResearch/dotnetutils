@@ -100,7 +100,7 @@ cdef class DotNetNumber(DotNetObject):
 
     cpdef object as_python_obj(self)
 
-    cdef bytes as_bytes(self)
+    cpdef bytes as_bytes(self)
 
     cdef bint is_signed(self)
     
