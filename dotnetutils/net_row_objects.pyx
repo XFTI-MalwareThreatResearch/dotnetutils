@@ -578,7 +578,7 @@ cdef class TypeDef(TypeDefOrRef):
             skip = False
             if self.get_column('Extends').get_value_table_name() == 'TypeRef':
                 extends_obj = self.get_column('Extends').get_value()
-                if not extends_obj or extends_obj.get_column('TypeName').get_value() == b'Object':
+                if not extends_obj or extends_obj.get_column('TypeName').get_value() == b'Object': #TODO: should object be considered a valid superclass?
                     skip = True
             if not skip:
                 self.__superclass = self.get_column('Extends').get_value()

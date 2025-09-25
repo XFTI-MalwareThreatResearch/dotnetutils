@@ -193,7 +193,7 @@ cdef class PeFile:
             x += 1
         return -1
 
-    cdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index):
+    cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index):
         if difference == 0:
             return
         if self.is_64bit():
