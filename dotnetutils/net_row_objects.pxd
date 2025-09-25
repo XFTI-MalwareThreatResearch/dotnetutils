@@ -426,6 +426,7 @@ cdef class MethodSpec(MethodDefOrRef):
 cdef class TypeSpec(TypeDefOrRef):
     cdef net_utils.TypeSig __parsed_sig
     cdef bint __has_invalid_signature
+    cdef bint __has_type
 
     cpdef void _add_child_class(self, TypeDefOrRef to_add)
 

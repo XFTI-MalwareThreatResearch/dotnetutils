@@ -1521,10 +1521,16 @@ cdef class TypeSpec(TypeDefOrRef):
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, list raw_data, int rid, list sizes, dict col_types, str table_name):
         TypeDefOrRef.__init__(self, dotnetpe, raw_data, rid,
                            sizes, col_types, table_name)
+        self.__has_type = False
         self.__parsed_sig = None
         self.__has_invalid_signature = False
 
+    cdef void post_process(self):
+        self.__has_type = self.get_type() is not None
+
     cpdef void _add_child_class(self, TypeDefOrRef to_add):
+        if not self.__has_type:
+            return
         self.get_type()._add_child_class(to_add)
 
     cpdef TypeDefOrRef get_type(self):
@@ -1566,21 +1572,29 @@ cdef class TypeSpec(TypeDefOrRef):
         """
         Attempts to obtain all methods associated with a typespec.
         """
+        if not self.__has_type:
+            return None
         return self.get_type().get_methods()
 
     cdef void _add_method(self, MethodDefOrRef method_obj):
+        if not self.__has_type:
+            return
         self.get_type()._add_method(method_obj)
 
     cpdef list get_member_refs(self):
         """
         Attempts to obtain all memberrefs associated with a TypeSpec
         """
+        if not self.__has_type:
+            return None
         return self.get_type().get_member_refs()
 
     cpdef TypeDefOrRef get_superclass(self):
         """
         Attempts to obtain the superclass of a TypeSpec if it exists.
         """
+        if not self.__has_type:
+            return None
         return self.get_type().get_superclass()
 
     def __eq__(self, other):
