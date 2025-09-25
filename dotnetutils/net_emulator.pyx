@@ -257,7 +257,7 @@ cdef void __init_handlers():
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Cgt_Un] = handle_cgt_un_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Clt] = handle_clt_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Clt_Un] = handle_clt_un_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldftn] = handle_unsupported_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldftn] = handle_ldftn_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldvirtftn] = handle_unsupported_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldarg] = handle_ldarg_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldarga] = handle_ldarga_instruction
@@ -517,7 +517,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             #cctor method should always be MethodDef
             if cctor_method and emu.executed_cctors.can_execute(cctor_method):
                 if not emu.dont_execute_cctor:
-                    new_emu = emu.spawn_new_emulator(cctor_method, method_args)
+                    new_emu = emu.spawn_new_emulator(cctor_method, method_args, caller=emu)
                     new_emu.run_function()
 
         #crappy fix for the params issue - use whichever is bigger. #More investigation is definitely needed to fix this.
@@ -1097,7 +1097,7 @@ cdef bint handle_ldsfld_instruction(DotNetEmulator emu):
     cctor_method = parent_type.get_static_constructor()
     if cctor_method:
         if emu.executed_cctors.can_execute(cctor_method) and not emu.dont_execute_cctor:
-            new_emu = emu.spawn_new_emulator(cctor_method)
+            new_emu = emu.spawn_new_emulator(cctor_method, caller=emu)
             new_emu.run_function()
     if isinstance(field_obj, net_row_objects.MemberRef):
         if not emu.get_appdomain().has_static_func(field_obj.get_token()):
@@ -1139,6 +1139,15 @@ cdef bint handle_ldtoken_instruction(DotNetEmulator emu):
         emu.stack.append(net_emu_types.DotNetRuntimeFieldHandle(emu, internal_item))
     elif table_name == 'TypeDef' or table_name == 'TypeRef':
         emu.stack.append(net_emu_types.DotNetRuntimeTypeHandle(emu, internal_item))
+    else:
+        raise Exception('invalid table {}'.format(table_name)) #Invalid table
+    return False
+
+cdef bint handle_ldftn_instruction(DotNetEmulator emu):
+    cdef net_row_objects.RowObject internal_item = emu.instr.get_argument()
+    cdef str table_name = internal_item.get_table_name()
+    if table_name == 'MethodDef' or  table_name == 'MethodRef':
+        emu.stack.append(net_emu_types.DotNetRuntimeMethodHandle(emu, internal_item))
     else:
         raise Exception('invalid table {}'.format(table_name)) #Invalid table
     return False
@@ -1281,7 +1290,7 @@ cdef bint handle_stloc_instruction(DotNetEmulator emu):
     local_type_sig = emu.disasm_obj.local_types[number]
     if isinstance(local_type_sig, net_utils.CorLibTypeSig):
         e_type = local_type_sig.get_element_type()
-        if isinstance(value1, net_emu_types.DotNetNumber):
+        if value1.is_number():
             num = <net_emu_types.DotNetNumber>value1
             value1 = num.cast(e_type)
         emu.set_local(number, value1)
@@ -2118,7 +2127,7 @@ cdef class DotNetEmulator:
                     cctor_method = self.method_obj.get_parent_type().get_static_constructor()
                     if cctor_method and cctor_method.is_static_constructor():
                         if self.executed_cctors.can_execute(cctor_method):
-                            emu = self.spawn_new_emulator(cctor_method)
+                            emu = self.spawn_new_emulator(cctor_method, caller=self)
                             emu.run_function()
             else:
                 self.executed_cctors.can_execute(self.method_obj)

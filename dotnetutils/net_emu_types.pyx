@@ -4972,7 +4972,13 @@ cdef class DotNetBoolean(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
+    cdef bint equals(self, DotNetNumber other):
+        cdef DotNetBoolean bobj = other.cast(CorElementType.ELEMENT_TYPE_BOOLEAN)
+        return bobj.as_bool() == self.as_bool()
+
     cdef DotNetNumber cast(self, CorElementType new_type):
+        if new_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
+            return self
         raise Exception()
 
 cdef class DotNetVoid(DotNetNumber):
@@ -6028,6 +6034,7 @@ cdef class DotNetStackTrace(DotNetObject):
     cdef DotNetObject ctor(self, list args):
         cdef DotNetInt32 num = DotNetInt32(self.get_emulator_obj(), None)
         cdef DotNetBoolean bobj = DotNetBoolean(self.get_emulator_obj(), None)
+        cdef DotNetNumber num1 = None
         num.init_zero()
         bobj.init_zero()
         if len(args) >= 1:
@@ -6035,7 +6042,8 @@ cdef class DotNetStackTrace(DotNetObject):
         else:
             self.skipFrames = num
         if len(args) == 2:
-            self.fNeedFileInfo = args[1]
+            num1 = args[1]
+            self.fNeedFileInfo = num1.cast(CorElementType.ELEMENT_TYPE_BOOLEAN)
         else:
             self.fNeedFileInfo = bobj
         return self
@@ -6091,8 +6099,13 @@ cdef class DotNetStackFrame(DotNetObject):
         cdef net_emulator.DotNetEmulator emulator_obj = self.get_emulator_obj()
         cdef int x = 0
         cdef DotNetMemberInfo obj = None
+        cdef DotNetObject n = None
         for x in range(self.skip_frames.as_int()):
             emulator_obj = emulator_obj.get_caller()
+        if emulator_obj is None:
+            n = DotNetObject(self.get_emulator_obj())
+            n.flag_null()
+            return n
         obj = DotNetMemberInfo(self.get_emulator_obj(), emulator_obj.get_method_obj())
         obj.set_type_obj(emulator_obj.get_method_obj().get_dotnetpe().get_type_by_full_name(
             b'System.Reflection.MemberInfo'))
