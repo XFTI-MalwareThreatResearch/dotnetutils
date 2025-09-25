@@ -444,6 +444,9 @@ cdef class TypeDefOrRef(RowObject):
         RowObject.__init__(self, dotnetpe, raw_data, rid,
                            sizes, col_types, table_name)
 
+    cdef void _add_method(self, MethodDefOrRef method_obj):
+        pass #This should never be called.
+
     cpdef MethodDef get_static_constructor(self):
         return None
 
@@ -499,7 +502,7 @@ cdef class TypeDefOrRef(RowObject):
         return None
 
     cpdef TypeDefOrRef get_type(self):
-        return None
+        return self
 
 cdef class TypeDef(TypeDefOrRef):
 
@@ -927,16 +930,9 @@ cdef class TypeRef(TypeDefOrRef):
         Obtains any child classes for the type.
         """
         return self.__child_classes
-
-    cdef void process(self):
-        cdef MemberRef member_ref
-        cdef str class_table
-        for member_ref in self.get_dotnetpe().get_metadata_table('MemberRef'):
-            class_table = member_ref.get_column('Class').get_value_table_name()
-            if class_table == 'TypeRef':
-                if member_ref.get_column('Class').get_value_rid() == self.get_rid():
-                    self.__methods.append(member_ref)
-                    member_ref._set_parent_type(self)
+    
+    cdef void _add_method(self, MethodDefOrRef method_obj):
+        self.__methods.append(method_obj)
 
     cpdef list get_methods(self):
         """
@@ -1303,7 +1299,7 @@ cdef class MethodDef(MethodDefOrRef):
         """
         Obtain the amount of parameters that the function takes.
         """
-        return <int>len(self.get_column('ParamList').get_formatted_value())
+        return <int>len(self.get_method_signature().get_parameters())
 
 
 cdef class MemberRef(MethodDefOrRef):
@@ -1340,10 +1336,11 @@ cdef class MemberRef(MethodDefOrRef):
         self.__parent_type = parent_type
 
     cdef void post_process(self):
-        cdef RowObject class_obj
+        cdef TypeDefOrRef class_obj
         cdef RowObject sig_type
         class_obj = self.get_column('Class').get_value()
         if class_obj:
+            class_obj._add_method(self) #This wont do anything for MethodDefs, only MemberRefs
             if class_obj.get_table_name() == 'TypeRef':
                 self._set_parent_type(class_obj)
             elif class_obj.get_table_name() == 'ModuleRef':
@@ -1570,6 +1567,9 @@ cdef class TypeSpec(TypeDefOrRef):
         Attempts to obtain all methods associated with a typespec.
         """
         return self.get_type().get_methods()
+
+    cdef void _add_method(self, MethodDefOrRef method_obj):
+        self.get_type()._add_method(method_obj)
 
     cpdef list get_member_refs(self):
         """

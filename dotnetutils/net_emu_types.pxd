@@ -26,7 +26,7 @@ ctypedef DotNetObject (*newobj_func_type)(net_emulator.DotNetEmulator emulator_o
 cdef class DotNetObject:
     cdef net_emulator.DotNetEmulator __emulator_obj
     cdef dict fields
-    cdef net_row_objects.RowObject type_obj
+    cdef net_row_objects.TypeDefOrRef type_obj
     cdef net_utils.TypeSig type_sig_obj
     cdef list initialized_fields
     cdef bint __initialized
@@ -1251,8 +1251,8 @@ cdef class DotNetParameterInfo(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result)
 
 cdef class DotNetDelegate(DotNetObject):
-    cdef DotNetType dn_type
-    cdef DotNetMethodInfo dn_methodinfo
+    cdef DotNetObject dn_type
+    cdef DotNetRuntimeMethodHandle dn_methodinfo
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -2348,7 +2348,7 @@ cdef struct EmuFuncMapping:
     const char * name
     static_func_type func_ptr
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[13]
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[14]
 cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
@@ -2378,5 +2378,6 @@ cdef DotNetObject New_MD5CryptoServiceProvider(net_emulator.DotNetEmulator emula
 
 cdef DotNetObject New_TripleDESCryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj)
 
+cdef DotNetObject New_MulticastDelegate(net_emulator.DotNetEmulator emulator_obj)
 cdef const int AMT_OF_STATIC_FUNCTIONS = 30
-cdef const int AMT_OF_TYPES = 13
+cdef const int AMT_OF_TYPES = 14

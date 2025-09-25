@@ -118,6 +118,8 @@ cdef class TypeDefOrRef(RowObject):
 
     cpdef void _add_child_class(self, TypeDefOrRef obj)
 
+    cdef void _add_method(self, MethodDefOrRef method_obj)
+
     cpdef list get_member_refs(self)
 
     cpdef list get_generic_params(self)
@@ -241,6 +243,8 @@ cdef class TypeRef(TypeDefOrRef):
     cdef void process(self)
 
     cpdef list get_methods(self)
+
+    cdef void _add_method(self, MethodDefOrRef method_obj)
 
     cpdef list get_methods_by_name(self, bytes method_name)
 

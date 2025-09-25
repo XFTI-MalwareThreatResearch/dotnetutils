@@ -12,6 +12,8 @@ ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator)
 ctypedef net_emu_types.DotNetObject (*static_func_type)(EmulatorAppDomain, list)
 ctypedef bint (*emu_instr_handler_type)(DotNetEmulator)
 
+cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, list force_method_args)
+
 cdef void __init_handlers()
 
 cdef class CctorRegistry:

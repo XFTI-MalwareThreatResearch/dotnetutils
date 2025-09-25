@@ -101,7 +101,6 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
         return b'System.Char'
     raise Exception('element type not recognized {}'.format(element_type))
 
-
 cpdef get_cor_type_from_name(type_name):
     if type_name == b'System.Void':
         return net_utils.get_CorSig_Void()
@@ -7216,13 +7215,15 @@ cdef class DotNetDelegate(DotNetObject):
 
     @staticmethod
     cdef DotNetObject CreateDelegate(net_emulator.EmulatorAppDomain app_domain, list args):
-        cdef DotNetType dotnet_type = <DotNetType>args[0]
-        cdef DotNetMethodInfo dotnet_methodinfo = <DotNetMethodInfo> args[1]
-        del_obj = DotNetDelegate(app_domain.get_emulator_obj(), dotnet_type.get_emulator_obj(), dotnet_type, dotnet_methodinfo)
-        return del_obj
+        raise Exception()
 
     cdef DotNetObject Invoke(self, list args):
-        raise Exception()
+        if self.dn_type is not None: #For delegates, the first arg is the instance class.
+            args.insert(0, self.dn_type)
+        net_emulator.do_call(self.get_emulator_obj(), False, self.dn_methodinfo.internal_method.get_column('Name') == b'.ctor', self.dn_methodinfo.internal_method, None, args)
+        if self.dn_methodinfo.internal_method.has_return_value():
+            return self.get_emulator_obj().get_stack().pop()
+        return None
 
     def __str__(self):
         """if isinstance(self.dn_methodinfo, DotNetDynamicMethod):
@@ -9340,11 +9341,14 @@ cdef DotNetObject New_MD5CryptoServiceProvider(net_emulator.DotNetEmulator emula
 cdef DotNetObject New_TripleDESCryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj):
     return DotNet3DESCryptoServiceProvider(emulator_obj)
 
+cdef DotNetObject New_MulticastDelegate(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetMulticastDelegate(emulator_obj)
+
 cdef DotNetObject New_Object(net_emulator.DotNetEmulator emulator_obj):
     raise Exception()
     return DotNetObject(emulator_obj)
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[13]
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[14]
 NET_EMULATE_TYPE_REGISTRATIONS[0].name = 'System.Collections.Concurrent.ConcurrentDictionary'
 NET_EMULATE_TYPE_REGISTRATIONS[0].func_ptr = <newobj_func_type>&New_ConcurrentDictionary
 NET_EMULATE_TYPE_REGISTRATIONS[1].name = 'System.Collections.Generic.Dictionary'
@@ -9371,6 +9375,8 @@ NET_EMULATE_TYPE_REGISTRATIONS[11].name = 'System.Security.Cryptography.MD5Crypt
 NET_EMULATE_TYPE_REGISTRATIONS[11].func_ptr = <newobj_func_type>&New_MD5CryptoServiceProvider
 NET_EMULATE_TYPE_REGISTRATIONS[12].name = 'System.Security.Cryptography.TripleDESCryptoServiceProvider'
 NET_EMULATE_TYPE_REGISTRATIONS[12].func_ptr = <newobj_func_type>&New_TripleDESCryptoServiceProvider
+NET_EMULATE_TYPE_REGISTRATIONS[13].name = 'System.MulticastDelegate'
+NET_EMULATE_TYPE_REGISTRATIONS[13].func_ptr = <newobj_func_type>&New_MulticastDelegate
 
 cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'

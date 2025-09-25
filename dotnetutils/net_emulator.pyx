@@ -477,7 +477,7 @@ cdef bint handle_brtrue_instruction(DotNetEmulator emu): #Good
         return handle_general_jump(emu)
     return False
 
-cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, str force_extern_type_name): #Good
+cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, list force_method_args): #Good
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.TypeDefOrRef parent_type
     cdef list method_args
@@ -504,13 +504,12 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         method_obj = force_method_obj
     else:
         method_obj = <net_row_objects.MethodDefOrRef>emu.instr.get_argument()
-
-        if method_obj.get_table_name() == 'MethodDef' and not method_obj.has_body() and force_extern_type_name is None:
+        if method_obj.get_table_name() == 'MethodDef' and not method_obj.has_body() and force_extern_type is None:
             if method_obj.get_parent_type():
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
-                    return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type.get_full_name().decode('ascii'))
-    if method_obj.get_table_name() == 'MethodDef' and not force_extern_type_name:
+                    return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, None)
+    if method_obj.get_table_name() == 'MethodDef' and not force_extern_type:
         method_args = list()
         if method_obj.get_parent_type():
             cctor_method = method_obj.get_parent_type().get_static_constructor()
@@ -524,11 +523,13 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         #see  d18aa5d58656fffd7a2a0a3d7f6f4e011bf0f39b8f89701b0e5263951e1ce90c methods 1365 and 1404
         params_obj = method_obj.get_column('ParamList')
         amt_params = <unsigned int>len(method_obj.get_param_types())
-
-        for x in range(amt_params): #len(method_obj.get_param_types()) seems to be inaccurate sometimes.
-            method_args.insert(0, emu.stack.pop())
-        if method_obj.method_has_this() and method_obj.get_column('Name').get_value_as_bytes() != b'.ctor':
-            method_args.insert(0, emu.stack.pop())
+        if force_method_args is None:
+            for x in range(amt_params): #len(method_obj.get_param_types()) seems to be inaccurate sometimes.
+                method_args.insert(0, emu.stack.pop())
+            if method_obj.method_has_this() and method_obj.get_column('Name').get_value_as_bytes() != b'.ctor':
+                method_args.insert(0, emu.stack.pop())
+        else:
+            method_args = force_method_args
         if is_newobj:
             dot_obj = net_emu_types.DotNetObject(emu)
             dot_obj.initialize_type(method_obj.get_parent_type())
@@ -536,8 +537,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         new_emu = emu.spawn_new_emulator(method_obj, method_args, caller=emu)
         new_emu.run_function()
         # the handler for ret instruction handles cleaning up the stack after this.
-    elif method_obj.get_table_name() == 'MemberRef' or force_extern_type_name:
-        if isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec): #generics etc.
+    elif method_obj.get_table_name() == 'MemberRef' or force_extern_type:
+        if force_method_args is not None:
+            raise net_exceptions.InvalidArgumentsException()
+        if force_extern_type is None and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec): #generics etc.
             if isinstance(method_obj.get_parent_type().get_type(), net_row_objects.TypeDef):
                 return do_virtcall(emu, force_virtcall=True, force_virt_type=method_obj.get_parent_type().get_type())
         method_name = method_obj.get_column('Name').get_value_as_bytes()
@@ -557,7 +560,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             static_emu_func = emu.get_appdomain().get_static_func(method_obj.get_token())
             dot_obj = None
         elif method_name == b'.ctor' and is_newobj: #newobj instructions only.
-            parent_type = method_obj.get_parent_type()
+            if force_extern_type is None:
+                parent_type = method_obj.get_parent_type()
+            else:
+                parent_type = force_extern_type
             if parent_type is not None and isinstance(parent_type, net_row_objects.TypeSpec):
                 tspec = parent_type
                 parent_type = tspec.get_type()
@@ -565,15 +571,15 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 newobj_func = emu.get_appdomain().get_ctor_func(parent_type.get_token())
                 dot_obj = newobj_func(emu)
             else:
-                raise Exception('Unable to handle token: unknown ctor {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token())))
+                raise Exception('Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
             if not dot_obj.has_function(method_name):
                 raise Exception('type is missing .ctor')
             
             emu_func = dot_obj.get_function(method_name)
             ret_val = emu_func(dot_obj, method_args) #ctors should always return self.
             if is_newobj:
-                if isinstance(ret_val, net_emu_types.DotNetObject):
-                    ret_val.initialize_type(method_obj.get_parent_type())
+                if ret_val is not None:
+                    ret_val.initialize_type(parent_type)
                 emu.stack.append(ret_val)
             return False 
         else:
@@ -603,17 +609,16 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         if method_obj.has_return_value():
             emu.stack.append(ret_val)
     elif method_obj.get_table_name() == 'MethodSpec':
-        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None)
+        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, None)
     else:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj))
     return False
 
 cdef bint handle_call_instruction(DotNetEmulator emu): #Good
-    return do_call(emu, False, False, None, None)
+    return do_call(emu, False, False, None, None, None)
 
 cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_objects.TypeDefOrRef force_virt_type=None) except *: #Good
-    # for eazfuscator should get method rid 3 here
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.TypeDefOrRef parent_type
     cdef int amt_args
@@ -623,26 +628,27 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     cdef net_utils.MethodSig initial_method_sig
     cdef net_table_objects.MethodImplTable method_impl_table
     cdef net_row_objects.MethodDef def_method
-    cdef net_row_objects.MethodDef curr_method_obj
+    cdef net_row_objects.MethodDefOrRef curr_method_obj
     cdef int x = 0
     method_obj = emu.instr.get_argument()
     if not force_virtcall:
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(),
                                                                             net_row_objects.TypeRef):
-            return do_call(emu, True, False, None, None)
+            return do_call(emu, True, False, None, None, None)
         
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec):
             parent_type = method_obj.get_parent_type()
             if isinstance(parent_type.get_type(), net_row_objects.TypeRef):
-                return do_call(emu, True, False, None, parent_type.get_type().get_full_name().decode('ascii'))
+                return do_call(emu, True, False, None, parent_type.get_type(), None)
 
         if isinstance(method_obj, net_row_objects.MethodDef) and method_obj.has_body():
-            return do_call(emu, True, False, None, None)
-    
-
+            return do_call(emu, True, False, None, None, None)
     if not force_virt_type:
-        amt_args = method_obj.get_amt_params() #TODO: amt_args is clearly problematic here - honestly there isnt much of a reason for it anyway.  
-        obj_ref = emu.stack.peek()
+        amt_args = method_obj.get_amt_params() 
+        if method_obj.method_has_this():
+            obj_ref = emu.stack[len(emu.stack) - amt_args - 1]
+        else:
+            obj_ref = emu.stack[len(emu.stack) - amt_args] #technically this shouldnt happen but ill leave it here for now TODO
         obj_type = obj_ref.get_type_obj()
     else:
         obj_type = force_virt_type
@@ -666,16 +672,31 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
                 if method_obj.is_hidebysig():
                     if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
                         if curr_method_obj.get_method_signature() == method_obj.get_method_signature():
-                            actual_method_obj = curr_method_obj
-                            break
+                            if curr_method_obj.has_body():
+                                actual_method_obj = curr_method_obj
+                                break
                 else:
                     if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
                         if curr_method_obj.has_body():
                             actual_method_obj = curr_method_obj
                             break
         else:
-            raise net_exceptions.EmulatorMethodNotFoundException(method_obj.get_full_name())
-
+            for curr_method_obj in obj_type.get_methods():
+                if method_obj.is_hidebysig():
+                    if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
+                        if curr_method_obj.get_method_signature() == method_obj.get_method_signature():
+                            if curr_method_obj.has_body() or curr_method_obj.get_table_name() == 'MemberRef':
+                                actual_method_obj = curr_method_obj
+                                break
+                else:
+                    if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
+                        if curr_method_obj.has_body() or curr_method_obj.get_table_name() == 'MemberRef':
+                            actual_method_obj = curr_method_obj
+                            break
+            if not actual_method_obj:
+                #Last resort, try treating it as a call with a forced type.  If this doesnt work, it should error.
+                return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, None, obj_type, None)
+            
         if isinstance(obj_type, net_row_objects.TypeDef):
             obj_type = obj_type.get_superclass()
         else:
@@ -684,7 +705,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if not actual_method_obj:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj.get_full_name()))
-    return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None)
+    return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None, None)
 
 cdef bint handle_callvirt_instruction(DotNetEmulator emu): #Good
     return do_virtcall(emu, False, None)
@@ -1564,7 +1585,7 @@ cdef bint handle_ldnull_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_newobj_instruction(DotNetEmulator emu):
-    return do_call(emu, False, True, None, None)
+    return do_call(emu, False, True, None, None, None)
 
 """
 A lot of the stuff below is for internal use mainly.
@@ -1813,6 +1834,9 @@ cdef class DotNetEmulator:
             method_params = []
         self.static_fields = dict()
         self.method_obj = method_obj
+        if not self.method_obj.has_body():
+            print('method obj does not have body')
+            raise net_exceptions.InvalidArgumentsException()
         self.disasm_obj = self.method_obj.disassemble_method()
         self.method_params = list(method_params)
         self.end_offset = end_offset
