@@ -15,7 +15,7 @@ cdef class HeapObject:
     cdef bint in_append_tx
     cdef bytearray tx_data
 
-    cdef void update_bitmask(self)
+    cdef void update_bitmask(self, int new_size)
 
     cdef void begin_append_tx(self)
 

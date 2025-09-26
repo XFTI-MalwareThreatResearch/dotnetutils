@@ -64,7 +64,7 @@ cdef class HeapObject:
             self.size = size
         self.read()
 
-    cdef void update_bitmask(self):
+    cdef void update_bitmask(self, int new_size):
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef void begin_append_tx(self):
@@ -202,24 +202,32 @@ cdef class StringHeapObject(HeapObject):
         self.in_append_tx = False
         if len(self.tx_data) == 0:
             return
+        self.update_bitmask(<int>len(self.tx_data) + self.get_size())
         if self.amt_trailing_zeroes > 0:
             self.raw_data = self.raw_data[:-1 * self.amt_trailing_zeroes]
         new_offset = <int>len(self.raw_data)
         self.raw_data.extend(self.tx_data)
         for x in range(self.amt_trailing_zeroes):
             self.raw_data.append(0)
-        self.update_bitmask()
         va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
         self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(self.tx_data), self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
         self.tx_data = bytearray()
 
-    cdef void update_bitmask(self):
+    cdef void update_bitmask(self, int new_size):
         cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS)
-        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+        cdef int old_metadata_size = heap_obj.get_size()
+        cdef uint64_t va_addr = 0
+        cdef int difference = 0
+        if heap_offset_size == 2 and new_size > 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 4)
-        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+        elif heap_offset_size == 4 and new_size <= 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 2)
+        difference = <int>len(heap_obj.to_bytes()) - old_metadata_size
+        if difference == 0:
+            return
+        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
+        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), True, True, b'#~', self.get_dotnetpe().get_pe().get_sec_index_phys(heap_obj.get_offset()))        
 
     cdef int append_tx(self, bytes item) except *:
         cdef int new_offset = 0
@@ -296,8 +304,7 @@ cdef class StringHeapObject(HeapObject):
                         warnings.warn('Attempting to delete a #Strings object that is still in use')
                     if col_val.get_raw_value() > <unsigned int>old_value:
                         col_val.set_raw_value(col_val.get_raw_value() + difference)
-        self.update_bitmask()
-        
+            
     def __len__(self):
         return len(self.raw_data)
 
@@ -318,6 +325,7 @@ cdef class StringHeapObject(HeapObject):
             raise net_exceptions.InvalidArgumentsException()
         difference = <int>(len(b) - len(old_item))
         #first replace in raw_data
+        self.update_bitmask(self.get_size() + difference)
         self.raw_data = self.raw_data[:offset] + b + self.raw_data[offset + len(old_item):]
         self.update(offset, offset, difference)
         self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
@@ -332,6 +340,7 @@ cdef class StringHeapObject(HeapObject):
         potential = self.get_offset_of_item(b)
         if potential == -1:
             #we need to make sure were appending at the last item.
+            self.update_bitmask(self.get_size() + <int>len(b))
             if self.amt_trailing_zeroes > 0:
                 #Take care of any extra 0s on the end.
                 self.raw_data = self.raw_data[:-1 * self.amt_trailing_zeroes]
@@ -340,7 +349,6 @@ cdef class StringHeapObject(HeapObject):
             if self.amt_trailing_zeroes > 0:
                 self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(b), self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
-            self.update_bitmask()
             return new_offset
         else:
             return potential
@@ -385,6 +393,7 @@ cdef class StringHeapObject(HeapObject):
         cdef int difference = -1 * <int>len(item)
         cdef int off = 0
         if not self.is_offset_referenced(offset):
+            self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
@@ -402,13 +411,22 @@ cdef class BlobHeapObject(HeapObject):
     cdef void read(self):
         self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
 
-    cdef void update_bitmask(self):
+    cdef void update_bitmask(self, int new_size):
         cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB)
-        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+        cdef int old_metadata_size = heap_obj.get_size()
+        cdef uint64_t va_addr = 0
+        cdef int difference = 0
+        if heap_offset_size == 2 and new_size > 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 4)
-        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+        elif heap_offset_size == 4 and new_size <= 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 2)
+        difference = <int>len(heap_obj.to_bytes()) - old_metadata_size
+        if difference == 0:
+            return
+        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
+        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), True, True, b'#~', self.get_dotnetpe().get_pe().get_sec_index_phys(heap_obj.get_offset()))        
+
 
     cdef void __build_metadata_references(self):
         cdef str table_name = None
@@ -469,7 +487,6 @@ cdef class BlobHeapObject(HeapObject):
                         warnings.warn('Attempting to delete a blob value that is still in use.')
                     if col_val.get_raw_value() > <unsigned int>old_value:
                         col_val.set_raw_value(col_val.get_raw_value() + difference)
-        self.update_bitmask()
         
     def __len__(self):
         return len(self.raw_data)
@@ -492,6 +509,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef bytes final = compressed_size + b
         cdef bytes bitem = None
         cdef int difference = <int>(len(final) - len(orig_item))
+        self.update_bitmask(self.get_size() + difference)
         self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(orig_item):]
         self.update(offset, offset, difference)
         self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
@@ -506,8 +524,8 @@ cdef class BlobHeapObject(HeapObject):
         cdef bytes final = self.compress_integer(<unsigned long>len(item)) + <bytes>item
         cdef int potential = self.get_offset_of_item(final)
         if potential == -1:
+            self.update_bitmask(self.get_size() + <int>len(final))
             self.raw_data += final
-            self.update_bitmask()
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(final), self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return offset
         else:
@@ -526,6 +544,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef int difference = <int>len(item) * -1
         cdef int off = 0
         if not self.is_offset_referenced(offset):
+            self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
@@ -555,13 +574,22 @@ cdef class GuidHeapObject(HeapObject):
                         self.metadata_references[table_name] = list()
                     self.metadata_references[table_name].append(col_name)
 
-    cdef void update_bitmask(self):
+    cdef void update_bitmask(self, int new_size):
         cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID)
-        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+        cdef int old_metadata_size = heap_obj.get_size()
+        cdef uint64_t va_addr = 0
+        cdef int difference = 0
+        if heap_offset_size == 2 and new_size > 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 4)
-        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+        elif heap_offset_size == 4 and new_size <= 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 2)
+        difference = <int>len(heap_obj.to_bytes()) - old_metadata_size
+        if difference == 0:
+            return
+        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
+        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), True, True, b'#~', self.get_dotnetpe().get_pe().get_sec_index_phys(heap_obj.get_offset()))        
+
 
     cpdef bint is_offset_referenced(self, int offset):
         cdef str table_name = None
@@ -609,7 +637,6 @@ cdef class GuidHeapObject(HeapObject):
                         warnings.warn('Attempting to delete a guid value that is still in use.')
                     if col_val.get_raw_value() > <unsigned int>old_value:
                         col_val.set_raw_value(col_val.get_raw_value() + difference)
-        self.update_bitmask()
 
     cdef void read(self):
         self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
@@ -628,6 +655,7 @@ cdef class GuidHeapObject(HeapObject):
         if not self.has_offset(offset):
             raise net_exceptions.InvalidArgumentsException()
         if not self.is_offset_referenced(offset):
+            self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + 16:]
             self.update(offset, offset, difference)
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#GUID', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
@@ -650,8 +678,8 @@ cdef class GuidHeapObject(HeapObject):
         cdef int offset = <int>len(self.raw_data)
         cdef int potential = self.get_offset_of_item(item)
         if potential == -1:
+            self.update_bitmask(self.get_size() + 16)
             self.raw_data += item
-            self.update_bitmask()
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(item), self.get_dotnetpe(), True, True, b'#GUID', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return offset
         return potential

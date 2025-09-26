@@ -1127,6 +1127,8 @@ cdef class DotNetPeFile:
         cdef bytes new_data = None
         cdef int old_size = 0
         cdef bytes result = None
+        cdef int difference = 0
+        cdef uint64_t va_addr = 0
         
         #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
         for heap_obj in self.get_heaps().values():

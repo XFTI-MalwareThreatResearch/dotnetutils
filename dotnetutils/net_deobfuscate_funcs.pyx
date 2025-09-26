@@ -1675,9 +1675,6 @@ cpdef bytes cleanup_names(bytes data,
                                 method.get_column('Name').set_raw_value(new_index)
                                 break
             string_heap.end_append_tx()
-        fd = open('C:\\Users\\research\\Desktop\\test1.bin', 'wb')
-        fd.write(dotnetpe.get_exe_data())
-        fd.close()
         # clean off the rest of the methods
         #first make sure all name columns are initialized
         string_heap.begin_append_tx()
