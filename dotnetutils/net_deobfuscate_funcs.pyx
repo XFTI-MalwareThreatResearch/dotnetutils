@@ -11,8 +11,6 @@ from libc.string cimport memcpy
 from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING, PyBytes_GET_SIZE, _PyBytes_Resize
 from cpython.ref cimport PyObject
 
-from cpython.datetime cimport datetime
-
 cdef bytes make_string(bytes prefix, unsigned int i):
     cdef Py_ssize_t plen = PyBytes_GET_SIZE(prefix)
     cdef char* pp = PyBytes_AS_STRING(prefix)
@@ -27,7 +25,6 @@ cdef bytes make_string(bytes prefix, unsigned int i):
     memcpy(dst, pp, <size_t>plen)
     memcpy(dst + plen, tmp, <size_t>d)
     return out
-
 
 """
 This file contains various functions for removing different types of obfuscation
@@ -1269,8 +1266,6 @@ cpdef bytes cleanup_names(bytes data,
     cdef net_table_objects.TableObject table_obj1
     cdef net_table_objects.TableObject table_obj2
     cdef net_table_objects.MethodSemanticsTable semantics_table
-    cdef datetime start_time
-    cdef datetime end_time
     cdef int new_offset = 0
     cdef net_processing.StringHeapObject string_heap = None
     cdef net_row_objects.ColumnValue col_val = None
@@ -1320,7 +1315,6 @@ cpdef bytes cleanup_names(bytes data,
     blacklisted_method_rids = []
     blacklisted_field_rids = []
 
-    start_time = datetime.now()
     # first change the module name
     if change_module_name:
         module_count = 0
@@ -1328,9 +1322,7 @@ cpdef bytes cleanup_names(bytes data,
             name = make_string(b'Module', module_count)
             row_obj.get_column('Name').change_value(name)
             module_count += 1
-    end_time = datetime.now()
-    print('Changing module name took {}'.format(end_time - start_time))
-    start_time = end_time
+
     # specifically rename the entrypoint to main.
     # for now, assume COMIMAGE_FLAGS_NATIVE_ENTRYPOINT is not set.
     ep_method = dotnetpe.get_entry_point()
@@ -1366,9 +1358,6 @@ cpdef bytes cleanup_names(bytes data,
                     method.get_column('Name').set_raw_value(new_index)
                     blacklisted_field_rids.append(table_rid)  # we don't want to rename methods that obviously have the correct name.
     string_heap.end_append_tx()
-    end_time = datetime.now()
-    print('Changing implmap methods took {}'.format(end_time - start_time))
-    start_time = end_time
     # first fix types
     u_index = 0
     typedefs = list(dotnetpe.get_metadata_table('TypeDef'))
@@ -1436,10 +1425,6 @@ cpdef bytes cleanup_names(bytes data,
         u_index += 1
     string_heap.end_append_tx()
 
-    end_time = datetime.now()
-    print('handling typedefs took {}'.format(end_time - start_time))
-    start_time = end_time
-
     # next fix params
     u_index = 0
     param_count = 0
@@ -1476,10 +1461,6 @@ cpdef bytes cleanup_names(bytes data,
                 gparam_count += 1
             string_heap.end_append_tx()
 
-    end_time = datetime.now()
-    print('handling params took {}'.format(end_time - start_time))
-    start_time = end_time
-    #TODO this takes too long
     if change_field_names and dotnetpe.has_metadata_table('Field'):
         # get anything in the fields table that hasnt been changed.
         fcount = 0
@@ -1509,11 +1490,6 @@ cpdef bytes cleanup_names(bytes data,
                                 break
 
         string_heap.end_append_tx()
-            
-    end_time = datetime.now()
-    print('handling fields took {}'.format(end_time - start_time))
-    start_time = end_time
-
     # property table
     num_prop = 0
     properties = dotnetpe.get_metadata_table('Property')
@@ -1618,11 +1594,6 @@ cpdef bytes cleanup_names(bytes data,
                     prop.get_column('Name').set_raw_value(new_index)
         string_heap.end_append_tx()
 
-    end_time = datetime.now()
-    print('handling properties took {}'.format(end_time - start_time))
-    start_time = end_time
-    end_time = datetime.now()
-    start_time = end_time
     # first rename root methods
     table_obj1 = dotnetpe.get_metadata_table('MethodDef')
 
@@ -1724,10 +1695,6 @@ cpdef bytes cleanup_names(bytes data,
                             col_val.set_raw_value(method.get_column('Name').get_raw_value())
                             break
         string_heap.end_append_tx()
-
-    end_time = datetime.now()
-    print('handling methods took {}'.format(end_time - start_time))
-    start_time = end_time
     return dotnetpe.reconstruct_executable()
 
 
