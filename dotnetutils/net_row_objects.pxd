@@ -50,7 +50,7 @@ cdef class ColumnValue:
     cdef RowObject row_obj
     cdef net_tokens.BaseToken col_type
     cdef object formatted_value
-    cdef object changed_value
+    cdef bint has_changed_value
     cdef object cached_value
     cdef dotnetpefile.DotNetPeFile dotnetpe
     cdef object original_value
@@ -70,7 +70,7 @@ cdef class ColumnValue:
 
     cpdef object get_original_value(self)
 
-    cpdef void change_value(self, object new_value)
+    cpdef void change_value(self, object new_value) except *
     
     cdef object __retrieve_value(self)
     

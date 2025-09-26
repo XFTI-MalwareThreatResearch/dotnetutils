@@ -91,7 +91,7 @@ cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
     return bytes(new_exe_data)
 
-cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference):
+cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, int sec_index):
     """
     Finds and fixes structures related to an image's resource directory.
     :param rs_offset: the offset to the directory
@@ -111,16 +111,16 @@ cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t
         sub_entry = <IMAGE_RESOURCE_DIRECTORY_ENTRY*> (<uintptr_t>new_exe_view.buf + <uintptr_t>usable_rs_offset)
         if sub_entry.OffsetToData.OffsetToDirectory.DataIsDirectory:
             r_offset = orig_rs_offset + sub_entry.OffsetToData.OffsetToDirectory.OffsetToDirectory
-            fixup_resource_directory(r_offset, rs_rva, orig_rs_offset, old_pe, new_exe_view, va_addr, difference)
+            fixup_resource_directory(r_offset, rs_rva, orig_rs_offset, old_pe, new_exe_view, va_addr, difference, sec_index)
         else:
             r_offset = orig_rs_offset + sub_entry.OffsetToData.OffsetToData
             data_struct = <IMAGE_RESOURCE_DATA_ENTRY*>(<uintptr_t>new_exe_view.buf + <uintptr_t>r_offset)
             rva = data_struct.OffsetToData
-            fixed_rva = get_fixed_rva(old_pe, new_exe_view, rva, va_addr, difference)
+            fixed_rva = get_fixed_rva(old_pe, new_exe_view, rva, va_addr, difference, sec_index)
             data_struct.OffsetToData = <uint32_t>fixed_rva
         usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
 
-cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view, uint64_t addr, uint64_t old_userstrings_va, int userstrings_difference):
+cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view, uint64_t addr, uint64_t old_userstrings_va, int userstrings_difference, int sec_index):
     """
     Fix an RVA accounting for new data
     :param old_pe: the old pefile.PE object
@@ -149,14 +149,7 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
 
     # first get the section of the OLD VA
     passed_text = False
-    for section in old_pe.get_sections():
-        if not found_target_section and section.VirtualAddress <= old_userstrings_va < (section.VirtualAddress + section.Misc.VirtualSize):
-            target_section = section
-            found_target_section = True
-            break
-
-    if not found_target_section:
-        raise net_exceptions.InvalidVirtualAddressException
+    target_section = <IMAGE_SECTION_HEADER>old_pe.get_sections()[sec_index]
 
     for section in old_pe.get_sections():
         if section.VirtualAddress <= addr < (section.VirtualAddress + section.Misc.VirtualSize):

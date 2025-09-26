@@ -197,7 +197,7 @@ cdef class ColumnValue:
         self.col_size = col_size
         self.raw_value = raw_value
         self.formatted_value = None
-        self.changed_value = None
+        self.has_changed_value = False
         self.cached_value = None
         self.dotnetpe = dotnetpe
         self.col_size = self.internal_get_size()
@@ -250,7 +250,7 @@ cdef class ColumnValue:
             self.get_value()
         return self.original_value
 
-    cpdef void change_value(self, object new_value):
+    cpdef void change_value(self, object new_value) except *:
         """
         Change a value
         Currently only works with CodedTokens specifically,
@@ -270,12 +270,11 @@ cdef class ColumnValue:
             stream = self.dotnetpe.get_heap(table_name)
             if stream is None:
                 raise net_exceptions.InvalidArgumentsException()
-
             table_rid = stream.append_item(new_value)
             self.raw_value = table_rid
             self.cached_value = None
             self.__has_no_value = False #Reset everything for next grab.
-            if not stream.is_offset_referenced(orig_value):
+            if orig_value != 0: #Stream.del_item() already handles references checks.  It will warn for now but thats fine.
                 stream.del_item(orig_value)
         elif self.col_type.is_fixed_value():
             self.raw_value = new_value
@@ -330,8 +329,6 @@ cdef class ColumnValue:
         :return: The processed value corresponding to the column
         """
         #check if value was changed
-        if self.changed_value != None:
-            return self.changed_value
         if self.__has_no_value:
             return None
         if self.cached_value == None:
@@ -367,7 +364,7 @@ cdef class ColumnValue:
         """
         Get the new value of a ColumnValue (will return none if change_value() was never called.)
         """
-        return self.changed_value
+        return self.get_value()
 
     cpdef unsigned int get_raw_value(self) except *:
         """
@@ -380,13 +377,18 @@ cdef class ColumnValue:
         """
         Was the value changed?
         """
-        return self.changed_value != None and self.changed_value != self.original_value
+        if self.original_value is None:
+            return False
+        return self.original_value != self.cached_value
     
     cpdef void set_raw_value(self, unsigned int new_value):
         """
         Set the raw value of the column.
         """
+        self.has_changed_value = True
         self.raw_value = new_value
+        self.cached_value = None
+        self.__has_no_value = False
 
     def __len__(self):
         return self.col_size

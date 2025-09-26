@@ -25,8 +25,8 @@ cpdef bytes remove_useless_functions(bytes data) except *
 
 cdef bint has_prefix(bytes type_name)
 
-cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.TypeDefOrRef type_obj, bytes parent_method_name, bytes new_method_name,
-                                    net_utils.MethodSig parent_method_signature, list checked_types)
+cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.TypeDefOrRef type_obj, bytes parent_method_name, int new_method_name,
+                                    net_utils.MethodSig parent_method_signature, list checked_types, dict method_names)
 
 cpdef bytes cleanup_names(bytes data,
                   bint change_namespaces=*,

@@ -1,7 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 
-from cpython.ref cimport Py_INCREF, PyObject
+from cpython.ref cimport Py_INCREF, PyObject, Py_XDECREF
 from dotnetutils cimport net_tokens
 from dotnetutils cimport dotnetpefile, net_processing, net_structs, net_row_objects, net_cil_disas
 from dotnetutils import net_exceptions
@@ -357,6 +357,14 @@ cdef class TableObject:
         self.tid = tid
         self.dotnetpe = dotnetpe
 
+    def __dealloc__(self):
+        cdef PyObject * item = NULL
+        cdef size_t x = 0
+        for x in range(self.rows.size()):
+            item = self.rows.at(x)
+            Py_XDECREF(item)
+        self.rows.clear()
+
     cdef void add_row(self, net_row_objects.RowObject row):
         Py_INCREF(row)
         self.rows.push_back(<PyObject*>row)
@@ -377,7 +385,7 @@ cdef class TableObject:
         """
         cdef net_row_objects.RowObject result = None
         if index > 0 and <unsigned int>(index - 1) < self.rows.size():
-            result = <net_row_objects.RowObject>self.rows.at(index-1)
+            result = <net_row_objects.RowObject>self.rows[index - 1]
             return result
         else:
             return None  # again prevent errors from corrupted tables.
@@ -520,7 +528,7 @@ cdef class MethodDefTable(TableObject):
                 try:
                     disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
                 except Exception as e:
-                    logger.warn('Error processing method {}.  Its possible the method is encrypted.'.format(hex(method_obj.get_token())))
+                    logger.warn('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
                     disasm_obj = None
                 if disasm_obj != None:
                     for x in range(len(disasm_obj)):

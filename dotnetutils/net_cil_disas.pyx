@@ -397,7 +397,7 @@ cdef class MethodDisassembler:
                 if self.local_var_sig_tok != 0:
                     signature_entry = signature_table.get(self.local_var_sig_tok)
                     if signature_entry:
-                        blob_value = signature_entry['Signature'].get_value()
+                        blob_value = signature_entry.get_column('Signature').get_value()
                         if blob_value[0] != net_structs.CorCallingConvention.LocalSig:
                             raise net_exceptions.InvalidHeaderException
                         sig_reader = net_utils.SignatureReader(self.dotnetpe, blob_value)

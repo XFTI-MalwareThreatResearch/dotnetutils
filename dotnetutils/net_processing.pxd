@@ -11,7 +11,18 @@ cdef class HeapObject:
     cdef int offset
     cdef int size
     cdef bytes name
-    cdef bytes raw_data
+    cdef bytearray raw_data
+    cdef bint in_append_tx
+    cdef bytearray tx_data
+
+    cdef void update_bitmask(self)
+
+    cdef void begin_append_tx(self)
+
+    cdef void end_append_tx(self)
+
+    cdef int append_tx(self, bytes item) except *
+
     cdef dotnetpefile.DotNetPeFile dotnetpe
 
     cdef bytes read_item(self, int offset)
@@ -25,10 +36,6 @@ cdef class HeapObject:
     cpdef int get_offset_of_item(self, object item)
 
     cpdef bint is_offset_referenced(self, int offset)
-
-    cdef int read_compressed_int_size(self, bytes data)
-
-    cdef unsigned long read_compressed_int(self, bytes data)
 
     cdef bytes compress_integer(self, unsigned long number)
 
@@ -46,7 +53,7 @@ cdef class HeapObject:
 
     cpdef int replace_item(self, int offset, object item)
     
-    cpdef int append_item(self, object item)
+    cpdef int append_item(self, object item) except *
 
     cpdef object get_item(self, int offset)
 
@@ -54,7 +61,7 @@ cdef class HeapObject:
 
     cpdef bint has_offset(self, int offset)
 
-    cpdef int del_item(self, int offset)
+    cpdef int del_item(self, int offset) except *
 
     cpdef list get_items(self)
 
@@ -82,8 +89,6 @@ cdef class StringHeapObject(HeapObject):
 
     cpdef int replace_item(self, int offset, object item)
     
-    cpdef int append_item(self, object item)
-
     cpdef object get_item(self, int offset)
 
 cdef class BlobHeapObject(HeapObject):

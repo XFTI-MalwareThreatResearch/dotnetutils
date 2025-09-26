@@ -6,8 +6,49 @@ import binascii
 from dotnetutils import net_exceptions
 from dotnetutils cimport dotnetpefile, net_tokens, net_table_objects, net_structs, net_row_objects
 from libcpp.vector cimport vector
+from libc.stdint cimport uint64_t
 from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
 from dotnetutils cimport net_cil_disas, net_opcodes
+
+cdef unsigned long read_compressed_int(bytearray data):
+    cdef unsigned long result = data[0]
+    if (result & 0x80) == 0:
+        pass
+    elif (result & 0xC0) == 0x80:
+        result = ((result & 0x3F) << 8) | data[1]
+    else:
+        result = ((result & 0x1F) << 24) | (data[1] << 16) | (data[2] << 8) | data[3]
+    return result
+
+cdef int read_compressed_int_size(bytearray data):
+    cdef int result
+    cdef int size = data[0]
+    if (size & 0x80) == 0:
+        return 1
+    elif (size & 0xC0) == 0x80:
+        return 2
+    else:
+        return 4
+
+cdef unsigned long read_compressed_int1(bytes data):
+    cdef unsigned long result = data[0]
+    if (result & 0x80) == 0:
+        pass
+    elif (result & 0xC0) == 0x80:
+        result = ((result & 0x3F) << 8) | data[1]
+    else:
+        result = ((result & 0x1F) << 24) | (data[1] << 16) | (data[2] << 8) | data[3]
+    return result
+
+cdef int read_compressed_int_size1(bytes data):
+    cdef int result
+    cdef int size = data[0]
+    if (size & 0x80) == 0:
+        return 1
+    elif (size & 0xC0) == 0x80:
+        return 2
+    else:
+        return 4
 
 cdef class HeapObject:
     def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
@@ -15,11 +56,27 @@ cdef class HeapObject:
         self.size = size
         self.name = name
         self.dotnetpe = dotnetpe
+        self.tx_data = bytearray()
+        self.in_append_tx = False
         if offset == -1 or name is None or size == -1:
             self.offset = 0
             self.name = None
             self.size = size
         self.read()
+
+    cdef void update_bitmask(self):
+        raise net_exceptions.FeatureNotImplementedException()
+
+    cdef void begin_append_tx(self):
+        if self.in_append_tx:
+            raise net_exceptions.OperationNotSupportedException()
+        self.in_append_tx = True
+
+    cdef void end_append_tx(self):
+        raise net_exceptions.FeatureNotImplementedException()
+
+    cdef int append_tx(self, bytes item):
+        raise net_exceptions.FeatureNotImplementedException()
 
     cdef void update_offset(self, int offset):
         self.offset = offset
@@ -33,26 +90,6 @@ cdef class HeapObject:
 
     cpdef bint is_offset_referenced(self, int offset):
         return False
-
-    cdef unsigned long read_compressed_int(self, bytes data):
-        cdef unsigned long result = data[0]
-        if (result & 0x80) == 0:
-            pass
-        elif (result & 0xC0) == 0x80:
-            result = ((result & 0x3F) << 8) | data[1]
-        else:
-            result = ((result & 0x1F) << 24) | (data[1] << 16) | (data[2] << 8) | data[3]
-        return result
-
-    cdef int read_compressed_int_size(self, bytes data):
-        cdef int result
-        cdef int size = data[0]
-        if (size & 0x80) == 0:
-            return 1
-        elif (size & 0xC0) == 0x80:
-            return 2
-        else:
-            return 4
 
     cdef bytes compress_integer(self, unsigned long number):
         cdef int b0 = 0
@@ -80,10 +117,10 @@ cdef class HeapObject:
         return self.dotnetpe
 
     cpdef bytes to_bytes(self):
-        return self.raw_data
+        return bytes(self.raw_data)
     
     cdef void read(self):
-        self.raw_data = self.get_dotnetpe().get_exe_data()[self.offset:self.offset+self.size]
+        self.raw_data = bytearray(self.get_dotnetpe().get_exe_data()[self.offset:self.offset+self.size])
 
     cpdef list get_items(self):
         raise Exception() #TODO
@@ -103,7 +140,7 @@ cdef class HeapObject:
     cpdef int replace_item(self, int offset, object item):
         raise net_exceptions.FeatureNotImplementedException()
     
-    cpdef int append_item(self, object item):
+    cpdef int append_item(self, object item) except *:
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef object get_item(self, int offset):
@@ -113,13 +150,13 @@ cdef class HeapObject:
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef bint has_offset(self, int offset):
-        return 0 < offset <= self.get_size()
+        return 0 < offset < self.get_size()
 
     cpdef bint has_item(self, object item):
         cdef Py_ssize_t offset = self.raw_data.find(<bytes>item)
         return offset != -1
 
-    cpdef int del_item(self, int offset):
+    cpdef int del_item(self, int offset) except *:
         raise net_exceptions.FeatureNotImplementedException()
 
     def __len__(self):
@@ -131,19 +168,18 @@ cdef class StringHeapObject(HeapObject):
         self.metadata_references = dict()
         self.__build_metadata_references()
 
-    cpdef bint has_offset(self, int offset):
-        return offset > 0 and offset < self.get_size()
-
     cdef void read(self):
         cdef int index = 0
         self.amt_trailing_zeroes = 0
-        self.raw_data = self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size]
+        self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
         index = <int>len(self.raw_data) - 1
         while self.raw_data[index] == 0:
             self.amt_trailing_zeroes += 1
             index -= 1
 
         self.amt_trailing_zeroes -= 1
+        if self.amt_trailing_zeroes < 0:
+            self.amt_trailing_zeroes = 0
 
     cdef void __build_metadata_references(self):
         cdef str table_name = None
@@ -157,6 +193,51 @@ cdef class StringHeapObject(HeapObject):
                         self.metadata_references[table_name] = list()
                     self.metadata_references[table_name].append(col_name)
 
+    cdef void end_append_tx(self):
+        cdef int x = 0
+        cdef int new_offset = 0
+        cdef uint64_t va_addr = 0
+        if not self.in_append_tx:
+            raise net_exceptions.OperationNotSupportedException()
+        self.in_append_tx = False
+        if len(self.tx_data) == 0:
+            return
+        if self.amt_trailing_zeroes > 0:
+            self.raw_data = self.raw_data[:-1 * self.amt_trailing_zeroes]
+        new_offset = <int>len(self.raw_data)
+        self.raw_data.extend(self.tx_data)
+        for x in range(self.amt_trailing_zeroes):
+            self.raw_data.append(0)
+        self.update_bitmask()
+        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
+        self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(self.tx_data), self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+        self.tx_data = bytearray()
+
+    cdef void update_bitmask(self):
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS)
+        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 4)
+        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 2)
+
+    cdef int append_tx(self, bytes item) except *:
+        cdef int new_offset = 0
+        cdef bytearray new_item = bytearray(item)
+        if not self.in_append_tx:
+            raise net_exceptions.OperationNotSupportedException()
+        if len(item) > 0 and item[-1] != 0:
+            new_item.append(0)
+        new_offset = <int>self.tx_data.find(new_item)
+        if new_offset <= 0:
+            new_offset = <int>self.raw_data.find(new_item)
+            if new_offset <= 0:
+                new_offset = self.get_size() + <int>len(self.tx_data) - self.amt_trailing_zeroes
+                self.tx_data.extend(new_item)
+        else:
+            new_offset = self.get_size() + new_offset - self.amt_trailing_zeroes
+        return new_offset
+
     cpdef bint is_offset_referenced(self, int offset):
         cdef str table_name = None
         cdef list col_names = None
@@ -166,6 +247,8 @@ cdef class StringHeapObject(HeapObject):
         cdef net_row_objects.ColumnValue col_val = None
         cdef int start_offset = offset
         cdef int end_offset = 0
+        if self.in_append_tx:
+            raise Exception()
         if offset > 0:
             if self.raw_data[offset-1] != 0:
                 while start_offset > 0 and self.raw_data[start_offset] != 0:
@@ -198,11 +281,6 @@ cdef class StringHeapObject(HeapObject):
         cdef net_row_objects.ColumnValue col_val = None
         cdef net_table_objects.TableObject table_object = None
         cdef net_row_objects.RowObject row_object = None
-        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
-        cdef int heap_offset_size = 0
-        #If new_value is -1, treat it as a removal.
-        #First update the listings in the stream itself
-        #self.raw_data should already be taken care of by the caller.
         if difference == 0:
             return
         #Next update the tokens within the metadata tables
@@ -218,11 +296,7 @@ cdef class StringHeapObject(HeapObject):
                         warnings.warn('Attempting to delete a #Strings object that is still in use')
                     if col_val.get_raw_value() > <unsigned int>old_value:
                         col_val.set_raw_value(col_val.get_raw_value() + difference)
-        heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS)
-        if heap_offset_size == 2 and len(self.raw_data) > 65535:
-            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 4)
-        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
-            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 2)
+        self.update_bitmask()
         
     def __len__(self):
         return len(self.raw_data)
@@ -235,7 +309,7 @@ cdef class StringHeapObject(HeapObject):
         cdef int difference = 0
         cdef bytes bitem = None
         cdef int off = 0
-        if b[-1] != 0:
+        if len(b) and b[-1] != 0:
             b += b'\x00'
         if not self.has_offset(offset):
             raise net_exceptions.InvalidArgumentsException()
@@ -249,11 +323,11 @@ cdef class StringHeapObject(HeapObject):
         self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
         return difference
 
-    cpdef int append_item(self, object item):
+    cpdef int append_item(self, object item) except *:
         cdef bytes b = <bytes> item
         cdef int new_offset = <int>len(self.raw_data)
         cdef int potential = 0
-        if b[-1] != 0:
+        if len(b) > 0 and b[-1] != 0:
             b += b'\x00'
         potential = self.get_offset_of_item(b)
         if potential == -1:
@@ -266,39 +340,48 @@ cdef class StringHeapObject(HeapObject):
             if self.amt_trailing_zeroes > 0:
                 self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(b), self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            self.update_bitmask()
             return new_offset
         else:
             return potential
 
-    cdef bytes read_item(self, int offset):
-        cdef Py_ssize_t end_index = self.raw_data.find(b'\x00', offset)
-        if end_index == -1:
-            return None
-        return self.raw_data[offset:end_index+1]
+    cpdef bint has_offset(self, int offset):
+        return 0 < offset < self.get_size()
 
-    cpdef object get_item(self, int offset):
-        cdef bytes result = None
-        cdef int index = offset
+    cdef bytes read_item(self, int offset):
+        cdef Py_ssize_t end_index = 0
+        cdef int tx_offset = 0
         if not self.has_offset(offset):
             return None
+        end_index = self.raw_data.find(b'\x00', offset)
+        if end_index == -1:
+            return None
+        return bytes(self.raw_data[offset:end_index+1])
+
+    cpdef object get_item(self, int offset):
+        cdef bytes item = self.read_item(offset)
+        if item is None:
+            return item
         #we have a case here where two strings are concated together.
         #Just read the string as bytes from the raw data for now.
-        return self.read_item(offset)[:-1] #Read as raw bytes then strip zero terminator
+        return item[:-1] #Read as raw bytes then strip zero terminator
 
     cpdef list get_items(self):
         cdef list result = list()
         cdef bytes item = None
-        cdef int index = 0
+        cdef int index = 1
+        if len(self.raw_data) == 0:
+            return result
         while index < self.get_size():
             item = self.read_item(index)
             index += <int>len(item)
             result.append(item[:-1])
         return result
 
-    cpdef int del_item(self, int offset):
+    cpdef int del_item(self, int offset) except *:
         if not self.has_offset(offset):
             raise net_exceptions.InvalidArgumentsException()
-        cdef bytes item = self.get_item(offset)
+        cdef bytes item = self.read_item(offset)
         cdef int difference = -1 * <int>len(item)
         cdef int off = 0
         if not self.is_offset_referenced(offset):
@@ -307,7 +390,7 @@ cdef class StringHeapObject(HeapObject):
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return difference
         else:
-            warnings.warn('Attempting to delete a string item that is currently referenced')
+            warnings.warn('Attempting to delete a string item that is currently referenced.  Ignoring.')
             return 0
 
 cdef class BlobHeapObject(HeapObject):
@@ -317,7 +400,15 @@ cdef class BlobHeapObject(HeapObject):
         self.__build_metadata_references()
 
     cdef void read(self):
-        self.raw_data = self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size]
+        self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
+
+    cdef void update_bitmask(self):
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB)
+        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 4)
+        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 2)
 
     cdef void __build_metadata_references(self):
         cdef str table_name = None
@@ -362,7 +453,6 @@ cdef class BlobHeapObject(HeapObject):
         cdef net_row_objects.ColumnValue col_val = None
         cdef net_table_objects.TableObject table_object = None
         cdef net_row_objects.RowObject row_object = None
-        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
         #If new_value is -1, treat it as a removal.
         #First update the listings in the stream itself
         #self.raw_data should already be taken care of by the caller.
@@ -379,11 +469,7 @@ cdef class BlobHeapObject(HeapObject):
                         warnings.warn('Attempting to delete a blob value that is still in use.')
                     if col_val.get_raw_value() > <unsigned int>old_value:
                         col_val.set_raw_value(col_val.get_raw_value() + difference)
-        heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB)
-        if heap_offset_size == 2 and len(self.raw_data) > 65535:
-            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 4)
-        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
-            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 2)
+        self.update_bitmask()
         
     def __len__(self):
         return len(self.raw_data)
@@ -391,11 +477,11 @@ cdef class BlobHeapObject(HeapObject):
     cdef bytes read_item(self, int offset):
         if not self.has_offset(offset):
             return None
-        cdef int cpres_size = self.read_compressed_int(self.raw_data[offset:])
-        cdef int cpres_len = self.read_compressed_int_size(self.raw_data[offset:])
+        cdef int cpres_size = read_compressed_int(self.raw_data[offset:])
+        cdef int cpres_len = read_compressed_int_size(self.raw_data[offset:])
         if not self.has_offset(cpres_size + offset + cpres_len):
             return None
-        return self.raw_data[offset:offset+cpres_len+cpres_size]
+        return bytes(self.raw_data[offset:offset+cpres_len+cpres_size])
 
     cpdef int replace_item(self, int offset, object item):
         if not self.has_offset(offset):
@@ -415,12 +501,13 @@ cdef class BlobHeapObject(HeapObject):
         cdef Py_ssize_t index = self.raw_data.find(self.compress_integer(<unsigned long>len(item)) + item)
         return index != -1
 
-    cpdef int append_item(self, object item):
+    cpdef int append_item(self, object item) except *:
         cdef int offset = <int>len(self.raw_data)
         cdef bytes final = self.compress_integer(<unsigned long>len(item)) + <bytes>item
         cdef int potential = self.get_offset_of_item(final)
         if potential == -1:
             self.raw_data += final
+            self.update_bitmask()
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(final), self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return offset
         else:
@@ -429,7 +516,7 @@ cdef class BlobHeapObject(HeapObject):
     cpdef object get_item(self, int offset):
         cdef bytes result = self.read_item(offset)
         if result is not None:
-            return result[self.read_compressed_int_size(result):]
+            return result[read_compressed_int_size1(result):]
         return result
     
     cpdef int del_item(self, int offset):
@@ -468,6 +555,14 @@ cdef class GuidHeapObject(HeapObject):
                         self.metadata_references[table_name] = list()
                     self.metadata_references[table_name].append(col_name)
 
+    cdef void update_bitmask(self):
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID)
+        if heap_offset_size == 2 and len(self.raw_data) > 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 4)
+        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
+            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 2)
+
     cpdef bint is_offset_referenced(self, int offset):
         cdef str table_name = None
         cdef list col_names = None
@@ -499,7 +594,6 @@ cdef class GuidHeapObject(HeapObject):
         cdef net_row_objects.ColumnValue col_val = None
         cdef net_table_objects.TableObject table_object = None
         cdef net_row_objects.RowObject row_object = None
-        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
         #If new_value is -1, treat it as a removal.
         #First update the listings in the stream itself
         #self.raw_data should already be taken care of by the caller.
@@ -515,26 +609,21 @@ cdef class GuidHeapObject(HeapObject):
                         warnings.warn('Attempting to delete a guid value that is still in use.')
                     if col_val.get_raw_value() > <unsigned int>old_value:
                         col_val.set_raw_value(col_val.get_raw_value() + difference)
-
-        heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID)
-        if heap_offset_size == 2 and len(self.raw_data) > 65535:
-            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 4)
-        elif heap_offset_size == 4 and len(self.raw_data) <= 65535:
-            heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 2)
+        self.update_bitmask()
 
     cdef void read(self):
-        self.raw_data = self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size]
+        self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
 
     cdef bytes read_item(self, int offset):
         if not self.has_offset(offset) or not self.has_offset(offset + 16):
             return None
-        return self.raw_data[offset:offset+16]
+        return bytes(self.raw_data[offset:offset+16])
 
     cpdef object get_item(self, int offset):
         return self.read_item(offset)
 
-    cpdef int del_item(self, int offset):
-        cdef int difference = 16
+    cpdef int del_item(self, int offset) except *:
+        cdef int difference = -16
         cdef int off = 0
         if not self.has_offset(offset):
             raise net_exceptions.InvalidArgumentsException()
@@ -555,13 +644,14 @@ cdef class GuidHeapObject(HeapObject):
         self.raw_data = self.raw_data[:offset] + item + self.raw_data[offset + 16:]
         return 0
 
-    cpdef int append_item(self, object item):
+    cpdef int append_item(self, object item) except *:
         if len(item) != 16:
             raise net_exceptions.InvalidArgumentsException()
         cdef int offset = <int>len(self.raw_data)
         cdef int potential = self.get_offset_of_item(item)
         if potential == -1:
             self.raw_data += item
+            self.update_bitmask()
             self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(item), self.get_dotnetpe(), True, True, b'#GUID', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
             return offset
         return potential
@@ -610,7 +700,7 @@ cdef class UserStringsHeapObject(HeapObject):
 
     cdef void read(self):
         self.amt_trailing_zeroes = 0 #TODO: well have to see if any binaries actually exploit this or have checks but in general make sure streams arent less because of padding issues.
-        self.raw_data = self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size]
+        self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
 
     cdef void update(self, int old_value, int new_value, int difference):
         cdef net_table_objects.MethodDefTable table_object = self.get_dotnetpe().get_metadata_table('MethodDef')
@@ -677,20 +767,20 @@ cdef class UserStringsHeapObject(HeapObject):
     cdef bytes read_item(self, int offset):
         if not self.has_offset(offset):
             return None
-        cdef int cpres_size = self.read_compressed_int(self.raw_data[offset:])
-        cdef int cpres_len = self.read_compressed_int_size(self.raw_data[offset:])
+        cdef int cpres_size = read_compressed_int(self.raw_data[offset:])
+        cdef int cpres_len = read_compressed_int_size(self.raw_data[offset:])
         if not self.has_offset(offset + cpres_size + cpres_len):
             return None
-        return self.raw_data[offset:offset+cpres_size+cpres_len]
+        return bytes(self.raw_data[offset:offset+cpres_size+cpres_len])
 
     cpdef object get_item(self, int offset):
         cdef bytes item = None
         item = self.read_item(offset)
         if item is None:
             return None
-        return item[self.read_compressed_int_size(item):][:-1] #strip flag mark.
+        return item[read_compressed_int_size1(item):][:-1] #strip flag mark.
 
-    cpdef int del_item(self, int offset):
+    cpdef int del_item(self, int offset) except *:
         if not self.has_offset(offset):
             return 0
         cdef bytes old_item = self.read_item(offset)
@@ -726,7 +816,7 @@ cdef class UserStringsHeapObject(HeapObject):
         self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
         return difference
 
-    cpdef int append_item(self, object item):
+    cpdef int append_item(self, object item) except *:
         cdef bytes b = <bytes>item
         cdef bytes final = None
         cdef int new_offset = <int>len(self.raw_data)
@@ -768,10 +858,6 @@ cdef class UserStringsHeapObject(HeapObject):
                         if item is not None:
                             result.append(item)
         return result
-                        
-
-            
-        
 
 cdef class MetadataTableHeapObject(HeapObject):
     
@@ -812,7 +898,7 @@ cdef class MetadataTableHeapObject(HeapObject):
         self.end_offset = 0
         tables_curr_offset = self.header.end_offset
         table_start_offset = tables_curr_offset
-        self.raw_data = file_data[self.offset:self.offset+self.size]
+        self.raw_data = bytearray(file_data[self.offset:self.offset+self.size])
         for table_id, table_amt_rows in self.header.table_amt_rows:
             if table_id not in net_table_objects.NET_METADATA_TABLE_HANDLERS:
                 raise net_exceptions.FeatureNotImplementedException('Unknown table {}'.format(table_id))
@@ -884,13 +970,13 @@ cdef class MetadataTableHeapObject(HeapObject):
     cpdef object get_item(self, int offset):
         raise Exception() #Not allowed use get_table()
 
-    cpdef int del_item(self, int offset):
+    cpdef int del_item(self, int offset) except *:
         raise Exception() #Not allowed
 
     cpdef int replace_item(self, int offset, object item):
         raise Exception() #Not allowed
 
-    cpdef int append_item(self, object item):
+    cpdef int append_item(self, object item) except *:
         raise Exception() #Not allowed
 
     cpdef net_table_objects.TableObject get_table(self, str name):
