@@ -76,6 +76,9 @@ cdef class ClassSig(ClassOrValueTypeSig):
 
     def __str__(self):
         return 'ClassSig: next={}, type_def_or_ref={}'.format(self.get_next(), self.get_type())
+    
+    def __hash__(self):
+        return hash(self.get_type())
 
 
 cdef class GenericSig(LeafSig):
