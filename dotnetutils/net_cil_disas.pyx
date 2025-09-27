@@ -328,7 +328,7 @@ cdef class MethodDisassembler:
         cdef int token
         instr_args = instr.get_arguments()
         if len(instr_args) != 0:
-            if instr.get_name() != 'switch':
+            if instr.get_opcode() != net_opcodes.Opcodes.Switch:
                 token = int.from_bytes(instr_args, 'little')
                 if instr.has_token_argument():
                     try:

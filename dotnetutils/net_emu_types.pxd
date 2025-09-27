@@ -2339,8 +2339,8 @@ cdef struct EmuFuncMapping:
     const char * name
     static_func_type func_ptr
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[16]
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[32]
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[17]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[37]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 
@@ -2373,5 +2373,7 @@ cdef DotNetObject New_MulticastDelegate(net_emulator.DotNetEmulator emulator_obj
 
 cdef DotNetObject New_BinaryReader(net_emulator.DotNetEmulator emulator_obj)
 
-cdef const int AMT_OF_STATIC_FUNCTIONS = 32
-cdef const int AMT_OF_TYPES = 16
+cdef DotNetObject New_StackFrame(net_emulator.DotNetEmulator emulator_obj)
+
+cdef const int AMT_OF_STATIC_FUNCTIONS = 37
+cdef const int AMT_OF_TYPES = 17

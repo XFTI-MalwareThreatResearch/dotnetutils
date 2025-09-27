@@ -496,7 +496,7 @@ cdef class BlobHeapObject(HeapObject):
             return None
         cdef int cpres_size = read_compressed_int(self.raw_data[offset:])
         cdef int cpres_len = read_compressed_int_size(self.raw_data[offset:])
-        if not self.has_offset(cpres_size + offset + cpres_len):
+        if not self.has_offset(cpres_size + offset + cpres_len - 1):
             return None
         return bytes(self.raw_data[offset:offset+cpres_len+cpres_size])
 
@@ -642,7 +642,7 @@ cdef class GuidHeapObject(HeapObject):
         self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
 
     cdef bytes read_item(self, int offset):
-        if not self.has_offset(offset) or not self.has_offset(offset + 16):
+        if not self.has_offset(offset) or not self.has_offset(offset + 15):
             return None
         return bytes(self.raw_data[offset:offset+16])
 
@@ -797,13 +797,12 @@ cdef class UserStringsHeapObject(HeapObject):
             return None
         cdef int cpres_size = read_compressed_int(self.raw_data[offset:])
         cdef int cpres_len = read_compressed_int_size(self.raw_data[offset:])
-        if not self.has_offset(offset + cpres_size + cpres_len):
+        if not self.has_offset(offset + cpres_size + cpres_len - 1):
             return None
         return bytes(self.raw_data[offset:offset+cpres_size+cpres_len])
 
     cpdef object get_item(self, int offset):
-        cdef bytes item = None
-        item = self.read_item(offset)
+        cdef bytes item  = self.read_item(offset)
         if item is None:
             return None
         return item[read_compressed_int_size1(item):][:-1] #strip flag mark.

@@ -828,10 +828,7 @@ cdef bint handle_conv_r8_instruction(DotNetEmulator emu):
 
 cdef bint handle_conv_r_un_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetNumber value1 = emu.stack.pop()
-    if emu.is_64bit():
-        emu.stack.append(value1.convert_unsigned().cast(net_structs.CorElementType.ELEMENT_TYPE_R8))
-    else:
-        emu.stack.append(value1.convert_unsigned().cast(net_structs.CorElementType.ELEMENT_TYPE_R4))
+    emu.stack.append(value1.convert_unsigned().cast(net_structs.CorElementType.ELEMENT_TYPE_R8))
     return False
 
 cdef bint handle_conv_u_instruction(DotNetEmulator emu):

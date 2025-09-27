@@ -285,6 +285,12 @@ cdef class DotNetObject:
         else:
             return self > other
 
+    def __eq__(self, other):
+        cdef DotNetObject dobj = other
+        if self.is_null() and dobj.is_null():
+            return True
+        return object.__eq__(self, other)
+
     def __str__(self):
         cdef str str_val
         cdef int idno
@@ -783,6 +789,8 @@ cdef class DotNetNumber(DotNetObject):
             return DotNetString(self.get_emulator_obj(), str(py_obj).encode('utf-16le'), 'utf-16le')
     
     def __str__(self):
+        if self.is_float():
+            return str(self.as_python_obj())
         return hex(self.as_python_obj())
 
     def __repr__(self):
@@ -4418,12 +4426,19 @@ cdef class DotNetUInt64(DotNetNumber):
         cdef unsigned int val_two = 0
         cdef uint64_t val_three = 0
         cdef uint64_t val_four = 0
+        cdef int64_t val_five = 0
         if self._ptr == NULL:
             raise Exception('error with number ptr')
         if other_type == CorElementType.ELEMENT_TYPE_U8:
             val_three = self.as_ulong()
             val_four = number.as_ulong()
             val_three |= val_four
+            result = DotNetUInt64(self.get_emulator_obj(), None)
+            result.from_ulong(val_three)
+        elif other_type == CorElementType.ELEMENT_TYPE_I8:
+            val_three = self.as_ulong()
+            val_five = number.as_long()
+            val_three |= val_five
             result = DotNetUInt64(self.get_emulator_obj(), None)
             result.from_ulong(val_three)
         elif other_type == CorElementType.ELEMENT_TYPE_U:
@@ -4985,6 +5000,12 @@ cdef class DotNetBoolean(DotNetNumber):
         if new_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
             return self
         raise Exception()
+
+    cdef DotNetNumber notop(self):
+        cdef DotNetBoolean result = DotNetBoolean(self.get_emulator_obj(), None)
+        cdef bint r = not self.as_bool()
+        result.from_bool(r)
+        return result
 
 cdef class DotNetVoid(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
@@ -5697,7 +5718,7 @@ cdef class DotNetAssembly(DotNetObject):
     cdef DotNetObject op_Inequality(net_emulator.EmulatorAppDomain app_domain, list args):
         cdef DotNetAssembly param1 = <DotNetAssembly>args[0]
         cdef DotNetObject param2 = <DotNetObject>args[1]
-        return not param1.Equals(param2)
+        return (<DotNetBoolean>param1.Equals([param2])).notop()
 
     @staticmethod
     cdef DotNetObject Load(net_emulator.EmulatorAppDomain app_domain, list args):
@@ -6454,20 +6475,20 @@ cdef class DotNetBitConverter(DotNetObject):
     @staticmethod
     cdef DotNetObject GetBytes(net_emulator.EmulatorAppDomain app_domain, list args):
         cdef DotNetNumber number = <DotNetNumber> args[0]
-
-        cdef DotNetArray dnr = DotNetArray(app_domain.get_emulator_obj(), number.__amt_bytes,
-                          app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'),
-                          initialize=False)
         cdef bytes b_data = number.as_bytes()
         cdef int x = 0
         cdef unsigned char uc = 0
         cdef DotNetUInt8 num = None
+        cdef list res_arr = list()
+        cdef DotNetArray dnr = DotNetArray(app_domain.get_emulator_obj(), <int>len(b_data),
+                          app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'),
+                          initialize=False)
         for x in range(len(b_data)):
             uc = b_data[x]
             num = DotNetUInt8(app_domain.get_emulator_obj(), None)
-            num.init_from_ptr(<unsigned char *>&uc, sizeof(uc))
-            b_data[x] = num
-        dnr.set_internal_array(b_data)
+            num.from_uchar(uc)
+            res_arr.append(num)
+        dnr.set_internal_array(res_arr)
         return dnr
 
 cdef void blockcopy_helper(DotNetArray src, DotNetInt32 srcOffset, DotNetArray dst, DotNetInt32 dstOffset, DotNetInt32 count) except *:
@@ -6822,7 +6843,7 @@ cdef class DotNetString(DotNetObject):
         return result
 
     def __len__(self):
-        return self.get_Length([])
+        return (<DotNetNumber>self.get_Length([])).as_int()
 
     cdef DotNetObject get_Chars(self, list args):
         cdef DotNetInt32 index = <DotNetInt32>args[0]
@@ -9322,10 +9343,13 @@ cdef DotNetObject New_Object(net_emulator.DotNetEmulator emulator_obj):
     obj.initialize_type(emulator_obj.get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Object'))
     return obj
 
+cdef DotNetObject New_StackFrame(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetStackFrame(emulator_obj)
+
 cdef DotNetObject New_BinaryReader(net_emulator.DotNetEmulator emulator_obj):
     return DotNetBinaryReader(emulator_obj)
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[16]
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[17]
 NET_EMULATE_TYPE_REGISTRATIONS[0].name = 'System.Collections.Concurrent.ConcurrentDictionary'
 NET_EMULATE_TYPE_REGISTRATIONS[0].func_ptr = <newobj_func_type>&New_ConcurrentDictionary
 NET_EMULATE_TYPE_REGISTRATIONS[1].name = 'System.Collections.Generic.Dictionary'
@@ -9358,8 +9382,10 @@ NET_EMULATE_TYPE_REGISTRATIONS[14].name = 'System.Collections.Hashtable' #hashta
 NET_EMULATE_TYPE_REGISTRATIONS[14].func_ptr = <newobj_func_type>&New_Dictionary
 NET_EMULATE_TYPE_REGISTRATIONS[15].name = 'System.IO.BinaryReader'
 NET_EMULATE_TYPE_REGISTRATIONS[15].func_ptr = <newobj_func_type>&New_BinaryReader
+NET_EMULATE_TYPE_REGISTRATIONS[16].name = 'System.Diagnostics.StackFrame'
+NET_EMULATE_TYPE_REGISTRATIONS[16].func_ptr = <newobj_func_type>&New_StackFrame
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[32]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[37]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -9424,4 +9450,13 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30].name = 'System.IntPtr.Zero'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[30].func_ptr = <static_func_type>&DotNetIntPtr.Zero
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[31].name = 'System.Security.Cryptography.RSACryptoServiceProvider.set_UseMachineKeyStore'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[31].func_ptr = <static_func_type>&DotNetRSACryptoServiceProvider.set_UseMachineKeyStore
-
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[32].name = 'System.Reflection.MethodInfo.op_Equality'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[32].func_ptr = <static_func_type>&DotNetMethodBase.op_Equality
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[33].name = 'System.Reflection.MethodInfo.op_Inequality'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[33].func_ptr = <static_func_type>&DotNetMethodBase.op_Inequality
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[34].name = 'System.Reflection.Assembly.op_Inequality'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[34].func_ptr = <static_func_type>&DotNetAssembly.op_Inequality
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[35].name = 'System.Array.Copy'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[35].func_ptr = <static_func_type>&DotNetArray.Copy
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[36].name = 'System.BitConverter.GetBytes'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[36].func_ptr = <static_func_type>&DotNetBitConverter.GetBytes
