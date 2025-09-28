@@ -1045,8 +1045,7 @@ cdef class DotNetAppDomain(DotNetObject):
 
     cdef DotNetObject add_ResourceResolve(self, list args)
 
-"""
-cdef class DotNetResolveEventHandler(DotNetDelegate):
+cdef class DotNetResolveEventHandler(DotNetObject):
     cdef DotNetRuntimeMethodHandle __method_object
     
     cpdef net_row_objects.MethodDefOrRef get_method_obj(self)
@@ -1058,7 +1057,6 @@ cdef class DotNetResolveEventHandler(DotNetDelegate):
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
-"""
 
 cdef class DotNetEncoding(DotNetObject):
     cdef str name
@@ -2183,11 +2181,7 @@ cdef class DotNetDebugger(DotNetObject):
     @staticmethod
     cdef DotNetObject get_IsAttached(net_emulator.EmulatorAppDomain app_domain, list args)
 
-cdef class DotNetComparison(DotNetObject):
-    cdef object __object
-    cdef net_row_objects.RowObject __method_object
 
-    cpdef get_method_object(self)
 
 """
 cdef class DotNetGC(DotNetObject):
@@ -2207,12 +2201,19 @@ cdef class DotNetEnvironment(DotNetObject):
     
     @staticmethod
     cdef DotNetObject GetFolderPath(net_emulator.EmulatorAppDomain app_domain, list args)
-"""
 
 cdef class DotNetResolveEventArgs(DotNetObject):
     cdef DotNetString __name
 
     cdef DotNetObject get_Name(self, list args)
+
+cdef class DotNetComparison(DotNetObject):
+    cdef DotNetObject __object
+    cdef DotNetRuntimeMethodHandle __method_object
+
+    cpdef net_row_objects.MethodDef get_method_object(self)
+
+"""
 
 cdef class DotNetDeflateStream(DotNetObject):
     cdef bint __decompress
@@ -2339,8 +2340,12 @@ cdef struct EmuFuncMapping:
     const char * name
     static_func_type func_ptr
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[17]
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[37]
+
+cdef const int AMT_OF_STATIC_FUNCTIONS = 38
+cdef const int AMT_OF_TYPES = 19
+
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[19]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 
@@ -2375,5 +2380,6 @@ cdef DotNetObject New_BinaryReader(net_emulator.DotNetEmulator emulator_obj)
 
 cdef DotNetObject New_StackFrame(net_emulator.DotNetEmulator emulator_obj)
 
-cdef const int AMT_OF_STATIC_FUNCTIONS = 37
-cdef const int AMT_OF_TYPES = 17
+cdef DotNetObject New_ResolveEventHandler(net_emulator.DotNetEmulator emulator_obj)
+
+cdef DotNetObject New_Comparison(net_emulator.DotNetEmulator emulator_obj)

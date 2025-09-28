@@ -282,7 +282,7 @@ cdef class MethodDefOrRef(RowObject):
 
     cpdef bint is_static_method(self)
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self)
+    cpdef net_utils.CallingConventionSig get_method_signature(self)
 
     cpdef bint is_entrypoint(self)
 
@@ -340,7 +340,7 @@ cdef class MethodDef(MethodDefOrRef):
 
     cpdef bint is_static_method(self)
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self)
+    cpdef net_utils.CallingConventionSig get_method_signature(self)
 
     cpdef bint is_entrypoint(self)
 
@@ -363,7 +363,7 @@ cdef class MethodDef(MethodDefOrRef):
 cdef class MemberRef(MethodDefOrRef):
     cdef bytes __full_name
     cdef TypeDefOrRef __parent_type
-    cdef net_utils.MethodBaseSig __sig_obj
+    cdef net_utils.CallingConventionSig __sig_obj
     cdef bint __method_has_this
     cdef bint __method_has_this_called
     cdef bint __is_field
@@ -396,7 +396,7 @@ cdef class MemberRef(MethodDefOrRef):
 
     cpdef int get_amt_params(self)
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self)
+    cpdef net_utils.CallingConventionSig get_method_signature(self)
 
     cpdef list get_xrefs(self)
 
@@ -416,7 +416,7 @@ cdef class MethodSpec(MethodDefOrRef):
     
     cpdef bytes get_full_name(self)
 
-    cpdef net_utils.MethodSig get_sig_obj(self)
+    cpdef net_utils.CallingConventionSig get_sig_obj(self)
 
     cpdef list get_xrefs(self)
     

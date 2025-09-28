@@ -5289,8 +5289,7 @@ cdef class DotNetDictionary(DotNetObject):
   
         if param1 in self.__internal_dict:
             value1 = self.__internal_dict[param1]
-            param2.array = [value1]
-            param2.index = 0
+            param2.set_obj_ref(value1)
             result = True
         bool_obj.from_bool(result)
         return bool_obj
@@ -5372,6 +5371,7 @@ cdef class DotNetStream(DotNetObject):
         self._position = 0
         self.add_function(b'Read', <emu_func_type>self.Read)
         self.add_function(b'set_Position', <emu_func_type>self.set_Position)
+        self.add_function(b'get_Position', <emu_func_type>self.get_Position)
         self.add_function(b'ReadByte', <emu_func_type>self.ReadByte)
         self.add_function(b'get_Length', <emu_func_type>self.get_Length)
         self.add_function(b'Write', <emu_func_type>self.Write)
@@ -5809,7 +5809,7 @@ cdef class DotNetList(DotNetObject):
         return None
 
     cdef DotNetObject Sort(self, list args):
-        """cdef DotNetComparison comparison = <DotNetComparison> args[0]
+        cdef DotNetComparison comparison = <DotNetComparison> args[0]
         cdef net_row_objects.MethodDefOrRef compare_method
         cdef net_row_objects.TypeDefOrRef parent_type
         cdef net_row_objects.MethodDef method
@@ -5845,8 +5845,8 @@ cdef class DotNetList(DotNetObject):
             result = emu_obj.get_stack().pop()
             return result
 
-        self.internal.sort(key=functools.cmp_to_key(python_sort_runner))"""
-        raise Exception()
+        self.internal.sort(key=functools.cmp_to_key(python_sort_runner))
+        return None
 
     def __getitem__(self, item):
         return self.internal[item]
@@ -6515,7 +6515,6 @@ cdef class DotNetAppDomain(DotNetObject):
         self.add_function(b'get_CurrentDomain', <emu_func_type>self.get_CurrentDomain)
         self.add_function(b'add_AssemblyResolve', <emu_func_type>self.add_AssemblyResolve)
         self.add_function(b'add_ResourceResolve', <emu_func_type>self.add_ResourceResolve)
-
     
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.AppDomain' or DotNetObject.isinst(self, tdef)
@@ -6533,24 +6532,22 @@ cdef class DotNetAppDomain(DotNetObject):
         return DotNetAppDomain(app_domain.get_emulator_obj())
 
     cdef DotNetObject add_AssemblyResolve(self, list args):
-        """cdef DotNetResolveEventHandler obj = <DotNetResolveEventHandler>args[0]
+        cdef DotNetResolveEventHandler obj = <DotNetResolveEventHandler>args[0]
         self.get_emulator_obj().get_appdomain().add_assembly_handler(obj.get_method_obj())
-        return None"""
-        raise Exception()
+        return None
 
     cdef DotNetObject add_ResourceResolve(self, list args):
-        """cdef DotNetResolveEventHandler obj = <DotNetResolveEventHandler>args[0]
+        cdef DotNetResolveEventHandler obj = <DotNetResolveEventHandler>args[0]
         self.get_emulator_obj().get_appdomain().add_resource_handler(obj.get_method_obj())
-        return None"""
-        raise Exception()
+        return None
 
-"""cdef class DotNetResolveEventHandler(DotNetDelegate):
+cdef class DotNetResolveEventHandler(DotNetObject):
     def __init__(self, emulator_obj):
-        DotNetDelegate.__init__(self, emulator_obj)
+        DotNetObject.__init__(self, emulator_obj)
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
-        return tdef.get_full_name() == b'System.ResolveEventHandler' or DotNetDelegate.isinst(self, tdef)
+        return tdef.get_full_name() == b'System.ResolveEventHandler'
 
     cdef DotNetObject duplicate(self): #TODO: may need to rework a bit due to DotNetDelegate change
         cdef DotNetResolveEventHandler h = DotNetResolveEventHandler(self.get_emulator_obj())
@@ -6567,7 +6564,6 @@ cdef class DotNetAppDomain(DotNetObject):
 
     cpdef net_row_objects.MethodDefOrRef get_method_obj(self):
         return self.__method_object.internal_method
-"""
 
 #TODO utility constructor
 cdef class DotNetEncoding(DotNetObject):
@@ -7200,11 +7196,11 @@ cdef class DotNetParameterInfo(DotNetObject):
         cdef bytes type_name 
         if isinstance(self.internal_param, net_utils.CorLibTypeSig):
             type_name = get_cor_type_name(self.internal_param.get_element_type())
-            return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name)), self.internal_param)
+            return DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name), self.internal_param)
         elif isinstance(self.internal_param, net_utils.SZArraySig):
-            return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Array')), self.internal_param) #NOTE: this might not account for generics.
+            return DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Array'), self.internal_param) #NOTE: this might not account for generics.
         elif isinstance(self.internal_param, net_utils.ClassSig):
-            return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(self.internal_param.get_type()), self.internal_param)
+            return DotNetType(self.get_emulator_obj(), self.internal_param.get_type(), self.internal_param)
         raise net_exceptions.OperationNotSupportedException()
 
 cdef class DotNetDelegate(DotNetObject):
@@ -8841,16 +8837,24 @@ cdef class DotNetDebugger(DotNetObject):
         res.init_zero()
         return res
 
-cdef class DotNetComparison(DotNetObject):
-    def __init__(self, net_emulator.DotNetEmulator emulator_obj, _object, method_object):
-        DotNetObject.__init__(self)
-        self.__object = _object
-        self.__method_object = method_object
-
-    cpdef get_method_object(self):
-        return self.__method_object
 
 """
+
+cdef class DotNetComparison(DotNetObject):
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
+        self.__object = None
+        self.__method_object = None
+        self.add_function(b'.ctor', <emu_func_type>self.ctor)
+
+    cdef DotNetObject ctor(self, list args):
+        self.__object = args[0]
+        self.__method_object = args[1]
+        return self
+
+    cpdef net_row_objects.MethodDef get_method_object(self):
+        return self.__method_object.internal_method
+
 cdef class DotNetGC(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetObject.__init__(self)
@@ -8892,7 +8896,6 @@ cdef class DotNetEnvironment(DotNetObject):
             return DotNetString(app_domain.get_emulator_obj(), '%LocalAppData%'.encode('utf-16le'))
         raise net_exceptions.OperationNotSupportedException()
 
-"""
 
 cdef class DotNetResolveEventArgs(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -8907,6 +8910,7 @@ cdef class DotNetResolveEventArgs(DotNetObject):
     cdef DotNetObject get_Name(self, list args):
         return self.__name
 
+"""
 
 cdef class DotNetDeflateStream(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -9349,7 +9353,13 @@ cdef DotNetObject New_StackFrame(net_emulator.DotNetEmulator emulator_obj):
 cdef DotNetObject New_BinaryReader(net_emulator.DotNetEmulator emulator_obj):
     return DotNetBinaryReader(emulator_obj)
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[17]
+cdef DotNetObject New_ResolveEventHandler(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetResolveEventHandler(emulator_obj)
+
+cdef DotNetObject New_Comparison(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetComparison(emulator_obj)
+
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[19]
 NET_EMULATE_TYPE_REGISTRATIONS[0].name = 'System.Collections.Concurrent.ConcurrentDictionary'
 NET_EMULATE_TYPE_REGISTRATIONS[0].func_ptr = <newobj_func_type>&New_ConcurrentDictionary
 NET_EMULATE_TYPE_REGISTRATIONS[1].name = 'System.Collections.Generic.Dictionary'
@@ -9384,8 +9394,12 @@ NET_EMULATE_TYPE_REGISTRATIONS[15].name = 'System.IO.BinaryReader'
 NET_EMULATE_TYPE_REGISTRATIONS[15].func_ptr = <newobj_func_type>&New_BinaryReader
 NET_EMULATE_TYPE_REGISTRATIONS[16].name = 'System.Diagnostics.StackFrame'
 NET_EMULATE_TYPE_REGISTRATIONS[16].func_ptr = <newobj_func_type>&New_StackFrame
+NET_EMULATE_TYPE_REGISTRATIONS[17].name = 'System.ResolveEventHandler'
+NET_EMULATE_TYPE_REGISTRATIONS[17].func_ptr = <newobj_func_type>&New_ResolveEventHandler
+NET_EMULATE_TYPE_REGISTRATIONS[18].name = 'System.Comparison'
+NET_EMULATE_TYPE_REGISTRATIONS[18].func_ptr = <newobj_func_type>&New_Comparison
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[37]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -9460,3 +9474,5 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[35].name = 'System.Array.Copy'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[35].func_ptr = <static_func_type>&DotNetArray.Copy
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[36].name = 'System.BitConverter.GetBytes'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[36].func_ptr = <static_func_type>&DotNetBitConverter.GetBytes
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[37].name = 'System.AppDomain.get_CurrentDomain'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[37].func_ptr = <static_func_type>&DotNetAppDomain.get_CurrentDomain

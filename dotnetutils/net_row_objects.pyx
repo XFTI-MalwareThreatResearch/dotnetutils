@@ -1032,7 +1032,7 @@ cdef class MethodDefOrRef(RowObject):
     cpdef bint is_static_method(self):
         return False
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self):
+    cpdef net_utils.CallingConventionSig get_method_signature(self):
         return None
 
     cpdef bint is_entrypoint(self):
@@ -1214,7 +1214,7 @@ cdef class MethodDef(MethodDefOrRef):
         """
         return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdStatic != 0
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self):
+    cpdef net_utils.CallingConventionSig get_method_signature(self):
         """
         Obtains the method's signature object.
         """
@@ -1438,14 +1438,15 @@ cdef class MemberRef(MethodDefOrRef):
         """
         return <int>len(self.get_param_types())
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self):
+    cpdef net_utils.CallingConventionSig get_method_signature(self):
         """
         Obtain the signature object associated with the method.
         """
         if self.__sig_obj == None:
             try:
-                self.__sig_obj = net_utils.SignatureReader(self.get_dotnetpe(), self.get_column('Signature').get_value()).read_signature()
-            except:
+                self.__sig_obj = net_utils.SignatureReader(self.get_dotnetpe(), self.get_column('Signature').get_value_as_bytes()).read_signature()
+            except Exception as e:
+                print('exception parsing memberref sig {} {}'.format(hex(self.get_token()), str(e)))
                 return None
         return self.__sig_obj
 
@@ -1503,7 +1504,7 @@ cdef class MethodSpec(MethodDefOrRef):
         else:
             return self.get_method() == other
 
-    cpdef net_utils.MethodSig get_sig_obj(self):
+    cpdef net_utils.CallingConventionSig get_sig_obj(self):
         """
         Obtain the Type's signature object.
         """

@@ -131,7 +131,6 @@ cdef class GenericInstSig(LeafSig):
         self.__gen_arg_count = gen_arg_count
         self.__generic_args = list()
 
-
     cdef void add_generic_type(self, TypeSig obj):
         self.__generic_args.append(obj)
 
@@ -148,7 +147,6 @@ cdef class GenericInstSig(LeafSig):
         return isinstance(other, GenericInstSig) and self.get_generic_type() == other.get_generic_type() and \
                self.get_generic_args_count() == other.get_generic_args_count() and other.get_generic_args() == self.get_generic_args()
     
-
     def __str__(self):
         return 'GenericInstSig: {} {}'.format(self.get_generic_type(), self.get_generic_args())
 
