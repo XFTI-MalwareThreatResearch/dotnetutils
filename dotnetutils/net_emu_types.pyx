@@ -215,6 +215,8 @@ cdef class DotNetObject:
         cdef net_row_objects.Field field_obj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(field_rid)
         cdef net_utils.FieldSig field_sig = field_obj.get_field_signature()
         cdef net_utils.TypeSig type_sig = field_sig.get_type_sig()
+        cdef net_utils.TypeDefOrRefSig ref_sig = None
+        cdef net_row_objects.TypeDefOrRef type_def = None
         if isinstance(type_sig, net_utils.CorLibTypeSig):
             if type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I:
                 if not self.get_emulator_obj().is_64bit():
@@ -250,6 +252,9 @@ cdef class DotNetObject:
                 self.set_field(field_rid, DotNetString.Empty(self.get_emulator_obj().get_appdomain(), []))
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
                 num_obj = DotNetBoolean(self.get_emulator_obj(), None)
+            elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+                null_obj = DotNetObject(self.get_emulator_obj())
+                self.set_field(field_rid, null_obj)
             else:
                 raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'unknown corlibtype for initialize_field: {}'.format(type_sig.get_element_type()))
             
@@ -262,6 +267,19 @@ cdef class DotNetObject:
                 null_obj.flag_null()
                 self.set_field(field_rid, null_obj)
             elif isinstance(type_sig, net_utils.ValueTypeSig):
+                ref_sig = type_sig
+                type_def = ref_sig.get_type()
+                if type_def.get_full_name() == b'System.Enum':
+                    num_obj = DotNetInt32(self.get_emulator_obj(), None)
+                    num_obj.init_zero()
+                    self.set_field(field_rid, num_obj)
+                    return
+                type_def = type_def.get_superclass()
+                if type_def is not None and type_def.get_full_name() == b'System.Enum':
+                    num_obj = DotNetInt32(self.get_emulator_obj(), None)
+                    num_obj.init_zero()
+                    self.set_field(field_rid, num_obj)
+                    return
                 self.set_field(field_rid, DotNetObject(self.get_emulator_obj())) #ValueTypes are similar enough to objects it seems where this should be proper.
                 #valuetypes are weird - seems the most prominent is basically enums which should be treated as numbers.  This might need to be adjusted eventually.
                 #structs can also be valuetypes - we need dotnetobject() here.
@@ -5140,6 +5158,12 @@ cdef class DotNetType(DotNetObject):
         self.add_function(b'GetFields', <emu_func_type>self.GetFields)
         self.add_function(b'get_MetadataToken', <emu_func_type>self.get_MetadataToken)
         self.add_function(b'get_Assembly', <emu_func_type>self.get_Assembly)
+        self.add_function(b'get_IsValueType', <emu_func_type>self.get_IsValueType)
+
+    cdef DotNetObject get_IsValueType(self, list args):
+        cdef DotNetBoolean result = DotNetBoolean(self.get_emulator_obj(), None)
+        result.from_bool(self.type_handle.is_valuetype())
+        return result
 
     cdef DotNetObject duplicate(self):
         cdef DotNetType type_obj = DotNetType(self.get_emulator_obj(), self.type_handle, self.sig_obj)

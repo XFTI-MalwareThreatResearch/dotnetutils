@@ -388,9 +388,6 @@ cdef class SignatureReader():
         self.sig_type = self.read_byte()
         self.reference = reference
         self.debug = False
-        if isinstance(self.reference, net_row_objects.MethodDef):
-            if self.reference.get_rid() == 1:
-                self.debug = True
         if self.sig_type == -1:
             raise net_exceptions.InvalidSignatureException('No sig_type')
         self.calling_conv = self.sig_type & net_structs.CorCallingConvention.Mask
@@ -429,6 +426,8 @@ cdef class SignatureReader():
             return self.handle_property_sig()
         elif sig_type == net_structs.CorCallingConvention.GenericInst:
             return self.handle_genericinst_sig()
+        elif sig_type == net_structs.CorCallingConvention.Generic:
+            return self.handle_method_sig()
         raise net_exceptions.InvalidArgumentsException()
 
     cdef MethodSig handle_method_sig(self):
@@ -692,7 +691,7 @@ cdef class SignatureReader():
             raise net_exceptions.InvalidSignatureException('GenericInstSig')
 
     cdef bint is_generic(self):
-        return self.calling_conv == net_structs.CorCallingConvention.Generic
+        return self.sig_type == net_structs.CorCallingConvention.Generic
 
     cdef int read_byte(self):
         bt = self.sig_io.read(1)

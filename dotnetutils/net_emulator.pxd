@@ -82,7 +82,7 @@ cdef class DotNetStack:
     cdef vector[PyObject*] __internal_stack
     cdef int __max_stack_size
 
-    cdef void append(self, net_emu_types.DotNetObject obj)
+    cpdef void append(self, net_emu_types.DotNetObject obj)
 
     cpdef net_emu_types.DotNetObject pop(self)
 

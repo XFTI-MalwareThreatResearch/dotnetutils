@@ -674,6 +674,8 @@ cdef class DotNetType(DotNetObject):
     cdef net_row_objects.RowObject type_handle
     cdef net_utils.TypeSig sig_obj
 
+    cdef DotNetObject get_IsValueType(self, list args)
+
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)

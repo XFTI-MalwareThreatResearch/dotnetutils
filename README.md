@@ -16,3 +16,4 @@ TODO:
 - Before to_bytes(), add something that cleans off any extra strings or other items from the heaps in order to keep binary size down.
 - Expand indexes to int64_t for ArrayAddress to be safe.
 - Add support for MemberRef fields for cleanup_names()
+- double check that cctors arent being called twice.
