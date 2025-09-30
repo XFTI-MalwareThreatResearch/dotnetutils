@@ -10,7 +10,6 @@ from dotnetutils import net_exceptions
 from logging import getLogger
 from ctypes import sizeof
 
-
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_row_objects, net_table_objects, net_patch
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
@@ -122,7 +121,7 @@ cdef class PeFile:
 
     cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, unsigned int idx):
         """
-        Obtain a data directory by index.
+        Obtain a data directory by index within the IMAGE_DATA_DIRECTORY array.
         """
         cdef IMAGE_NT_HEADERS32 * nt_headers32 = NULL
         cdef IMAGE_NT_HEADERS64 * nt_headers64 = NULL
@@ -178,6 +177,9 @@ cdef class PeFile:
         return self.get_offset_from_rva(rva)
 
     cdef int get_sec_index_va(self, uint64_t va_addr):
+        """
+        Obtain the index of the section corresponding to va_addr
+        """
         cdef dict sec_hdr = None
         cdef int x = 0
         for sec_hdr in self.get_sections():
@@ -187,6 +189,9 @@ cdef class PeFile:
         return -1
 
     cdef int get_sec_index_phys(self, uint64_t offset):
+        """
+        Obtain the index of a IMAGE_SECTION_HEADER based on a physical offset that corresponds to it.
+        """
         cdef dict sec_hdr = None
         cdef int x = 0
         for sec_hdr in self.get_sections():
@@ -196,6 +201,18 @@ cdef class PeFile:
         return -1
 
     cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index):
+        """
+        Anytime you make any changes to the binary that results in the size of the binary being changed, you should call this function before doing so.
+        It will go through and modify all the VAs in the binary to account for the changes.
+        At the end of this function, get_exe_data() on the dotnetpe should have the fixed RVAs.
+        :param va_addr:  The va_addr where the changes occur.
+        :param difference: The difference in the binary once the changes are complete.
+        :param dpe: The dotnetpe instance to modify
+        :param in_streams: Whether the changes happen before or within the .NET metadata sections.  This is important because it instructs update_va() to update .NET metadata related sections as well.
+        :param do_reconstruction:  Should the executable be reconstructed after VA updating is finished?  This usually should be true when editing streams or code, however if you are adding the data yourself to the binary you will want this to be False.
+        :param stream_name: stream name that youre editing, if applicable.  can be None
+        :param sec_index: index of the section where the data resides.
+        """
         if difference == 0:
             return
         if self.is_64bit():
@@ -208,6 +225,9 @@ cdef class PeFile:
             dpe.reconstruct_executable()
 
     cdef void __update_metadata_rvas(self, uint64_t va_addr, int difference, DotNetPeFile dpe):
+        """
+        Updates the RVAs within the metadata table in a similar fashion to update_va()
+        """
         cdef net_row_objects.MethodDef mdef_obj = None
         cdef net_row_objects.RowObject rva_obj = None
         cdef net_table_objects.MethodDefTable mdef_table = dpe.get_metadata_table('MethodDef')
@@ -801,6 +821,9 @@ cdef class DotNetPeFile:
         self.metadata_dir.process_metadata_heap(no_processing)
 
     cpdef uint64_t get_cor_header_offset(self):
+        """
+        obtain the offset of the IMAGE_COR20_HEADER
+        """
         return self.__cor_header_offset
 
     cpdef bytes get_original_exe_data(self):
@@ -827,7 +850,6 @@ cdef class DotNetPeFile:
         Marks a string to be added into the #Strings heap.  The string is not added at any specific location.
         Intended to be used for adding markers that a deobfuscator has proccessed a file.
         """
-        
         self.get_heap('#Strings').append_item(string.encode('utf-8'))
 
     cdef void set_exe_data(self, bytes exe_data):
@@ -1119,6 +1141,8 @@ cdef class DotNetPeFile:
 
     cpdef bytes reconstruct_executable(self) except *:
         """
+        Patches in any changes to the metadaata heaps into the executable that can be obtained using get_exe_data().
+        Usually called automatically by update_va(), but there are some cases where it may be needed to call it.
         """
         cdef bytearray new_exe_data = bytearray(self.get_exe_data())
         cdef list heaps_by_offset = list()
@@ -1156,7 +1180,7 @@ cdef class DotNetPeFile:
     cpdef list get_user_string_usages(self, unsigned long us_index):
         """
         Useful for deleting strings that are used multiple times throughout the binary.
-        Returns references of the strings in the form of (method_name, instr index)
+        Returns references of the strings in the form of (method_name, instr offset)
         """
         cdef list usages
         cdef net_row_objects.MethodDef method
@@ -1174,16 +1198,22 @@ cdef class DotNetPeFile:
                 if instr.get_name() == 'ldstr':
                     token = int.from_bytes(instr.get_arguments()[:3], 'little')
                     if token == us_index:
-                        usages.append((method.get_full_name(), x))
+                        usages.append((method.get_full_name(), instr.get_instr_offset()))
         return usages
 
     cpdef void patch_instruction(self, net_row_objects.MethodDef method_obj, bytes patch_bytes, unsigned long instr_offset, unsigned long orig_size) except *:
         """
         Patch an instruction using byte manipulation.
         """
+        cdef net_cil_disas.MethodDisassembler disas = None
+        cdef uint64_t rva = 0
+        cdef uint64_t offset = 0
+        cdef uint64_t patch_offset = 0
+        cdef bytes exe_data = None
+
         if method_obj['RVA'].get_raw_value() != 0:
             disas = method_obj.disassemble_method()
-            rva = method_obj['RVA'].get_raw_value()
+            rva = <uint64_t>method_obj['RVA'].get_raw_value()
             offset = self.get_pe().get_offset_from_rva(rva)
             patch_offset = offset + disas.get_header_size() + instr_offset  # needs to be zero based not 1 based.
             exe_data = self.get_exe_data()
@@ -1241,6 +1271,7 @@ cdef class DotNetPeFile:
         This is used by some obfuscators to decrypt strings.
         """
         #this is used so little times that we may as well just use PeFile for it.
+        #TODO: Eventually remove this dependency for pefile.
         if self.__versioninfo_str == None:
             pe = pefile.PE(data=self.get_exe_data())
             for fileinfo in pe.FileInfo:
@@ -1258,6 +1289,7 @@ cpdef DotNetPeFile try_get_dotnetpe(str file_path='', bytes pe_data=bytes(), bin
     Helper function - creates and returns a dotnetpefile object
     Handles certain errors by returning None.
     """
+    cdef DotNetPeFile dotnetpe
     try:
         dotnetpe = DotNetPeFile(file_path, pe_data, no_processing=dont_process)
         if not dotnetpe.metadata_dir.is_valid_directory:

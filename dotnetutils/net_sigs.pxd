@@ -13,16 +13,13 @@ cdef class LeafSig(TypeSig):
 
     cpdef TypeSig get_next(self)
 
-
 cdef class TypeDefOrRefSig(LeafSig):
     cdef net_row_objects.TypeDefOrRef __type_def_or_ref
 
     cpdef net_row_objects.TypeDefOrRef get_type(self)
 
-
 cdef class CorLibTypeSig(TypeDefOrRefSig):
     pass
-
 
 cdef class ClassOrValueTypeSig(TypeDefOrRefSig):
     pass
@@ -32,7 +29,6 @@ cdef class ValueTypeSig(ClassOrValueTypeSig):
 
 cdef class ClassSig(ClassOrValueTypeSig):
     pass
-
 
 cdef class GenericSig(LeafSig):
     cdef bint __is_type_var
@@ -51,12 +47,10 @@ cdef class GenericMVar(GenericSig):
 cdef class SentinelSig(LeafSig):
     pass
 
-
 cdef class FnPtrSig(LeafSig):
     cdef NonLeafSig __signature
 
     cpdef NonLeafSig get_signature(self)
-
 
 cdef class GenericInstSig(LeafSig):
     cdef TypeSig __generic_type
@@ -71,20 +65,16 @@ cdef class GenericInstSig(LeafSig):
     
     cpdef int get_generic_args_count(self)
 
-
 cdef class NonLeafSig(TypeSig):
     cdef TypeSig __next_sig
 
     cpdef TypeSig get_next_sig(self)
 
-
 cdef class PtrSig(NonLeafSig):
     pass
 
-
 cdef class ByRefSig(NonLeafSig):
     pass
-
 
 cdef class ArraySigBase(NonLeafSig):
     pass
@@ -111,7 +101,6 @@ cdef class SZArraySig(ArraySigBase):
     
     cpdef list get_lower_bounds(self)
 
-
 cdef class ModifierSig(NonLeafSig):
     cdef int __modifier
 
@@ -119,7 +108,6 @@ cdef class ModifierSig(NonLeafSig):
 
 cdef class CModReqdSig(ModifierSig):
     pass
-
 
 cdef class CmodOptSig(ModifierSig):
     pass
@@ -131,7 +119,6 @@ cdef class ValueArraySig(NonLeafSig):
     cdef int __size
 
     cpdef int get_size(self)
-
 
 cdef class ModuleSig(NonLeafSig):
     cdef int __index
@@ -145,7 +132,6 @@ cdef class CallingConventionSig():
     cpdef int get_calling_conv(self)
     
     cpdef bytes get_extra_data(self)
-
 
 cdef class FieldSig(CallingConventionSig):
     cdef TypeSig __type_sig
@@ -178,7 +164,6 @@ cdef class MethodSig(MethodBaseSig):
 
     cpdef int get_orig_token(self)
 
-
 cdef class PropertySig(MethodBaseSig):
     pass
 
@@ -186,7 +171,6 @@ cdef class LocalSig(CallingConventionSig):
     cdef list __local_vars
 
     cpdef list get_local_vars(self)
-
 
 cdef class GenericInstMethodSig(CallingConventionSig):
     cdef list __generic_args

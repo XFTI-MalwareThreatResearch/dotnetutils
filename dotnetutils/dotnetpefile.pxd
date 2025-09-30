@@ -5,7 +5,6 @@ from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing
 
-from cpython.memoryview cimport memoryview
 from cpython.buffer cimport Py_buffer
 from libc.stdint cimport uintptr_t, uint64_t, int64_t
 from dotnetutils.net_structs cimport IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, IMAGE_SECTION_HEADER, IMAGE_RESOURCE_DIRECTORY_ENTRY
@@ -135,7 +134,5 @@ cdef class DotNetPeFile:
     cpdef str get_product_version(self)
 
     cpdef set_entry_point(self, unsigned int ep_token)
-
-
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path=*, bytes pe_data=*, bint dont_process=*)
