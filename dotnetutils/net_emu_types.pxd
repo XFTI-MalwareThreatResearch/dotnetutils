@@ -1,7 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 
-from dotnetutils cimport net_row_objects, net_utils, dotnetpefile
+from dotnetutils cimport net_row_objects, net_sigs, dotnetpefile
 from dotnetutils cimport net_emulator
 from libcpp.unordered_map cimport unordered_map
 from libcpp.string cimport string
@@ -27,7 +27,7 @@ cdef class DotNetObject:
     cdef net_emulator.DotNetEmulator __emulator_obj
     cdef dict fields
     cdef net_row_objects.TypeDefOrRef type_obj
-    cdef net_utils.TypeSig type_sig_obj
+    cdef net_sigs.TypeSig type_sig_obj
     cdef list initialized_fields
     cdef bint __initialized
     cdef bint __is_null
@@ -63,9 +63,9 @@ cdef class DotNetObject:
 
     cpdef void set_type_obj(self, net_row_objects.TypeDefOrRef type_obj)
 
-    cpdef net_utils.TypeSig get_type_sig_obj(self)
+    cpdef net_sigs.TypeSig get_type_sig_obj(self)
 
-    cpdef void set_type_sig_obj(self, net_utils.TypeSig type_sig_obj)
+    cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj)
 
     cpdef void _initialize_field(self, uint64_t field_rid)
 
@@ -672,7 +672,7 @@ cdef class ArrayAddress(DotNetObject):
 
 cdef class DotNetType(DotNetObject):
     cdef net_row_objects.RowObject type_handle
-    cdef net_utils.TypeSig sig_obj
+    cdef net_sigs.TypeSig sig_obj
 
     cdef DotNetObject get_IsValueType(self, list args)
 
@@ -1244,7 +1244,7 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
     cdef DotNetObject get_ReturnType(self, list args)
 
 cdef class DotNetParameterInfo(DotNetObject):
-    cdef net_utils.TypeSig internal_param
+    cdef net_sigs.TypeSig internal_param
 
     cdef DotNetObject get_ParameterType(self, list args)
 
@@ -2087,7 +2087,7 @@ cdef class DotNetDynamicMethod(DotNetObject):
     cdef bint skip_visibility
     cdef DotNetILGenerator il_generator
     cdef net_row_objects.RowObject parent_type
-    cdef net_utils.MethodSig sig_obj
+    cdef net_sigs.MethodSig sig_obj
     cdef bint static
 
     cpdef get_dotnetpe(self)

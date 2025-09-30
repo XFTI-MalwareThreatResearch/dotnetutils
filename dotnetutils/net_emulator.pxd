@@ -1,7 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 
-from dotnetutils cimport net_row_objects, net_cil_disas, net_utils, net_emu_types, dotnetpefile
+from dotnetutils cimport net_row_objects, net_cil_disas, net_sigs, net_emu_types, dotnetpefile
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector
 from cpython.object cimport PyObject
@@ -160,7 +160,7 @@ cdef class DotNetEmulator:
 
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDef method_obj, list method_params=*, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*)
 
-    cdef net_emu_types.DotNetObject _get_default_value(self, net_utils.TypeSig type_sig)
+    cdef net_emu_types.DotNetObject _get_default_value(self, net_sigs.TypeSig type_sig)
 
     cdef void print_instr(self, net_cil_disas.Instruction instr)
 

@@ -3,7 +3,7 @@
 
 import io
 from dotnetutils import net_exceptions
-from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_utils, net_table_objects
+from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_sigs, net_table_objects
 from cpython.ref cimport PyObject, Py_INCREF
 
 from cython.operator cimport dereference
@@ -360,8 +360,8 @@ cdef class MethodDisassembler:
         cdef net_table_objects.TableObject signature_table
         cdef net_row_objects.RowObject signature_entry
         cdef bytes blob_value
-        cdef net_utils.SignatureReader sig_reader
-        cdef net_utils.LocalSig local_sig
+        cdef net_sigs.SignatureReader sig_reader
+        cdef net_sigs.LocalSig local_sig
         cdef int extra_sect_offset
         cdef int amt_to_add
         cdef int sect_flags
@@ -400,7 +400,7 @@ cdef class MethodDisassembler:
                         blob_value = signature_entry.get_column('Signature').get_value()
                         if blob_value[0] != net_structs.CorCallingConvention.LocalSig:
                             raise net_exceptions.InvalidHeaderException
-                        sig_reader = net_utils.SignatureReader(self.dotnetpe, blob_value)
+                        sig_reader = net_sigs.SignatureReader(self.dotnetpe, blob_value)
                         local_sig = sig_reader.read_signature()
                         self.local_types = local_sig.get_local_vars()
                     else:

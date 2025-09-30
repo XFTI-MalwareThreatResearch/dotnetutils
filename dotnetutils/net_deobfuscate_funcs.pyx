@@ -4,7 +4,7 @@
 import os
 
 from dotnetutils cimport dotnetpefile, net_tokens, net_row_objects, net_emulator, net_cil_disas, net_processing
-from dotnetutils cimport net_opcodes, net_utils, net_table_objects, net_structs, net_utils, net_emu_types
+from dotnetutils cimport net_opcodes, net_table_objects, net_structs, net_emu_types, net_sigs
 from dotnetutils import net_graphing, net_exceptions
 from libc.stdio cimport snprintf
 from libc.string cimport memcpy
@@ -172,7 +172,7 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
     cdef net_cil_disas.Instruction instr
     cdef object arg_obj
     cdef net_row_objects.MethodDef arg_method_obj
-    cdef net_utils.MethodSig arg_sig
+    cdef net_sigs.MethodSig arg_sig
     cdef net_row_objects.MethodDefOrRef prev_method_obj
     cdef net_cil_disas.MethodDisassembler disasm_obj
     cdef long x
@@ -196,7 +196,7 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
                         arg_method_obj = <net_row_objects.MethodDef>arg_method_obj
                         if arg_method_obj.is_static_method() and arg_method_obj.has_body():
                             arg_sig = arg_method_obj.get_method_signature()
-                            if isinstance(arg_sig.get_return_type(), net_utils.CorLibTypeSig):
+                            if isinstance(arg_sig.get_return_type(), net_sigs.CorLibTypeSig):
                                 if arg_sig.get_return_type().get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_STRING:
                                     if len(arg_sig.get_parameters()) == 0:
                                         target_cctor_method = method_obj
@@ -787,18 +787,18 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
     cdef net_cil_disas.Instruction instr
     cdef str instr_name
     cdef net_row_objects.MethodDefOrRef inner_method
-    cdef net_utils.MethodSig inner_method_sig
-    cdef net_utils.MethodSig outer_method_sig
+    cdef net_sigs.MethodSig inner_method_sig
+    cdef net_sigs.MethodSig outer_method_sig
     cdef list outer_method_params
     cdef list inner_method_params
     cdef bint bypass_rtype_check
-    cdef net_utils.TypeSig outer_return_sig
-    cdef net_utils.TypeSig inner_return_sig
+    cdef net_sigs.TypeSig outer_return_sig
+    cdef net_sigs.TypeSig inner_return_sig
     cdef net_row_objects.TypeDefOrRef expected_tdef
-    cdef net_utils.ClassSig outer_return_type
+    cdef net_sigs.ClassSig outer_return_type
     cdef long y
-    cdef net_utils.TypeSig param1
-    cdef net_utils.TypeSig param2
+    cdef net_sigs.TypeSig param1
+    cdef net_sigs.TypeSig param2
     if method_obj.method_has_this():
         return bytes()  # skip thiscalls - CEX only uses static methods.
     disasm_obj = method_obj.disassemble_method()
@@ -838,18 +838,18 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
 
             # compare sigs
             bypass_rtype_check = False
-            if isinstance(outer_method_sig.get_return_type(), net_utils.SZArraySig) or isinstance(
-                    inner_method_sig.get_return_type(), net_utils.SZArraySig):
+            if isinstance(outer_method_sig.get_return_type(), net_sigs.SZArraySig) or isinstance(
+                    inner_method_sig.get_return_type(), net_sigs.SZArraySig):
                 inner_return_sig = inner_method_sig.get_return_type()
                 outer_return_sig = outer_method_sig.get_return_type()
                 if (isinstance(outer_return_sig,
-                                net_utils.ClassSig) and outer_return_sig.get_type().get_full_name() == b'System.Array') or \
+                                net_sigs.ClassSig) and outer_return_sig.get_type().get_full_name() == b'System.Array') or \
                         (isinstance(inner_return_sig,
-                                    net_utils.ClassSig) and inner_return_sig.get_type().get_full_name() == b'System.Array'):
+                                    net_sigs.ClassSig) and inner_return_sig.get_type().get_full_name() == b'System.Array'):
                     bypass_rtype_check = True
-            if isinstance(outer_method_sig.get_return_type(), net_utils.CorLibTypeSig) and outer_method_sig.get_return_type().get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+            if isinstance(outer_method_sig.get_return_type(), net_sigs.CorLibTypeSig) and outer_method_sig.get_return_type().get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
                 bypass_rtype_check = True #Objects can be anything.
-            if isinstance(inner_method_sig.get_return_type(), net_utils.CorLibTypeSig) and inner_method_sig.get_return_type().get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+            if isinstance(inner_method_sig.get_return_type(), net_sigs.CorLibTypeSig) and inner_method_sig.get_return_type().get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
                 bypass_rtype_check = True
             if not bypass_rtype_check and inner_method_sig.get_return_type() != outer_method_sig.get_return_type():
                 # first do a check if its a ctor.  Ctors will say they return void in their sigs but really dont.
@@ -857,7 +857,7 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
                     return bytes()
                 else:
                     expected_tdef = inner_method.get_parent_type()
-                    if not isinstance(outer_method_sig.get_return_type(), net_utils.ClassSig):
+                    if not isinstance(outer_method_sig.get_return_type(), net_sigs.ClassSig):
                         return bytes()
                     outer_return_type = outer_method_sig.get_return_type()
                     if outer_return_type.get_type() != expected_tdef:
@@ -871,18 +871,18 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
                 param2 = outer_method_params[y]
                 if param1 != param2:
                     # if we are matching a SZArraySig with System.Array classsig, return true for these purposes.
-                    if isinstance(param1, net_utils.SZArraySig) and isinstance(param2, net_utils.ClassSig):
+                    if isinstance(param1, net_sigs.SZArraySig) and isinstance(param2, net_sigs.ClassSig):
                         if param2.get_type().get_full_name() == b'System.Array':
                             continue
 
-                    if isinstance(param1, net_utils.ClassSig) and isinstance(param2, net_utils.SZArraySig):
+                    if isinstance(param1, net_sigs.ClassSig) and isinstance(param2, net_sigs.SZArraySig):
                         if param1.get_type().get_full_name() == b'System.Array':
                             continue
 
-                    if isinstance(param2, net_utils.CorLibTypeSig) and param2.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+                    if isinstance(param2, net_sigs.CorLibTypeSig) and param2.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
                         continue #Objects will match anything.
 
-                    if isinstance(param1, net_utils.CorLibTypeSig) and param1.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+                    if isinstance(param1, net_sigs.CorLibTypeSig) and param1.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
                         continue
 
                     return bytes()
@@ -1097,7 +1097,7 @@ cdef bint has_prefix(bytes type_name):
     return False
 
 cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.TypeDefOrRef type_obj, bytes parent_method_name, int new_method_name,
-                                    net_utils.MethodSig parent_method_signature, list checked_types, dict method_names):
+                                    net_sigs.MethodSig parent_method_signature, list checked_types, dict method_names):
     
     cdef net_row_objects.TypeDefOrRef superclass_type
     cdef bytes name

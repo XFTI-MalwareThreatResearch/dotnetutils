@@ -3,7 +3,6 @@
 
 from dotnetutils import net_exceptions
 from dotnetutils cimport dotnetpefile
-from dotnetutils.net_utils cimport convert_pointer_to_bytes
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
 from libc.stdint cimport uintptr_t, uint64_t, uint32_t
 from libc.string cimport memcmp, memcpy

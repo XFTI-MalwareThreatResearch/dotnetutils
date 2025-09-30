@@ -6,7 +6,7 @@ import os
 import hashlib
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_structs
-from dotnetutils cimport net_utils
+from dotnetutils cimport net_sigs
 from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
@@ -829,7 +829,7 @@ cdef class Field(RowObject):
         if fieldrva_table:
             self.__rva_object = fieldrva_table.get_by_field_rid(self.get_rid())
 
-    cpdef net_utils.FieldSig get_field_signature(self):
+    cpdef net_sigs.FieldSig get_field_signature(self):
         """
         Obtains the signature object associated with the field.
         """
@@ -839,21 +839,21 @@ cdef class Field(RowObject):
 
     cdef void __initialize_sig(self):
         cdef bytes sig
-        cdef net_utils.SignatureReader sig_reader
-        cdef net_utils.TypeSig type_obj
+        cdef net_sigs.SignatureReader sig_reader
+        cdef net_sigs.TypeSig type_obj
         cdef TypeDefOrRef typedef_obj
         sig = self.get_column('Signature').get_value()
         if sig:
-            sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), sig)
+            sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), sig)
             self.__sig_obj = sig_reader.read_signature()
-            if isinstance(self.__sig_obj, net_utils.FieldSig):
+            if isinstance(self.__sig_obj, net_sigs.FieldSig):
                 type_obj = self.__sig_obj.get_type_sig()
-                if isinstance(type_obj, net_utils.TypeDefOrRefSig) and type_obj.get_type() != None:
+                if isinstance(type_obj, net_sigs.TypeDefOrRefSig) and type_obj.get_type() != None:
                     typedef_obj = type_obj.get_type()
                     self.__field_type = typedef_obj
                     if isinstance(typedef_obj, TypeDef) and typedef_obj.get_classlayout_obj():
                         self.__class_size = typedef_obj.get_classlayout_obj().get_column('ClassSize').get_value()
-                elif isinstance(type_obj, net_utils.CorLibTypeSig):
+                elif isinstance(type_obj, net_sigs.CorLibTypeSig):
                     if type_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I8:
                         self.__class_size = 8
                     elif type_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R4:
@@ -1032,7 +1032,7 @@ cdef class MethodDefOrRef(RowObject):
     cpdef bint is_static_method(self):
         return False
 
-    cpdef net_utils.CallingConventionSig get_method_signature(self):
+    cpdef net_sigs.CallingConventionSig get_method_signature(self):
         return None
 
     cpdef bint is_entrypoint(self):
@@ -1214,21 +1214,21 @@ cdef class MethodDef(MethodDefOrRef):
         """
         return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdStatic != 0
 
-    cpdef net_utils.CallingConventionSig get_method_signature(self):
+    cpdef net_sigs.CallingConventionSig get_method_signature(self):
         """
         Obtains the method's signature object.
         """
         cdef bytes signature_data
-        cdef net_utils.SignatureReader sig_reader
+        cdef net_sigs.SignatureReader sig_reader
         if self.__sig_obj == None and not self.__has_invalid_signature:
             signature_data = self.get_column('Signature').get_value()
             try:
-                sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), signature_data, self)
+                sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature_data, self)
                 self.__sig_obj = sig_reader.read_signature()
-                if not isinstance(self.__sig_obj, net_utils.MethodSig):
+                if not isinstance(self.__sig_obj, net_sigs.MethodSig):
                     raise net_exceptions.InvalidSignatureException('Sig mismatch')
                 self.__has_return_value = not isinstance(
-                    self.__sig_obj.get_return_type(), net_utils.CorLibTypeSig) or self.__sig_obj.get_return_type() != net_utils.get_CorSig_Void()
+                    self.__sig_obj.get_return_type(), net_sigs.CorLibTypeSig) or self.__sig_obj.get_return_type() != net_sigs.get_CorSig_Void()
                 self.__method_has_this = self.__sig_obj.get_calling_conv() & net_structs.CorCallingConvention.HasThis != 0
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True
@@ -1384,13 +1384,13 @@ cdef class MemberRef(MethodDefOrRef):
         """
         Returns True if the memberref object represents a field.
         """
-        return isinstance(self.get_method_signature(), net_utils.FieldSig)
+        return isinstance(self.get_method_signature(), net_sigs.FieldSig)
     
     cpdef bint is_method(self):
         """
         Returns True if the memberref object represents a method.
         """
-        return isinstance(self.get_method_signature(), net_utils.MethodSig)
+        return isinstance(self.get_method_signature(), net_sigs.MethodSig)
 
     cpdef bint is_static_method(self):
         return not self.method_has_this()
@@ -1418,7 +1418,7 @@ cdef class MemberRef(MethodDefOrRef):
         """
         Does the method have a return value?
         """
-        return self.get_method_signature().get_return_type() != net_utils.get_CorSig_Void()
+        return self.get_method_signature().get_return_type() != net_sigs.get_CorSig_Void()
 
     cpdef list get_param_types(self):
         """
@@ -1438,13 +1438,13 @@ cdef class MemberRef(MethodDefOrRef):
         """
         return <int>len(self.get_param_types())
 
-    cpdef net_utils.CallingConventionSig get_method_signature(self):
+    cpdef net_sigs.CallingConventionSig get_method_signature(self):
         """
         Obtain the signature object associated with the method.
         """
         if self.__sig_obj == None:
             try:
-                self.__sig_obj = net_utils.SignatureReader(self.get_dotnetpe(), self.get_column('Signature').get_value_as_bytes()).read_signature()
+                self.__sig_obj = net_sigs.SignatureReader(self.get_dotnetpe(), self.get_column('Signature').get_value_as_bytes()).read_signature()
             except Exception as e:
                 print('exception parsing memberref sig {} {}'.format(hex(self.get_token()), str(e)))
                 return None
@@ -1504,15 +1504,15 @@ cdef class MethodSpec(MethodDefOrRef):
         else:
             return self.get_method() == other
 
-    cpdef net_utils.CallingConventionSig get_sig_obj(self):
+    cpdef net_sigs.CallingConventionSig get_sig_obj(self):
         """
         Obtain the Type's signature object.
         """
         cdef bytes signature
-        cdef net_utils.SignatureReader sig_reader
+        cdef net_sigs.SignatureReader sig_reader
         if not self.__parsed_sig:
             signature = self.get_column('Signature').get_value()
-            sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), signature)
+            sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
             try:
                 self.__parsed_sig = sig_reader.handle_method_sig()
             except net_exceptions.InvalidSignatureException:
@@ -1540,13 +1540,13 @@ cdef class TypeSpec(TypeDefOrRef):
         """
         Attempts to obtain a TypeDef or TypeRef object behind the TypeSpec signature.
         """
-        cdef net_utils.TypeSig sig_obj
+        cdef net_sigs.TypeSig sig_obj
         cdef net_structs.CorElementType element_type
         cdef bytes element_type_name
         sig_obj = self.get_sig_obj()
-        if isinstance(sig_obj, net_utils.GenericInstSig):
+        if isinstance(sig_obj, net_sigs.GenericInstSig):
             return sig_obj.get_generic_type().get_type()
-        elif isinstance(sig_obj, net_utils.CorLibTypeSig):
+        elif isinstance(sig_obj, net_sigs.CorLibTypeSig):
             element_type = sig_obj.get_element_type()
             element_type_name = get_cor_type_name(element_type)
             return self.get_dotnetpe().get_typeref_by_full_name(element_type_name)
@@ -1563,7 +1563,7 @@ cdef class TypeSpec(TypeDefOrRef):
         type_obj = self.get_type()
         if type_obj is None:
             #first check and see if we have a corlibtypesig, maybe we can still get the name off that. 
-            if isinstance(self.get_sig_obj(), net_utils.CorLibTypeSig):
+            if isinstance(self.get_sig_obj(), net_sigs.CorLibTypeSig):
                 try:
                     return get_cor_type_name(self.get_sig_obj().get_element_type())
                 except:
@@ -1606,16 +1606,16 @@ cdef class TypeSpec(TypeDefOrRef):
         else:
             return self.get_type() == other
 
-    cpdef net_utils.TypeSig get_sig_obj(self):
+    cpdef net_sigs.TypeSig get_sig_obj(self):
         """
         Obtain the Type's signature object.
         """
-        cdef net_utils.SignatureReader sig_reader
+        cdef net_sigs.SignatureReader sig_reader
         cdef bytes signature
         if not self.__parsed_sig and not self.__has_invalid_signature:
             signature = self.get_column('Signature').get_value()
             try:
-                sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), signature)
+                sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
                 self.__parsed_sig = sig_reader.handle_type_sig()
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True
@@ -1629,16 +1629,16 @@ cdef class StandAloneSig(RowObject):
         self.__parsed_sig = None
         self.__has_invalid_signature
 
-    cpdef net_utils.TypeSig get_sig_obj(self):
+    cpdef net_sigs.TypeSig get_sig_obj(self):
         """
         Obtain the Signature object.
         """
-        cdef net_utils.SignatureReader sig_reader
+        cdef net_sigs.SignatureReader sig_reader
         cdef bytes signature
         if not self.__parsed_sig and not self.__has_invalid_signature:
             signature = self.get_column('Signature').get_value()
             try:
-                sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), signature)
+                sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
                 self.__parsed_sig = sig_reader.handle_type_sig()
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True

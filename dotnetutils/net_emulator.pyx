@@ -5,7 +5,7 @@ import threading
 from dotnetutils import net_exceptions
 from libc.stdint cimport int64_t, uint64_t
 from libc.string cimport strlen, strcmp, memset
-from dotnetutils cimport net_utils, net_tokens, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
+from dotnetutils cimport net_sigs, net_tokens, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
 from cpython.ref cimport Py_INCREF, Py_XDECREF
 from libcpp.utility cimport pair
 
@@ -634,7 +634,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     cdef net_emu_types.DotNetObject obj_ref
     cdef net_row_objects.TypeDefOrRef obj_type
     cdef net_row_objects.MethodDefOrRef actual_method_obj
-    cdef net_utils.MethodSig initial_method_sig
+    cdef net_sigs.MethodSig initial_method_sig
     cdef net_table_objects.MethodImplTable method_impl_table
     cdef net_row_objects.MethodDef def_method
     cdef net_row_objects.MethodDefOrRef curr_method_obj
@@ -869,8 +869,7 @@ cdef bint handle_ldarg_instruction(DotNetEmulator emu):
     cdef int number = emu.instr.get_argument()
     cdef net_emu_types.DotNetObject obj = None
     if number >= len(emu.method_params):
-        print('ldarg {} {} {} {} {} {} {} {}'.format(number, len(emu.method_params), emu.method_params, emu.get_method_obj().get_method_signature().get_parameters(), emu.get_method_obj().method_has_this(), emu.get_method_obj().get_method_signature().get_generic_params_count(), emu.get_method_obj().get_method_signature().get_params_after_sentinel(), hex(emu.get_method_obj().get_token())))
-
+        raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to ldarg a parameter that isnt in the emulator')
     obj = emu.method_params[number]
     obj = obj.dereference()
     emu.stack.append(obj)
@@ -878,6 +877,8 @@ cdef bint handle_ldarg_instruction(DotNetEmulator emu):
 
 cdef bint handle_ldarga_instruction(DotNetEmulator emu):
     cdef int number = emu.instr.get_argument()
+    if number >= len(emu.method_params):
+        raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to ldarga a parameter that isnt in the emulator')
     emu.stack.append(net_emu_types.ArrayAddress(emu, None, number, 4))
     return False
 
@@ -1111,11 +1112,11 @@ cdef net_emu_types.DotNetObject do_virt_field_lookup(DotNetEmulator emu, net_emu
     cdef net_row_objects.TypeDefOrRef parent_type = None
     cdef net_row_objects.Field field_obj = None
     cdef net_row_objects.Field field_obj2 = None
-    cdef net_utils.TypeSig sig_obj = None
+    cdef net_sigs.TypeSig sig_obj = None
     cdef net_row_objects.ColumnValue col_val = None
     cdef DotNetEmulator new_emu = None
     cdef net_row_objects.MethodDef cctor_method = None
-    cdef net_utils.FieldSig field_sig = None
+    cdef net_sigs.FieldSig field_sig = None
     if emu.get_appdomain().has_static_func(ref_obj.get_token()):
         if set_val is not None:
             raise net_exceptions.EmulatorExecutionException(emu, 'Erorr invalid state')
@@ -1160,7 +1161,7 @@ cdef bint handle_ldsfld_instruction(DotNetEmulator emu):
     cdef str field_name
     cdef str type_name
     cdef type type_obj
-    cdef net_utils.FieldSig sig
+    cdef net_sigs.FieldSig sig
     cdef net_row_objects.Field field
     cdef net_emu_types.DotNetObject current_obj = None
     cdef net_emu_types.DotNetInt32 zero_num = net_emu_types.DotNetInt32(emu, None)
@@ -1188,7 +1189,7 @@ cdef bint handle_ldsfld_instruction(DotNetEmulator emu):
             emu.stack.append(current_obj)
         else:
             sig = field_obj.get_field_signature()
-            if isinstance(sig, net_utils.FieldSig):
+            if isinstance(sig, net_sigs.FieldSig):
                 current_obj = emu._get_default_value(sig.get_type_sig())
                 emu.set_static_field(field_obj.get_rid(), current_obj)
                 emu.stack.append(current_obj)
@@ -1216,7 +1217,7 @@ cdef bint handle_ldtoken_instruction(DotNetEmulator emu):
     return False
 
 cdef net_row_objects.MethodDef resolve_ref(net_row_objects.MemberRef ref_obj):
-    cdef net_utils.MethodSig ref_sig = ref_obj.get_method_signature()
+    cdef net_sigs.MethodSig ref_sig = ref_obj.get_method_signature()
     cdef net_row_objects.TypeDefOrRef parent_type = ref_obj.get_parent_type().get_type()
     cdef net_row_objects.MethodDef mdef = None
     if not isinstance(parent_type, net_row_objects.TypeDef):
@@ -1344,7 +1345,7 @@ cdef bint handle_shr_un_instruction(DotNetEmulator emu):
 
 cdef bint handle_stfld_instruction(DotNetEmulator emu):
     cdef net_row_objects.Field field_obj
-    cdef net_utils.TypeSig local_type_sig
+    cdef net_sigs.TypeSig local_type_sig
     cdef net_structs.CorElementType e_type
     cdef net_emu_types.DotNetObject value1 = emu.stack.pop()
     cdef net_emu_types.DotNetObject obj_ref = emu.stack.pop()
@@ -1356,7 +1357,7 @@ cdef bint handle_stfld_instruction(DotNetEmulator emu):
         raise net_exceptions.ObjectTypeException
 
     local_type_sig = field_obj.get_field_signature().get_type_sig()
-    if isinstance(local_type_sig, net_utils.CorLibTypeSig):
+    if isinstance(local_type_sig, net_sigs.CorLibTypeSig):
         e_type = local_type_sig.get_element_type()
         if value1.is_number() and e_type != net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
             num = <net_emu_types.DotNetNumber>value1
@@ -1371,13 +1372,13 @@ cdef bint handle_stfld_instruction(DotNetEmulator emu):
 
 cdef bint handle_stloc_instruction(DotNetEmulator emu):
     cdef int number
-    cdef net_utils.TypeSig local_type_sig
+    cdef net_sigs.TypeSig local_type_sig
     cdef net_structs.CorElementType e_type
     cdef net_emu_types.DotNetObject value1 = emu.stack.pop()
     cdef net_emu_types.DotNetNumber num = None
     number = emu.instr.get_argument()
     local_type_sig = emu.disasm_obj.local_types[number]
-    if isinstance(local_type_sig, net_utils.CorLibTypeSig):
+    if isinstance(local_type_sig, net_sigs.CorLibTypeSig):
         e_type = local_type_sig.get_element_type()
         if value1.is_number() and e_type != net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
             num = <net_emu_types.DotNetNumber>value1
@@ -2036,13 +2037,13 @@ cdef class DotNetEmulator:
     cpdef void set_static_field(self, int idno, net_emu_types.DotNetObject val):
         self.static_fields[idno] = val
 
-    cdef net_emu_types.DotNetObject _get_default_value(self, net_utils.TypeSig type_sig):
+    cdef net_emu_types.DotNetObject _get_default_value(self, net_sigs.TypeSig type_sig):
         cdef net_structs.CorElementType element_type
         cdef net_row_objects.TypeDefOrRef superclass = None
         cdef net_row_objects.TypeDefOrRef origclass = None
         cdef net_emu_types.DotNetObject new_obj
         cdef net_emu_types.DotNetNumber num = None
-        if isinstance(type_sig, net_utils.CorLibTypeSig):
+        if isinstance(type_sig, net_sigs.CorLibTypeSig):
             element_type = type_sig.get_element_type()
             if element_type == net_structs.CorElementType.ELEMENT_TYPE_I:
                 num = net_emu_types.DotNetIntPtr(self, None)
@@ -2070,7 +2071,7 @@ cdef class DotNetEmulator:
             if num != None:
                 num.init_zero()
                 return num
-        elif isinstance(type_sig, net_utils.ValueTypeSig):
+        elif isinstance(type_sig, net_sigs.ValueTypeSig):
             # handle System.Enums as a different case
             origclass = type_sig.get_type()
             superclass = origclass
@@ -2211,7 +2212,7 @@ cdef class DotNetEmulator:
                                                                 instr.get_argument()), 1)
 
     cdef void initialize_locals(self):
-        cdef net_utils.TypeSig tsig
+        cdef net_sigs.TypeSig tsig
         cdef int index
         cdef net_emu_types.DotNetObject ref = None
         for index in range(len(self.disasm_obj.local_types)):

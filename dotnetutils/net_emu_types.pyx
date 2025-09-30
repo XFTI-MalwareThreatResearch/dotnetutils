@@ -18,7 +18,7 @@ from Crypto.Cipher import DES, DES3
 from Crypto.Util.Padding import unpad
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, net_table_objects
-from dotnetutils cimport net_utils, net_opcodes, net_cil_disas
+from dotnetutils cimport net_sigs, net_opcodes, net_cil_disas
 from dotnetutils cimport net_structs
 
 from dotnetutils cimport dotnetpefile
@@ -103,29 +103,29 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
 
 cpdef get_cor_type_from_name(type_name):
     if type_name == b'System.Void':
-        return net_utils.get_CorSig_Void()
+        return net_sigs.get_CorSig_Void()
     elif type_name == b'System.Int8':
-        return net_utils.get_CorSig_SByte()
+        return net_sigs.get_CorSig_SByte()
     elif type_name == b'System.UInt8':
-        return net_utils.get_CorSig_Byte()
+        return net_sigs.get_CorSig_Byte()
     elif type_name == b'System.Int16':
-        return net_utils.get_CorSig_Int16()
+        return net_sigs.get_CorSig_Int16()
     elif type_name == b'System.UInt16':
-        return net_utils.get_CorSig_UInt16()
+        return net_sigs.get_CorSig_UInt16()
     elif type_name == b'System.Int32':
-        return net_utils.get_CorSig_Int32()
+        return net_sigs.get_CorSig_Int32()
     elif type_name == b'System.UInt32':
-        return net_utils.get_CorSig_UInt32()
+        return net_sigs.get_CorSig_UInt32()
     elif type_name == b'System.Int64':
-        return net_utils.get_CorSig_Int64()
+        return net_sigs.get_CorSig_Int64()
     elif type_name == b'System.UInt64':
-        return net_utils.get_CorSig_UInt64()
+        return net_sigs.get_CorSig_UInt64()
     elif type_name == b'System.Single':
-        return net_utils.get_CorSig_Single()
+        return net_sigs.get_CorSig_Single()
     elif type_name == b'System.Double':
-        return net_utils.get_CorSig_Double()
+        return net_sigs.get_CorSig_Double()
     elif type_name == b'System.String':
-        return net_utils.get_CorSig_String()
+        return net_sigs.get_CorSig_String()
     return None
 
 cdef class DotNetObject:
@@ -203,21 +203,21 @@ cdef class DotNetObject:
     cpdef void set_type_obj(self, net_row_objects.TypeDefOrRef type_obj):
         self.type_obj = type_obj
 
-    cpdef net_utils.TypeSig get_type_sig_obj(self):
+    cpdef net_sigs.TypeSig get_type_sig_obj(self):
         return self.type_sig_obj
 
-    cpdef void set_type_sig_obj(self, net_utils.TypeSig type_sig_obj):
+    cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj):
         self.type_sig_obj = type_sig_obj
 
     cpdef void _initialize_field(self, uint64_t field_rid):
         cdef DotNetObject null_obj = None
         cdef DotNetNumber num_obj = None
         cdef net_row_objects.Field field_obj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(field_rid)
-        cdef net_utils.FieldSig field_sig = field_obj.get_field_signature()
-        cdef net_utils.TypeSig type_sig = field_sig.get_type_sig()
-        cdef net_utils.TypeDefOrRefSig ref_sig = None
+        cdef net_sigs.FieldSig field_sig = field_obj.get_field_signature()
+        cdef net_sigs.TypeSig type_sig = field_sig.get_type_sig()
+        cdef net_sigs.TypeDefOrRefSig ref_sig = None
         cdef net_row_objects.TypeDefOrRef type_def = None
-        if isinstance(type_sig, net_utils.CorLibTypeSig):
+        if isinstance(type_sig, net_sigs.CorLibTypeSig):
             if type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I:
                 if not self.get_emulator_obj().is_64bit():
                     num_obj = DotNetInt32(self.get_emulator_obj(), None)
@@ -262,11 +262,11 @@ cdef class DotNetObject:
                 num_obj.init_zero()
                 self.set_field(field_rid, num_obj)
         else:
-            if isinstance(type_sig, net_utils.ClassSig):
+            if isinstance(type_sig, net_sigs.ClassSig):
                 null_obj = DotNetObject(self.get_emulator_obj())
                 null_obj.flag_null()
                 self.set_field(field_rid, null_obj)
-            elif isinstance(type_sig, net_utils.ValueTypeSig):
+            elif isinstance(type_sig, net_sigs.ValueTypeSig):
                 ref_sig = type_sig
                 type_def = ref_sig.get_type()
                 if type_def.get_full_name() == b'System.Enum':
@@ -283,7 +283,7 @@ cdef class DotNetObject:
                 self.set_field(field_rid, DotNetObject(self.get_emulator_obj())) #ValueTypes are similar enough to objects it seems where this should be proper.
                 #valuetypes are weird - seems the most prominent is basically enums which should be treated as numbers.  This might need to be adjusted eventually.
                 #structs can also be valuetypes - we need dotnetobject() here.
-            elif isinstance(type_sig, net_utils.SZArraySig):
+            elif isinstance(type_sig, net_sigs.SZArraySig):
                 null_obj = DotNetObject(self.get_emulator_obj())
                 null_obj.flag_null()
                 self.set_field(field_rid, null_obj) #DotNetNull() should work fine here since any arrays are going to be initialized by a newarr anyway.
@@ -396,10 +396,10 @@ cdef class ArrayAddress(DotNetObject):
     cpdef void set_type_obj(self, net_row_objects.TypeDefOrRef type_obj):
         self.get_obj_ref().set_type_obj(type_obj)
 
-    cpdef net_utils.TypeSig get_type_sig_obj(self):
+    cpdef net_sigs.TypeSig get_type_sig_obj(self):
         return self.get_obj_ref().get_type_sig_obj()
 
-    cpdef void set_type_sig_obj(self, net_utils.TypeSig type_sig_obj):
+    cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj):
         self.get_obj_ref().set_type_sig_obj(type_sig_obj)
 
     cpdef void _initialize_field(self, uint64_t field_rid):
@@ -5144,7 +5144,7 @@ cdef class DotNetChar(DotNetUInt16):
 #TODO: For NULL / DotNetNull removal make sure all python methods check if the value is null.
 #TODO likely another utility constructor.
 cdef class DotNetType(DotNetObject):
-    def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_row_objects.TypeDefOrRef type_handle, net_utils.TypeSig sig_obj=None):
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_row_objects.TypeDefOrRef type_handle, net_sigs.TypeSig sig_obj=None):
         DotNetObject.__init__(self, emulator_obj)
         if isinstance(type_handle, net_row_objects.TypeDef) or isinstance(type_handle, net_row_objects.TypeRef):
             self.type_handle = type_handle
@@ -5159,6 +5159,9 @@ cdef class DotNetType(DotNetObject):
         self.add_function(b'get_MetadataToken', <emu_func_type>self.get_MetadataToken)
         self.add_function(b'get_Assembly', <emu_func_type>self.get_Assembly)
         self.add_function(b'get_IsValueType', <emu_func_type>self.get_IsValueType)
+
+    def __str__(self):
+        return 'TypeObject {} {}'.format(hex(self.type_handle.get_token()), self.type_handle.get_full_name())
 
     cdef DotNetObject get_IsValueType(self, list args):
         cdef DotNetBoolean result = DotNetBoolean(self.get_emulator_obj(), None)
@@ -5180,7 +5183,7 @@ cdef class DotNetType(DotNetObject):
         return self.type_handle
 
     cdef DotNetObject get_IsByRef(self, list args):
-        cdef bint val = isinstance(self.sig_obj, net_utils.ByRefSig)
+        cdef bint val = isinstance(self.sig_obj, net_sigs.ByRefSig)
         cdef DotNetBoolean bool_val = DotNetBoolean(self.get_emulator_obj(), None)
         bool_val.init_from_ptr(<unsigned char*>&val, sizeof(val))
         return bool_val
@@ -5866,7 +5869,7 @@ cdef class DotNetList(DotNetObject):
                 method_params.insert(0, self.get_emulator_obj().get_appdomain())
             emu_obj = self.get_emulator_obj().spawn_new_emulator(compare_method, method_params=method_params, start_offset=0, end_offset=-1, caller=None, end_method_rid=0, end_eip=-1)
             emu_obj.run_function()
-            result = emu_obj.get_stack().pop()
+            result = emu_obj.get_stack().pop().as_python_obj()
             return result
 
         self.internal.sort(key=functools.cmp_to_key(python_sort_runner))
@@ -6157,6 +6160,8 @@ cdef class DotNetMemberInfo(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_row_objects.MethodDefOrRef internal_method):
         DotNetObject.__init__(self, emulator_obj)
         self.internal_method = internal_method
+        if self.internal_method is None:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Invalid DotNetMemberInfo created')
         self.add_function(b'get_DeclaringType', <emu_func_type>self.get_DeclaringType)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
@@ -6965,21 +6970,21 @@ cdef class DotNetModule(DotNetObject):
         cdef DotNetInt32 method_token = None
         if len(args) == 1 and isinstance(args[0], DotNetInt32):
             method_token = <DotNetInt32>args[0]
-            return DotNetMethodBase(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(method_token.as_int()))
+            return DotNetMethodInfo(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(method_token.as_int()))
         raise Exception
 
     cdef DotNetObject ResolveType(self, list args):
         cdef DotNetInt32 type_token = None
         if len(args) == 1 and isinstance(args[0], DotNetInt32):
             type_token = <DotNetInt32>args[0]
-            return DotNetMethodBase(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(type_token.as_int()))
+            return DotNetType(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(type_token.as_int()))
         raise Exception
 
     cdef DotNetObject ResolveField(self, list args):
         cdef DotNetInt32 field_token = None
         if len(args) == 1 and isinstance(args[0], DotNetInt32):
             field_token = <DotNetInt32>args[0]
-            return DotNetMethodBase(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(field_token.as_int()))
+            return DotNetFieldInfo(self.get_emulator_obj(), self.internal_module.get_dotnetpe().get_token_value(field_token.as_int()))
         raise Exception
 
 #Utility constructor
@@ -6990,6 +6995,9 @@ cdef class DotNetModuleHandle(DotNetObject):
         self.add_function(b'ResolveTypeHandle', <emu_func_type>self.ResolveTypeHandle)
         self.add_function(b'ResolveMethodHandle', <emu_func_type>self.ResolveMethodHandle)
         self.add_function(b'GetRuntimeTypeHandleFromMetadataToken', <emu_func_type>self.GetRuntimeTypeHandleFromMetadataToken)
+
+    def __str__(self):
+        return 'ModuleObject {}'.format(self.internal_module)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.ModuleHandle' or DotNetObject.isinst(self, tdef)
@@ -7018,6 +7026,8 @@ cdef class DotNetRuntimeTypeHandle(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_row_objects.TypeDefOrRef internal_typedef):
         DotNetObject.__init__(self, emulator_obj)
         self.internal_typedef = internal_typedef
+        if self.internal_typedef is None:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Invalid RuntimeTypeHandle created')
     
     cpdef get_internal_typedef(self):
         return self.internal_typedef
@@ -7071,12 +7081,16 @@ cdef class DotNetRuntimeFieldHandle(DotNetObject):
 
 cdef class DotNetFieldInfo(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_row_objects.Field internal_field):
-        
         DotNetObject.__init__(self, emulator_obj)
         self.internal_field = internal_field
+        if self.internal_field is None:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Invalid FieldInfo created')
         self.add_function(b'get_FieldType', <emu_func_type>self.get_FieldType)
         self.add_function(b'SetValue', <emu_func_type>self.SetValue)
         self.add_function(b'get_Name', <emu_func_type>self.get_Name)
+
+    def __str__(self):
+        return 'FieldObject {} {}'.format(hex(self.internal_field.get_token()), self.internal_field.get_full_name())
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.FieldInfo' or DotNetObject.isinst(self, tdef)
@@ -7126,27 +7140,29 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
         return minfo
 
     cdef DotNetObject get_ReturnType(self, list args):
-        cdef net_utils.TypeSig return_sig = self.internal_method.get_method_signature().get_return_type()
+        cdef net_sigs.TypeSig return_sig = self.internal_method.get_method_signature().get_return_type()
         cdef bytes type_name
         cdef net_row_objects.TypeDefOrRef type_obj
-        if isinstance(return_sig, net_utils.CorLibTypeSig):
+        if isinstance(return_sig, net_sigs.CorLibTypeSig):
             type_name = get_cor_type_name(return_sig.get_element_type())
             type_obj = self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name)
-            return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(type_obj))
+            return DotNetType(self.get_emulator_obj(), type_obj, return_sig)
         else:
-            if isinstance(return_sig, net_utils.TypeDefOrRefSig) and return_sig.get_type() is not None:
-                return DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(return_sig.get_type()))
+            if isinstance(return_sig, net_sigs.TypeDefOrRefSig) and return_sig.get_type() is not None:
+                return DotNetType(self.get_emulator_obj(), return_sig.get_type(), return_sig)
         raise net_exceptions.OperationNotSupportedException()
 
     def __str__(self):
-        return 'DotNetMethodInfo: {}:{} Name:{}'.format(self.internal_method.get_table_name(), self.internal_method.get_rid(),
-                                                        self.internal_method.get_full_name())
+        return 'DotNetMethodInfo: {}:{} {} Name:{}'.format(self.internal_method.get_table_name(), self.internal_method.get_rid(), hex(self.internal_method.get_token()), self.internal_method.get_full_name())
 
 cdef class DotNetMethodBase(DotNetMemberInfo):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_row_objects.MethodDefOrRef internal_method):
         DotNetMemberInfo.__init__(self, emulator_obj, internal_method)
         self.add_function(b'get_IsStatic', <emu_func_type>self.get_IsStatic)
         self.add_function(b'GetParameters', <emu_func_type>self.GetParameters)
+
+    def __str__(self):
+        return 'DotNetMethodObject: Token {} Name {}'.format(hex(self.internal_method.get_token()), self.internal_method.get_full_name())
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.MethodBase' or DotNetMemberInfo.isinst(self, tdef)
@@ -7199,9 +7215,11 @@ cdef class DotNetMethodBase(DotNetMemberInfo):
         return bobj
 
 cdef class DotNetParameterInfo(DotNetObject):
-    def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_utils.TypeSig internal_param):
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_sigs.TypeSig internal_param):
         DotNetObject.__init__(self, emulator_obj)
         self.internal_param = internal_param
+        if self.internal_param is None:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Invalid ParamInfo created')
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
         self.add_function(b'get_ParameterType', <emu_func_type>self.get_ParameterType)
     
@@ -7218,14 +7236,17 @@ cdef class DotNetParameterInfo(DotNetObject):
 
     cdef DotNetObject get_ParameterType(self, list args):
         cdef bytes type_name 
-        if isinstance(self.internal_param, net_utils.CorLibTypeSig):
+        if isinstance(self.internal_param, net_sigs.CorLibTypeSig):
             type_name = get_cor_type_name(self.internal_param.get_element_type())
             return DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name), self.internal_param)
-        elif isinstance(self.internal_param, net_utils.SZArraySig):
+        elif isinstance(self.internal_param, net_sigs.SZArraySig):
             return DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Array'), self.internal_param) #NOTE: this might not account for generics.
-        elif isinstance(self.internal_param, net_utils.ClassSig):
+        elif isinstance(self.internal_param, net_sigs.ClassSig):
             return DotNetType(self.get_emulator_obj(), self.internal_param.get_type(), self.internal_param)
         raise net_exceptions.OperationNotSupportedException()
+
+    def __str__(self):
+        return 'ParameterObject: {} {}'.format(hex(self.internal_param.get_token()), self.internal_param.get_column('Name').get_value())
 
 cdef class DotNetDelegate(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -8650,15 +8671,15 @@ cdef class DotNetDynamicMethod(DotNetObject):
 
         return_sig = get_cor_type_from_name(typedef_obj.get_full_name())
         if not return_sig:
-            return_sig = net_utils.TypeDefOrRefSig(None, typedef_obj)
+            return_sig = net_sigs.TypeDefOrRefSig(None, typedef_obj)
         param_sigs = list()
         for param in self.parameter_types:
             ptype_obj = param.get_type_handle()
             param_sig = get_cor_type_from_name(ptype_obj.get_full_name())
             if not param_sig:
-                param_sig = net_utils.TypeDefOrRefSig(None, ptype_obj)
+                param_sig = net_sigs.TypeDefOrRefSig(None, ptype_obj)
             param_sigs.append(param_sig)
-        self.sig_obj = net_utils.MethodSig(net_structs.CallingConvention_Default, bytes(), None, param_sigs, 0, 0, 0,
+        self.sig_obj = net_sigs.MethodSig(net_structs.CallingConvention_Default, bytes(), None, param_sigs, 0, 0, 0,
                                            return_sig)
         return self.sig_obj
 

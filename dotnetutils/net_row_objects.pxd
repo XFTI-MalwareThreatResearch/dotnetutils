@@ -2,7 +2,7 @@
 #distutils: language=c++
 
 
-from dotnetutils cimport dotnetpefile, net_utils, net_cil_disas, net_tokens, net_table_objects, net_structs
+from dotnetutils cimport dotnetpefile, net_sigs, net_cil_disas, net_tokens, net_table_objects, net_structs
 from libc.stdint cimport uint64_t
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type)
@@ -211,7 +211,7 @@ cdef class Field(RowObject):
 
     cdef void process(self)
 
-    cpdef net_utils.FieldSig get_field_signature(self)
+    cpdef net_sigs.FieldSig get_field_signature(self)
 
     cdef void post_process(self)
 
@@ -282,7 +282,7 @@ cdef class MethodDefOrRef(RowObject):
 
     cpdef bint is_static_method(self)
 
-    cpdef net_utils.CallingConventionSig get_method_signature(self)
+    cpdef net_sigs.CallingConventionSig get_method_signature(self)
 
     cpdef bint is_entrypoint(self)
 
@@ -309,7 +309,7 @@ cdef class MethodDef(MethodDefOrRef):
     cdef TypeDefOrRef __parent_type
     cdef bint __has_return_value
     cdef bint __method_has_this
-    cdef net_utils.MethodSig __sig_obj
+    cdef net_sigs.MethodSig __sig_obj
     cdef net_cil_disas.MethodDisassembler __disasm_obj
     cdef bint __has_invalid_signature
     cdef list __xrefs
@@ -340,7 +340,7 @@ cdef class MethodDef(MethodDefOrRef):
 
     cpdef bint is_static_method(self)
 
-    cpdef net_utils.CallingConventionSig get_method_signature(self)
+    cpdef net_sigs.CallingConventionSig get_method_signature(self)
 
     cpdef bint is_entrypoint(self)
 
@@ -363,7 +363,7 @@ cdef class MethodDef(MethodDefOrRef):
 cdef class MemberRef(MethodDefOrRef):
     cdef bytes __full_name
     cdef TypeDefOrRef __parent_type
-    cdef net_utils.CallingConventionSig __sig_obj
+    cdef net_sigs.CallingConventionSig __sig_obj
     cdef bint __method_has_this
     cdef bint __method_has_this_called
     cdef bint __is_field
@@ -396,7 +396,7 @@ cdef class MemberRef(MethodDefOrRef):
 
     cpdef int get_amt_params(self)
 
-    cpdef net_utils.CallingConventionSig get_method_signature(self)
+    cpdef net_sigs.CallingConventionSig get_method_signature(self)
 
     cpdef list get_xrefs(self)
 
@@ -416,7 +416,7 @@ cdef class MethodSpec(MethodDefOrRef):
     
     cpdef bytes get_full_name(self)
 
-    cpdef net_utils.CallingConventionSig get_sig_obj(self)
+    cpdef net_sigs.CallingConventionSig get_sig_obj(self)
 
     cpdef list get_xrefs(self)
     
@@ -424,7 +424,7 @@ cdef class MethodSpec(MethodDefOrRef):
 
 
 cdef class TypeSpec(TypeDefOrRef):
-    cdef net_utils.TypeSig __parsed_sig
+    cdef net_sigs.TypeSig __parsed_sig
     cdef bint __has_invalid_signature
     cdef bint __has_type
 
@@ -440,12 +440,12 @@ cdef class TypeSpec(TypeDefOrRef):
 
     cpdef TypeDefOrRef get_superclass(self)
 
-    cpdef net_utils.TypeSig get_sig_obj(self)
+    cpdef net_sigs.TypeSig get_sig_obj(self)
     
 cdef class StandAloneSig(RowObject):
-    cdef net_utils.TypeSig __parsed_sig
+    cdef net_sigs.TypeSig __parsed_sig
     cdef bint __has_invalid_signature
-    cpdef net_utils.TypeSig get_sig_obj(self)
+    cpdef net_sigs.TypeSig get_sig_obj(self)
 
 cdef class MethodImpl(RowObject):
     cdef RowObject __class
