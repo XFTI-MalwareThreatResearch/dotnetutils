@@ -292,12 +292,16 @@ cdef class MethodDisassembler:
         """
         self.dotnetpe = dotnetpe
         self.method_obj = method
+        self.max_stack = 0
         if not force_data:
             self.__reader: net_structs.DotNetDataReader = net_structs.DotNetDataReader(self.method_obj.get_method_data())
             self.disassemble_loop()
         else:
             self.__reader: net_structs.DotNetDataReader = net_structs.DotNetDataReader(force_data)
             self.disassemble_loop()
+
+    cpdef int get_max_stack_size(self):
+        return self.max_stack
 
     cpdef object get_method(self):
         """
@@ -376,7 +380,6 @@ cdef class MethodDisassembler:
         cdef int try_length
         start = self.__reader.read_byte()
         val = start & 7
-        import binascii
         if val == 2 or val == 6:
             self.flags = 0
             self.header_size = 1

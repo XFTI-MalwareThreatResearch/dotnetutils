@@ -543,8 +543,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if isinstance(method_obj.get_parent_type().get_type(), net_row_objects.TypeDef):
                 return do_virtcall(emu, force_virtcall=True, force_virt_type=method_obj.get_parent_type().get_type())
         method_name = method_obj.get_column('Name').get_value_as_bytes()
-        if method_name == b'.ctor':
-            is_newobj = True
         method_args = list()
         amt_args = len(method_obj.get_param_types())
 
@@ -576,7 +574,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 raise net_exceptions.EmulatorExecutionException(emu, 'unknown static function called {} {}'.format(hex(method_obj.get_token()), method_obj.get_full_name()))
             static_emu_func = emu.get_appdomain().get_static_func(method_obj.get_token())
             dot_obj = None
-        elif method_name == b'.ctor' and is_newobj: #newobj instructions only.
+        elif method_name == b'.ctor': #newobj instructions only.
             if force_extern_type is None:
                 parent_type = method_obj.get_parent_type()
             else:
@@ -584,9 +582,12 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if parent_type is not None and isinstance(parent_type, net_row_objects.TypeSpec):
                 tspec = parent_type
                 parent_type = tspec.get_type()
-            if parent_type is not None and emu.get_appdomain().has_ctor_func(parent_type.get_token()):
+            if is_newobj and parent_type is not None and emu.get_appdomain().has_ctor_func(parent_type.get_token()):
                 newobj_func = emu.get_appdomain().get_ctor_func(parent_type.get_token())
                 dot_obj = newobj_func(emu)
+            elif parent_type is not None and not is_newobj:
+                #for calls with ctors, do nothing.  Allocation already happened and for our purposes thats when the Ctor is called.
+                return False
             else:
                 raise net_exceptions.EmulatorExecutionException(emu, 'Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
             if not dot_obj.has_function(method_name):
@@ -1870,7 +1871,7 @@ cdef class DotNetStack:
 
     cpdef void append(self, net_emu_types.DotNetObject obj):
         if <unsigned int>self.__internal_stack.size() == <unsigned int>self.__max_stack_size:
-            raise Exception('violated max_stack_size')
+            raise net_exceptions.EmulatorExecutionException(self.__emulator, 'violated max_stack_size {} {}'.format(self.__max_stack_size, self.__internal_stack.size()))
         Py_INCREF(obj)
         self.__internal_stack.push_back(<PyObject*>obj)
 

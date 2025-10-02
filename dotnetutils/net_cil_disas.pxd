@@ -68,6 +68,8 @@ cdef class MethodDisassembler:
     cdef unordered_map[int, int] offsets
     cdef net_structs.DotNetDataReader __reader
 
+    cpdef int get_max_stack_size(self)
+
     cpdef object get_method(self)
 
     cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
