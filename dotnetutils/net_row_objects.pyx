@@ -14,6 +14,9 @@ from dotnetutils cimport net_processing
 from typing import Union
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
+    """
+    Obtains the name of a CorElementType.
+    """
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
         return b'System.Int8'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
@@ -207,8 +210,6 @@ cdef class ColumnValue:
         self.__has_no_value = False
         self.__formatter_method = None
         self.__formatter_param = None
-
-    #Trying to see if these will improve speed in net_deobfuscate.
 
     cdef bytes get_value_as_bytes(self):
         return <bytes>self.get_value()

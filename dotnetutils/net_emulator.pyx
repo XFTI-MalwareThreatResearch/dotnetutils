@@ -9,6 +9,10 @@ from dotnetutils cimport net_sigs, net_tokens, net_opcodes, net_cil_disas, net_s
 from cpython.ref cimport Py_INCREF, Py_XDECREF
 from libcpp.utility cimport pair
 
+"""
+Used for polling the performance counter with minimal overhead
+This is done a lot with print debugs so it can save a ton of time.
+"""
 cdef extern from * nogil:
     """
     #include <stdint.h>

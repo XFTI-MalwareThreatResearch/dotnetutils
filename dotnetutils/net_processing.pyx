@@ -68,30 +68,57 @@ cdef class HeapObject:
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef void begin_append_tx(self):
+        """
+        Append by transaction is a way to quickly add a bunch of things to a heap while only having to patch the binary once.
+        Start by calling begin_append_tx().  Then use append_tx() to append all the items, then call end_append_tx().
+        The stream itself will not be updated until end_append_tx() is called.
+        Attempts to call get_item() for an appended index will result in None until end_append_tx() is called.
+        """
         if self.in_append_tx:
             raise net_exceptions.OperationNotSupportedException()
         self.in_append_tx = True
 
     cdef void end_append_tx(self):
+        """
+        End the append transaction, patch up the binary and any other structures required.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef int append_tx(self, bytes item):
+        """
+        Append an item within a transaction.  begin_append_tx() must be called beforehand.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef void update_offset(self, int offset):
+        """
+        Internal use.  Update the held offset of the heap.
+        """
         self.offset = offset
     
     cdef void update_size(self, int size):
+        """
+        Internal use.  Update the size of the stream internally.
+        """
         self.size = size
 
     cpdef int get_offset_of_item(self, object item):
+        """
+        Return an integer representing the offset of a item within the heap, -1 if it doesnt exist.
+        """
         cdef int offset = <int>self.raw_data.find(<bytes>item)
         return offset
 
     cpdef bint is_offset_referenced(self, int offset):
+        """
+        return True if an offset is referenced by the DotNetPeFile.
+        """
         return False
 
     cdef bytes compress_integer(self, unsigned long number):
+        """
+        Utility function for compressing integers.
+        """
         cdef int b0 = 0
         cdef int b1 = 0
         cdef int b2 = 0
@@ -111,6 +138,9 @@ cdef class HeapObject:
             return bytes([b0, b1, b2, b3])
 
     cdef void update(self, int old_value, int new_value, int difference):
+        """
+        Internal method used to update references to a stream when the stream has been modified in a way that requires it.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef dotnetpefile.DotNetPeFile get_dotnetpe(self):
@@ -120,43 +150,79 @@ cdef class HeapObject:
         return bytes(self.raw_data)
     
     cdef void read(self):
+        """
+        Responsible for reading and handling the heap data.
+        """
         self.raw_data = bytearray(self.get_dotnetpe().get_exe_data()[self.offset:self.offset+self.size])
 
     cpdef list get_items(self):
-        raise Exception() #TODO
-
-    cpdef dict get_items_dict(self):
-        raise Exception() #TODO
+        """
+        Return a list of all items within the heap.
+        """
+        raise net_exceptions.FeatureNotImplementedException()
 
     cpdef bytes get_name(self):
+        """
+        Obtain the name of the stream.
+        """
         return self.name
 
     cpdef int get_offset(self):
+        """
+        Obtain the offset of the heap.
+        """
         return self.offset
 
     cpdef int get_size(self):
+        """
+        Obtain the size of the heap.
+        """
         return self.size
 
     cpdef int replace_item(self, int offset, object item):
+        """
+        Replace heap item at offset with item.
+        Returns the difference between the size of the new heap and the old heap.
+        """
         raise net_exceptions.FeatureNotImplementedException()
     
-    cpdef int append_item(self, object item) except *:
+    cpdef int append_item(self, object item):
+        """
+        Append an item onto the end of a heap.
+        Returns the offset of the appended item.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef object get_item(self, int offset):
+        """
+        Obtains an item within a heap at offset.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef bytes read_item(self, int offset):
+        """
+        Used to read heap items internally.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef bint has_offset(self, int offset):
+        """
+        Does an offset exist within a heap?
+        """
         return 0 < offset < self.get_size()
 
     cpdef bint has_item(self, object item):
+        """
+        Does a heap have item?
+        """
         cdef Py_ssize_t offset = self.raw_data.find(<bytes>item)
         return offset != -1
 
-    cpdef int del_item(self, int offset) except *:
+    cpdef int del_item(self, int offset):
+        """
+        Removes the item at offset from a heap.
+        Returns the difference in size between the new and old heaps.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     def __len__(self):
@@ -331,7 +397,7 @@ cdef class StringHeapObject(HeapObject):
         self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
         return difference
 
-    cpdef int append_item(self, object item) except *:
+    cpdef int append_item(self, object item):
         cdef bytes b = <bytes> item
         cdef int new_offset = <int>len(self.raw_data)
         cdef int potential = 0
@@ -386,7 +452,7 @@ cdef class StringHeapObject(HeapObject):
             result.append(item[:-1])
         return result
 
-    cpdef int del_item(self, int offset) except *:
+    cpdef int del_item(self, int offset):
         if not self.has_offset(offset):
             raise net_exceptions.InvalidArgumentsException()
         cdef bytes item = self.read_item(offset)
@@ -519,7 +585,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef Py_ssize_t index = self.raw_data.find(self.compress_integer(<unsigned long>len(item)) + item)
         return index != -1
 
-    cpdef int append_item(self, object item) except *:
+    cpdef int append_item(self, object item):
         cdef int offset = <int>len(self.raw_data)
         cdef bytes final = self.compress_integer(<unsigned long>len(item)) + <bytes>item
         cdef int potential = self.get_offset_of_item(final)
@@ -649,7 +715,7 @@ cdef class GuidHeapObject(HeapObject):
     cpdef object get_item(self, int offset):
         return self.read_item(offset)
 
-    cpdef int del_item(self, int offset) except *:
+    cpdef int del_item(self, int offset):
         cdef int difference = -16
         cdef int off = 0
         if not self.has_offset(offset):
@@ -672,7 +738,7 @@ cdef class GuidHeapObject(HeapObject):
         self.raw_data = self.raw_data[:offset] + item + self.raw_data[offset + 16:]
         return 0
 
-    cpdef int append_item(self, object item) except *:
+    cpdef int append_item(self, object item):
         if len(item) != 16:
             raise net_exceptions.InvalidArgumentsException()
         cdef int offset = <int>len(self.raw_data)
@@ -807,7 +873,7 @@ cdef class UserStringsHeapObject(HeapObject):
             return None
         return item[read_compressed_int_size1(item):][:-1] #strip flag mark.
 
-    cpdef int del_item(self, int offset) except *:
+    cpdef int del_item(self, int offset):
         if not self.has_offset(offset):
             return 0
         cdef bytes old_item = self.read_item(offset)
@@ -843,7 +909,7 @@ cdef class UserStringsHeapObject(HeapObject):
         self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
         return difference
 
-    cpdef int append_item(self, object item) except *:
+    cpdef int append_item(self, object item):
         cdef bytes b = <bytes>item
         cdef bytes final = None
         cdef int new_offset = <int>len(self.raw_data)
@@ -995,16 +1061,16 @@ cdef class MetadataTableHeapObject(HeapObject):
             self.amt_padding = expected_table_size - actual_table_size
 
     cpdef object get_item(self, int offset):
-        raise Exception() #Not allowed use get_table()
+        raise net_exceptions.FeatureNotImplementedException() #Not allowed use get_table()
 
-    cpdef int del_item(self, int offset) except *:
-        raise Exception() #Not allowed
+    cpdef int del_item(self, int offset):
+        raise net_exceptions.FeatureNotImplementedException() #Not allowed
 
     cpdef int replace_item(self, int offset, object item):
-        raise Exception() #Not allowed
+        raise net_exceptions.FeatureNotImplementedException() #Not allowed
 
-    cpdef int append_item(self, object item) except *:
-        raise Exception() #Not allowed
+    cpdef int append_item(self, object item):
+        raise net_exceptions.FeatureNotImplementedException() #Not allowed
 
     cpdef net_table_objects.TableObject get_table(self, str name):
         if name not in self.items:

@@ -5,6 +5,7 @@ import io
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_sigs, net_table_objects
 from cpython.ref cimport PyObject, Py_INCREF
+from libc.stdint cimport uint16_t, uint32_t
 
 from cython.operator cimport dereference
 from libcpp.utility cimport pair
@@ -367,6 +368,12 @@ cdef class MethodDisassembler:
         cdef int sect_flags
         cdef int data_size
         cdef int num_clauses
+        cdef uint16_t clause_flags
+        cdef uint16_t try_offset
+        cdef uint16_t handler_offset
+        cdef uint32_t class_token
+        cdef int handler_length
+        cdef int try_length
         start = self.__reader.read_byte()
         val = start & 7
         import binascii
@@ -538,8 +545,7 @@ cdef class MethodDisassembler:
                 self.instrs.push_back(<PyObject*>instr)
                 instr_index += 1
         except Exception as e:
-            raise e
-            #raise net_exceptions.InvalidAssemblyException()
+            raise net_exceptions.InvalidAssemblyException()
 
     def __iter__(self):
         return iter(self.get_list_of_instrs())

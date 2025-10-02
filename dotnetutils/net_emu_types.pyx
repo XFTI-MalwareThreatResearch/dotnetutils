@@ -2,18 +2,14 @@
 #distutils: language=c++
 
 import cython
-import io
 import sys
 import base64
 import hashlib
-import math
 import threading
 import binascii
 import functools
 import ntpath
 import zlib
-from enum import IntEnum
-from collections import defaultdict
 from Crypto.Cipher import DES, DES3
 from Crypto.Util.Padding import unpad
 from dotnetutils import net_exceptions
@@ -27,7 +23,7 @@ from dotnetutils cimport net_emulator
 from libc.math cimport exp, cos, sin, tan, log, fmod
 from libc.stdlib cimport malloc, free, div, div_t, lldiv, lldiv_t
 from libc.string cimport memcmp, memset, memcpy
-from libc.stdint cimport uint64_t, int64_t #ensure we avoid any Windows / Linux based bs
+from libc.stdint cimport uint64_t, int64_t #ensure we avoid any Windows / Linux based quirks
 from libc.limits cimport INT_MIN, LLONG_MIN
 from libcpp.utility cimport pair
 from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
@@ -46,6 +42,10 @@ cdef str remove_generics_from_name(str name):
 
     return actual_name
 
+"""
+Used for the implementations of rem in relation to DotNetNumber.
+Ensures rem follows C# spec.
+"""
 cdef int rem_i4(int one, int two):
     if two == 0:
         raise Exception()
@@ -73,6 +73,9 @@ cdef uint64_t rem_u8(uint64_t one, uint64_t two):
     return one % two
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
+    """
+    obtain the name in bytes of a CorElementType
+    """
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
         return b'System.Int8'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
@@ -101,7 +104,10 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
         return b'System.Char'
     raise Exception('element type not recognized {}'.format(element_type))
 
-cpdef get_cor_type_from_name(type_name):
+cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name):
+    """
+    Obtain the CorLibTypeSig of a type from its name.
+    """
     if type_name == b'System.Void':
         return net_sigs.get_CorSig_Void()
     elif type_name == b'System.Int8':

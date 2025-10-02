@@ -53,7 +53,7 @@ cdef class HeapObject:
 
     cpdef int replace_item(self, int offset, object item)
     
-    cpdef int append_item(self, object item) except *
+    cpdef int append_item(self, object item)
 
     cpdef object get_item(self, int offset)
 
@@ -61,11 +61,9 @@ cdef class HeapObject:
 
     cpdef bint has_offset(self, int offset)
 
-    cpdef int del_item(self, int offset) except *
+    cpdef int del_item(self, int offset)
 
     cpdef list get_items(self)
-
-    cpdef dict get_items_dict(self)
 
 cdef class StringHeapObject(HeapObject):
     cdef dict metadata_references
