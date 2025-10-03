@@ -99,7 +99,7 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
         raise net_exceptions.MethodLookupException(datetime_method_name)
 
     datetime_method = datetime_methods[0]
-    for method_rid, xref_index in datetime_method.get_xrefs():  # relying on instr_index gives some issues, maybe change this to an offset?
+    for method_rid, xref_offset in datetime_method.get_xrefs():  # relying on instr_index gives some issues, maybe change this to an offset?
         method_obj = dotnet.get_method_by_rid(method_rid)
         disasm_obj = method_obj.disassemble_method()
         for instr_index in range(len(disasm_obj)):
@@ -315,7 +315,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
         return None
 
     initialize_array = initialize_arrays[0]
-    for method_rid, instr_index in initialize_array.get_xrefs():
+    for method_rid, xref_offset in initialize_array.get_xrefs():
         method_obj = dotnet.get_method_by_rid(method_rid)
         disasm_obj = method_obj.disassemble_method()
         for x in range(len(disasm_obj)):
@@ -816,7 +816,7 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
             method_args_grabbed.append(instr.get_argument())
 
         instr_name = instr.get_name()
-        if instr_name == 'callvirt' or instr_name == 'call' or instr_name == 'newobj':
+        if (instr_name == 'callvirt' or instr_name == 'call' or instr_name == 'newobj') and (len(disasm_obj) > (x+1) and disasm_obj.get_instr_at_index(x+1).get_name() == 'ret'):
             if potential_data:
                 return bytes()
             # ok so for this check, the first thing we are going to want to do is check if the methods have the same argument
@@ -951,10 +951,10 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
             has_compare = True
 
     if field_id != None:
-        for method_rid, instr_index in field_id.get_xrefs():
+        for method_rid, xref_offset in field_id.get_xrefs():
             method_obj2 = dpe.get_method_by_rid(method_rid)
             disasm_obj = method_obj2.disassemble_method()
-            instr = <net_cil_disas.Instruction>disasm_obj[instr_index]
+            instr = <net_cil_disas.Instruction>disasm_obj.get_instr_at_offset(xref_offset)
             if instr.get_name() == 'stsfld':
                 return 0
 
@@ -993,9 +993,10 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     cdef list useless_rids
     cdef list useless_xrefs
     cdef tuple xref_info
+
+    import binascii
     
-    useless_methods = dict(
-    )  # dictionary of useless method rids and the instructions to replace them with
+    useless_methods = dict()  # dictionary of useless method rids and the instructions to replace them with
     dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     method_table = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
     memberref_table = <net_table_objects.MemberRefTable>dotnet.get_metadata_table('MemberRef')
@@ -1017,13 +1018,12 @@ cpdef bytes remove_useless_functions(bytes data) except *:
         for y in range(len(useless_xrefs)):
             xref_info = useless_xrefs[y]
             method_rid = xref_info[0]
-            instr_index = xref_info[1]
+            instr_offset = xref_info[1]
             method_obj = dotnet.get_method_by_rid(method_rid)
             method_disasm = method_obj.disassemble_method()
-            instr = method_disasm.get_instr_at_index(instr_index)
+            instr = method_disasm.get_instr_at_offset(instr_offset)
             instr_arg = instr.get_argument()
-            dotnet.patch_instruction(method_obj, useless_methods[instr_arg.get_rid()], instr.get_instr_offset(),
-                                     instr.get_instr_size())
+            dotnet.patch_instruction(method_obj, useless_methods[instr_arg.get_rid()], instr.get_instr_offset(), instr.get_instr_size())
 
     # Check for useless memberref calls.
 
@@ -1032,15 +1032,14 @@ cpdef bytes remove_useless_functions(bytes data) except *:
         if memberref.is_method():
             method_impl = memberref.get_method_impl()
             if method_impl and method_impl.get_rid() in useless_methods.keys():
-                for method_rid, instr_index in memberref.get_xrefs():
+                for method_rid, instr_offset in memberref.get_xrefs():
                     method_obj = dotnet.get_method_by_rid(method_rid)
                     method_disasm = method_obj.disassemble_method()
-                    instr = method_disasm.get_instr_at_index(instr_index)
+                    instr = method_disasm.get_instr_at_offset(instr_offset)
                     dotnet.patch_instruction(method_obj, useless_methods[method_impl.get_rid()],
                                              instr.get_instr_offset(), instr.get_instr_size())
 
     # now search for junk methods
-
     for x in range(1, len(method_table) + 1):
         method = method_table.get(x)
         if method.has_body():

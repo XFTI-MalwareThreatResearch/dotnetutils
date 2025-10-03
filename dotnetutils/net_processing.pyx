@@ -67,7 +67,7 @@ cdef class HeapObject:
     cdef void update_bitmask(self, int new_size):
         raise net_exceptions.FeatureNotImplementedException()
 
-    cdef void begin_append_tx(self):
+    cpdef void begin_append_tx(self):
         """
         Append by transaction is a way to quickly add a bunch of things to a heap while only having to patch the binary once.
         Start by calling begin_append_tx().  Then use append_tx() to append all the items, then call end_append_tx().
@@ -78,13 +78,13 @@ cdef class HeapObject:
             raise net_exceptions.OperationNotSupportedException()
         self.in_append_tx = True
 
-    cdef void end_append_tx(self):
+    cpdef void end_append_tx(self):
         """
         End the append transaction, patch up the binary and any other structures required.
         """
         raise net_exceptions.FeatureNotImplementedException()
 
-    cdef int append_tx(self, bytes item):
+    cpdef int append_tx(self, bytes item):
         """
         Append an item within a transaction.  begin_append_tx() must be called beforehand.
         """
@@ -259,7 +259,7 @@ cdef class StringHeapObject(HeapObject):
                         self.metadata_references[table_name] = list()
                     self.metadata_references[table_name].append(col_name)
 
-    cdef void end_append_tx(self):
+    cpdef void end_append_tx(self):
         cdef int x = 0
         cdef int new_offset = 0
         cdef uint64_t va_addr = 0
@@ -295,7 +295,7 @@ cdef class StringHeapObject(HeapObject):
         va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
         self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), True, True, b'#~', self.get_dotnetpe().get_pe().get_sec_index_phys(heap_obj.get_offset()))        
 
-    cdef int append_tx(self, bytes item) except *:
+    cpdef int append_tx(self, bytes item):
         cdef int new_offset = 0
         cdef bytearray new_item = bytearray(item)
         if not self.in_append_tx:
@@ -763,6 +763,36 @@ cdef class UserStringsHeapObject(HeapObject):
         for mdef in table:
             Py_INCREF(mdef)
             self.methods.push_back(<PyObject*>mdef)
+
+    cpdef void end_append_tx(self):
+        cdef int x = 0
+        cdef int new_offset = 0
+        cdef uint64_t va_addr = 0
+        if not self.in_append_tx:
+            raise net_exceptions.OperationNotSupportedException()
+        self.in_append_tx = False
+        if len(self.tx_data) == 0:
+            return
+        new_offset = <int>len(self.raw_data)
+        self.raw_data.extend(self.tx_data)
+        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
+        self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(self.tx_data), self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+        self.tx_data = bytearray()
+
+    cpdef int append_tx(self, bytes item):
+        cdef int new_offset = 0
+        cdef bytearray new_item = bytearray(self.sanitize_input(item))
+        if not self.in_append_tx:
+            raise net_exceptions.OperationNotSupportedException()
+        new_offset = <int>self.tx_data.find(new_item)
+        if new_offset <= 0:
+            new_offset = <int>self.raw_data.find(new_item)
+            if new_offset <= 0:
+                new_offset = self.get_size() + <int>len(self.tx_data)
+                self.tx_data.extend(new_item)
+        else:
+            new_offset = self.get_size() + new_offset
+        return new_offset
 
     cdef bytes sanitize_input(self, bytes data):
         cdef bytes b = data

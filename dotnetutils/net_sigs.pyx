@@ -215,11 +215,11 @@ cdef class SZArraySig(ArraySigBase):
 
 
 cdef class ModifierSig(NonLeafSig):
-    def __init__(self, TypeSig next_sig, int modifier, net_structs.CorElementType element_type=net_structs.CorElementType.ELEMENT_TYPE_MODIFIER):
+    def __init__(self, TypeSig next_sig, net_row_objects.TypeDefOrRef modifier, net_structs.CorElementType element_type=net_structs.CorElementType.ELEMENT_TYPE_MODIFIER):
         NonLeafSig.__init__(self, element_type, next_sig)
         self.__modifier = modifier
 
-    cpdef int get_modifier(self):
+    cpdef net_row_objects.TypeDefOrRef get_modifier(self):
         return self.__modifier
     
     def __eq__(self, other):
@@ -227,12 +227,12 @@ cdef class ModifierSig(NonLeafSig):
 
 
 cdef class CModReqdSig(ModifierSig):
-    def __init__(self, TypeSig next_sig, int modifier):
+    def __init__(self, TypeSig next_sig, net_row_objects.TypeDefOrRef modifier):
         ModifierSig.__init__(self, next_sig, modifier, element_type=net_structs.CorElementType.ELEMENT_TYPE_CMOD_REQD)
 
 
 cdef class CmodOptSig(ModifierSig):
-    def __init__(self, TypeSig next_sig, int modifier):
+    def __init__(self, TypeSig next_sig, net_row_objects.TypeDefOrRef modifier):
         ModifierSig.__init__(self, next_sig, modifier, element_type=net_structs.CorElementType.ELEMENT_TYPE_CMOD_OPT)
 
 
@@ -382,9 +382,11 @@ cdef class SignatureReader():
     cpdef CallingConventionSig read_signature(self):
         try:
             return self.read_calling_convention_sig()
-        except:
+        except Exception as e:
             # ignore due to likely corrupted metadata, file might still run.
-            raise net_exceptions.InvalidSignatureException('read_signature')
+
+            raise e
+            #raise net_exceptions.InvalidSignatureException('read_signature')
 
     cdef CallingConventionSig read_calling_convention_sig(self):
         cdef net_structs.CorCallingConvention sig_type
@@ -524,14 +526,14 @@ cdef class SignatureReader():
             try:
                 typedef = self.read_typedef_or_ref()
                 new_type = self.handle_type_sig()
-                return CModReqdSig(typedef, new_type)
-            except:
+                return CModReqdSig(new_type, typedef)
+            except Exception as e:
                 raise net_exceptions.InvalidSignatureException('CModReqdSig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_CMOD_OPT:
             try:
                 typedef = self.read_typedef_or_ref()
                 new_type = self.handle_type_sig()
-                return CmodOptSig(typedef, new_type)
+                return CmodOptSig(new_type, typedef)
             except:
                 raise net_exceptions.InvalidSignatureException('CmodOptSig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_SENTINEL:
@@ -622,8 +624,9 @@ cdef class SignatureReader():
             return FieldSig(calling_conv, self.sig_io.read(), type_sig)
         except net_exceptions.TooManyMethodParameters as e:
             raise e
-        except:
-            raise net_exceptions.InvalidSignatureException('FieldSig')
+        except Exception as e :
+            raise e
+            #raise net_exceptions.InvalidSignatureException('FieldSig')
 
     cdef LocalSig handle_local_sig(self):
         try:

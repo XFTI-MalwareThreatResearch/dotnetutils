@@ -102,9 +102,9 @@ cdef class SZArraySig(ArraySigBase):
     cpdef list get_lower_bounds(self)
 
 cdef class ModifierSig(NonLeafSig):
-    cdef int __modifier
+    cdef net_row_objects.TypeDefOrRef __modifier
 
-    cpdef int get_modifier(self)
+    cpdef net_row_objects.TypeDefOrRef get_modifier(self)
 
 cdef class CModReqdSig(ModifierSig):
     pass

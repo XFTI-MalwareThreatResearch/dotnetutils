@@ -17,11 +17,11 @@ cdef class HeapObject:
 
     cdef void update_bitmask(self, int new_size)
 
-    cdef void begin_append_tx(self)
+    cpdef void begin_append_tx(self)
 
-    cdef void end_append_tx(self)
+    cpdef void end_append_tx(self)
 
-    cdef int append_tx(self, bytes item) except *
+    cpdef int append_tx(self, bytes item)
 
     cdef dotnetpefile.DotNetPeFile dotnetpe
 
