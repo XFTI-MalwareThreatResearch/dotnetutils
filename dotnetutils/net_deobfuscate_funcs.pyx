@@ -1128,15 +1128,19 @@ cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.
             method2 = methods[x]
             if method2.get_column('Name').get_original_value() == parent_method_name:
                 if parent_method_signature == method2.get_method_signature():
+                    if isinstance(method2, net_row_objects.MemberRef) and isinstance(superclass_type, net_row_objects.TypeRef):
+                        #for this situation, make the method name the name of the memberref.
+                        new_index = method2.get_column('Name').get_raw_value()
+                        break
                     col_val = method2.get_column('Name')
                     if col_val.get_raw_value() not in method_names:
                         name = col_val.get_original_value()
                     else:
                         name = method_names[col_val.get_raw_value()]
                     if not has_prefix(name):
-                        method2.get_column('Name').set_raw_value(new_index)
+                        col_val.set_raw_value(new_index)
                     else:
-                        new_index = method2.get_column('Name').get_raw_value()
+                        new_index = col_val.get_raw_value()
     interfaces = method_obj.get_parent_type().get_interfaces()
     for x in range(len(interfaces)):
         interface = interfaces[x]
@@ -1155,7 +1159,7 @@ cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.
             if name == parent_method_name:
                 if parent_method_signature == method2.get_method_signature():
                     if not has_prefix(name):
-                        method2.get_column('Name').set_raw_value(new_index)
+                        col_val.set_raw_value(new_index)
                     else:
                         new_index = col_val.get_raw_value()
         methods = int_obj.get_member_refs()
@@ -1170,7 +1174,6 @@ cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.
                     else:
                         name = method_names[col_val.get_raw_value()]
                     if not has_prefix(name):
-
                         col_val.set_raw_value(new_index)
                     else:
                         col_val.get_raw_value()
@@ -1268,6 +1271,7 @@ cpdef bytes cleanup_names(bytes data,
     cdef int new_offset = 0
     cdef net_processing.StringHeapObject string_heap = None
     cdef net_row_objects.ColumnValue col_val = None
+    cdef net_row_objects.ColumnValue col_val2 = None
     cdef dict method_names = dict()
     if dotnetpe is None:
         raise net_exceptions.InvalidArgumentsException()
@@ -1685,13 +1689,13 @@ cpdef bytes cleanup_names(bytes data,
                     methods_list = parent_type.get_column('MethodList').get_formatted_value()
                     for y in range(len(methods_list)):
                         method = methods_list[y]
-                        col_val = method.get_column('Name')
-                        if col_val.get_raw_value() not in method_names:
-                            new_name = col_val.get_original_value()
+                        col_val2 = method.get_column('Name')
+                        if col_val2.get_raw_value() not in method_names:
+                            new_name = col_val2.get_original_value()
                         else:
-                            new_name = method_names[col_val.get_raw_value()]
+                            new_name = method_names[col_val2.get_raw_value()]
                         if new_name == name and memberref.get_method_signature() == method.get_method_signature():
-                            col_val.set_raw_value(method.get_column('Name').get_raw_value())
+                            col_val.set_raw_value(col_val2.get_raw_value())
                             break
         string_heap.end_append_tx()
     return dotnetpe.reconstruct_executable()
