@@ -165,3 +165,5 @@ cdef class DotNetEmulator:
     cdef void print_instr(self, net_cil_disas.Instruction instr)
 
     cpdef void run_function(self) except *
+
+    cdef void cleanup(self)

@@ -1028,7 +1028,11 @@ cdef class DotNetPeFile:
         Returns True if 'string' exists within the #Strings stream.
         If string is bytes, it should be utf-8 encoded.
         """
-        return string in self.get_strings()
+        cdef net_processing.StringHeapObject string_heap = self.get_heap('#Strings')
+        cdef bytes item = string
+        if item[-1] != 0:
+            item += b'\x00'
+        return string_heap.has_item(item)
 
     cpdef list get_resources(self):
         """

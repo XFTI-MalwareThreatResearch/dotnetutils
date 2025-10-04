@@ -8,6 +8,7 @@ from libc.string cimport strlen, strcmp, memset
 from dotnetutils cimport net_sigs, net_tokens, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
 from cpython.ref cimport Py_INCREF, Py_XDECREF
 from libcpp.utility cimport pair
+from cpython.exc cimport PyErr_CheckSignals
 
 """
 Used for polling the performance counter with minimal overhead
@@ -1988,8 +1989,6 @@ cdef class DotNetEmulator:
         for key in range(self.localvars.size()):
             Py_XDECREF(self.localvars[key])
         self.localvars.clear()
-        if self.static_fields is not None:
-            self.static_fields.clear()
 
     cdef bint is_64bit(self):
         return self.__is_64bit
@@ -2257,6 +2256,7 @@ cdef class DotNetEmulator:
             if self.print_debug:
                 self.print_current_state()
         while self.current_eip < len(self.disasm_obj):
+            PyErr_CheckSignals()
             self.should_break = False
             self.instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if self.instr == None:
@@ -2337,3 +2337,11 @@ cdef class DotNetEmulator:
 
         if not self.already_init:
             self.get_appdomain().set_calling_dotnetpe(None)
+        self.cleanup()
+
+    cdef void cleanup(self):
+        cdef net_emu_types.DotNetObject obj
+        cdef unsigned int key = 0
+        for key in range(self.localvars.size()):
+            Py_XDECREF(self.localvars[key])
+        self.localvars.clear()
