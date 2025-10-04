@@ -558,7 +558,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 if len(emu.stack) < 1:
                     raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
                 obj_ref = emu.stack.pop()
-
         else:
             if not is_newobj and push_obj_reference:
                 obj_ref = force_method_args.pop(0)
@@ -602,7 +601,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             return False 
         else:
             #static methods are handled so this should only be thiscall methods.
-            if obj_ref:
+            if obj_ref is not None:
                 if obj_ref.has_function(method_name):
                     emu_func = obj_ref.get_function(method_name)
                 else:
@@ -1215,7 +1214,7 @@ cdef bint handle_ldtoken_instruction(DotNetEmulator emu):
         emu.stack.append(net_emu_types.DotNetRuntimeMethodHandle(emu, internal_item))
     elif  table_name == 'Field':
         emu.stack.append(net_emu_types.DotNetRuntimeFieldHandle(emu, internal_item))
-    elif table_name == 'TypeDef' or table_name == 'TypeRef':
+    elif table_name == 'TypeDef' or table_name == 'TypeRef' or table_name == 'TypeSpec':
         emu.stack.append(net_emu_types.DotNetRuntimeTypeHandle(emu, internal_item))
     else:
         raise Exception('invalid table {}'.format(table_name)) #Invalid table
@@ -1831,7 +1830,7 @@ cdef class EmulatorAppDomain:
                 return asm_obj
         return None
 
-    cpdef bytes get_resource_by_name(self, net_emu_types.DotNetString name) except *:
+    cpdef bytes get_resource_by_name(self, net_emu_types.DotNetString name, net_emu_types.DotNetAssembly assembly) except *:
         cdef net_emu_types.DotNetAssembly asm_obj
         cdef net_emu_types.DotNetAssemblyName asm_name_obj
         cdef net_emu_types.DotNetString asm_name_str
@@ -1842,7 +1841,7 @@ cdef class EmulatorAppDomain:
         cdef DotNetEmulator emu_obj
         cdef net_emu_types.DotNetObject result_obj
         cdef bytes rsrc_name = name.get_str_data_as_bytes().decode(name.get_str_encoding()).encode('utf-8')
-        cdef bytes result = self.original_assembly.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
+        cdef bytes result = assembly.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
         if result is not None:
             return result
         #first check the resolve methods, see if we get anything from there.

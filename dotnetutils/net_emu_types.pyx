@@ -3263,13 +3263,13 @@ cdef class DotNetInt64(DotNetNumber):
         raise Exception()
 
     cdef bint greaterthanequals(self, DotNetNumber other):
-        cdef int64_t val_one = 0
+        cdef CorElementType other_type = other.get_num_type()
+        cdef int64_t val_one = self.as_long()
         cdef int64_t val_two = 0
-        if other.get_num_type() == CorElementType.ELEMENT_TYPE_I8:
-            val_one = self.as_long()
+        if other_type == CorElementType.ELEMENT_TYPE_I8 or other_type == CorElementType.ELEMENT_TYPE_U8:
             val_two = other.as_long()
             return val_one >= val_two
-        raise Exception()
+        raise Exception('int64 gte {}'.format(get_cor_type_name(other_type)))
 
 cdef class DotNetUInt8(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
@@ -4637,10 +4637,10 @@ cdef class DotNetUInt64(DotNetNumber):
         raise Exception()
 
     cdef bint greaterthanequals(self, DotNetNumber other):
-        cdef uint64_t val_one = 0
+        cdef CorElementType other_type = other.get_num_type()
+        cdef uint64_t val_one = self.as_ulong()
         cdef uint64_t val_two = 0
-        if other.get_num_type() == CorElementType.ELEMENT_TYPE_U8:
-            val_one = self.as_ulong()
+        if other_type == CorElementType.ELEMENT_TYPE_U8 or other_type == CorElementType.ELEMENT_TYPE_I8:
             val_two = other.as_ulong()
             return val_one >= val_two
         raise Exception()
@@ -5687,7 +5687,7 @@ cdef class DotNetAssembly(DotNetObject):
         cdef Py_ssize_t x = 0
         cdef list internal_list = list()
         cdef DotNetUInt8 num = None
-        resource_data = self.get_emulator_obj().get_appdomain().get_resource_by_name(name)
+        resource_data = self.get_emulator_obj().get_appdomain().get_resource_by_name(name, self)
         if not resource_data:
             obj = DotNetObject(self.get_emulator_obj())
             obj.flag_null()
@@ -8947,6 +8947,10 @@ cdef class DotNetEnvironment(DotNetObject):
             return DotNetString(app_domain.get_emulator_obj(), '%LocalAppData%'.encode('utf-16le'))
         raise net_exceptions.OperationNotSupportedException()
 
+    @staticmethod
+    cdef DotNetObject get_Version(net_emulator.EmulatorAppDomain app_domain, list args):
+        return DotNetVersion(app_domain.get_emulator_obj())
+
 
 cdef class DotNetResolveEventArgs(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -9354,6 +9358,16 @@ cdef class DotNetGCHandle(DotNetObject):
         gc.ctor(gcArgs)
         return gc
 
+cdef class DotNetVersion(DotNetObject):
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
+        self.__major_version = DotNetInt32(emulator_obj, None)
+        self.__major_version.from_int(3) #To fool certain dotnetreactor samples.
+        self.add_function(b'get_Major', <emu_func_type>self.get_Major)
+
+    cdef DotNetObject get_Major(self, list args):
+        return self.__major_version
+
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj):
     return DotNetConcurrentDictionary(emulator_obj)
 
@@ -9450,7 +9464,7 @@ NET_EMULATE_TYPE_REGISTRATIONS[17].func_ptr = <newobj_func_type>&New_ResolveEven
 NET_EMULATE_TYPE_REGISTRATIONS[18].name = 'System.Comparison'
 NET_EMULATE_TYPE_REGISTRATIONS[18].func_ptr = <newobj_func_type>&New_Comparison
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -9527,3 +9541,7 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[36].name = 'System.BitConverter.GetBytes'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[36].func_ptr = <static_func_type>&DotNetBitConverter.GetBytes
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[37].name = 'System.AppDomain.get_CurrentDomain'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[37].func_ptr = <static_func_type>&DotNetAppDomain.get_CurrentDomain
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38].name = 'System.Reflection.Assembly.Load'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38].func_ptr = <static_func_type>&DotNetAssembly.Load
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[39].name = 'System.Environment.get_Version'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[39].func_ptr = <static_func_type>&DotNetEnvironment.get_Version

@@ -2204,6 +2204,9 @@ cdef class DotNetEnvironment(DotNetObject):
     @staticmethod
     cdef DotNetObject GetFolderPath(net_emulator.EmulatorAppDomain app_domain, list args)
 
+    @staticmethod
+    cdef DotNetObject get_Version(net_emulator.EmulatorAppDomain app_domain, list args)
+
 cdef class DotNetResolveEventArgs(DotNetObject):
     cdef DotNetString __name
 
@@ -2334,6 +2337,11 @@ cdef class DotNetGCHandle(DotNetObject):
     @staticmethod
     cdef DotNetObject Alloc(net_emulator.EmulatorAppDomain app_domain, list args)
 
+cdef class DotNetVersion(DotNetObject):
+    cdef DotNetInt32 __major_version
+
+    cdef DotNetObject get_Major(self, list args)
+
 cdef struct NewobjFuncMapping:
     const char * name
     newobj_func_type func_ptr
@@ -2343,11 +2351,11 @@ cdef struct EmuFuncMapping:
     static_func_type func_ptr
 
 
-cdef const int AMT_OF_STATIC_FUNCTIONS = 38
+cdef const int AMT_OF_STATIC_FUNCTIONS = 40
 cdef const int AMT_OF_TYPES = 19
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[19]
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 
