@@ -17,6 +17,11 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
 
 cdef void __init_handlers()
 
+cdef struct ByRefItem:
+    int kind
+    int rid
+    PyObject * owner
+
 cdef union StackCellItem:
     int32_t i4
     uint32_t u4
@@ -25,7 +30,7 @@ cdef union StackCellItem:
     double r8
     bint b
     PyObject * ref
-    StackCell * byref
+    ByRefItem byref
 
 cdef struct StackCell:
     CorElementType tag

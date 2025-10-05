@@ -2472,10 +2472,123 @@ cdef class DotNetEmulator:
         if isinstance(type_sig, net_utils.CorLibTypeSig):
             cor_sig = <net_sigs.CorLibTypeSig>type_sig
             cor_type = cor_sig.get_element_type()
+            if cor_type == CorElementType.ELEMENT_TYPE_I:
+                dobj = net_emu_types.DotNetIntPtr(self, None)
+                if self.__is_64bit:
+                    dobj.from_long(cell.item.i8)
+                else:
+                    dobj.from_int(cell.item.i4)
+                return self.pack_object(dobj)
+            elif cor_type == CorElementType.ELEMENT_TYPE_U:
+                dobj = net_emu_types.DotNetUIntPtr(self, None)
+                if self.__is_64bit:
+                    dobj.from_ulong(cell.item.u8)
+                else:
+                    dobj.from_uint(cell.item.u4)
+                return self.pack_object(dobj)
+            elif cor_type == CorElementType.ELEMENT_TYPE_I1:
+                dobj = net_emu_types.DotNetInt8(self, None)
+                dobj.from_char(<char>cell.item.i4)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_U1:
+                dobj = net_emu_types.DotNetUInt8(self, None)
+                dobj.from_uchar(<unsigned char>cell.item.u4)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_I2:
+                dobj = net_emu_types.DotNetInt16(self, None)
+                dobj.from_short(<short>cell.item.i4)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_U2:
+                dobj = net_emu_types.DotNetUInt16(self, None)
+                dobj.from_ushort(<unsigned short>cell.item.u4)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_I4:
+                dobj = net_emu_types.DotNetInt32(self, None)
+                dobj.from_int(cell.item.i4)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_U4:
+                dobj = net_emu_types.DotNetUInt32(self, None)
+                dobj.from_uint(cell.item.u4)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_I8:
+                dobj = net_emu_types.DotNetInt64(self, None)
+                dobj.from_long(cell.item.i8)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_U8:
+                dobj = net_emu_types.DotNetUInt64(self, None)
+                dobj.from_ulong(cell.item.u8)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_R4:
+                dobj = net_emu_types.DotNetSingle(self, None)
+                dobj.from_float(<float>cell.item.r8)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_R8:
+                dobj = net_emu_types.DotNetDouble(self, None)
+                dobj.from_double(cell.item.r8)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
+                dobj = net_emu_types.DotNetBoolean(self, None)
+                dobj.from_bool(cell.item.b)
+                return dobj
+            elif cor_type == CorElementType.ELEMENT_TYPE_CHAR:
+                dobj = net_emu_types.DotNetChar(self, None)
+                dobj.from_ushort(<unsigned short>cell.item.u4)
+                return dobj
+            else:
+                raise net_exceptions.FeatureNotImplementedException()
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef StackCell unbox_value(self, StackCell cell):
-        raise net_exceptions.FeatureNotImplementedException()
+        if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT:
+            return cell
+        if cell.item.ref == NULL:
+            return cell
+        cdef net_emu_types.DotNetObject dobj = <net_emu_types.DotNetObject> cell.item.ref
+        cdef net_emu_types.DotNetNumber nobj = None
+        cdef CorElementType cor_type = CorElementType.ELEMENT_TYPE_END
+        cdef StackCell result
+        if not dobj.is_number():
+            raise net_exceptions.OperationNotSupportedException()
+        nobj = <net_emu_types.DotNetNumber>dobj
+        cor_type = nobj.get_num_type()
+        if cor_type == CorElementType.ELEMENT_TYPE_I:
+            if self.__is_64bit:
+                return self.pack_i(nobj.as_long())
+            else:
+                return self.pack_i(<int64_t>nobj.as_int())
+        elif cor_type == CorElementType.ELEMENT_TYPE_U:
+            if self.__is_64bit:
+                return self.pack_u(nobj.as_ulong())
+            else:
+                return self.pack_u(<uint64_t>nobj.as_uint())
+        elif cor_type == CorElementType.ELEMENT_TYPE_I1:
+            return self.pack_i1(nobj.as_char())
+        elif cor_type == CorElementType.ELEMENT_TYPE_U1:
+            return self.pack_u1(nobj.as_uchar())
+        elif cor_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
+            return self.pack_bool(nobj.as_bool())
+        elif cor_type == CorElementType.ELEMENT_TYPE_CHAR:
+            return self.pack_char(nobj.as_ushort())
+        elif cor_type == CorElementType.ELEMENT_TYPE_I2:
+            return self.pack_i2(nobj.as_short())
+        elif cor_type == CorElementType.ELEMENT_TYPE_U2:
+            return self.pack_u2(nobj.as_ushort())
+        elif cor_type == CorElementType.ELEMENT_TYPE_I4:
+            return self.pack_i4(nobj.as_int())
+        elif cor_type == CorElementType.ELEMENT_TYPE_U4:
+            return self.pack_u4(nobj.as_uint())
+        elif cor_type == CorElementType.ELEMENT_TYPE_I8:
+            return self.pack_i8(nobj.as_long())
+        elif cor_type == CorElementType.ELEMENT_TYPE_U8:
+            return self.pack_u8(nobj.as_ulong())
+        elif cor_type == CorElementType.ELEMENT_TYPE_R4:
+            return self.pack_r4(nobj.as_float())
+        elif cor_type == CorElementType.ELEMENT_TYPE_R8:
+            return self.pack_r8(nobj.as_double())
+        else:
+            raise net_exceptions.OperationNotSupportedException()
 
     def __dealloc__(self):
         cdef net_emu_types.DotNetObject obj
