@@ -1779,6 +1779,9 @@ cdef class EmulatorAppDomain:
         cdef StackCell * ptr = &self.__static_fields[actual_index]
         self.dealloc_cell(*ptr)
         memcpy(ptr, &cell, sizeof(cell))
+        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if cell.item.ref != NULL:
+                Py_INCREF(cell.item.ref)
         ptr.rid = idno
 
     cdef StackCell * get_static_field_ptr(int idno):
@@ -2139,8 +2142,6 @@ cdef class DotNetEmulator:
         if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
             Py_XDECREF(cell.ref)
             cell.ref = NULL
-        elif cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
-            self.dealloc_cell(*cell.byref)
         #Ints and such dont need to have anything done
 
     cdef void pack_blanktag(self):
@@ -2412,10 +2413,16 @@ cdef class DotNetEmulator:
     cdef StackCell get_local(self, int idx):
         return self.localvars[idx]
 
+    cdef StackCell * get_local_ptr(self, int idx):
+        return &self.localvars[idx]
+
     cdef void set_local(self, int idx, StackCell obj):
         cdef StackCell prev_val = self.get_local(idx)
         self.dealloc_cell(prev_val)
         self.localvars[idx] = obj
+        if obj.tag == CorElementType.ELEMENT_TYPE_OBJECT or obj.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if obj.item.ref != NULL:
+                Py_INCREF(obj.item.ref)
 
     cdef void print_instr(self, net_cil_disas.Instruction instr):            
         if False: #isinstance(self.method_obj, net_emu_types.DotNetDynamicMethod):

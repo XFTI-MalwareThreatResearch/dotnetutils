@@ -25,15 +25,11 @@ ctypedef DotNetObject (*newobj_func_type)(net_emulator.DotNetEmulator emulator_o
 #NOTE: probably can remove cython sigs for all methods that arent in DotNetObject, its going to be called as a python object anyway.
 cdef class DotNetObject:
     cdef net_emulator.DotNetEmulator __emulator_obj
-    cdef dict fields
+    cdef unordered_map[int, net_emulator.StackCell] __fields
     cdef net_row_objects.TypeDefOrRef type_obj
     cdef net_sigs.TypeSig type_sig_obj
-    cdef list initialized_fields
     cdef bint __initialized
-    cdef bint __is_null
     cdef unordered_map[string, emu_func_type] __functions
-
-    cpdef DotNetObject dereference(self)
 
     cdef DotNetObject ctor(self, list args)
 
@@ -55,9 +51,11 @@ cdef class DotNetObject:
 
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self)
 
-    cpdef void set_field(self, uint64_t idno, DotNetObject val)
+    cdef void set_field(self, int idno, net_emulator.StackCell val)
 
-    cpdef DotNetObject get_field(self, uint64_t idno)
+    cdef net_emulator.StackCell get_field(self, int idno)
+
+    cdef net_emulator.StackCell * get_field_ptr(self, int idno)
 
     cpdef net_row_objects.TypeDefOrRef get_type_obj(self)
 

@@ -76,17 +76,14 @@ cdef class DotNetObject:
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         if emulator_obj is None:
             raise net_exceptions.EmulatorExecutionException(None, 'Invalid DotNetObject: NoneType emulator_obj')
-        self.fields = dict()
+        self.__initialized = False
         self.__emulator_obj = emulator_obj
         self.type_obj = None
         self.type_sig_obj = None
-        self.initialized_fields = list()
-        self.__initialized = False
-        self.__is_null = False
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
 
     def __dealloc__(self):
-        self.fields.clear()
+        self.__clear_fields()
 
     cpdef DotNetObject dereference(self):
         return self
@@ -133,13 +130,26 @@ cdef class DotNetObject:
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self):
         return self.__emulator_obj
 
-    cpdef void set_field(self, uint64_t idno, DotNetObject val):
+    cdef void set_field(self, int idno, net_emulator.StackCell val):
+        cdef StackCell old_val
+        if self.__fields.find(idno) != self.__fields.end():
+            old_val = self.__fields[idno]
+            self.get_emulator_obj().dealloc_cell(old_val)
         self.fields[idno] = val
+        if val.tag == CorElementType.ELEMENT_TYPE_OBJECT or val.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if val.item.ref != NULL:
+                Py_INCREF(val.item.ref)
 
-    cpdef DotNetObject get_field(self, uint64_t idno):
-        if idno not in self.fields:
+    cdef __clear_fields(self):
+        cdef pair[int, StackCell] kv
+        for kv in self.__fields:
+            self.get_emulator_obj().dealloc_cell(kv.second)
+        self.__fields.clear()
+
+    cpdef net_emulator.StackCell get_field(self, int idno):
+        if self.__fields.find(idno):
             self._initialize_field(idno)
-        return <DotNetObject>self.fields[idno]
+        return self.__fields[idno]
 
     cpdef net_row_objects.TypeDefOrRef get_type_obj(self):
         return self.type_obj
@@ -153,9 +163,8 @@ cdef class DotNetObject:
     cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj):
         self.type_sig_obj = type_sig_obj
 
-    cpdef void _initialize_field(self, uint64_t field_rid):
-        cdef DotNetObject null_obj = None
-        cdef DotNetNumber num_obj = None
+    cdef void _initialize_field(self, int field_rid):
+        cdef StackCell result
         cdef net_row_objects.Field field_obj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(field_rid)
         cdef net_sigs.FieldSig field_sig = field_obj.get_field_signature()
         cdef net_sigs.TypeSig type_sig = field_sig.get_type_sig()
@@ -163,79 +172,62 @@ cdef class DotNetObject:
         cdef net_row_objects.TypeDefOrRef type_def = None
         if isinstance(type_sig, net_sigs.CorLibTypeSig):
             if type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I:
-                if not self.get_emulator_obj().is_64bit():
-                    num_obj = DotNetInt32(self.get_emulator_obj(), None)
-                else:
-                    num_obj = DotNetInt64(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_i(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I1:
-                num_obj = DotNetInt8(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_i4(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I2:
-                num_obj = DotNetInt16(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_i4(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I4:
-                num_obj = DotNetInt32(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_i4(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I8:
-                num_obj = DotNetInt64(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_i8(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U:
-                if not self.get_emulator_obj().is_64bit():
-                    num_obj = DotNetUInt32(self.get_emulator_obj(), None)
-                else:
-                    num_obj = DotNetUInt64(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_u(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U1:
-                num_obj = DotNetUInt8(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_u4(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U2:
-                num_obj = DotNetUInt16(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_u4(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U4:
-                num_obj = DotNetUInt32(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_u4(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_U8:
-                num_obj = DotNetUInt64(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_u8(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R4:
-                num_obj = DotNetSingle(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_r4(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R8:
-                num_obj = DotNetDouble(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_r8(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_STRING:
-                self.set_field(field_rid, DotNetString.Empty(self.get_emulator_obj().get_appdomain(), []))
+                result = self.pack_object(DotNetString.Empty(self.get_emulator_obj().get_appdomain(), []))
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
-                num_obj = DotNetBoolean(self.get_emulator_obj(), None)
+                result = self.get_emulator_obj().pack_bool(False)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
-                null_obj = DotNetObject(self.get_emulator_obj())
-                self.set_field(field_rid, null_obj)
+                result = self.get_emulator_obj().pack_null()
             else:
                 raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'unknown corlibtype for initialize_field: {}'.format(type_sig.get_element_type()))
             
-            if num_obj != None:
-                num_obj.init_zero()
-                self.set_field(field_rid, num_obj)
+            self.set_field(field_rid, result)
         else:
             if isinstance(type_sig, net_sigs.ClassSig):
-                null_obj = DotNetObject(self.get_emulator_obj())
-                null_obj.flag_null()
-                self.set_field(field_rid, null_obj)
+                self.set_field(field_rid, self.get_emulator_obj().pack_null())
             elif isinstance(type_sig, net_sigs.ValueTypeSig):
                 ref_sig = type_sig
                 type_def = ref_sig.get_type()
                 if type_def.get_full_name() == b'System.Enum':
-                    num_obj = DotNetInt32(self.get_emulator_obj(), None)
-                    num_obj.init_zero()
-                    self.set_field(field_rid, num_obj)
+                    self.set_field(field_rid, self.get_emulator_obj().pack_i4(0))
                     return
                 type_def = type_def.get_superclass()
                 if type_def is not None and type_def.get_full_name() == b'System.Enum':
-                    num_obj = DotNetInt32(self.get_emulator_obj(), None)
-                    num_obj.init_zero()
-                    self.set_field(field_rid, num_obj)
+                    self.set_field(field_rid, self.get_emulator_obj().pack_i4(0))
                     return
                 self.set_field(field_rid, DotNetObject(self.get_emulator_obj())) #ValueTypes are similar enough to objects it seems where this should be proper.
                 #valuetypes are weird - seems the most prominent is basically enums which should be treated as numbers.  This might need to be adjusted eventually.
                 #structs can also be valuetypes - we need dotnetobject() here.
-            elif isinstance(type_sig, net_sigs.SZArraySig):
-                null_obj = DotNetObject(self.get_emulator_obj())
-                null_obj.flag_null()
-                self.set_field(field_rid, null_obj) #DotNetNull() should work fine here since any arrays are going to be initialized by a newarr anyway.
+            elif isinstance(type_sig, net_sigs.SZArraySig):       
+                self.set_field(field_rid, self.get_emulator_obj().pack_null()) #DotNetNull() should work fine here since any arrays are going to be initialized by a newarr anyway.
             else:
                 raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'unknown sigtype for initialize_field {}'.format(type(type_sig)))
 
 
-    cpdef initialize_type(self, type_obj):  
+    cpdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj):  
         self.type_obj = type_obj
 
     cpdef get_type(self):
@@ -253,7 +245,7 @@ cdef class DotNetObject:
             return True
         return object.__eq__(self, other)
 
-    def __str__(self):
+    def __str__(self): #TODO: FIX this method
         cdef str str_val
         cdef int idno
         cdef DotNetObject dobj
@@ -279,10 +271,9 @@ cdef class DotNetObject:
             return object.__str__(self)
 
     cdef void duplicate_into(self, DotNetObject result):
-        result.fields = self.fields
+        result.__fields = self.__fields
         result.type_obj = self.type_obj
         result.type_sig_obj = self.type_sig_obj
-        result.initialized_fields = self.initialized_fields
         result.__initialized = self.__initialized
         result.__is_null = self.__is_null
 
@@ -328,10 +319,10 @@ cdef class ArrayAddress(DotNetObject):
     cdef emu_func_type get_function(self, bytes name):
         raise net_exceptions.EmulatorExecutionExceptionException(self.get_emulator_obj(), 'Cannot call get_fucntion on arrayaddr')
 
-    cpdef DotNetObject get_field(self, uint64_t idno):
+    cpdef DotNetObject get_field(self, int idno):
         return self.get_obj_ref().get_field(idno)
 
-    cpdef void set_field(self, uint64_t idno, DotNetObject val):
+    cpdef void set_field(self, int idno, DotNetObject val):
         self.get_obj_ref().set_field(idno, val)
 
     cpdef net_row_objects.TypeDefOrRef get_type_obj(self):
@@ -346,7 +337,7 @@ cdef class ArrayAddress(DotNetObject):
     cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj):
         self.get_obj_ref().set_type_sig_obj(type_sig_obj)
 
-    cpdef void _initialize_field(self, uint64_t field_rid):
+    cpdef void _initialize_field(self, int field_rid):
         self.get_obj_ref()._initialize_field(field_rid)
 
     cpdef initialize_type(self, type_obj):
