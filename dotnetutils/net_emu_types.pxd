@@ -897,7 +897,8 @@ cdef class DotNetList(DotNetObject):
     cdef DotNetObject Sort(self, list args)
 
 cdef class DotNetArray(DotNetObject):
-    cdef list internal_array
+    cdef net_emulator.StackCell * __internal_array
+    cdef uint64_t __size
 
     cdef DotNetObject duplicate(self)
 
@@ -906,10 +907,6 @@ cdef class DotNetArray(DotNetObject):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
     cpdef bytes as_bytes(self)
-
-    cpdef list get_internal_array(self)
-
-    cpdef void set_internal_array(self, list int_array) except *
 
     cdef void setup_default_value(self, uint64_t index, uint64_t size, bint init)
 

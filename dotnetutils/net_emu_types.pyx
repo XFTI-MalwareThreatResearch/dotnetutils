@@ -134,6 +134,7 @@ cdef class DotNetObject:
         cdef StackCell old_val
         if self.__fields.find(idno) != self.__fields.end():
             old_val = self.__fields[idno]
+            #get rid of both the field incref and the cell incref
             self.get_emulator_obj().dealloc_cell(old_val)
         self.fields[idno] = val
         if val.tag == CorElementType.ELEMENT_TYPE_OBJECT or val.tag == CorElementType.ELEMENT_TYPE_STRING:
@@ -5819,17 +5820,55 @@ cdef class DotNetList(DotNetObject):
 #TODO: This might have to be a special constructor to support internal stuff
 #TODO: I dont think System.Array newobj is valid anyway, should be fine.
 cdef class DotNetArray(DotNetObject):
-    def __init__(self, net_emulator.DotNetEmulator emulator_obj, uint64_t size, net_row_objects.TypeDefOrRef type_obj=None, bint initialize=True):
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj, uint64_t size, net_row_objects.TypeDefOrRef type_obj=None, bint initialize=False):
         DotNetObject.__init__(self, emulator_obj)
+        self.__size = size
         self.set_type_obj(type_obj)
         #If I change how this is set up, it will save a literal ton of time.
-        self.internal_array = []
+        self.__internal_array = malloc(sizeof(net_emulator.StackCell) * self.__size)
+        if self.__internal_array == NULL and self.__size > 0:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error for array')
+        if self.__internal_array != NULL:
+            memset(self.__internal_array, 0, sizeof(net_emulator.StackCell) * self.__size)
         if initialize:
             self.setup_default_value(0, size, True)
 
+    def __dealloc__(self):
+        cdef uint64_t x = 0
+        cdef net_emulator.StackCell cell
+        if self.__internal_array != NULL:
+            for x in range(self.__size):
+                cell = self.__internal_array[x]
+                self.get_emulator_obj().dealloc_cell(cell)
+            free(self.__internal_array)
+            self.__internal_array = NULL
+
+    cdef net_emulator.StackCell _get_item(self, uint64_t index):
+        if index < self.__size:
+            return self.__internal_array[index]
+        return self.get_emulator_obj().pack_blanktag()
+
+    cdef net_emulator.StackCell * _get_item_ptr(self, uint64_t index):
+        if index < self.__size:
+            return &self.__internal_array[index]
+        return NULL
+
+    cdef bint _set_item(self, uint64_t index, net_emulator.StackCell cell):
+        if index >= self.__size:
+            return False
+
+        cdef net_emulator.StackCell old = self.__internal_array[index]
+        self.get_emulator_obj().dealloc_cell(old)
+        memcpy(&self.__internal_array[index], &cell, sizeof(cell))
+        if cell.tag == CorElementType.ELEMENT_TYPE_STRING or cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if cell.item.ref != NULL:
+                Py_INCREF(cell.item.ref)
+
     cdef DotNetObject duplicate(self):
-        cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), 0, self.get_type_obj(), initialize=False)
-        result.internal_array = self.internal_array
+        cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), self.__size, self.get_type_obj(), initialize=False)
+        cdef uint64_t x = 0
+        for x in range(self.__size):
+            result._set_item(self._get_item(x))
         DotNetObject.duplicate_into(self, result) #TODO FIXME: need to do this for the others to get type_obj
         return result
 
@@ -5841,59 +5880,34 @@ cdef class DotNetArray(DotNetObject):
 
     cpdef bytes as_bytes(self):
         cdef bytes result = b''
-        cdef DotNetUInt8 num = None
         cdef bytes type_name = None
-        cdef Py_ssize_t x = 0
+        cdef uint64_t x = 0
         if self.get_type_obj() is not None:
             type_name = self.get_type_obj().get_full_name()
             if type_name == b'System.Byte' or type_name == b'System.UInt8':
-                for x in range(len(self.internal_array)):
-                    num = (<DotNetNumber>self.internal_array[x]).cast(CorElementType.ELEMENT_TYPE_U1)
-                    result += bytes([num.as_uchar()])
+                for x in range(self.__size):
+                    result += bytes([self.__internal_array[x].item.u4])
                 return result
-        raise Exception('unknown bytes conversion type')
-
-    cpdef list get_internal_array(self):
-        return self.internal_array
-
-    cpdef void set_internal_array(self, list int_array) except *:
-        if len(int_array) > 0:
-            if isinstance(int_array[0], int):
-                raise Exception()
-        self.internal_array = int_array
+        raise net_exceptions.OperationNotSupportedException()
 
     cdef void setup_default_value(self, uint64_t index, uint64_t size, bint init):
-        cdef DotNetObject dno = None
         cdef uint64_t x = 0
-        cdef DotNetNumber num = None
-        if not init:
-            if self.get_type_obj().get_full_name() == b'System.Byte':
-                for x in range(size):
-                    num = DotNetUInt8(self.get_emulator_obj(), None)
-                    num.init_zero()
-                    self.internal_array[x + index] = num
-            else:
-                for x in range(size):
-                    dno = DotNetObject(self.get_emulator_obj())
-                    if not self.get_type_obj().is_valuetype():
-                        dno.flag_null()
-                    dno.initialize_type(self.get_type_obj())
-                    self.internal_array[x + index] = dno
+        cdef net_emulator.StackCell num
+        cdef DotNetObject dno = None
+        if self.get_type_obj().get_full_name() == b'System.Byte':
+            for x in range(size):
+                num =  self.get_emulator_obj().pack_i4(0)
+                num.tag = CorElementType.ELEMENT_TYPE_U1
+                self._set_item(x, num)
         else:
-            if self.get_type_obj().get_full_name() == b'System.Byte':
-                for x in range(size):
-                    num = DotNetUInt8(self.get_emulator_obj(), None)
-                    num.init_zero()
-                    self.internal_array.append(num)
-            else:
-                for x in range(size):
-                    dno = DotNetObject(self.get_emulator_obj()) #If this is system.object it could mess up some null checks.
-                    if not self.get_type_obj().is_valuetype():
-                        dno.flag_null() #May eventually need a separate case for Enums here.
-                    dno.initialize_type(self.get_type_obj())
-                    self.internal_array.append(dno)
+            for x in range(size):
+                if not self.get_type_obj().is_valuetype():
+                    self._set_item(x, self.get_emulator_obj().pack_null())
+                else:
+                    dno = DotNetObject(emulator_obj, self.get_type_obj())
+                    self._set_item(x, self.get_emulator_obj().pack_object(dno))
+                self.internal_array[x + index] = dno
 
-        
     @staticmethod
     cdef DotNetObject Copy(net_emulator.EmulatorAppDomain app_domain, list args):
         cdef DotNetArray src = <DotNetArray> args[0]
