@@ -2451,7 +2451,7 @@ cdef class DotNetEmulator:
         cdef StackCell cell
         memset(&cell, 0, sizeof(cell))
         cell.tag = CorElementType.ELEMENT_TYPE_BYREF
-        cell.item.byref = ptr
+        cell.item.byref = ptr #TODO: need to make this more like the old model where it fetches the value every time.  Unordered_map ptrs arent reliable
         return cell
 
     cdef StackCell pack_null(self):
