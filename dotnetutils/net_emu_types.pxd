@@ -45,6 +45,8 @@ cdef class DotNetObject:
 
     cdef void flag_null(self)
 
+    cdef void __clear_fields(self)
+
     cdef emu_func_type get_function(self, bytes name)
 
     cdef void add_function(self, bytes name, emu_func_type func)
@@ -55,8 +57,6 @@ cdef class DotNetObject:
 
     cdef net_emulator.StackCell get_field(self, int idno)
 
-    cdef net_emulator.StackCell * get_field_ptr(self, int idno)
-
     cpdef net_row_objects.TypeDefOrRef get_type_obj(self)
 
     cpdef void set_type_obj(self, net_row_objects.TypeDefOrRef type_obj)
@@ -65,9 +65,9 @@ cdef class DotNetObject:
 
     cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj)
 
-    cpdef void _initialize_field(self, uint64_t field_rid)
+    cdef void _initialize_field(self, int field_rid)
 
-    cpdef initialize_type(self, type_obj)
+    cpdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj)
 
     cpdef get_type(self)
 
@@ -664,21 +664,6 @@ cdef class DotNetChar(DotNetUInt16):
     cdef void duplicate_into(self, DotNetObject result)
 
     cdef DotNetNumber cast(self, CorElementType new_type)
-
-cdef class ArrayAddress(DotNetObject):
-    cdef DotNetObject __owner
-    cdef int __idx
-    cdef int __ref_type
-
-    cpdef DotNetObject get_obj_ref(self)
-
-    cdef void set_obj_ref(self, DotNetObject obj_ref)
-    
-    cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
-
-    cdef DotNetObject duplicate(self)
-
-    cdef void duplicate_into(self, DotNetObject result)
 
 cdef class DotNetType(DotNetObject):
     cdef net_row_objects.RowObject type_handle

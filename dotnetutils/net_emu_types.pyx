@@ -85,9 +85,6 @@ cdef class DotNetObject:
     def __dealloc__(self):
         self.__clear_fields()
 
-    cpdef DotNetObject dereference(self):
-        return self
-
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         if tdef.get_full_name() == b'System.Object':
             return True
@@ -141,7 +138,7 @@ cdef class DotNetObject:
             if val.item.ref != NULL:
                 Py_INCREF(val.item.ref)
 
-    cdef __clear_fields(self):
+    cdef void __clear_fields(self):
         cdef pair[int, StackCell] kv
         for kv in self.__fields:
             self.get_emulator_obj().dealloc_cell(kv.second)
@@ -285,126 +282,6 @@ cdef class DotNetObject:
 
     cdef DotNetObject ToString(self, net_emulator.StackCell * params, int nparams):
         raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Called ToString() where it wasnt implemented {}'.format(type(self)))
-
-#These arent technically dotnetobjects but its easier to enforce them as such.
-cdef class ArrayAddress(DotNetObject):
-    def __init__(self, net_emulator.DotNetEmulator emulator_obj, DotNetObject owner, int idx, int ref_type):
-        #for ref_type lets do 0 is array, 1 is field, 2 is local variable, 3 is static field, 4 is method param
-        DotNetObject.__init__(self, emulator_obj)
-        self.__owner = owner
-        self.__idx = idx
-        self.__ref_type = ref_type
-
-    cpdef DotNetObject dereference(self):
-        return self.get_obj_ref()
-
-    cdef bint is_number(self):
-        raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'cant call is_number() on an ArrayAddress')
-
-    cdef bint has_function(self, bytes name):
-        raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'dereference before calling has_function()')
-    
-    cdef bint is_null(self):
-        #should be safe to call this on an arrayaddress since its probably not used for casting.
-        return self.get_obj_ref().is_null()
-    
-    cdef bint is_true(self):
-        return self.get_obj_ref().is_true()
-
-    cdef bint is_false(self):
-        return self.get_obj_ref().is_false()
-
-    cdef void flag_null(self):
-        self.get_obj_ref().flag_null()
-
-    cdef emu_func_type get_function(self, bytes name):
-        raise net_exceptions.EmulatorExecutionExceptionException(self.get_emulator_obj(), 'Cannot call get_fucntion on arrayaddr')
-
-    cpdef DotNetObject get_field(self, int idno):
-        return self.get_obj_ref().get_field(idno)
-
-    cpdef void set_field(self, int idno, DotNetObject val):
-        self.get_obj_ref().set_field(idno, val)
-
-    cpdef net_row_objects.TypeDefOrRef get_type_obj(self):
-        return self.get_obj_ref().get_type_obj()
-
-    cpdef void set_type_obj(self, net_row_objects.TypeDefOrRef type_obj):
-        self.get_obj_ref().set_type_obj(type_obj)
-
-    cpdef net_sigs.TypeSig get_type_sig_obj(self):
-        return self.get_obj_ref().get_type_sig_obj()
-
-    cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj):
-        self.get_obj_ref().set_type_sig_obj(type_sig_obj)
-
-    cpdef void _initialize_field(self, int field_rid):
-        self.get_obj_ref()._initialize_field(field_rid)
-
-    cpdef initialize_type(self, type_obj):
-        return self.get_obj_ref().initialize_type(type_obj)
-
-    cpdef get_type(self):
-        return self.get_obj_ref().get_type()
-
-    cpdef net_emulator.StackCell get_obj_ref(self):
-        cdef DotNetArray array_obj = None
-        if self.__ref_type == 0:
-            #Owner is an array
-            array_obj = <DotNetArray>self.__owner
-            return array_obj[self.__idx]
-        elif self.__ref_type == 1:
-            #field
-            return self.__owner.get_field(self.__idx)
-        elif self.__ref_type == 2:
-            #local
-            return self.get_emulator_obj().get_local(self.__idx)
-        elif self.__ref_type == 3:
-            return self.get_emulator_obj().get_static_field(self.__idx)
-        elif self.__ref_type == 4:
-            return self.get_emulator_obj().get_method_param(self.__idx)
-        else:
-            raise Exception()
-
-    cdef void set_obj_ref(self, net_emulator.StackCell obj_ref):
-        cdef DotNetArray array_obj = None
-        if self.__ref_type == 0:
-            #Owner is an array
-            array_obj = <DotNetArray>self.__owner
-            array_obj_set_item(self.__idx, obj_ref)
-        elif self.__ref_type == 1:
-            #field
-            self.__owner.set_field(self.__idx, obj_ref)
-        elif self.__ref_type == 2:
-            #local
-            self.get_emulator_obj().set_local(self.__idx, obj_ref)
-        elif self.__ref_type == 3:
-            #static field
-            self.get_emulator_obj().set_static_field(self.__idx, obj_ref)
-        elif self.__ref_type == 4:
-            self.get_emulator_obj()._add_param(obj_ref, self.__idx)
-        else:
-            raise Exception()
-
-    cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
-        return self.get_obj_ref().isinst(tdef)
-
-    cdef DotNetObject duplicate(self):
-        return ArrayAddress(self.get_emulator_obj(), self.__owner, self.__idx, self.__ref_type)
-
-    cdef void duplicate_into(self, DotNetObject result):
-        pass
-
-    def __str__(self):
-        return 'ArrayAddress - with value {}'.format(self.get_obj_ref())
-
-    def __hash__(self):
-        return hash(self.get_obj_ref())
-    
-    def __eq__(self, other):
-        if isinstance(other, ArrayAddress):
-            return (<ArrayAddress>other).get_obj_ref() == self.get_obj_ref()
-        return self.get_obj_ref() == other
 
 cdef class DotNetNumber(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, CorElementType num_type, bytes num_data):
