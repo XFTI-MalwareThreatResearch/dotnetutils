@@ -19,7 +19,7 @@ cdef void __init_handlers()
 
 cdef struct ByRefItem:
     int kind
-    int rid
+    int idx
     PyObject * owner
 
 cdef union StackCellItem:

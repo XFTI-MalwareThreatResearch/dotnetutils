@@ -2416,6 +2416,8 @@ cdef class DotNetEmulator:
         if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
             Py_XDECREF(cell.ref)
             cell.ref = NULL
+        elif cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
+            Py_XDECREF(cell.item.byref.owner)
         #Ints and such dont need to have anything done
 
     cdef void pack_blanktag(self):
@@ -2428,6 +2430,62 @@ cdef class DotNetEmulator:
         memset(&cell, 0, sizeof(cell))
         cell.tag = CorElementType.ELEMENT_TYPE_I4
         cell.item.i4 = i
+        return cell
+
+    cdef StackCell pack_i(self, int64_t i):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_I
+        cell.item.i8 = i
+        return cell
+
+    cdef StackCell pack_u(self, uint64_t i):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_U
+        cell.item.u8 = i
+        return cell
+
+    cdef StackCell pack_i1(self, char i):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_I1
+        cell.item.i4 = i
+        return cell
+
+    cdef StackCell pack_u1(self, unsigned char i):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_U1
+        cell.item.u4 = i
+        return cell
+
+    cdef StackCell pack_i2(self, short i):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_I
+        cell.item.i4 = i
+        return cell
+
+    cdef StackCell pack_u2(self, unsigned short i):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_U2
+        cell.item.u4 = i
+        return cell
+
+    cdef StackCell pack_char(self, unsigned short i):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_CHAR
+        cell.item.u4 = i
+        return cell
+
+    cdef StackCell pack_bool(self, bint i):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_BOOLEAN
+        cell.item.b = i
         return cell
     
     cdef StackCell pack_u4(self, unsigned int i):
@@ -2472,11 +2530,17 @@ cdef class DotNetEmulator:
         cell.item.ref = <PyObject*>obj
         #Dont INCREF here otherwise we have to decref after every stack pop() twice TODO do we need to INCREF here
 
-    cdef StackCell pack_ref(self, StackCell * ptr):
+    cdef StackCell pack_ref(self, int kind, int idx, object owner):
         cdef StackCell cell
         memset(&cell, 0, sizeof(cell))
         cell.tag = CorElementType.ELEMENT_TYPE_BYREF
-        cell.item.byref = ptr #TODO: need to make this more like the old model where it fetches the value every time.  Unordered_map ptrs arent reliable
+        cell.item.byref.kind = kind
+        cell.item.byref.idx = idx
+        if owner is not None:
+            cell.item.byref.owner = <PyObject*>owner
+            Py_INCREF(owner)
+        else:
+            cell.item.byref.owner = NULL
         return cell
 
     cdef StackCell pack_null(self):
