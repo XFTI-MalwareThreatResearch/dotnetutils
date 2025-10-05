@@ -72,68 +72,6 @@ cdef uint64_t rem_u8(uint64_t one, uint64_t two):
         raise Exception()
     return one % two
 
-cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
-    """
-    obtain the name in bytes of a CorElementType
-    """
-    if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
-        return b'System.Int8'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
-        return b'System.UInt8'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I2:
-        return b'System.Int16'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U2:
-        return b'System.UInt16'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I4:
-        return b'System.Int32'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U4:
-        return b'System.UInt32'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I8:
-        return b'System.Int64'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U8:
-        return b'System.UInt64'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_R4:
-        return b'System.Single'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_R8:
-        return b'System.Double'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_STRING:
-        return b'System.String'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_VOID:
-        return b'System.Void'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_CHAR:
-        return b'System.Char'
-    raise Exception('element type not recognized {}'.format(element_type))
-
-cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name):
-    """
-    Obtain the CorLibTypeSig of a type from its name.
-    """
-    if type_name == b'System.Void':
-        return net_sigs.get_CorSig_Void()
-    elif type_name == b'System.Int8':
-        return net_sigs.get_CorSig_SByte()
-    elif type_name == b'System.UInt8':
-        return net_sigs.get_CorSig_Byte()
-    elif type_name == b'System.Int16':
-        return net_sigs.get_CorSig_Int16()
-    elif type_name == b'System.UInt16':
-        return net_sigs.get_CorSig_UInt16()
-    elif type_name == b'System.Int32':
-        return net_sigs.get_CorSig_Int32()
-    elif type_name == b'System.UInt32':
-        return net_sigs.get_CorSig_UInt32()
-    elif type_name == b'System.Int64':
-        return net_sigs.get_CorSig_Int64()
-    elif type_name == b'System.UInt64':
-        return net_sigs.get_CorSig_UInt64()
-    elif type_name == b'System.Single':
-        return net_sigs.get_CorSig_Single()
-    elif type_name == b'System.Double':
-        return net_sigs.get_CorSig_Double()
-    elif type_name == b'System.String':
-        return net_sigs.get_CorSig_String()
-    return None
-
 cdef class DotNetObject:
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         if emulator_obj is None:

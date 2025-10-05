@@ -5,7 +5,8 @@ from dotnetutils cimport net_row_objects, net_cil_disas, net_sigs, net_emu_types
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector
 from cpython.object cimport PyObject
-from libc.stdint cimport uint64_t, uint16_t
+from libc.stdint cimport uint64_t, uint16_t, int64_t, int32_t, uint32_t
+from dotnetutils.net_structs cimport CorElementType
 
 ctypedef net_emu_types.DotNetObject (*emu_func_type)(net_emu_types.DotNetObject, list)
 ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator)
@@ -15,6 +16,21 @@ ctypedef bint (*emu_instr_handler_type)(DotNetEmulator)
 cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, list force_method_args)
 
 cdef void __init_handlers()
+
+cdef union StackCellItem:
+    int32_t i4
+    uint32_t u4
+    int64_t i8
+    uint64_t u8
+    double r8
+    bint b
+    PyObject * ref
+    StackCell * byref
+
+cdef struct StackCell:
+    CorElementType tag
+    int rid
+    StackCellItem item 
 
 cdef class CctorRegistry:
     cdef list __executed_cctors
@@ -34,6 +50,8 @@ cdef class EmulatorAppDomain:
     cdef dotnetpefile.DotNetPeFile __executing_dotnetpe
     cdef unordered_map[int, static_func_type] __static_functions
     cdef unordered_map[int, newobj_func_type] __newobj_ctors
+    cdef unordered_map[int, int] __static_field_mappings
+    cdef vector[StackCell] __static_fields
 
     cdef static_func_type get_static_func(self, int token)
 
@@ -42,6 +60,8 @@ cdef class EmulatorAppDomain:
     cdef bint has_ctor_func(self, int token)
 
     cdef bint has_static_func(self, int token)
+
+    cdef void __reserve_static_fields(self)
 
     cdef void register_static_functions(self)
 
@@ -79,7 +99,7 @@ cdef class EmulatorAppDomain:
 
 cdef class DotNetStack:
     cdef DotNetEmulator __emulator
-    cdef vector[PyObject*] __internal_stack
+    cdef vector[StackCell] __internal_stack
     cdef int __max_stack_size
 
     cpdef void append(self, net_emu_types.DotNetObject obj)
@@ -96,13 +116,13 @@ cdef class DotNetEmulator:
     This class is capable of emulating most .NET CIL instructions.
     """
 
-    cdef net_row_objects.MethodDef method_obj
+    cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_cil_disas.MethodDisassembler disasm_obj
     cdef public list method_params
     cdef public int end_offset
-    cdef dict static_fields
     cdef public DotNetStack stack
-    cdef vector[PyObject*] localvars
+    cdef vector[StackCell] localvars
+    cdef vector[PyObject*] local_var_sigs
     cdef public int end_method_rid
     cdef CctorRegistry executed_cctors
     cdef public unsigned int current_eip

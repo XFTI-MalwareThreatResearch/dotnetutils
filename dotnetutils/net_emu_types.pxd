@@ -81,6 +81,18 @@ cdef class DotNetObject:
 
     cdef DotNetObject ToString(self, list args)
 
+    cdef bint equals(self, DotNetNumber other)
+
+    cdef bint notequals(self, DotNetNumber other)
+
+    cdef bint lessthanequals(self, DotNetNumber other)
+
+    cdef bint lessthan(self, DotNetNumber other)
+
+    cdef bint greaterthan(self, DotNetNumber other)
+
+    cdef bint greaterthanequals(self, DotNetNumber other)
+
 cdef class DotNetNumber(DotNetObject):
     cdef unsigned char * _ptr
     cdef int __amt_bytes
