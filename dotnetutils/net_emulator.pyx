@@ -2334,7 +2334,6 @@ cdef class DotNetEmulator:
 
     cdef bint cell_is_false(self, StackCell cell):
         cdef net_emu_types.DotNetObject obj = None
-        
         if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             return self.cell_is_false(*cell.item.byref)
         if cell.tag == CorElementType.ELEMENT_TYPE_STRING or cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
@@ -2384,8 +2383,30 @@ cdef class DotNetEmulator:
             obj1 = <net_emu_types.DotNetObject> uone.item.ref
             obj2 = <net_emu_types.DotNetObject> utwo.item.ref
             return obj1.equals(obj2)
+        if not net_utils.is_cortype_number(type_one) or not net_utils.is_cortype_number(type_two):
+            raise net_exceptions.OperationNotSupportedException()
+        if type_one == CorElementType.ELEMENT_TYPE_I:
+            if self.__is_64bit:
+                return uone.item.i8 == utwo.item.i8
+            return uone.item.i4 == utwo.item.i4
+        elif type_one == CorElementType.ELEMENT_TYPE_I4:
+            return uone.item.i4 == utwo.item.i4
+        elif type_one == CorElementType.ELEMENT_TYPE_I8:
+            return uone.item.i8 == utwo.item.i8
+        elif type_one == CorElementType.ELEMENT_TYPE_U:
+            if self.__is_64bit:
+                return uone.item.u8 == utwo.item.u8
+            return uone.item.u4 == utwo.item.u4
+        elif type_one == CorElementType.ELEMENT_TYPE_U4:
+            return uone.item.u4 == utwo.item.u4
+        elif type_one == CorElementType.ELEMENT_TYPE_U8:
+            return uone.item.u8 == utwo.item.u8
+        elif type_one == CorElementType.ELEMENT_TYPE_R4:
+            return <float>uone.item.r8 == <float>utwo.item.r8
+        elif type_one == CorElementType.ELEMENT_TYPE_R8:
+            return uone.item.r8 == utwo.item.r8
         else:
-            raise net_exceptions.FeatureNotImplementedException() #TODO need to implement
+            raise net_exceptions.FeatureNotImplementedException()
 
     cdef void dealloc_cell(self, StackCell cell):
         if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
