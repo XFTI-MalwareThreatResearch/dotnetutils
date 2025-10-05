@@ -31,7 +31,7 @@ cdef class DotNetObject:
     cdef bint __initialized
     cdef unordered_map[string, emu_func_type] __functions
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint is_number(self)
 
