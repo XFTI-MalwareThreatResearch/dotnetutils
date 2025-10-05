@@ -82,6 +82,24 @@ cdef class DotNetObject:
         self.type_sig_obj = None
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
 
+    cdef bint equals(self, DotNetNumber other):
+        raise net_exceptions.FeatureNotImplementedException()
+
+    cdef bint notequals(self, DotNetNumber other):
+        raise net_exceptions.FeatureNotImplementedException()
+
+    cdef bint lessthanequals(self, DotNetNumber other):
+        raise net_exceptions.FeatureNotImplementedException()
+
+    cdef bint lessthan(self, DotNetNumber other):
+        raise net_exceptions.FeatureNotImplementedException()
+
+    cdef bint greaterthan(self, DotNetNumber other):
+        raise net_exceptions.FeatureNotImplementedException()
+
+    cdef bint greaterthanequals(self, DotNetNumber other):
+        raise net_exceptions.FeatureNotImplementedException()
+
     def __dealloc__(self):
         self.__clear_fields()
 
@@ -128,7 +146,7 @@ cdef class DotNetObject:
         return self.__emulator_obj
 
     cdef void set_field(self, int idno, net_emulator.StackCell val):
-        cdef StackCell old_val
+        cdef net_emulator.StackCell old_val
         if self.__fields.find(idno) != self.__fields.end():
             old_val = self.__fields[idno]
             #get rid of both the field incref and the cell incref
@@ -139,13 +157,13 @@ cdef class DotNetObject:
                 Py_INCREF(val.item.ref)
 
     cdef void __clear_fields(self):
-        cdef pair[int, StackCell] kv
+        cdef pair[int, net_emulator.StackCell] kv
         for kv in self.__fields:
             self.get_emulator_obj().dealloc_cell(kv.second)
         self.__fields.clear()
 
-    cpdef net_emulator.StackCell get_field(self, int idno):
-        if self.__fields.find(idno):
+    cdef net_emulator.StackCell get_field(self, int idno):
+        if self.__fields.find(idno) == self.__fields.end():
             self._initialize_field(idno)
         return self.__fields[idno]
 
@@ -162,7 +180,7 @@ cdef class DotNetObject:
         self.type_sig_obj = type_sig_obj
 
     cdef void _initialize_field(self, int field_rid):
-        cdef StackCell result
+        cdef net_emulator.StackCell result
         cdef net_row_objects.Field field_obj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(field_rid)
         cdef net_sigs.FieldSig field_sig = field_obj.get_field_signature()
         cdef net_sigs.TypeSig type_sig = field_sig.get_type_sig()

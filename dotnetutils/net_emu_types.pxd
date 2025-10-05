@@ -885,6 +885,12 @@ cdef class DotNetArray(DotNetObject):
     cdef net_emulator.StackCell * __internal_array
     cdef uint64_t __size
 
+    cdef net_emulator.StackCell _get_item(self, uint64_t index)
+
+    cdef net_emulator.StackCell * _get_item_ptr(self, uint64_t index)
+
+    cdef bint _set_item(self, uint64_t index, net_emulator.StackCell cell)
+
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
