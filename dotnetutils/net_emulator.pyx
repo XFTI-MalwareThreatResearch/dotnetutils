@@ -2369,7 +2369,11 @@ cdef class DotNetEmulator:
         cdef CorElementType type_two = utwo.tag
         cdef net_emu_types.DotNetObject obj1 = None
         cdef net_emu_types.DotNetObject obj2 = None
-        if type_one == CorElementType.ELEMENT_TYPE_STRING or type_two == CorElementType.ELEMENT_TYPE_STRING:
+        if self.cell_is_null(uone) or self.cell_is_null(utwo):
+            if uone.item.tag != utwo.item.tag:
+                raise net_exceptions.OperationNotSupportedException()
+            return uone.item.ref == utwo.item.ref 
+        elif type_one == CorElementType.ELEMENT_TYPE_STRING or type_two == CorElementType.ELEMENT_TYPE_STRING:
             if type_one != type_two:
                 return False
             obj1 = <net_emu_types.DotNetObject> uone.item.ref
