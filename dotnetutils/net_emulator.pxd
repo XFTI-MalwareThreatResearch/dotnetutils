@@ -8,9 +8,9 @@ from cpython.object cimport PyObject
 from libc.stdint cimport uint64_t, uint16_t, int64_t, int32_t, uint32_t
 from dotnetutils.net_structs cimport CorElementType
 
-ctypedef net_emu_types.DotNetObject (*emu_func_type)(net_emu_types.DotNetObject, list)
+ctypedef StackCell (*emu_func_type)(net_emu_types.DotNetObject, StackCell * params, int nparams)
 ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator)
-ctypedef net_emu_types.DotNetObject (*static_func_type)(EmulatorAppDomain, list)
+ctypedef StackCell (*static_func_type)(EmulatorAppDomain, StackCell * params, int nparams)
 ctypedef bint (*emu_instr_handler_type)(DotNetEmulator)
 
 cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, list force_method_args)
@@ -118,7 +118,8 @@ cdef class DotNetEmulator:
 
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_cil_disas.MethodDisassembler disasm_obj
-    cdef public list method_params
+    cdef StackCell * __method_params
+    cdef int __nparams
     cdef public int end_offset
     cdef public DotNetStack stack
     cdef vector[StackCell] localvars
