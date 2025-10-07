@@ -68,6 +68,12 @@ cdef bint is_cortype_number(CorElementType etype):
     etype == CorElementType.ELEMENT_TYPE_U2 or etype == CorElementType.ELEMENT_TYPE_I2 or etype == CorElementType.ELEMENT_TYPE_U4 or etype == CorElementType.ELEMENT_TYPE_I4 or \
     etype == CorElementType.ELEMENT_TYPE_I8 or etype == CorElementType.ELEMENT_TYPE_U8 or etype == CorElementType.ELEMENT_TYPE_R4 or etype == CorElementType.ELEMENT_TYPE_R8
 
+cdef bint is_cortype_signed(CorElementType etype):
+    return etype == CorElementType.ELEMENT_TYPE_I or etype == CorElementType.ELEMENT_TYPE_I1 or etype == CorElementType.ELEMENT_TYPE_I4 or etype == CorElementType.ELEMENT_TYPE_I8 or etype == CorElementType.ELEMENT_TYPE_I2
+
+cdef bint is_cortype_unsigned(CorElementType etype):
+    return etype == CorElementType.ELEMENT_TYPE_U or etype == CorElementType.ELEMENT_TYPE_U1 or etype == CorElementType.ELEMENT_TYPE_U4 or etype == CorElementType.ELEMENT_TYPE_U8 or etype == CorElementType.ELEMENT_TYPE_U2 or etype == CorElementType.ELEMENT_TYPE_CHAR
+
 cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name):
     """
     Obtain the CorLibTypeSig of a type from its name.

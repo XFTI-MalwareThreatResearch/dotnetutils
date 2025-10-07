@@ -17,3 +17,7 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type)
 cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name)
 
 cdef bint is_cortype_number(CorElementType etype)
+
+cdef bint is_cortype_signed(CorElementType etype)
+
+cdef bint is_cortype_unsigned(CorElementType etype)
