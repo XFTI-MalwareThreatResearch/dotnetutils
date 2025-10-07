@@ -2563,13 +2563,26 @@ cdef class DotNetEmulator:
 
     cdef StackCell pack_object(self, net_emu_types.DotNetObject obj):
         cdef StackCell cell
+        if isinstance(obj, net_emu_types.DotNetString):
+            raise net_exceptions.OperationNotSupportedException() # use pack_string()
         memset(&cell, 0, sizeof(cell))
         cell.tag = CorElementType.ELEMENT_TYPE_OBJECT
         cell.emulator_obj = <PyObject*>self
         Py_INCREF(cell.emulator_obj)
         Py_INCREF(obj)
         cell.item.ref = <PyObject*>obj
-        #Dont INCREF here otherwise we have to decref after every stack pop() twice TODO do we need to INCREF here
+        return cell
+
+    #TODO: change pack_object() to pack_string() when packing strings
+    cdef StackCell pack_string(self, net_emu_types.DotNetString obj):
+        cdef StackCell cell
+        memset(&cell, 0, sizeof(cell))
+        cell.tag = CorElementType.ELEMENT_TYPE_STRING
+        cell.emulator_obj = <PyObject*>self
+        Py_INCREF(cell.emulator_obj)
+        Py_INCREF(obj)
+        cell.item.ref = <PyObject*>obj
+        return cell
 
     cdef StackCell pack_ref(self, int kind, int idx, object owner):
         cdef StackCell cell
