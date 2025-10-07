@@ -77,7 +77,7 @@ cdef class DotNetObject:
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
-    cdef DotNetObject ToString(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToString(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -198,7 +198,7 @@ cdef class DotNetNumber(DotNetObject):
 
     cdef double as_double(self)
 
-    cdef DotNetObject ToString(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToString(self, net_emulator.StackCell * params, int nparams)
 
     cdef void duplicate_into(self, DotNetObject result)
 
@@ -217,7 +217,7 @@ cdef class DotNetNumber(DotNetObject):
 cdef class DotNetIntPtr(DotNetNumber):
 
     @staticmethod
-    cdef DotNetObject Zero(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Zero(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     cdef DotNetObject duplicate(self)
 
@@ -305,7 +305,7 @@ cdef class DotNetUIntPtr(DotNetNumber):
     cdef bint greaterthanequals(self, DotNetNumber other)
 
     @staticmethod
-    cdef DotNetObject op_Explicit(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetInt8(DotNetNumber):
     
@@ -347,7 +347,7 @@ cdef class DotNetInt16(DotNetNumber):
     cdef bint greaterthanequals(self, DotNetNumber other)
 
 cdef class DotNetInt32(DotNetNumber):
-    cdef DotNetInt32 CompareTo(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell CompareTo(self, net_emulator.StackCell * params, int nparams)
 
     cdef DotNetObject duplicate(self)
 
@@ -669,7 +669,7 @@ cdef class DotNetType(DotNetObject):
     cdef net_row_objects.RowObject type_handle
     cdef net_sigs.TypeSig sig_obj
 
-    cdef DotNetObject get_IsValueType(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_IsValueType(self, net_emulator.StackCell * params, int nparams)
 
     cdef DotNetObject duplicate(self)
 
@@ -679,24 +679,24 @@ cdef class DotNetType(DotNetObject):
 
     cpdef get_type_handle(self)
 
-    cdef DotNetObject get_IsByRef(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_IsByRef(self, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject op_Equality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject op_Inequality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell op_Inequality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject GetTypeFromHandle(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetTypeFromHandle(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Module(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Module(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject GetFields(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetFields(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_MetadataToken(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_MetadataToken(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Assembly(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Assembly(self, net_emulator.StackCell * params, int nparams)
 
 
 cdef class DotNetMonitor(DotNetObject):
@@ -708,13 +708,13 @@ cdef class DotNetMonitor(DotNetObject):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
     @staticmethod
-    cdef DotNetObject Enter(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Enter(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Exit(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Exit(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetDictionary(DotNetObject):
-    cdef dict __internal_dict
+    cdef unordered_map[net_emulator.StackCell, net_emulator.StackCell]
 
     cdef DotNetObject duplicate(self)
 
@@ -722,15 +722,15 @@ cdef class DotNetDictionary(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetObject TryGetValue(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell TryGetValue(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_Item(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Item(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Add(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Add(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ContainsKey(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ContainsKey(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Count(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Count(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetConcurrentDictionary(DotNetDictionary):
     
@@ -750,9 +750,9 @@ cdef class DotNetStringBuilder(DotNetObject):
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
-    cdef DotNetObject Append(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Append(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ToString(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToString(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetStream(DotNetObject):
     cdef DotNetArray _internal
@@ -764,25 +764,25 @@ cdef class DotNetStream(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
     cdef DotNetArray get_internal_array(self)
 
-    cdef DotNetObject ReadBytes(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ReadBytes(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Read(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Read(self, net_emulator.StackCell * params, int nparams)
     
-    cdef DotNetObject set_Position(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Position(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Position(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Position(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ReadByte(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ReadByte(self, net_emulator.StackCell * params, int nparams)
     
-    cdef DotNetObject get_Length(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Length(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Write(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Write(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Close(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Close(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetMemoryStream(DotNetStream):
 
@@ -792,7 +792,7 @@ cdef class DotNetMemoryStream(DotNetStream):
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
-    cdef DotNetObject ToArray(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToArray(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetAssemblyName(DotNetObject):
     cdef bytes name
@@ -804,8 +804,8 @@ cdef class DotNetAssemblyName(DotNetObject):
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
-    cdef DotNetObject GetPublicKeyToken(self, net_emulator.StackCell * params, int nparams)
-    cdef DotNetObject get_Name(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetPublicKeyToken(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Name(self, net_emulator.StackCell * params, int nparams)
 
 
 cdef class DotNetManifestModule(DotNetObject):
@@ -830,34 +830,34 @@ cdef class DotNetAssembly(DotNetObject):
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
-    cpdef get_module(self)
+    cpdef net_row_objects.RowObject get_module(self)
 
-    cdef DotNetObject get_ManifestModule(self, net_emulator.StackCell * params, int nparams)
-    cdef DotNetObject get_EntryPoint(self, net_emulator.StackCell * params, int nparams)
-    cdef DotNetObject get_FullName(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_ManifestModule(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_EntryPoint(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_FullName(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Location(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Location(self, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject GetExecutingAssembly(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetExecutingAssembly(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
     
     @staticmethod
-    cdef DotNetObject GetCallingAssembly(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetCallingAssembly(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject GetManifestResourceStream(self, net_emulator.StackCell * params, int nparams)
-    cdef DotNetObject GetManifestResourceNames(self, net_emulator.StackCell * params, int nparams)
-    cdef DotNetObject GetName(self, net_emulator.StackCell * params, int nparams)
-    cdef DotNetObject GetModules(self, net_emulator.StackCell * params, int nparams)
-    cdef DotNetObject Equals(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetManifestResourceStream(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetManifestResourceNames(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetName(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetModules(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Equals(self, net_emulator.StackCell * params, int nparams)
     
     @staticmethod
-    cdef DotNetObject op_Inequality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell op_Inequality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Load(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Load(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetList(DotNetObject):
-    cdef list internal
+    cdef vector[net_emulator.StackCell] internal
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -865,21 +865,21 @@ cdef class DotNetList(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject AddRange(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell AddRange(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Add(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Add(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Count(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Count(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Count(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Count(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Item(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Item(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_Item(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Item(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Sort(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Sort(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetArray(DotNetObject):
     cdef net_emulator.StackCell * __internal_array
@@ -904,17 +904,17 @@ cdef class DotNetArray(DotNetObject):
     cdef void reverse_internal(self, int start, int end)
     
     @staticmethod
-    cdef DotNetObject Copy(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Copy(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
     
     @staticmethod
-    cdef DotNetObject Clear(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Clear(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Reverse(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Reverse(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetStackTrace(DotNetObject):
-    cdef DotNetInt32 skipFrames
-    cdef DotNetBoolean fNeedFileInfo
+    cdef int skipFrames
+    cdef bint fNeedFileInfo
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -922,17 +922,17 @@ cdef class DotNetStackTrace(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject GetFrame(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetFrame(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetStackFrame(DotNetObject):
     cdef net_emulator.DotNetEmulator current_emulator
-    cdef DotNetInt32 skip_frames
+    cdef int skip_frames
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject GetMethod(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetMethod(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -943,7 +943,7 @@ cdef class DotNetStackFrame(DotNetObject):
 cdef class DotNetMemberInfo(DotNetObject):
     cdef net_row_objects.RowObject internal_method
 
-    cdef DotNetObject get_DeclaringType(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_DeclaringType(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -954,14 +954,14 @@ cdef class DotNetMemberInfo(DotNetObject):
 cdef class DotNetConsole(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject WriteLine(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell WriteLine(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Write(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Write(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 
 cdef class DotNetThread(DotNetObject):
-    cdef DotNetInt32 __identifier
+    cdef int __identifier
     cdef DotNetThreadStart __thread_start
     cdef object __internal_thread
 
@@ -975,60 +975,60 @@ cdef class DotNetThread(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetObject Start(self, net_emulator.StackCell * params, int nparams)
-    cdef DotNetObject Join(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Start(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Join(self, net_emulator.StackCell * params, int nparams)
     
     @staticmethod
-    cdef DotNetObject get_CurrentThread(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_CurrentThread(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Sleep(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Sleep(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_ManagedThreadId(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_ManagedThreadId(self, net_emulator.StackCell * params, int nparams)
 
 
 cdef class DotNetRuntimeHelpers(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject InitializeArray(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell InitializeArray(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetMath(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject Max(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Max(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Abs(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Abs(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Exp(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Exp(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Cos(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Cos(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Sin(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Sin(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Tan(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Tan(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Log(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Log(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 
 cdef class DotNetBitConverter(DotNetObject):
     @staticmethod
-    cdef DotNetObject IsLittleEndian(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell IsLittleEndian(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
     
     @staticmethod
-    cdef DotNetObject ToInt32(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToInt32(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject GetBytes(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetBytes(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetBuffer(DotNetObject):
     @staticmethod
-    cdef DotNetObject BlockCopy(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell BlockCopy(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetAppDomain(DotNetObject):
 
@@ -1039,18 +1039,18 @@ cdef class DotNetAppDomain(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result)
     
     @staticmethod
-    cdef DotNetObject get_CurrentDomain(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_CurrentDomain(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject add_AssemblyResolve(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell add_AssemblyResolve(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject add_ResourceResolve(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell add_ResourceResolve(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetResolveEventHandler(DotNetObject):
     cdef DotNetRuntimeMethodHandle __method_object
     
     cpdef net_row_objects.MethodDefOrRef get_method_obj(self)
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -1062,14 +1062,14 @@ cdef class DotNetEncoding(DotNetObject):
     cdef str name
 
     @staticmethod
-    cdef DotNetObject get_UTF8(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_UTF8(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject get_Unicode(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Unicode(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject GetString(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetString(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject GetBytes(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetBytes(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -1078,7 +1078,7 @@ cdef class DotNetEncoding(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result)
 
 cdef class DotNetString(DotNetObject):
-    cdef list str_data
+    cdef vector[unsigned short] str_data
     cdef str str_encoding
 
     cdef void add_string_internal(self, DotNetString other)
@@ -1099,54 +1099,54 @@ cdef class DotNetString(DotNetObject):
 
     cpdef bint is_encoding_wide(self)
 
-    cdef DotNetObject IndexOf(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell IndexOf(self, net_emulator.StackCell * params, int nparams)
 
     cpdef str get_str_data_as_str(self)
 
     @staticmethod
-    cdef DotNetObject Empty(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Empty(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Intern(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Intern(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Concat(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Concat(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject IndexOf(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell IndexOf(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject StartsWith(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell StartsWith(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Replace(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Replace(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Length(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Length(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject EndsWith(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell EndsWith(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Chars(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Chars(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Substring(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Substring(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Split(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Split(self, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject op_Equality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ToString(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToString(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetModule(DotNetObject):
     cdef net_row_objects.RowObject internal_module
 
-    cdef DotNetObject get_ModuleHandle(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_ModuleHandle(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ResolveType(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ResolveType(self, net_emulator.StackCell * params, int nparams)
     
-    cdef DotNetObject ResolveMethod(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ResolveMethod(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ResolveField(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ResolveField(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
-    cdef DotNetObject duplicate(self)
+    cdef net_emulator.StackCell duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
@@ -1159,11 +1159,11 @@ cdef class DotNetModuleHandle(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetObject ResolveTypeHandle(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ResolveTypeHandle(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ResolveMethodHandle(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ResolveMethodHandle(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject GetRuntimeTypeHandleFromMetadataToken(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetRuntimeTypeHandleFromMetadataToken(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetRuntimeTypeHandle(DotNetObject):
     cdef net_row_objects.RowObject internal_typedef
@@ -1197,11 +1197,11 @@ cdef class DotNetRuntimeFieldHandle(DotNetObject):
 cdef class DotNetFieldInfo(DotNetObject):
     cdef net_row_objects.Field internal_field
 
-    cdef DotNetObject get_FieldType(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_FieldType(self, net_emulator.StackCell * params, int nparams)
     
-    cdef DotNetObject SetValue(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell SetValue(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Name(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Name(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -1218,17 +1218,17 @@ cdef class DotNetMethodBase(DotNetMemberInfo):
     cdef void duplicate_into(self, DotNetObject result)
     
     @staticmethod
-    cdef DotNetObject GetMethodFromHandle(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetMethodFromHandle(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_IsStatic(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_IsStatic(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject GetParameters(self, net_emulator.StackCell * params, int nparams)
-
-    @staticmethod
-    cdef DotNetObject op_Equality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetParameters(self, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject op_Inequality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+
+    @staticmethod
+    cdef net_emulator.StackCell op_Inequality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 
 cdef class DotNetMethodInfo(DotNetMethodBase):
@@ -1239,12 +1239,12 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
 
     cdef void duplicate_into(self, DotNetObject result)
     
-    cdef DotNetObject get_ReturnType(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_ReturnType(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetParameterInfo(DotNetObject):
     cdef net_sigs.TypeSig internal_param
 
-    cdef DotNetObject get_ParameterType(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_ParameterType(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -1262,12 +1262,12 @@ cdef class DotNetDelegate(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject CreateDelegate(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell CreateDelegate(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Invoke(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Invoke(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetMulticastDelegate(DotNetDelegate):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
@@ -1279,16 +1279,16 @@ cdef class DotNetMulticastDelegate(DotNetDelegate):
 cdef class DotNetConvert(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject ToInt32(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToInt32(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject FromBase64String(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell FromBase64String(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject ToChar(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToChar(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject ToString(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ToString(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cpdef enum DotNetStackBehaviour:
     Pop0 = 0
@@ -2117,18 +2117,18 @@ cdef class DotNetHashTable(DotNetConcurrentDictionary):
 
 cdef class DotNetRSACryptoServiceProvider(DotNetObject):
     @staticmethod
-    cdef DotNetObject set_UseMachineKeyStore(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_UseMachineKeyStore(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetBinaryReader(DotNetObject):
     cdef DotNetStream stream
 
-    cdef DotNetObject get_BaseStream(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_BaseStream(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ReadBytes(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ReadBytes(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject ReadByte(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ReadByte(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Close(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Close(self, net_emulator.StackCell * params, int nparams)
 
 """
 
@@ -2172,14 +2172,14 @@ cdef class DotNetThreadStart(DotNetObject):
     cdef object __object
     cdef net_row_objects.MethodDef __method_object
 
-    cpdef get_method_object(self)
+    cpdef net_row_objects.MethodDef get_method_object(self)
 
 """
 
 cdef class DotNetDebugger(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject get_IsAttached(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_IsAttached(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 
 
@@ -2187,28 +2187,28 @@ cdef class DotNetDebugger(DotNetObject):
 cdef class DotNetGC(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject Collect(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Collect(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetPath(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject GetTempPath(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetTempPath(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject Combine(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Combine(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetEnvironment(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject GetFolderPath(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell GetFolderPath(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
     @staticmethod
-    cdef DotNetObject get_Version(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Version(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetResolveEventArgs(DotNetObject):
     cdef DotNetString __name
 
-    cdef DotNetObject get_Name(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Name(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetComparison(DotNetObject):
     cdef DotNetObject __object
@@ -2223,30 +2223,30 @@ cdef class DotNetDeflateStream(DotNetObject):
     cdef Py_ssize_t position
     cdef bytes decompressed_buffer
 
-    cdef DotNetObject Read(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Read(self, net_emulator.StackCell * params, int nparams)
 """
 
 cdef class DotNetSymmetricAlgorithm(DotNetObject):
-    cdef DotNetArray __key
-    cdef DotNetArray __iv
-    cdef DotNetInt32 __mode
-    cdef DotNetInt32 __padding
+    cdef bytes __key
+    cdef bytes __iv
+    cdef int __mode
+    cdef int __padding
 
-    cdef DotNetObject get_Key(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Key(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_Key(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Key(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_IV(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_IV(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_IV(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_IV(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Padding(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Padding(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_Padding(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Padding(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Mode(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Mode(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_Mode(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Mode(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetICryptoTransform(DotNetObject):
     cdef DotNetSymmetricAlgorithm provider
@@ -2255,78 +2255,78 @@ cdef class DotNetDESDecryptor(DotNetICryptoTransform):
     cdef object des_object
     cdef DotNet3DESCryptoServiceProvider provider
 
-    cdef DotNetObject get_InputBlockSize(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_InputBlockSize(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_OutputBlockSize(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_OutputBlockSize(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject TransformBlock(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell TransformBlock(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject TransformFinalBlock(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell TransformFinalBlock(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetDESCryptoServiceProvider(DotNetSymmetricAlgorithm):
     
-    cdef DotNetObject set_IV(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_IV(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_Key(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Key(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_IV(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_IV(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Key(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Key(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject CreateDecryptor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell CreateDecryptor(self, net_emulator.StackCell * params, int nparams)
 """
 cdef class DotNetApplication(DotNetObject):
     
     @staticmethod
-    cdef DotNetObject get_ProductVersion(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_ProductVersion(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetHashAlgorithm(DotNetObject):
     
-    cdef DotNetObject Clear(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Clear(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetMD5CryptoServiceProvider(DotNetHashAlgorithm):
-    cdef DotNetObject ComputeHash(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ComputeHash(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNet3DESDecryptor(DotNetICryptoTransform):
     cdef object des_object
 
-    cdef DotNetObject get_InputBlockSize(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_InputBlockSize(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_OutputBlockSize(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_OutputBlockSize(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject TransformBlock(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell TransformBlock(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject TransformFinalBlock(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell TransformFinalBlock(self, net_emulator.StackCell * params, int nparams)
     
 cdef class DotNet3DESCryptoServiceProvider(DotNetSymmetricAlgorithm):
     
-    cdef DotNetObject set_IV(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_IV(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_Key(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Key(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_IV(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_IV(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Key(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Key(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject set_Padding(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell set_Padding(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Padding(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Padding(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject get_Mode(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Mode(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject CreateDecryptor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell CreateDecryptor(self, net_emulator.StackCell * params, int nparams)
 
-    cdef DotNetObject Clear(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Clear(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetGCHandle(DotNetObject):
     cdef DotNetObject __target
-    cdef DotNetInt32 __type
+    cdef int __type
 
-    cdef DotNetObject get_Target(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Target(self, net_emulator.StackCell * params, int nparams)
 
     cdef void duplicate_into(self, DotNetObject obj)
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -2336,9 +2336,9 @@ cdef class DotNetGCHandle(DotNetObject):
     cdef DotNetObject Alloc(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetVersion(DotNetObject):
-    cdef DotNetInt32 __major_version
+    cdef int __major_version
 
-    cdef DotNetObject get_Major(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell get_Major(self, net_emulator.StackCell * params, int nparams)
 
 cdef struct NewobjFuncMapping:
     const char * name

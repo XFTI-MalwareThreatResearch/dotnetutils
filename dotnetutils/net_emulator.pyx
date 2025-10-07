@@ -527,6 +527,7 @@ cdef bint handle_brtrue_instruction(DotNetEmulator emu): #Good
     return False
 
 #TODO fix this one for new changes
+#TODO: going to need to add a functionality to enforce parameter types in order for certain functions to work.
 cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args): #Good
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.TypeDefOrRef parent_type
@@ -2419,6 +2420,12 @@ cdef class DotNetEmulator:
         elif cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             Py_XDECREF(cell.item.byref.owner)
         #Ints and such dont need to have anything done
+
+    cdef int hash_cell(self, StackCell cell):
+        raise net_exceptions.FeatureNotImplementedException() #TODO going to need this for DotNetDictionary
+
+    cdef bytes cell_to_bytes(self, StackCell cell):
+        raise net_exceptions.FeatureNotImplementedException() #TODO: Going to need this one for multiple functions.
 
     cdef void pack_blanktag(self):
         cdef StackCell cell
