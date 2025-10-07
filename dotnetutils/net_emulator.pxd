@@ -35,7 +35,8 @@ cdef union StackCellItem:
 cdef struct StackCell:
     CorElementType tag
     int rid
-    StackCellItem item 
+    StackCellItem item
+    PyObject * emulator_obj
 
 cdef class CctorRegistry:
     cdef list __executed_cctors
