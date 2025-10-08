@@ -26,6 +26,7 @@ from libc.string cimport memcmp, memset, memcpy
 from libc.stdint cimport uint64_t, int64_t #ensure we avoid any Windows / Linux based quirks
 from libc.limits cimport INT_MIN, LLONG_MIN
 from libcpp.utility cimport pair
+from libcpp.algorithm cimport sort
 from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
 
 """
@@ -5605,6 +5606,36 @@ cdef class DotNetAssembly(DotNetObject):
     def __eq__(self, other):
         return isinstance(other, DotNetAssembly) and self.get_module() == other.get_module()
 
+cdef struct SortHelperStruct:
+    PyObject * compare_method
+    PyObject * comparison
+
+cdef bint list_sort_helper(net_emulator.StackCell a, net_emulator.StackCell b)
+    cdef SortHelperStruct * helper = a.extra_data
+    cdef net_row_objects.MethodDef compare_method = helper.compare_method
+    cdef DotNetComparison comparison = helper.comparison
+    cdef net_emulator.DotNetEmulator emu_obj = compare_method.get_emulator_obj().spawn_new_emulator(compare_method, caller=None)
+    cdef net_emulator.StackCell * temp_params = malloc(sizeof(net_emulator.StackCell) * 3)
+    cdef Py_ssize_t x = 0
+    cdef net_emulator.StackCel result
+    if temp_params == NULL:
+        raise net_exceptions.EmulatorExecutionException(compare_method.get_emulator_obj(), 'memory error')
+    if compare_method.is_static_method():
+        raise net_exceptions.OperationNotSupportedException()
+    temp_params[0] = compare_method.get_emulator_obj().pack_object(comparison)
+    temp_params[1] = compare_method.get_emulator_obj().duplicate_cell(a)
+    temp_params[2] = compare_method.get_emulator_obj().duplicate_cell(b)
+    for x in range(3):
+        emu_obj._add_param(temp_params[x])
+    emu_obj.run_function()
+    result = emu_obj.get_stack().pop()
+    for x in range(3):
+        compare_method.get_emulator_obj().dealloc_cell(temp_params[x])
+    if result.tag != CorElementType.ELEMENT_TYPE_I4:
+        raise net_exceptions.OperationNotSupportedException()
+    if result.item.i4 < 0:
+        return True #Goes before since its - TODO check this
+    return False
 
 cdef class DotNetList(DotNetObject):  #TODO: Going to need to reorient this to a vector
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -5628,55 +5659,91 @@ cdef class DotNetList(DotNetObject):  #TODO: Going to need to reorient this to a
 
     cdef void duplicate_into(self, DotNetObject result):
         DotNetObject.duplicate_into(self, result)
-        (<DotNetList>result).internal = self.internal
+        cdef DotNetList other_list = <DotNetList>result
+        cdef Py_ssize_t x = 0
+        cdef net_emulator.StackCell item
+        for x in range(len(self)):
+            cell = self.internal[x]
+            other_list.Add(&cell, 1)
 
     cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetInt32 num = None
-        cdef DotNetObject nobj = DotNetObject(self.get_emulator_obj())
-        nobj.flag_null()
-        if len(args) == 1:
-            num = args[0]
-        else:
-            num = DotNetInt32(self.get_emulator_obj(), None)
-            num.init_zero()
-        self.internal = list([nobj] * num.as_int())
-        return self
+        cdef int initial_size = 0
+        if nparams != 0:
+            if params[0].tag != CorElementType.ELEMENT_TYPE_I4:
+                raise net_exceptions.InvalidArgumentsException()
+            initial_size = params[0].item.i4
+        self.internal.reserve(initial_size)
+        return self.get_emulator_obj().pack_object(self)
 
     cdef net_emulator.StackCell AddRange(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetObject range_obj = <DotNetObject>args[0]
-        for item in range_obj:
-            self.internal.append(item)
-        return None
+        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef DotNetArray range_obj = <DotNetArray>params[0].item.ref
+        cdef Py_ssize_t x = 0
+        cdef net_emulator.StackCell cell
+        for x in range(len(range_obj)):
+            cell = range_obj._get_item(x)
+            self.internal.push_back(cell) #get_item already returns a copy so theres no need to deallocate it and such.
+            #Still make clear that we have a ref though on top of the original cell ref
+            if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
+                if cell.item.ref != NULL:
+                    Py_INREF(cell.item.ref)
+        return self.get_emulator_obj().pack_blanktag()
 
     cdef net_emulator.StackCell Add(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetObject item = <DotNetObject>args[0]
-        self.internal.append(item)
-        return None
+        if nparams != 1:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef net_emulator.StackCell cell = self.get_emulator_obj().duplicate_cell(params[0])
+        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if cell.item.ref != NULL:
+                Py_INREF(cell.item.ref)
+        self.internal.push_back(cell)
+        return self.get_emulator_obj().pack_blanktag()
 
     cdef net_emulator.StackCell Count(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetInt32 num = DotNetInt32(self.get_emulator_obj(), None)
-        cdef int v = <int>len(self.internal)
-        num.from_int(v)
-        return num
+        return self.get_emulator_obj().pack_i4(<int>self.internal.size())
 
     cdef net_emulator.StackCell get_Count(self, net_emulator.StackCell * params, int nparams):
-        return self.Count(args)
+        return self.Count(params, nparams)
 
     cdef net_emulator.StackCell get_Item(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetInt32 index = <DotNetInt32>args[0]
-        return self.internal[index.as_int()]
+        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef int index = params[0].item.i4
+        if index < 0 or index >= len(self):
+            raise net_exceptions.InvalidArgumentsException()
+        return self.get_emulator_obj().duplicate_cell(self.internal[index])
 
     cdef net_emulator.StackCell set_Item(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetInt32 index = <DotNetInt32>args[0]
-        cdef DotNetObject value1 = args[1]
-        self.internal[index.as_int()] = value1
-        return None
+        if nparams != 2 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef int index = params[0].item.i4
+        cdef net_emulator.StackCell old
+        if index < 0 or index >= len(self):
+            raise net_exceptions.InvalidArgumentsException()
+        old = self.internal[index]
+        if old.tag == CorElementType.ELEMENT_TYPE_OBJECT or old.tag == CorElementType.ELEMENT_TYPE_STRING:
+            Py_XDECREF(old.item.ref)
+        self.get_emulator_obj().dealloc_cell(old)
+        self.internal[index] = self.get_emulator_obj().duplicate_cell(params[1])
+        old = self.internal[index]
+        if old.tag == CorElementType.ELEMENT_TYPE_OBJECT or old.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if old.item.ref != NULL:
+                Py_INCREF(old.item.ref)
+        return self.get_emulator_obj().pack_blanktag()
 
     cdef net_emulator.StackCell Sort(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetComparison comparison = <DotNetComparison> args[0]
+        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef DotNetComparison comparison = <DotNetComparison> params[0].item.ref
         cdef net_row_objects.MethodDefOrRef compare_method
         cdef net_row_objects.TypeDefOrRef parent_type
         cdef net_row_objects.MethodDef method
+        cdef SortHelperStruct * sort_helper = malloc(sizeof(SortHelperStruct))
+        cdef net_emulator.StackCell * ptr = NULL
+        cdef Py_ssize_t x = 0
+        if sort_helper == NULL:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error sorting')
         compare_method = comparison.get_method_object()
         if isinstance(compare_method, net_row_objects.MemberRef):
             parent_type = compare_method.get_parent_type()
@@ -5694,29 +5761,42 @@ cdef class DotNetList(DotNetObject):  #TODO: Going to need to reorient this to a
 
         if not isinstance(compare_method, net_row_objects.MethodDef):
             raise net_exceptions.ObjectTypeException
+        #not my favorite way to do this, but lets start by tagging all elements with sort_helper
+        sort_helper.compare_method = compare_method
+        sort_helper.comparison = comparison
+        for x in range(len(self)):
+            ptr = &self.internal[x]
+            ptr.extra_data = sort_helper
 
-        def python_sort_runner(item1, item2):
-            nonlocal self
-            nonlocal compare_method
-            nonlocal comparison
-            method_params = [item1, item2]
-            if not compare_method.is_static_method():
-                method_params.insert(0, comparison)
-            else:
-                method_params.insert(0, self.get_emulator_obj().get_appdomain())
-            emu_obj = self.get_emulator_obj().spawn_new_emulator(compare_method, method_params=method_params, start_offset=0, end_offset=-1, caller=None, end_method_rid=0, end_eip=-1)
-            emu_obj.run_function()
-            result = emu_obj.get_stack().pop().as_python_obj()
-            return result
-
-        self.internal.sort(key=functools.cmp_to_key(python_sort_runner))
-        return None
-
-    def __getitem__(self, item):
-        return self.internal[item]
+        sort(self.internal.begin(), self.internal.end(), list_sort_helper)
+        for x in range(len(self)):
+            ptr = &self.internal[x]
+            ptr.extra_data = NULL
+        free(sort_helper)
+        return self.get_emulator_obj().pack_blanktag()
 
     def __str__(self):
-        return str(self.internal) + ' Count={}'.format(self.get_Count([]))
+        cdef str list_string = '['
+        cdef Py_ssize_t length = len(self)
+        for x in range(length):
+            list_string += self.get_emulator_obj().cell_to_str(self.internal[x])
+            if x != (length - 1):
+                list_string += ', '
+        list_string += ']'
+        return '{} Count={}'.format(list_string, length)
+
+    def __len__(self):
+        return <Py_ssize_t>self.internal.size()
+
+    def __dealloc__(self):
+        cdef Py_ssize_t x = 0
+        cdef net_emulator.StackCell old
+        for x in range(len(self)):
+            old = self.internal[x]
+            if old.tag == CorElementType.ELEMENT_TYPE_OBJECT or old.tag == CorElementType.ELEMENT_TYPE_STRING:
+                Py_XDECREF(old.item.ref)
+            self.get_emulator_obj().dealloc_cell(old)
+        self.internal.clear()
 
 #TODO: This might have to be a special constructor to support internal stuff
 #TODO: I dont think System.Array newobj is valid anyway, should be fine.

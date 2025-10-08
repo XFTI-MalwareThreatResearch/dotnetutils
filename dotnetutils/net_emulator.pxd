@@ -37,6 +37,7 @@ cdef struct StackCell:
     int rid
     StackCellItem item
     PyObject * emulator_obj
+    void * extra_data
 
 cdef class CctorRegistry:
     cdef list __executed_cctors
