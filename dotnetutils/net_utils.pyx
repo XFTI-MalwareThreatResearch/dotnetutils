@@ -102,4 +102,6 @@ cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name):
         return net_sigs.get_CorSig_Double()
     elif type_name == b'System.String':
         return net_sigs.get_CorSig_String()
-    raise net_exceptions.InvalidArgumentsException()
+    elif type_name == b'System.Boolean':
+        return net_sigs.get_CorSig_Boolean()
+    return None

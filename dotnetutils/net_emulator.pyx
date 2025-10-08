@@ -2424,13 +2424,60 @@ cdef class DotNetEmulator:
             cell.item.byref.owner = NULL
         #Ints and such dont need to have anything done
 
-    cdef int hash_cell(self, StackCell cell):
-        raise net_exceptions.FeatureNotImplementedException() #TODO going to need this for DotNetDictionary
+    cdef Py_hash_t hash_cell(self, StackCell cell):
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell deref = self.deref_cell(cell) #TODO: make deref return a copy
+        cdef net_emu_types.DotNetObject dobj = None
+        if deref.tag == CorElementType.ELEMENT_TYPE_OBJECT or deref.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if deref.item.ref == NULL:
+                self.dealloc_cell(deref)
+                return 0
+            dobj = <net_emu_types.DotNetObject>deref.item.ref
+            self.dealloc_cell(deref)
+            return hash(dobj)
+        else:
+            self.dealloc_cell(deref)
+            return <Py_hash_t>deref.item.i8
 
     cdef bytes cell_to_bytes(self, StackCell cell):
-        raise net_exceptions.FeatureNotImplementedException() #TODO: Going to need this one for multiple functions.
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef int int_size = 0
+        cdef net_emu_types.DotNetObject dobj = None
+        cdef StackCell deref = self.deref_cell(cell)
+        cdef char * ptr = NULL
+        if deref.tag == CorElementType.ELEMENT_TYPE_STRING or deref.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if deref.item.ref == NULL:
+                self.dealloc_cell(deref)
+                return bytes()
+            dobj = <net_emu_types.DotNetObject>deref.item.ref
+            self.dealloc_cell(deref)
+            return dobj.as_bytes()
+        else:
+            if not net_utils.is_cortype_number(deref.tag):
+                raise net_exceptions.InvalidArgumentsException()
+            ptr = <char*>&deref.item.i8
+            self.dealloc_cell(deref)
+            if deref.tag == CorElementType.ELEMENT_TYPE_I or deref.tag == CorElementType.ELEMENT_TYPE_U:
+                if self.__is_64bit:
+                    return ptr[:8]
+                return ptr[:4]
+            elif deref.tag == CorElementType.ELEMENT_TYPE_R4 or deref.tag == CorElementType.ELEMENT_TYPE_I4 or deref.tag == CorElementType.ELEMENT_TYPE_U4:
+                return ptr[:4]
+            elif deref.tag == CorElementType.ELEMENT_TYPE_R8 or deref.tag == CorElementType.ELEMENT_TYPE_I8 or deref.tag == CorElementType.ELEMENT_TYPE_U8:
+                return ptr[:8]
+            elif deref.tag == CorElementType.ELEMENT_TYPE_I1 or deref.tag == CorElementType.ELEMENT_TYPE_U1:
+                return ptr[:1]
+            elif deref.tag == CorElementType.ELEMENT_TYPE_I2 or deref.tag == CorElementType.ELEMENT_TYPE_U2 or deref.tag == CorElementType.ELEMENT_TYPE_CHAR:
+                return ptr[:2]
+            elif deref.tag == CorElementType.ELEMENT_TYPE_BOOLEAN:
+                if deref.item.b:
+                    return b'\x01'
+                return b'\x00'
+        raise net_exceptions.OperationNotSupportedException()
 
-    cdef void pack_blanktag(self): #TODO: I dont think we need to pack a emulator object in blanktags
+    cdef void pack_blanktag(self):
         cdef StackCell cell
         memset(&cell, 0, sizeof(cell))
         return cell

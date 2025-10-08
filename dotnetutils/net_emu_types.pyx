@@ -5732,7 +5732,7 @@ cdef class DotNetArray(DotNetObject):
         if self.__internal_array != NULL:
             memset(self.__internal_array, 0, sizeof(net_emulator.StackCell) * self.__size)
         if initialize:
-            self.setup_default_value(0, size, True)
+            self.setup_default_value(0, size)
 
     def __dealloc__(self):
         cdef uint64_t x = 0
@@ -5740,13 +5740,15 @@ cdef class DotNetArray(DotNetObject):
         if self.__internal_array != NULL:
             for x in range(self.__size):
                 cell = self.__internal_array[x]
+                if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
+                    Py_XDECREF(cell.item.ref)
                 self.get_emulator_obj().dealloc_cell(cell)
             free(self.__internal_array)
             self.__internal_array = NULL
 
     cdef net_emulator.StackCell _get_item(self, uint64_t index):
         if index < self.__size:
-            return self.__internal_array[index]
+            return self.get_emulator_obj().duplicate_cell(self.__internal_array[index])
         return self.get_emulator_obj().pack_blanktag()
 
     cdef bint _set_item(self, uint64_t index, net_emulator.StackCell cell): #TODO: Here and in other similar places (feilds, static fields, locals, we are going to want to copy the cell to prevent memory issues)
@@ -5756,6 +5758,11 @@ cdef class DotNetArray(DotNetObject):
             raise net_exceptions.InvalidArgumentsException()
         cdef net_emulator.StackCell old = self.__internal_array[index]
         cdef net_emulator.StackCell duped = self.get_emulator_obj().duplicate_cell(cell)
+        if old.tag == CorElementType.ELEMENT_TYPE_OBJECT or old.tag == CorElementType.ELEMENT_TYPE_STRING:
+            Py_XDECREF(old.item.ref)
+        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if cell.item.ref != NULL:
+                Py_INCREF(cell.item.ref)
         self.get_emulator_obj().dealloc_cell(old)
         memcpy(&self.__internal_array[index], &duped, sizeof(duped))
         return True
@@ -5763,8 +5770,11 @@ cdef class DotNetArray(DotNetObject):
     cdef DotNetObject duplicate(self):
         cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), self.__size, self.get_type_obj(), initialize=False)
         cdef uint64_t x = 0
+        cdef net_emulator.StackCell cell
         for x in range(self.__size):
-            result._set_item(self._get_item(x))
+            cell = self._get_item(x)
+            result._set_item(x, cell)
+            self.get_emulator_obj().dealloc_cell(cell)
         DotNetObject.duplicate_into(self, result) #TODO FIXME: need to do this for the others to get type_obj
         return result
 
@@ -5786,24 +5796,28 @@ cdef class DotNetArray(DotNetObject):
                 return result
         raise net_exceptions.OperationNotSupportedException()
 
-    cdef void setup_default_value(self, uint64_t index, uint64_t size, bint init):
+    cdef void setup_default_value(self, uint64_t index, uint64_t size):
         cdef uint64_t x = 0
         cdef net_emulator.StackCell num
         cdef DotNetObject dno = None
-        if self.get_type_obj().get_full_name() == b'System.Byte':
+        cdef bytes full_name = self.get_type_obj().get_full_name()
+        cdef net_sigs.CorLibTypeSig type_sig = net_utils.get_cor_type_from_name(full_name)
+        if type_sig is not NULL:
             for x in range(size):
-                num =  self.get_emulator_obj().pack_i4(0)
-                num.tag = CorElementType.ELEMENT_TYPE_U1
-                self._set_item(x, num)
+                num =  self.get_emulator_obj()._get_default_value(type_sig)
+                self._set_item(index + x, num)
+                self.get_emulator_obj().dealloc_cell(num)
         else:
             for x in range(size):
                 if not self.get_type_obj().is_valuetype():
-                    self._set_item(x, self.get_emulator_obj().pack_null())
+                    num = self.get_emulator_obj().pack_null():
+                    self._set_item(index + x, num)
                 else:
                     dno = DotNetObject(emulator_obj, self.get_type_obj())
-                    self._set_item(x, self.get_emulator_obj().pack_object(dno))
-                self.internal_array[x + index] = dno
-    #TODO: Finish these off once array structure and memory is finalized
+                    num = self.get_emulator_obj().pack_object(dno)
+                    self._set_item(index + x, num)
+                self.get_emulator_obj().dealloc_cell(num)
+
     @staticmethod
     cdef net_emulator.StackCell Copy(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):
         if nparams != 5:
@@ -5825,8 +5839,11 @@ cdef class DotNetArray(DotNetObject):
         cdef int dstIndex = params[3].item.i4
         cdef int count = params[4].item.i4
         cdef int x = 0
+        cdef net_emulator.StackCell cell
         for x in range(count):
-            dst._set_item(dstIndex + x, app_domain.get_emulator_obj().duplicate_cell(src._get_item(srcIndex + x)))
+            cell = src._get_item(srcIndex + x)
+            dst._set_item(dstIndex + x, cell)
+            app_domain.get_emulator_obj().dealloc_cell(cell)
         return app_domain.get_emulator_obj().pack_blanktag()
 
     @staticmethod
@@ -5837,14 +5854,36 @@ cdef class DotNetArray(DotNetObject):
         cdef int index = params[1].item.i4
         cdef int length = params[2].item.i4
 
-        array_obj.setup_default_value(index, length, False)
+        array_obj.setup_default_value(index, length)
         return app_domain.get_emulator_obj().pack_blanktag()
 
     cdef void reverse_internal(self, int start, int end):
-        if start == -1 or end == -1:
-            self.internal_array = self.internal_array[::-1]
+        if self.__internal_array == NULL:
+            return
+        cdef int actual_start = start
+        cdef int actual_end = 0
+        cdef net_emulator.StackCell * ptr = NULL
+        cdef int size = 0
+        cdef int x = 0
+        cdef int y = 0
+        cdef net_emulator.StackCell cell
+        if actual_start == -1:
+            actual_start = 0
+        if end == -1:
+            actual_end = <int>self.__size - actual_start
         else:
-            self.internal_array = self.internal_array[:start] + self.internal_array[start:start+end][::-1] + self.internal_array[start+end:]
+            actual_end = actual_start + end
+        
+        if (actual_end - actual_start) == 0:
+            return
+        size = actual_end - actual_start
+        ptr = malloc(sizeof(net_emulator.StackCell) * size)
+        if ptr == NULL:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'not enough memory')
+        
+        for x in range(actual_end - 1, actual_start - 1):
+            ptr[y] = self.__internal_array[x]
+            y += 1
 
     @staticmethod
     cdef net_emulator.StackCell Reverse(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):
@@ -5862,14 +5901,22 @@ cdef class DotNetArray(DotNetObject):
         return app_domain.get_emulator_obj().pack_blanktag()
 
     def __len__(self):
-        return self.__size
+        return <Py_ssize_t>self.__size
 
     def __str__(self): #TODO Fix this method
-        raise Exception()
-        if isinstance(self.internal_array, bytearray) or isinstance(self.internal_array, bytes):
-            array_str = str(list(self.internal_array))
-        else:
-            array_str = str(self.internal_array)
+        cdef str array_str = ''
+        cdef int type_rid = 0
+        cdef str type_name = None
+        cdef Py_ssize_t int_len = len(self)
+        cdef str begin = None
+        cdef str end = None
+        cdef Py_ssize_t x = 0
+        array_str += '['
+        for x in range(int_len):
+            array_str += self.get_emulator_obj().cell_to_str(self.__internal_array[x])
+            if x != (int_len - 1):
+                array_str += ', '
+        array_str += ']'
         if len(array_str) > 250:
             if self.get_type_obj() != None:
                 type_rid = self.get_type_obj().get_rid()
@@ -5877,7 +5924,6 @@ cdef class DotNetArray(DotNetObject):
             else:
                 type_rid = 'unkown_rid'
                 type_name = 'unknown_table_name'
-            int_len = len(self.internal_array)
             begin = array_str[:50]
             end = array_str[-50:]
             return 'DotNetArray: type_obj={}:{}, len={}, begin={}, end={}'.format(type_name,
@@ -5885,7 +5931,7 @@ cdef class DotNetArray(DotNetObject):
                                                                                   int_len,
                                                                                   begin, end)
         return 'DotnetArray: type_obj={}:{} len={}, content={}'.format(self.get_type_obj().get_table_name(), self.get_type_obj().get_rid(),
-                                                                       len(self.internal_array), array_str)
+                                                                       len(self), array_str)
 
 cdef class DotNetStackTrace(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
