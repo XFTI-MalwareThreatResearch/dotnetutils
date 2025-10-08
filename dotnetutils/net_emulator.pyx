@@ -1534,7 +1534,8 @@ cdef bint handle_bne_un_instruction(DotNetEmulator emu):
 
 cdef bint handle_ldfld_instruction(DotNetEmulator emu):
     cdef net_row_objects.Field field_obj
-    cdef StackCell obj_ref = emu.deref_cell(emu.stack.pop())
+    cdef StackCell orig_cell = emu.stack.pop()
+    cdef StackCell obj_ref = emu.get_ref(orig_cell)
     cdef net_emu_types.DotNetObject dot_obj = None
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT:
         raise net_exceptions.OperationNotSupportedException()
@@ -1543,6 +1544,8 @@ cdef bint handle_ldfld_instruction(DotNetEmulator emu):
     if field_obj.is_static():
         raise net_exceptions.OperationNotSupportedException()
     emu.stack.append(dot_obj.get_field(field_obj.get_rid()))
+    self.dealloc_cell(orig_cell)
+    self.dealloc_cell(obj_ref)
     return False
 
 cdef bint handle_or_instruction(DotNetEmulator emu):
@@ -1592,7 +1595,8 @@ cdef bint handle_stfld_instruction(DotNetEmulator emu):
     cdef net_sigs.TypeSig local_type_sig
     cdef net_structs.CorElementType e_type
     cdef StackCell value1 = emu.stack.pop()
-    cdef StackCell obj_ref = emu.deref_cell(emu.stack.pop())
+    cdef StackCell orig_cell = emu.stack.pop()
+    cdef StackCell obj_ref = emu.get_ref(orig_cell)
     cdef net_emu_types.DotNetObject dot_obj = None
     cdef StackCell deref_cell
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT or field_obj.is_static():
@@ -1607,10 +1611,15 @@ cdef bint handle_stfld_instruction(DotNetEmulator emu):
             value1.tag = e_type
         dot_obj.set_field(field_obj.get_rid(), value1)
     else:
-        deref_cell = emu.deref_cell(value1)
+        deref_cell = emu.get_ref(value1)
         if deref_cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-            value1.set_type_sig_obj(local_type_sig)
+            if deref_cell.item.ref != NULL:
+                (<net_emu_types.DotNetObject>deref_cell.item.ref).set_type_sig_obj(local_type_sig)
         dot_obj.set_field(field_obj.get_rid(), value1)
+        emu.dealloc_cell(deref_cell)
+    emu.dealloc_cell(orig_cell)
+    emu.dealloc_cell(obj_ref)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_stloc_instruction(DotNetEmulator emu):
@@ -1817,12 +1826,15 @@ cdef bint handle_castclass_instruction(DotNetEmulator emu):
 
 cdef bint handle_initobj_instruction(DotNetEmulator emu):
     cdef net_row_objects.TypeDefOrRef type_obj = emu.instr.get_argument()
-    cdef StackCell obj_ref = emu.deref_cell(emu.stack.pop())
+    cdef StackCell orig_cell = emu.stack.pop()
+    cdef StackCell obj_ref = emu.get_ref(orig_cell)
     cdef net_emu_types.DotNetObject dot_obj = None
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT:
         raise net_exceptions.ObjectTypeException
     dot_obj = <net_emu_types.DotNetObject>obj_ref
     dot_obj.initialize_type(type_obj)
+    emu.dealloc_cell(orig_cell)
+    emu.dealloc_cell(obj_ref)
     return False
 
 cdef bint handle_isinst_instruction(DotNetEmulator emu):
@@ -2361,7 +2373,7 @@ cdef class DotNetEmulator:
 
     cdef StackCell get_ref(self, StackCell cell):
         if cell.tag != CorElementType.ELEMENT_TYPE_BYREF:
-            return cell
+            return self.duplicate_cell(cell)
         cdef DotNetEmulator owner_emu = None
         cdef net_emu_types.DotNetObject owner_obj = None
         if cell.item.byref.kind == 1: #local variable
@@ -2421,13 +2433,26 @@ cdef class DotNetEmulator:
         return one.tag == CorElementType.ELEMENT_TYPE_OBJECT and one.item.ref == NULL
 
     cdef bint cell_is_equal(self, StackCell one, StackCell two):
-        cdef StackCell uone = self.deref_cell(one)
-        cdef StackCell utwo = self.deref_cell(two)
+        cdef StackCell uone = one
+        cdef StackCell utwo = two
         cdef CorElementType type_one = uone.tag
         cdef CorElementType type_two = utwo.tag
         cdef net_emu_types.DotNetObject obj1 = None
         cdef net_emu_types.DotNetObject obj2 = None
-        if self.cell_is_null(uone) or self.cell_is_null(utwo):
+        cdef StackCell temp1
+        cdef StackCell temp2
+        cdef bint result = False
+        if type_one == CorElementType.ELEMENT_TYPE_BYREF or type_two == CorElementType.ELEMENT_TYPE_BYREF:
+            #be careful about byrefs for now
+            if type_one != type_two:
+                raise net_exceptions.InvalidArgumentsException()
+            temp1 = self.get_ref(uone)
+            temp2 = self.get_ref(utwo)
+            result = self.cell_is_equal(temp1, temp2)
+            self.dealloc_cell(temp1)
+            self.dealloc_cell(temp2)
+            return result
+        elif self.cell_is_null(uone) or self.cell_is_null(utwo):
             if uone.item.tag != utwo.item.tag:
                 raise net_exceptions.OperationNotSupportedException()
             return uone.item.ref == utwo.item.ref 
