@@ -5203,6 +5203,17 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         cdef int count = <int>self.__internal_dict.size()
         return self.get_emulator_obj().pack_i4(count)
 
+    def __dealloc__(self):
+        cdef pair[net_emulator.StackCell, net_emulator.StackCell] kv
+        for kv in self.__internal_dict:
+            if kv.first.tag == CorElementType.ELEMENT_TYPE_STRING or kv.first.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                Py_XDECREF(kv.first.item.ref)
+            self.get_emulator_obj().dealloc_cell(kv.first)
+            if kv.second.tag == CorElementType.ELEMENT_TYPE_STRING or kv.second.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                Py_XDECREF(kv.second.item.ref)
+            self.get_emulator_obj().dealloc_cell(kv.second)
+        self.__internal_dict.clear()
+
 cdef class DotNetConcurrentDictionary(DotNetDictionary):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetDictionary.__init__(self, emulator_obj)
