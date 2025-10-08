@@ -11,6 +11,16 @@ from cpython.ref cimport Py_INCREF, Py_XDECREF
 from libcpp.utility cimport pair
 from cpython.exc cimport PyErr_CheckSignals
 
+cdef cppclass StackCellHash:
+    size_t operator()(StackCell const & sc) const noexcept:
+        cdef DotNetEmulator emu_obj = <DotNetEmulator>sc.emulator_obj
+        return emu_obj.hash_cell(sc)
+
+cdef cppclass StackCellEquals:
+    bint operator()(StackCell const& one, StackCell const& two):
+        cdef DotNetEmulator emu_obj = <DotNetEmulator>one.emulator_obj
+        return emu_obj.cell_is_equal(one, two)
+
 """
 Used for polling the performance counter with minimal overhead
 This is done a lot with print debugs so it can save a ton of time.
@@ -2424,7 +2434,7 @@ cdef class DotNetEmulator:
             cell.item.byref.owner = NULL
         #Ints and such dont need to have anything done
 
-    cdef Py_hash_t hash_cell(self, StackCell cell):
+    cdef size_t hash_cell(self, StackCell cell):
         if cell.tag == CorElementType.ELEMENT_TYPE_END:
             raise net_exceptions.InvalidArgumentsException()
         cdef StackCell deref = self.deref_cell(cell) #TODO: make deref return a copy
@@ -2435,10 +2445,10 @@ cdef class DotNetEmulator:
                 return 0
             dobj = <net_emu_types.DotNetObject>deref.item.ref
             self.dealloc_cell(deref)
-            return hash(dobj)
+            return <size_t>hash(dobj)
         else:
             self.dealloc_cell(deref)
-            return <Py_hash_t>deref.item.i8
+            return <size_t>deref.item.i8
 
     cdef bytes cell_to_bytes(self, StackCell cell):
         if cell.tag == CorElementType.ELEMENT_TYPE_END:

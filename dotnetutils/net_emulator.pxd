@@ -39,6 +39,12 @@ cdef struct StackCell:
     PyObject * emulator_obj
     void * extra_data
 
+cdef cppclass StackCellHash:
+    pass
+
+cdef cppclass StackCellEquals:
+    pass
+
 cdef class CctorRegistry:
     cdef list __executed_cctors
 

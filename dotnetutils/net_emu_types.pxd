@@ -714,7 +714,7 @@ cdef class DotNetMonitor(DotNetObject):
     cdef net_emulator.StackCell Exit(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetDictionary(DotNetObject):
-    cdef unordered_map[net_emulator.StackCell, net_emulator.StackCell]
+    cdef unordered_map[net_emulator.StackCell, net_emulator.StackCell, net_emulator.StackCellHash, net_emulator.StackCellEquals]
 
     cdef DotNetObject duplicate(self)
 

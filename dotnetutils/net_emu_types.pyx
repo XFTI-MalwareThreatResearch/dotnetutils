@@ -5130,55 +5130,77 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         self.add_function(b'get_Count', <emu_func_type>self.get_Count)
 
     cdef DotNetObject duplicate(self):
+        cdef pair[net_emulator.StackCell, net_emulator.StackCell] kv
         cdef DotNetDictionary result = DotNetDictionary(self.get_emulator_obj())
-        result.__internal_dict = self.__internal_dict
-        DotNetObject.duplicate_into(self, result)
+        self.duplicate_into(result)
         return result
 
     cdef void duplicate_into(self, DotNetObject result):
-        (<DotNetDictionary>result).__internal_dict = self.__internal_dict
+        cdef DotNetDictionary dict_obj = result
+        cdef pair[net_emulator.StackCell, net_emulator.StackCell] kv
+        cdef net_emulator.StackCell args[2]
+        for kv in self.__internal_dict:
+            args[0] = kv.first
+            args[1] = kv.second
+            dict_obj.set_Item(args, 2)
         DotNetObject.duplicate_into(self, result)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name().startswith(b'System.Collections.Generic.Dictionary') or DotNetObject.isinst(self, tdef)
 
     cdef net_emulator.StackCell TryGetValue(self, net_emulator.StackCell * params, int nparams):
-        if nparams != 2 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL or params[1].tag != CorElementType.ELEMENT_TYPE_BYREF:
+        if nparams != 2 or params[1].tag != CorElementType.ELEMENT_TYPE_BYREF:
             raise net_exceptions.InvalidArgumentsException()
         
-        cdef DotNetObject param1 = <DotNetObject>params[0].item.ref
-        cdef net_emulator.StackCell param2 = args[1]
+        cdef net_emulator.StackCell param1 = params[0]
+        cdef net_emulator.StackCell param2 = params[1]
         cdef bint result = False
         cdef StackCell value1 = None
   
-        if param1 in self.__internal_dict:
+        if self.__internal_dict.find(param1) != self.__internal_dict.end():
             value1 = self.__internal_dict[param1]
-            param2.set_obj_ref(value1)
+            self.get_emulator_obj().set_ref(param2, value1)
             result = True
-        bool_obj.from_bool(result)
-        return bool_obj
+        return self.get_emulator_obj().pack_bool(result)
 
     cdef net_emulator.StackCell set_Item(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetObject param1 = args[0]
-        cdef DotNetObject param2 = args[1]
-        self.__internal_dict[param1] = param2
-        return None
+        if nparams != 2:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef net_emulator.StackCell param1 = self.get_emulator_obj().duplicate_cell(param1)
+        cdef net_emulator.StackCell param2 = self.get_emulator_obj().duplicate_cell(param2)
+        cdef net_emulator.StackCell old_key
+        cdef net_emulator.StackCell old_value
+        cdef unordered_map[net_emulator.StackCell, net_emulator.StackCell].const_iterator it = self.__internal_dict.begin()
+        if param1.tag == CorElementType.ELEMENT_TYPE_STRING or param1.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if param1.item.ref != NULL:
+                Py_INCREF(param1.item.ref)
+        if param2.tag == CorElementType.ELEMENT_TYPE_STRING or param2.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if param2.item.ref != NULL:
+                Py_INCREF(param2.item.ref)
+        it = self.__internal_dict.find(params[0])
+        if it != self.__internal_dict.end():
+            old_key = it.first
+            old_value = it.second
+            self.__internal_dict[param1] = param2
+            if old_key.tag == CorElementType.ELEMENT_TYPE_STRING or old_key.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                Py_XDECREF(old_key.item.ref)
+            if old_value.tag == CorElementType.ELEMENT_TYPE_STRING or old_value.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                Py_XDECREF(old_value.item.ref)
+        else:
+            self.__internal_dict[param1] = param2
+        return self.get_emulator_obj().pack_blanktag()
 
     cdef net_emulator.StackCell Add(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetObject param1 = <DotNetObject>args[0]
-        cdef DotNetObject param2 = <DotNetObject>args[1]
-        self.__internal_dict[param1] = param2
-        return None
+        return self.set_Item(params, nparams)
 
     cdef net_emulator.StackCell ContainsKey(self, net_emulator.StackCell * params, int nparams):
-        cdef DotNetObject kv = <DotNetObject>args[0]
-        cdef DotNetBoolean bool_obj = DotNetBoolean(self.get_emulator_obj(), None)
-        cdef bint result = kv in self.__internal_dict
-        bool_obj.from_bool(result)
-        return bool_obj
+        if nparams != 1:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef bint result = self.__internal_dict.find(params[0]) != self.__internal_dict.end()
+        return self.get_emulator_obj().pack_bool(result)
 
     cdef net_emulator.StackCell get_Count(self, net_emulator.StackCell * params, int nparams):
-        cdef int count = <int>len(self.__internal_dict)
+        cdef int count = <int>self.__internal_dict.size()
         return self.get_emulator_obj().pack_i4(count)
 
 cdef class DotNetConcurrentDictionary(DotNetDictionary):
