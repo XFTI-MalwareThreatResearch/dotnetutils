@@ -2354,10 +2354,57 @@ cdef class DotNetEmulator:
             return obj.is_false()
         return cell.item.u8 == 0
 
-    cdef StackCell deref_cell(self, StackCell cell):
-        if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
-            return self.deref_cell(*cell.item.byref)
-        return cell
+    cdef void deref_cell(self, StackCell cell):
+        if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT or cell.ref != CorElementType.ELEMENT_TYPE_STRING:
+            return
+        Py_XDECREF(cell.item.ref)
+
+    cdef StackCell get_ref(self, StackCell cell):
+        if cell.tag != CorElementType.ELEMENT_TYPE_BYREF:
+            return cell
+        cdef DotNetEmulator owner_emu = None
+        cdef net_emu_types.DotNetObject owner_obj = None
+        if cell.item.byref.kind == 1: #local variable
+            owner_emu = <DotNetEmulator>cell.item.byref.owner
+            return owner_emu.get_local(cell.item.byref.rid)
+        elif cell.item.byref.kind == 2: #Static variable
+            owner_emu = <DotNetEmulator>cell.item.byref.owner
+            return owner.get_appdomain().get_static_field(cell.item.byref.rid)
+        elif cell.item.byref.kind == 3: #array object
+            owner_obj = <net_emu_types.DotNetObject>cell.item.byref.owner
+            return (<net_emu_types.DotNetArray>owner_obj)._get_item(cell.item.byref.rid)
+        elif cell.item.byref.kind == 4: #field
+            owner_obj = <net_emu_types.DotNetObject>cell.item.byref.owner
+            return owner_obj.get_field(cell.item.byref.rid)
+        elif cell.item.byref.kind == 5: #argument
+            owner_emu = <DotNetEmulator>cell.item.byref.owner
+            return self.duplicate_cell(owner_emu.__method_params[cell.item.byref.rid])
+        raise net_exceptions.OperationNotSupportedException()
+
+    cdef void set_ref(self, StackCell ref, StackCell value):
+        if ref.tag != CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        cdef DotNetEmulator owner_emu = None
+        cdef net_emu_types.DotNetObject owner_obj = None
+        if ref.item.byref.kind == 1: #local variable
+            owner_emu = <DotNetEmulator>ref.item.byref.owner
+            owner_emu.set_local(ref.item.byref.rid, value)
+        elif ref.item.byref.kind == 2: #Static variable
+            owner_emu = <DotNetEmulator>ref.item.byref.owner
+            owner_emu.get_appdomain().set_static_field(ref.item.byref.rid, value)
+        elif ref.item.byref.kind == 3: #array object
+            owner_obj = <net_emu_types.DotNetObject>ref.item.byref.owner
+            (<net_emu_types.DotNetArray>owner_obj)._set_item(ref.item.byref.rid, value)
+        elif ref.item.byref.kind == 4: #field
+            owner_obj = <net_emu_types.DotNetObject>ref.item.byref.owner
+            owner_obj.set_field(ref.item.byref.rid, value)
+        elif ref.item.byref.kind == 5: #argument
+            owner_emu = <DotNetEmulator>ref.item.byref.owner
+            owner_emu.set_param(ref.item.byref.rid, value)
+        raise net_exceptions.OperationNotSupportedException()
+
+    cdef void set_param(self, int idx, StackCell value):
+        raise Exception()
     
     cdef bint cell_is_true(self, StackCell cell):
         cdef net_emu_types.DotNetObject obj = None
@@ -2486,6 +2533,15 @@ cdef class DotNetEmulator:
                     return b'\x01'
                 return b'\x00'
         raise net_exceptions.OperationNotSupportedException()
+
+    cdef void ref_cell(self, StackCell cell):
+        if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT and cell.tag != CorElementType.ELEMENT_TYPE_STRING:
+            return
+        if cell.item.ref == NULL:
+            return
+
+        cdef net_emu_types.DotNetObject obj = <net_emu_types.DotNetObject>cell.item.ref
+        Py_INCREF(obj)
 
     cdef StackCell pack_blanktag(self):
         cdef StackCell cell

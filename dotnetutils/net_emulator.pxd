@@ -174,7 +174,13 @@ cdef class DotNetEmulator:
 
     cdef bint cell_is_false(self, StackCell cell)
 
-    cdef StackCell deref_cell(self, StackCell cell)
+    cdef void deref_cell(self, StackCell cell)
+
+    cdef StackCell get_ref(self, StackCell ref)
+
+    cdef void set_param(self, int idx, StackCell value)
+
+    cdef void ref_cell(self, StackCell cell)
     
     cdef bint cell_is_true(self, StackCell cell)
 
