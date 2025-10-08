@@ -168,6 +168,68 @@ cdef class DotNetEmulator:
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
 
+    cdef StackCell duplicate_cell(self, StackCell cell)
+
+    cdef void set_ref(self, StackCell ref, StackCell value)
+
+    cdef bint cell_is_false(self, StackCell cell)
+
+    cdef StackCell deref_cell(self, StackCell cell)
+    
+    cdef bint cell_is_true(self, StackCell cell)
+
+    cdef bint cell_is_null(self, StackCell one)
+
+    cdef bint cell_is_equal(self, StackCell one, StackCell two)
+
+    cdef void dealloc_cell(self, StackCell cell)
+
+    cdef size_t hash_cell(self, StackCell cell)
+
+    cdef bytes cell_to_bytes(self, StackCell cell)
+
+    cdef StackCell pack_blanktag(self)
+
+    cdef StackCell pack_i4(self, int i)
+
+    cdef StackCell pack_i(self, int64_t i)
+
+    cdef StackCell pack_u(self, uint64_t i)
+
+    cdef StackCell pack_i1(self, char i)
+
+    cdef StackCell pack_u1(self, unsigned char i)
+
+    cdef StackCell pack_i2(self, short i)
+
+    cdef StackCell pack_u2(self, unsigned short i)
+
+    cdef StackCell pack_char(self, unsigned short i)
+
+    cdef StackCell pack_bool(self, bint i)
+    
+    cdef StackCell pack_u4(self, unsigned int i)
+
+    cdef StackCell pack_i8(self, int64_t i)
+    
+    cdef StackCell pack_u8(self, uint64_t i)
+
+    cdef StackCell pack_r4(self, float i)
+    
+    cdef StackCell pack_r8(self, double i)
+
+    cdef StackCell pack_object(self, net_emu_types.DotNetObject obj)
+
+    cdef StackCell pack_string(self, net_emu_types.DotNetString obj)
+
+    cdef StackCell pack_ref(self, int kind, int idx, object owner)
+
+    cdef StackCell pack_null(self)
+
+    cdef StackCell box_value(self, StackCell cell, net_sigs.TypeSig type_sig)
+
+    cdef StackCell unbox_value(self, StackCell cell)
+
     cdef bint is_64bit(self)
 
     cpdef net_emu_types.DotNetThread get_current_thread(self)

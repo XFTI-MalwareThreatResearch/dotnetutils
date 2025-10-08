@@ -15,7 +15,7 @@ from Crypto.Util.Padding import unpad
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, net_table_objects
 from dotnetutils cimport net_sigs, net_opcodes, net_cil_disas
-from dotnetutils cimport net_structs
+from dotnetutils cimport net_structs, net_utils
 
 from dotnetutils cimport dotnetpefile
 
@@ -152,7 +152,7 @@ cdef class DotNetObject:
             old_val = self.__fields[idno]
             #get rid of both the field incref and the cell incref
             self.get_emulator_obj().dealloc_cell(old_val)
-        self.fields[idno] = val
+        self.__fields[idno] = val
         if val.tag == CorElementType.ELEMENT_TYPE_OBJECT or val.tag == CorElementType.ELEMENT_TYPE_STRING:
             if val.item.ref != NULL:
                 Py_INCREF(val.item.ref)
@@ -213,7 +213,7 @@ cdef class DotNetObject:
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R8:
                 result = self.get_emulator_obj().pack_r8(0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_STRING:
-                result = self.pack_object(DotNetString.Empty(self.get_emulator_obj().get_appdomain(), []))
+                result = DotNetString.Empty(self.get_emulator_obj().get_appdomain(), NULL, 0)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
                 result = self.get_emulator_obj().pack_bool(False)
             elif type_sig.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
@@ -263,7 +263,8 @@ cdef class DotNetObject:
         return object.__eq__(self, other)
 
     def __str__(self): #TODO: FIX this method
-        cdef str str_val
+        raise Exception()
+        """cdef str str_val
         cdef int idno
         cdef DotNetObject dobj
         if self.is_null():
@@ -285,7 +286,7 @@ cdef class DotNetObject:
                     str_val += str(idno) + ': ' + str(<DotNetObject>dobj) + ','
                 str_val = str_val.rstrip(',') + '}'
                 return str_val                
-            return object.__str__(self)
+            return object.__str__(self)"""
 
     cdef void duplicate_into(self, DotNetObject result):
         result.__fields = self.__fields
@@ -375,7 +376,7 @@ cdef class DotNetNumber(DotNetObject):
         else:
             if not self.is_signed():
                 return self.duplicate()
-            raise Exception('num type {}'.format(get_cor_type_name(self.__num_type)))
+            raise Exception('num type {}'.format(net_utils.get_cor_type_name(self.__num_type)))
         return num_obj
 
     cdef DotNetObject duplicate(self):
@@ -480,12 +481,12 @@ cdef class DotNetNumber(DotNetObject):
             num_type == CorElementType.ELEMENT_TYPE_U2 or \
             num_type == CorElementType.ELEMENT_TYPE_CHAR:
             return 2
-        raise Exception('Unknown type {}'.format(get_cor_type_name(num_type)))
+        raise Exception('Unknown type {}'.format(net_utils.get_cor_type_name(num_type)))
 
     cdef bint __check_size(self, int amt_bytes, CorElementType num_type):
         cdef int calc_size = self.__util_get_type_size(num_type)
         if amt_bytes != calc_size:
-            raise Exception('About to throw invalid size for type {} {} {}'.format(get_cor_type_name(num_type), calc_size, amt_bytes))
+            raise Exception('About to throw invalid size for type {} {} {}'.format(net_utils.get_cor_type_name(num_type), calc_size, amt_bytes))
         return calc_size == amt_bytes
 
     def __dealloc__(self):
@@ -544,16 +545,16 @@ cdef class DotNetNumber(DotNetObject):
         raise Exception()
     
     cdef DotNetNumber divide(self, DotNetNumber number):
-        raise Exception('DotNetnUmber.Divide {} {}'.format(get_cor_type_name(self.get_num_type()), get_cor_type_name(number.get_num_type())))
+        raise Exception('DotNetnUmber.Divide {} {}'.format(net_utils.get_cor_type_name(self.get_num_type()), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber xor(self, DotNetNumber number):
-        raise Exception('called DotNetNumber.xor for type {} {}'.format(get_cor_type_name(self.__num_type), get_cor_type_name(number.get_num_type())))
+        raise Exception('called DotNetNumber.xor for type {} {}'.format(net_utils.get_cor_type_name(self.__num_type), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber andop(self, DotNetNumber number):
-        raise Exception('DotNetNumber.andop for type {} {}'.format(get_cor_type_name(self.get_num_type()), get_cor_type_name(number.get_num_type())))
+        raise Exception('DotNetNumber.andop for type {} {}'.format(net_utils.get_cor_type_name(self.get_num_type()), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber orop(self, DotNetNumber number):
-        raise Exception('orop DotNetNumber {} {}'.format(get_cor_type_name(self.get_num_type()), get_cor_type_name(number.get_num_type())))
+        raise Exception('orop DotNetNumber {} {}'.format(net_utils.get_cor_type_name(self.get_num_type()), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber neg(self):
         raise Exception()
@@ -562,13 +563,13 @@ cdef class DotNetNumber(DotNetObject):
         raise Exception()
 
     cdef DotNetNumber rem(self, DotNetNumber number):
-        raise Exception('Called DotNetNumber.rem {} {}'.format(get_cor_type_name(self.__num_type), get_cor_type_name(number.get_num_type())))
+        raise Exception('Called DotNetNumber.rem {} {}'.format(net_utils.get_cor_type_name(self.__num_type), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber shl(self, DotNetNumber number):
-        raise Exception('shl called by {} {}'.format(get_cor_type_name(self.get_num_type()), get_cor_type_name(number.get_num_type())))
+        raise Exception('shl called by {} {}'.format(net_utils.get_cor_type_name(self.get_num_type()), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber shr(self, DotNetNumber number):
-        raise Exception('shr called by {}'.format(get_cor_type_name(self.get_num_type())))
+        raise Exception('shr called by {}'.format(net_utils.get_cor_type_name(self.get_num_type())))
 
     #For debugging purposes temporarily dont allow these.
     def __eq__(self, other):
@@ -805,7 +806,7 @@ cdef class DotNetIntPtr(DotNetNumber):
                 val_one += val_three
                 result.from_int(val_one)
         else:
-            raise Exception('Invalid type for DotNetIntPtr.add() {}'.format(get_cor_type_name(other_type)))
+            raise Exception('Invalid type for DotNetIntPtr.add() {}'.format(net_utils.get_cor_type_name(other_type)))
         return result #Checked 08/31/2025
 
     cdef DotNetNumber subtract(self, DotNetNumber number):
@@ -841,7 +842,7 @@ cdef class DotNetIntPtr(DotNetNumber):
                 val_one -= val_three
                 result.from_int(val_one)
         else:
-            raise Exception('Invalid type for DotNetIntPtr.subtract() {}'.format(get_cor_type_name(other_type)))
+            raise Exception('Invalid type for DotNetIntPtr.subtract() {}'.format(net_utils.get_cor_type_name(other_type)))
         return result #Checked 08/31/2025
 
     cdef DotNetNumber multiply(self, DotNetNumber number):
@@ -877,7 +878,7 @@ cdef class DotNetIntPtr(DotNetNumber):
                 val_one *= val_three
                 result.from_int(val_one)
         else:
-            raise Exception('Invalid type for DotNetIntPtr.multiply() {}'.format(get_cor_type_name(other_type)))
+            raise Exception('Invalid type for DotNetIntPtr.multiply() {}'.format(net_utils.get_cor_type_name(other_type)))
         return result #Checked 08/31/2025
     
     cdef DotNetNumber divide(self, DotNetNumber number):
@@ -1266,7 +1267,7 @@ cdef class DotNetUIntPtr(DotNetNumber):
     cdef net_emulator.StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):
         if nparams <= 0:
             raise net_exceptions.InvalidArgumentsException()
-        cdef StackCell arg_obj = params[0]
+        cdef net_emulator.StackCell arg_obj = params[0]
         if arg_obj.tag == CorElementType.ELEMENT_TYPE_U4:
             arg_obj.tag = CorElementType.ELEMENT_TYPE_U
             return arg_obj
@@ -1919,7 +1920,7 @@ cdef class DotNetInt8(DotNetNumber):
             val_one ^= val_two
             result.from_char(val_one)
             return result
-        raise Exception('DotNetInt8.xor {}'.format(get_cor_type_name(other_type)))
+        raise Exception('DotNetInt8.xor {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef bint equals(self, DotNetNumber other):
         cdef char val_one = 0
@@ -2049,7 +2050,7 @@ cdef class DotNetInt16(DotNetNumber):
             val_one -= val_two
             result.from_short(val_one)
         else:
-            raise Exception('subtract {}'.format(get_cor_type_name(other_type)))
+            raise Exception('subtract {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber xor(self, DotNetNumber other):
@@ -2062,7 +2063,7 @@ cdef class DotNetInt16(DotNetNumber):
             val_one ^= val_two
             result.from_short(val_one)
         else:
-            raise Exception('xor {}'.format(get_cor_type_name(other_type)))
+            raise Exception('xor {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef bint equals(self, DotNetNumber other):
@@ -2249,7 +2250,7 @@ cdef class DotNetInt32(DotNetNumber):
                 val_one += val_two
                 result.from_int(val_one)
         else:
-            raise Exception(' unk type {}'.format(get_cor_type_name(other_type)))
+            raise Exception(' unk type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber subtract(self, DotNetNumber number):
@@ -2288,7 +2289,7 @@ cdef class DotNetInt32(DotNetNumber):
                 val_one -= val_two
                 result.from_int(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber multiply(self, DotNetNumber number):
@@ -2327,7 +2328,7 @@ cdef class DotNetInt32(DotNetNumber):
                 val_one *= val_two
                 result.from_int(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber divide(self, DotNetNumber number):
@@ -2359,7 +2360,7 @@ cdef class DotNetInt32(DotNetNumber):
                 val_one /= val_two
                 result.from_int(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber xor(self, DotNetNumber number):
@@ -2405,7 +2406,7 @@ cdef class DotNetInt32(DotNetNumber):
                 val_one ^= val_two
                 result.from_int(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber andop(self, DotNetNumber number):
@@ -2444,7 +2445,7 @@ cdef class DotNetInt32(DotNetNumber):
                 val_one &= val_two
                 result.from_int(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber orop(self, DotNetNumber number):
@@ -2483,7 +2484,7 @@ cdef class DotNetInt32(DotNetNumber):
                 val_one |= val_two
                 result.from_int(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber neg(self):
@@ -2526,7 +2527,7 @@ cdef class DotNetInt32(DotNetNumber):
                 val_one = rem_i4(val_one, val_two)
                 result.from_int(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber shl(self, DotNetNumber number):
@@ -3058,7 +3059,7 @@ cdef class DotNetInt64(DotNetNumber):
             val_one = self.as_long()
             val_two = other.as_long()
             return val_one == val_two
-        raise Exception('DotNetInt64.equals {}'.format(get_cor_type_name(other_type)))
+        raise Exception('DotNetInt64.equals {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef bint notequals(self, DotNetNumber other):
         return not self.equals(other)
@@ -3080,7 +3081,7 @@ cdef class DotNetInt64(DotNetNumber):
         if other_type == CorElementType.ELEMENT_TYPE_I8 or other_type == CorElementType.ELEMENT_TYPE_U8:
             val_two = other.as_long()
             return val_one < val_two
-        raise Exception('DotNetInt64.lessthan {}'.format(get_cor_type_name(other.get_num_type())))
+        raise Exception('DotNetInt64.lessthan {}'.format(net_utils.get_cor_type_name(other.get_num_type())))
 
     cdef bint greaterthan(self, DotNetNumber other):
         cdef int64_t val_one = 0
@@ -3098,7 +3099,7 @@ cdef class DotNetInt64(DotNetNumber):
         if other_type == CorElementType.ELEMENT_TYPE_I8 or other_type == CorElementType.ELEMENT_TYPE_U8:
             val_two = other.as_long()
             return val_one >= val_two
-        raise Exception('int64 gte {}'.format(get_cor_type_name(other_type)))
+        raise Exception('int64 gte {}'.format(net_utils.get_cor_type_name(other_type)))
 
 cdef class DotNetUInt8(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
@@ -3139,7 +3140,7 @@ cdef class DotNetUInt8(DotNetNumber):
                 val_one >>= val_two
                 result.from_uchar(val_one)
         else:
-            raise Exception('invalid other_type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid other_type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber shl(self, DotNetNumber number):
@@ -3168,7 +3169,7 @@ cdef class DotNetUInt8(DotNetNumber):
                 val_one <<= val_two
                 result.from_uchar(val_one)
         else:
-            raise Exception('invalid other_type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid other_type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber rem(self, DotNetNumber number): #TODO: Once strict typing is introduced this should be removed.
@@ -3185,7 +3186,7 @@ cdef class DotNetUInt8(DotNetNumber):
             val_one = <unsigned char>rem_u4(val_one, val_two)
             result.from_uchar(val_one)
             return result
-        raise Exception('rem other type {}'.format(get_cor_type_name(other_type)))
+        raise Exception('rem other type {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef DotNetNumber divide(self, DotNetNumber number):
         cdef CorElementType other_type = number.get_num_type()
@@ -3201,7 +3202,7 @@ cdef class DotNetUInt8(DotNetNumber):
             val_one /= val_two
             result.from_uchar(val_one)
             return result
-        raise Exception('rem other type {}'.format(get_cor_type_name(other_type)))
+        raise Exception('rem other type {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef DotNetNumber orop(self, DotNetNumber other):
         cdef CorElementType other_type = other.get_num_type()
@@ -3213,7 +3214,7 @@ cdef class DotNetUInt8(DotNetNumber):
             val_one |= val_two
             result.from_uchar(val_one)
             return result
-        raise Exception('orop {}'.format(get_cor_type_name(other_type)))
+        raise Exception('orop {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
@@ -3282,7 +3283,7 @@ cdef class DotNetUInt8(DotNetNumber):
             val_one &= val_two
             result.from_uchar(val_one)
             return result
-        raise Exception('unkown type {}'.format(get_cor_type_name(other_type)))
+        raise Exception('unkown type {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef DotNetNumber xor(self, DotNetNumber other):
         cdef DotNetUInt8 result = DotNetUInt8(self.get_emulator_obj(), None)
@@ -3300,7 +3301,7 @@ cdef class DotNetUInt8(DotNetNumber):
             val_one ^= val_three
             result.from_uchar(val_one)
             return result
-        raise Exception('xor with type {}'.format(get_cor_type_name(other.get_num_type())))
+        raise Exception('xor with type {}'.format(net_utils.get_cor_type_name(other.get_num_type())))
 
     cdef bint equals(self, DotNetNumber other):
         cdef unsigned char val_one = 0
@@ -3601,7 +3602,7 @@ cdef class DotNetUInt32(DotNetNumber):
                 val_one += val_two
                 result.from_uint(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber subtract(self, DotNetNumber number):
@@ -3679,7 +3680,7 @@ cdef class DotNetUInt32(DotNetNumber):
                 val_one *= val_two
                 result.from_uint(val_one)
         else:
-            raise Exception('multiply {}'.format(get_cor_type_name(other_type)))
+            raise Exception('multiply {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber divide(self, DotNetNumber number):
@@ -3711,7 +3712,7 @@ cdef class DotNetUInt32(DotNetNumber):
                 val_one /= val_two
                 result.from_uint(val_one)
         else:
-            raise Exception('divide {}'.format(get_cor_type_name(other_type)))
+            raise Exception('divide {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber xor(self, DotNetNumber number):
@@ -3750,7 +3751,7 @@ cdef class DotNetUInt32(DotNetNumber):
                 val_one ^= val_two
                 result.from_uint(val_one)
         else:
-            raise Exception('xorop {}'.format(get_cor_type_name(other_type)))
+            raise Exception('xorop {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber andop(self, DotNetNumber number):
@@ -3789,7 +3790,7 @@ cdef class DotNetUInt32(DotNetNumber):
                 val_one &= val_two
                 result.from_uint(val_one)
         else:
-            raise Exception(' andop uint32 {}'.format(get_cor_type_name(other_type)))
+            raise Exception(' andop uint32 {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber orop(self, DotNetNumber number):
@@ -3835,7 +3836,7 @@ cdef class DotNetUInt32(DotNetNumber):
             result = DotNetUInt32(self.get_emulator_obj(), None)
             result.from_uint(val_one)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber neg(self):
@@ -3966,7 +3967,7 @@ cdef class DotNetUInt32(DotNetNumber):
             val_one = self.as_uint()
             val_two = other.as_uint()
             return val_one == val_two
-        raise Exception('DotNetUInt32.equals() {}'.format(get_cor_type_name(other_type)))
+        raise Exception('DotNetUInt32.equals() {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef bint notequals(self, DotNetNumber other):
         return not self.equals(other)
@@ -4112,7 +4113,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_four += val_two
                 result.from_uint(<unsigned int>val_four)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber subtract(self, DotNetNumber number):
@@ -4143,7 +4144,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_four -= val_two
                 result.from_uint(<unsigned int>val_four)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber multiply(self, DotNetNumber number):
@@ -4174,7 +4175,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_four *= val_two
                 result.from_uint(<unsigned int>val_four)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber divide(self, DotNetNumber number):
@@ -4205,7 +4206,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_four /= val_two
                 result.from_uint(<unsigned int>val_four)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber xor(self, DotNetNumber number):
@@ -4237,7 +4238,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_three ^= val_two
                 result.from_ulong(val_three)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber andop(self, DotNetNumber number):
@@ -4268,7 +4269,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_four &= val_two
                 result.from_uint(<unsigned int>val_four)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber orop(self, DotNetNumber number):
@@ -4306,7 +4307,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_four |= val_two
                 result.from_uint(<unsigned int>val_four)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber neg(self):
@@ -4351,7 +4352,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_four = rem_u8(val_four, val_two)
                 result.from_uint(<unsigned int>val_four)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber shl(self, DotNetNumber number):
@@ -4387,7 +4388,7 @@ cdef class DotNetUInt64(DotNetNumber):
             val_three <<= val_five
             result.from_long(val_three)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber shr(self, DotNetNumber number):
@@ -4418,7 +4419,7 @@ cdef class DotNetUInt64(DotNetNumber):
                 val_three >>= val_two
                 result.from_uint(<unsigned int>val_three)
         else:
-            raise Exception('invalid type {}'.format(get_cor_type_name(other_type)))
+            raise Exception('invalid type {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef bint equals(self, DotNetNumber other):
@@ -4429,7 +4430,7 @@ cdef class DotNetUInt64(DotNetNumber):
             val_one = self.as_ulong()
             val_two = other.as_ulong()
             return val_one == val_two
-        raise Exception('DotNetUint64 equals {}'.format(get_cor_type_name(other_type)))
+        raise Exception('DotNetUint64 equals {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef bint notequals(self, DotNetNumber other):
         return not self.equals(other)
@@ -4958,7 +4959,7 @@ cdef class DotNetChar(DotNetUInt16):
             val_one ^= val_three
             result.from_ushort(val_one)
         else:
-            raise Exception('xor {}'.format(get_cor_type_name(other_type)))
+            raise Exception('xor {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
     cdef DotNetNumber shr(self, DotNetNumber other):
@@ -4971,7 +4972,7 @@ cdef class DotNetChar(DotNetUInt16):
             val_one >>= val_two
             result.from_ushort(val_one)
         else:
-            raise Exception('shr {}'.format(get_cor_type_name(other_type)))
+            raise Exception('shr {}'.format(net_utils.get_cor_type_name(other_type)))
         return result
 
 
@@ -5016,7 +5017,7 @@ cdef class DotNetType(DotNetObject):
         return self.type_handle
 
     cdef net_emulator.StackCell get_IsByRef(self, net_emulator.StackCell * params, int nparams):
-        return self.get_emulator_obj().pack_bool(isinstance(self.sig_obj, net_sigs.ByRefsig))
+        return self.get_emulator_obj().pack_bool(isinstance(self.sig_obj, net_sigs.ByRefSig))
 
     @staticmethod
     cdef net_emulator.StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):
@@ -5038,9 +5039,9 @@ cdef class DotNetType(DotNetObject):
 
     @staticmethod
     cdef net_emulator.StackCell GetTypeFromHandle(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):
-        if nparams <= 0 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].ref == NULL:
+        if nparams <= 0 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
             raise net_exceptions.InvalidArgumentsException()
-        cdef DotNetRuntimeTypeHandle runtime_handle = <DotNetRuntimeTypeHandle>params[0].ref
+        cdef DotNetRuntimeTypeHandle runtime_handle = <DotNetRuntimeTypeHandle>params[0].item.ref
         cdef DotNetType obj2 = DotNetType(app_domain.get_emulator_obj(), runtime_handle.get_internal_typedef())
         obj2.set_type_obj(app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Type'))
         return app_domain.get_emulator_obj().pack_object(obj2)
@@ -5122,7 +5123,6 @@ cdef class DotNetMonitor(DotNetObject):
 cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to fit with the new model.
     def __init__(self, net_emulator.DotNetEmulator emulator_obj): #Capacity probably doesnt actually matter.
         DotNetObject.__init__(self, emulator_obj)
-        self.__internal_dict = dict()
         self.add_function(b'TryGetValue', <emu_func_type>self.TryGetValue)
         self.add_function(b'set_Item', <emu_func_type>self.set_Item)
         self.add_function(b'Add', <emu_func_type>self.Add)
@@ -5155,7 +5155,7 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         cdef net_emulator.StackCell param1 = params[0]
         cdef net_emulator.StackCell param2 = params[1]
         cdef bint result = False
-        cdef StackCell value1 = None
+        cdef net_emulator.StackCell value1
   
         if self.__internal_dict.find(param1) != self.__internal_dict.end():
             value1 = self.__internal_dict[param1]
@@ -5418,7 +5418,7 @@ cdef class DotNetAssemblyName(DotNetObject):
 
         if module_obj['PublicKey'].get_raw_value() == 0:
             #If raw value is 0, return a empty array.
-            return self.pack_object(DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte')))
+            return self.get_emulator_obj().pack_object(DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte')))
         public_key = module_obj['PublicKey'].get_value()
 
         sha_hash = hashlib.sha1()
@@ -5483,7 +5483,7 @@ cdef class DotNetAssembly(DotNetObject):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.Assembly' or DotNetObject.isinst(self, tdef)
 
-    cpdef get_module(self):
+    cpdef net_row_objects.RowObject get_module(self):
         return self.module
 
     cdef net_emulator.StackCell get_ManifestModule(self, net_emulator.StackCell * params, int nparams):
@@ -5598,7 +5598,7 @@ cdef class DotNetAssembly(DotNetObject):
         cdef int x = 0
         for x in range(len(modules)):
             result._set_item(x, self.get_emulator_obj().pack_object(DotNetModule(self.get_emulator_obj(), modules.get(x))))
-        return self.pack_object(result)
+        return self.get_emulator_obj().pack_object(result)
 
     cdef net_emulator.StackCell Equals(self, net_emulator.StackCell * params, int nparams):
         if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
@@ -5650,7 +5650,7 @@ cdef bint list_sort_helper(net_emulator.StackCell a, net_emulator.StackCell b):
     cdef net_emulator.DotNetEmulator emu_obj = compare_method.get_emulator_obj().spawn_new_emulator(compare_method, caller=None)
     cdef net_emulator.StackCell * temp_params = malloc(sizeof(net_emulator.StackCell) * 3)
     cdef Py_ssize_t x = 0
-    cdef net_emulator.StackCel result
+    cdef net_emulator.StackCell result
     if temp_params == NULL:
         raise net_exceptions.EmulatorExecutionException(compare_method.get_emulator_obj(), 'memory error')
     if compare_method.is_static_method():
@@ -6783,13 +6783,13 @@ cdef class DotNetString(DotNetObject):
     cdef net_emulator.StackCell Concat(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):
         cdef int x = 0
         cdef int y = 0
-        cdef DotNetString result = DotNetString.Empty(app_domain, [])
+        cdef DotNetString result = DotNetString.Empty(app_domain, NULL, 0)
         cdef DotNetObject current_arg = None
         cdef list internal_array = None
         for x in range(0, len(args)):
             current_arg = <DotNetObject>args[x]
             if current_arg.is_null():
-                current_arg = DotNetString.Empty(app_domain, [])
+                current_arg = DotNetString.Empty(app_domain, NULL, 0)
             if isinstance(current_arg, DotNetString):
                 result.add_string_internal(<DotNetString>current_arg)
             elif isinstance(current_arg, DotNetArray):
@@ -7145,7 +7145,7 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
         cdef bytes type_name
         cdef net_row_objects.TypeDefOrRef type_obj
         if isinstance(return_sig, net_sigs.CorLibTypeSig):
-            type_name = get_cor_type_name(return_sig.get_element_type())
+            type_name = net_utils.get_cor_type_name(return_sig.get_element_type())
             type_obj = self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name)
             return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), type_obj, return_sig))
         else:
@@ -7232,7 +7232,7 @@ cdef class DotNetParameterInfo(DotNetObject):
     cdef net_emulator.StackCell get_ParameterType(self, net_emulator.StackCell * params, int nparams):
         cdef bytes type_name 
         if isinstance(self.internal_param, net_sigs.CorLibTypeSig):
-            type_name = get_cor_type_name(self.internal_param.get_element_type())
+            type_name = net_utils.get_cor_type_name(self.internal_param.get_element_type())
             return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name), self.internal_param))
         elif isinstance(self.internal_param, net_sigs.SZArraySig):
             return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Array'), self.internal_param)) #NOTE: this might not account for generics.
@@ -8866,7 +8866,7 @@ cdef class DotNetThreadStart(DotNetObject):
         self.__method_object = args[1]
         return self
 
-    cpdef get_method_object(self):
+    cpdef net_row_objects.MethodDef get_method_object(self):
         return self.__method_object
 
 """

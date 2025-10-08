@@ -7,6 +7,7 @@ from dotnetutils cimport net_structs
 from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_sigs
 from libc.stdint cimport uintptr_t
+from dotnetutils.net_structs cimport CorElementType
 
 cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size)
 

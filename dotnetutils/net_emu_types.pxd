@@ -14,7 +14,6 @@ cdef str remove_generics_from_name(str name)
 
 cdef void initialize_array_helper(DotNetArray arr, net_row_objects.RowObject runtime_handle) except *
 
-cdef void blockcopy_helper(DotNetArray src, DotNetInt32 srcOffset, DotNetArray dst, DotNetInt32 dstOffset, DotNetInt32 count) except *
 #TODO: Could maybe change this to a fused type with either dotnetobject or EmulatorAppDomain
 ctypedef net_emulator.StackCell (*emu_func_type)(DotNetObject, net_emulator.StackCell * params, int nparams)
 
@@ -666,7 +665,7 @@ cdef class DotNetChar(DotNetUInt16):
     cdef DotNetNumber cast(self, CorElementType new_type)
 
 cdef class DotNetType(DotNetObject):
-    cdef net_row_objects.RowObject type_handle
+    cdef net_row_objects.TypeDefOrRef type_handle
     cdef net_sigs.TypeSig sig_obj
 
     cdef net_emulator.StackCell get_IsValueType(self, net_emulator.StackCell * params, int nparams)
@@ -677,9 +676,9 @@ cdef class DotNetType(DotNetObject):
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
-    cpdef get_type_handle(self)
-
     cdef net_emulator.StackCell get_IsByRef(self, net_emulator.StackCell * params, int nparams)
+
+    cpdef net_row_objects.TypeDefOrRef get_type_handle(self)
 
     @staticmethod
     cdef net_emulator.StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
@@ -887,8 +886,6 @@ cdef class DotNetArray(DotNetObject):
 
     cdef net_emulator.StackCell _get_item(self, uint64_t index)
 
-    cdef net_emulator.StackCell * _get_item_ptr(self, uint64_t index)
-
     cdef bint _set_item(self, uint64_t index, net_emulator.StackCell cell)
 
     cdef DotNetObject duplicate(self)
@@ -899,7 +896,7 @@ cdef class DotNetArray(DotNetObject):
 
     cpdef bytes as_bytes(self)
 
-    cdef void setup_default_value(self, uint64_t index, uint64_t size, bint init)
+    cdef void setup_default_value(self, uint64_t index, uint64_t size)
 
     cdef void reverse_internal(self, int start, int end)
     
@@ -2333,7 +2330,7 @@ cdef class DotNetGCHandle(DotNetObject):
     cdef DotNetObject duplicate(self)
 
     @staticmethod
-    cdef DotNetObject Alloc(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell Alloc(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetVersion(DotNetObject):
     cdef int __major_version

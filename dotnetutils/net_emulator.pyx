@@ -2487,7 +2487,7 @@ cdef class DotNetEmulator:
                 return b'\x00'
         raise net_exceptions.OperationNotSupportedException()
 
-    cdef void pack_blanktag(self):
+    cdef StackCell pack_blanktag(self):
         cdef StackCell cell
         memset(&cell, 0, sizeof(cell))
         return cell
@@ -2664,7 +2664,7 @@ cdef class DotNetEmulator:
         cell.tag = CorElementType.ELEMENT_TYPE_OBJECT
         return cell
 
-    cdef StackCell box_value(self, StackCell cell, TypeSig type_sig):
+    cdef StackCell box_value(self, StackCell cell, net_sigs.TypeSig type_sig):
         if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or ceil.tag == CorElementType.ELEMENT_TYPE_STRING:
             return cell
         if cell.tag == CorElementType.ELEMENT_TYPE_END or cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
