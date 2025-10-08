@@ -31,7 +31,7 @@ cdef class DotNetObject:
     cdef bint __initialized
     cdef unordered_map[string, emu_func_type] __functions
 
-    cdef StackCell ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
     cdef bint is_number(self)
 
@@ -714,7 +714,7 @@ cdef class DotNetMonitor(DotNetObject):
     cdef net_emulator.StackCell Exit(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetDictionary(DotNetObject):
-    cdef unordered_map[net_emulator.StackCell, net_emulator.StackCell, net_emulator.StackCellHash, net_emulator.StackCellEquals]
+    cdef unordered_map[net_emulator.StackCell, net_emulator.StackCell, net_emulator.StackCellHash, net_emulator.StackCellEquals] __internal_dict
 
     cdef DotNetObject duplicate(self)
 
@@ -965,7 +965,7 @@ cdef class DotNetThread(DotNetObject):
     cdef DotNetThreadStart __thread_start
     cdef object __internal_thread
 
-    cdef DotNetObject ctor(self, net_emulator.StackCell * params, int nparams)
+    cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
 
     cpdef void set_identifier(self, int identifier)
 
@@ -1146,7 +1146,7 @@ cdef class DotNetModule(DotNetObject):
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
-    cdef net_emulator.StackCell duplicate(self)
+    cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 

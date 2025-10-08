@@ -5643,7 +5643,7 @@ cdef struct SortHelperStruct:
     PyObject * compare_method
     PyObject * comparison
 
-cdef bint list_sort_helper(net_emulator.StackCell a, net_emulator.StackCell b)
+cdef bint list_sort_helper(net_emulator.StackCell a, net_emulator.StackCell b):
     cdef SortHelperStruct * helper = a.extra_data
     cdef net_row_objects.MethodDef compare_method = helper.compare_method
     cdef DotNetComparison comparison = helper.comparison
@@ -5923,7 +5923,7 @@ cdef class DotNetArray(DotNetObject):
         else:
             for x in range(size):
                 if not self.get_type_obj().is_valuetype():
-                    num = self.get_emulator_obj().pack_null():
+                    num = self.get_emulator_obj().pack_null()
                     self._set_item(index + x, num)
                 else:
                     dno = DotNetObject(emulator_obj, self.get_type_obj())
