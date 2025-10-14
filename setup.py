@@ -4,7 +4,7 @@ import sys
 
 if sys.platform == 'linux': #Some warnings cant be treated as errors on MSVC because cython generates them.
     #TODO: can we remove no array bounds
-    compile_args = ['-g', '-Werror', '-Wno-maybe-uninitialized', '-Wno-unused-but-set-variable', '-Wno-array-bounds'] 
+    compile_args = ['-g', '-Werror', '-Wno-maybe-uninitialized', '-Wno-unused-but-set-variable', '-Wno-array-bounds', '-Wno-unused-function'] 
     link_args = ['-g']
 elif sys.platform == 'darwin':
     compile_args = ['-g', '-Werror', '-Wno-unreachable-code-fallthrough', '-Wno-unused-but-set-variable']

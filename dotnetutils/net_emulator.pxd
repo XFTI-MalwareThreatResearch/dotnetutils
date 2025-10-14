@@ -13,7 +13,7 @@ ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator)
 ctypedef StackCell (*static_func_type)(EmulatorAppDomain, StackCell * params, int nparams)
 ctypedef bint (*emu_instr_handler_type)(DotNetEmulator)
 
-cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, list force_method_args)
+cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args)
 
 cdef void __init_handlers()
 
@@ -110,16 +110,18 @@ cdef class EmulatorAppDomain:
 
     cpdef EmulatorAppDomain get_current_appdomain(self)
 
+    cdef void set_static_field(self, int idno, StackCell cell)
+
 cdef class DotNetStack:
     cdef DotNetEmulator __emulator
     cdef vector[StackCell] __internal_stack
     cdef int __max_stack_size
 
-    cpdef void append(self, net_emu_types.DotNetObject obj)
+    cpdef void append(self, StackCell obj)
 
-    cpdef net_emu_types.DotNetObject pop(self)
+    cpdef StackCell pop(self)
 
-    cpdef net_emu_types.DotNetObject peek(self)
+    cpdef StackCell peek(self)
 
     cpdef void clear(self)
 
@@ -168,11 +170,17 @@ cdef class DotNetEmulator:
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
 
+    cdef void _add_param(self, int idx, StackCell cell)
+
     cdef StackCell duplicate_cell(self, StackCell cell)
+
+    cpdef DotNetStack get_stack(self)
 
     cdef void set_ref(self, StackCell ref, StackCell value)
 
     cdef bint cell_is_false(self, StackCell cell)
+
+    cdef StackCell cell_not(self, StackCell cell)
 
     cdef void deref_cell(self, StackCell cell)
 
@@ -188,11 +196,15 @@ cdef class DotNetEmulator:
 
     cdef bint cell_is_equal(self, StackCell one, StackCell two)
 
+    cdef bint cell_is_not_equal(self, StackCell one, StackCell two)
+
     cdef void dealloc_cell(self, StackCell cell)
 
     cdef size_t hash_cell(self, StackCell cell)
 
     cdef bytes cell_to_bytes(self, StackCell cell)
+
+    cdef str cell_to_str(self, StackCell cell)
 
     cdef StackCell pack_blanktag(self)
 
@@ -258,11 +270,9 @@ cdef class DotNetEmulator:
 
     cpdef CctorRegistry get_executed_cctors(self)
 
-    cpdef void set_static_field(self, int idno, net_emu_types.DotNetObject val)
-
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDef method_obj, list method_params=*, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*)
 
-    cdef net_emu_types.DotNetObject _get_default_value(self, net_sigs.TypeSig type_sig)
+    cdef StackCell _get_default_value(self, net_sigs.TypeSig type_sig)
 
     cdef void print_instr(self, net_cil_disas.Instruction instr)
 

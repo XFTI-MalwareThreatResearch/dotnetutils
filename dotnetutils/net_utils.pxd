@@ -1,7 +1,6 @@
 #cython: language_level=3
 #distutils: language=c++
 
-
 from dotnetutils cimport dotnetpefile
 from dotnetutils cimport net_structs
 from dotnetutils cimport net_row_objects

@@ -1078,6 +1078,8 @@ cdef class DotNetString(DotNetObject):
     cdef vector[unsigned short] str_data
     cdef str str_encoding
 
+    cdef unsigned short get_str_item(self, int x)
+
     cdef void add_string_internal(self, DotNetString other)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
@@ -1086,9 +1088,7 @@ cdef class DotNetString(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cpdef list get_str_data(self)
-
-    cdef list __sanitize_data(self, str_data)
+    cdef void __sanitize_data(self, str_data)
 
     cpdef bytes get_str_data_as_bytes(self)
 
@@ -2228,6 +2228,10 @@ cdef class DotNetSymmetricAlgorithm(DotNetObject):
     cdef bytes __iv
     cdef int __mode
     cdef int __padding
+
+    cdef bytes get_key(self)
+
+    cdef bytes get_iv(self)
 
     cdef net_emulator.StackCell get_Key(self, net_emulator.StackCell * params, int nparams)
 

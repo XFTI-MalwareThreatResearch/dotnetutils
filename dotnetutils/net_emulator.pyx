@@ -12,7 +12,7 @@ from libcpp.utility cimport pair
 from cpython.exc cimport PyErr_CheckSignals
 
 cdef cppclass StackCellHash:
-    size_t operator()(StackCell const & sc) const noexcept:
+    size_t operator()(StackCell const &sc) const noexcept:
         cdef DotNetEmulator emu_obj = <DotNetEmulator>sc.emulator_obj
         return emu_obj.hash_cell(sc)
 
@@ -2019,7 +2019,7 @@ cdef class EmulatorAppDomain:
                 x += 1
                 amt_fields += 1
 
-    cdef void set_static_field(int idno, StackCell cell):
+    cdef void set_static_field(self, int idno, StackCell cell):
         cdef int actual_index = self.__static_field_mappings[idno]
         cdef StackCell * ptr = &self.__static_fields[actual_index]
         self.dealloc_cell(*ptr)
@@ -2336,7 +2336,7 @@ cdef class DotNetEmulator:
         self.__method_params = malloc(sizeof(StackCell) * nparams)
         memset(self.__method_params, 0, sizeof(StackCell) * nparams)
 
-    cdef void _add_param(self, StackCell cell, int idx):
+    cdef void _add_param(self, int idx, StackCell cell):
         if idx >= self.__nparams:
             raise net_exceptions.OperationNotSupportedException()
         cdef StackCell old = self.__method_params[idx]
@@ -2354,6 +2354,13 @@ cdef class DotNetEmulator:
 
     cdef int get_num_params(self):
         return self.__nparams
+
+    cdef StackCell cell_not(self, StackCell cell):
+        if not net_utils.is_cortype_number(cell):
+            raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell result = self.duplicate_cell(cell)
+        result.u8 = ~result.u8
+        return result
 
     cdef bint cell_is_false(self, StackCell cell):
         cdef net_emu_types.DotNetObject obj = None
@@ -2754,6 +2761,9 @@ cdef class DotNetEmulator:
         cdef net_emu_types.DotNetObject dobj = None
         cdef net_sigs.CorLibTypeSig cor_sig = None
         cdef CorElementType cor_type
+        cdef net_utils.TypeSig usable_sig = type_sig
+        if usable_sig is None:
+            usable_sig = net_sigs.CorLibTypeSig(cell.tag, None, None)
         if isinstance(type_sig, net_utils.CorLibTypeSig):
             cor_sig = <net_sigs.CorLibTypeSig>type_sig
             cor_type = cor_sig.get_element_type()
