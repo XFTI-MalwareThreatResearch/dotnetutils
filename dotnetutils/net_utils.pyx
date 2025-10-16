@@ -17,7 +17,9 @@ cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size):
 
 cdef int get_size_of_cortype(CorElementType cor_type, bint is_64bit):
     if cor_type == CorElementType.ELEMENT_TYPE_I or cor_type == CorElementType.ELEMENT_TYPE_U:
-        return is_64bit ? 8 : 4
+        if is_64bit:
+            return 8
+        return 4
     elif cor_type == CorElementType.ELEMENT_TYPE_U1 or cor_type == CorElementType.ELEMENT_TYPE_I1:
         return 1
     elif cor_type == CorElementType.ELEMENT_TYPE_U2 or cor_type == CorElementType.ELEMENT_TYPE_I2 or cor_type == CorElementType.ELEMENT_TYPE_CHAR:

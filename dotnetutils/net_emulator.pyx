@@ -582,16 +582,16 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef static_func_type static_emu_func = NULL
     cdef newobj_func_type newobj_func = NULL
     cdef net_emu_types.DotNetObject obj_ref = None
-    cdef net_emu_types.ArrayAddress obj_ref_initial = None
+    cdef StackCell obj_ref_initial
     cdef net_row_objects.TypeSpec tspec = None
     cdef int x = 0
     cdef int params_start = 0
     cdef Py_ssize_t amt_args = 0
     cdef StackCell cell
     cdef StackCell * method_args = NULL
-
-    raise net_exceptions.FeatureNotImplementedException() #TODO
-    """
+    cdef StackCell boxed_this
+    cdef StackCell ret_cell
+    memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj:
         method_obj = force_method_obj
     else:
@@ -600,7 +600,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if method_obj.get_parent_type():
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
-                    return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, None)
+                    return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0)
     if method_obj.get_table_name() == 'MethodDef' and not force_extern_type:
         method_name = method_obj.get_column('Name').get_value_as_bytes()
         amt_params = <int>len(method_obj.get_param_types())
@@ -618,6 +618,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             for x in range(params_start + amt_args - 1, params_start - 1): #len(method_obj.get_param_types()) seems to be inaccurate sometimes.
                 cell = emu.stack.pop()
                 new_emu._add_param(x, cell)
+                emu.dealloc_cell(cell)
             if method_obj.method_has_this() and method_name != b'.ctor':
                 if len(emu.stack) < 1:
                     raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
@@ -640,12 +641,13 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if isinstance(method_obj.get_parent_type().get_type(), net_row_objects.TypeDef):
                 return do_virtcall(emu, force_virtcall=True, force_virt_type=method_obj.get_parent_type().get_type())
         method_name = method_obj.get_column('Name').get_value_as_bytes()
-        method_args = list()
         amt_args = <int>len(method_obj.get_param_types())
 
         push_obj_reference = False
         if not is_newobj and method_obj.method_has_this():
             push_obj_reference = True
+        if method_args == NULL:
+            raise net_exceptions.EmulatorExecutionException(emu, 'memory error')
         if amt_args != 0:
             method_args = <StackCell*>malloc(sizeof(StackCell) * (amt_args))
             if method_args == NULL:
@@ -663,11 +665,16 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         if not is_newobj and push_obj_reference:
             if len(emu.stack) < 1:
                 raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
-            cell = emu.stack.pop() #TODO: left off fixing here. 
-            #TODO: for consistency allow boxed values for returns
-            if isinstance(obj_ref, net_emu_types.ArrayAddress):
-                obj_ref_initial = obj_ref
-                obj_ref = obj_ref.get_obj_ref()
+            cell = emu.stack.pop() #TODO: left off fixing here.
+            if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
+                obj_ref_initial = cell
+                cell = emu.get_ref(cell)
+            if cell.item.ref == NULL:
+                raise net_exceptions.InvalidArgumentsException()
+            boxed_this = emu.box_value(cell, None) #TODO: should there be a sig here
+            obj_ref = <net_emu_types.DotNetObject>boxed_this.item.ref
+            
+            
         emu_method = None
         if method_obj.is_static_method():
             if not emu.get_appdomain().has_static_func(method_obj.get_token()):
@@ -694,11 +701,11 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 raise net_exceptions.EmulatorExecutionException(emu, 'type is missing .ctor')
             
             emu_func = dot_obj.get_function(method_name)
-            ret_val = emu_func(dot_obj, method_args) #ctors should always return self.
+            ret_cell = emu_func(dot_obj, method_args, amt_args) #ctors should always return self.
             if is_newobj:
-                if ret_val is not None:
-                    ret_val.initialize_type(parent_type)
-                emu.stack.append(ret_val)
+                #A ctor cant return None
+                cell = emu.unbox_value(ret_cell)
+                emu.stack.append(cell)
             return False 
         else:
             #static methods are handled so this should only be thiscall methods.
@@ -712,26 +719,22 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                     method_name)
         if emu_func == NULL and static_emu_func == NULL:
             raise Exception('emu_func == NULL')
-        if isinstance(obj_ref, net_emu_types.ArrayAddress):
-            raise Exception()
         if static_emu_func != NULL:
-            ret_val = static_emu_func(emu.get_appdomain(), method_args)
+            ret_cell = static_emu_func(emu.get_appdomain(), method_args, amt_args)
         else:
-            ret_val = emu_func(obj_ref, method_args)
-        if obj_ref_initial is not None and obj_ref is not None:
-            obj_ref_initial.set_obj_ref(obj_ref)
+            ret_cell = emu_func(obj_ref, method_args, amt_args)
         if method_obj.has_return_value():
-            emu.stack.append(ret_val)
+            cell = emu.unbox_value(ret_cell)
+            emu.stack.append(cell)
     elif method_obj.get_table_name() == 'MethodSpec':
-        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, None)
+        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0)
     else:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj))
     return False
-    """
 
 cdef bint handle_call_instruction(DotNetEmulator emu): #Good
-    return do_call(emu, False, False, None, None, None)
+    return do_call(emu, False, False, None, None, NULL, 0)
 
 #TODO fix this one for new changes
 cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_objects.TypeDefOrRef force_virt_type=None) except *: #Good
@@ -750,15 +753,15 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if not force_virtcall:
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(),
                                                                             net_row_objects.TypeRef):
-            return do_call(emu, True, False, None, None, None)
+            return do_call(emu, True, False, None, None, NULL, 0)
         
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec):
             parent_type = method_obj.get_parent_type()
             if isinstance(parent_type.get_type(), net_row_objects.TypeRef):
-                return do_call(emu, True, False, None, parent_type.get_type(), None)
+                return do_call(emu, True, False, None, parent_type.get_type(), NULL, 0)
 
         if isinstance(method_obj, net_row_objects.MethodDef) and method_obj.has_body():
-            return do_call(emu, True, False, None, None, None)
+            return do_call(emu, True, False, None, None, NULL, 0)
     if not force_virt_type:
         amt_args = method_obj.get_amt_params() 
         if method_obj.method_has_this():
@@ -811,7 +814,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
                             break
             if not actual_method_obj:
                 #Last resort, try treating it as a call with a forced type.  If this doesnt work, it should error.
-                return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, None, obj_type, None)
+                return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, None, obj_type, NULL, 0)
             
         if isinstance(obj_type, net_row_objects.TypeDef):
             obj_type = obj_type.get_superclass()
@@ -821,7 +824,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if not actual_method_obj:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj.get_full_name()))
-    return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None, None)
+    return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None, NULL, 0)
 
 cdef bint handle_callvirt_instruction(DotNetEmulator emu): #Good
     return do_virtcall(emu, False, None)
@@ -1388,7 +1391,7 @@ cdef bint handle_dup_instruction(DotNetEmulator emu):
     emu.stack.append(emu.duplicate_cell_object(value1)) #TODO fix duplicate_cell to actually create a duplicate reference of the cell.
     return False
 
-cdef net_emu_types.DotNetObject do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
+cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
     cdef net_row_objects.MemberRef ref_obj = emu.instr.get_argument()
     cdef static_func_type static_func = NULL
     cdef StackCell current_obj
@@ -1401,20 +1404,21 @@ cdef net_emu_types.DotNetObject do_virt_field_lookup(DotNetEmulator emu, StackCe
     cdef net_row_objects.MethodDef cctor_method = None
     cdef net_sigs.FieldSig field_sig = None
     if emu.get_appdomain().has_static_func(ref_obj.get_token()):
-        if set_val is not None:
+        if set_val.tag != CorElementType.ELEMENT_TYPE_END:
             raise net_exceptions.EmulatorExecutionException(emu, 'Erorr invalid state')
         static_func = emu.get_appdomain().get_static_func(ref_obj.get_token())
         if static_func == NULL:
             raise net_exceptions.EmulatorExecutionException(emu, 'Error NULL ptr for static field ref')
     
-        current_obj = static_func(emu.get_appdomain(), [])
+        current_obj = static_func(emu.get_appdomain(), NULL, 0)
+        return current_obj
     else:
         parent_type = ref_obj.get_parent_type().get_type()
         if parent_type is None:
-            return None
+            return emu.pack_blanktag()
         col_val = parent_type.get_column('FieldList')
         if col_val is None:
-            return None
+            return emu.pack_blanktag()
         for field_obj in col_val.get_formatted_value():
             if field_obj.get_column('Name').get_value_as_bytes() == ref_obj.get_column('Name').get_value_as_bytes():
                 field_sig = field_obj.get_field_signature()
@@ -1431,7 +1435,7 @@ cdef net_emu_types.DotNetObject do_virt_field_lookup(DotNetEmulator emu, StackCe
                     else:
                         emu.get_appdomain().set_static_field(field_obj.get_rid(), set_val)
                         break
-    return current_obj
+    return emu.pack_blanktag()
 
 cdef bint handle_ldsfld_instruction(DotNetEmulator emu):
     cdef net_row_objects.RowObject field_obj = emu.instr.get_argument()
@@ -1841,7 +1845,7 @@ cdef bint handle_box_instruction(DotNetEmulator emu):
     """
     cdef net_row_objects.TypeDefOrRef arg_obj = emu.instr.get_argument()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.box_value(value1))
+    emu.stack.append(emu.box_value(value1, None))
     return False
 
 cdef bint handle_castclass_instruction(DotNetEmulator emu):
@@ -1976,7 +1980,7 @@ cdef bint handle_ldnull_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_newobj_instruction(DotNetEmulator emu):
-    return do_call(emu, False, True, None, None, None)
+    return do_call(emu, False, True, None, None, NULL, 0)
 
 """
 A lot of the stuff below is for internal use mainly.
@@ -2170,25 +2174,31 @@ cdef class EmulatorAppDomain:
         cdef net_row_objects.MethodDef mdef_obj
         cdef net_emu_types.DotNetResolveEventArgs arg_two
         cdef DotNetEmulator emu_obj
-        cdef net_emu_types.DotNetObject result_obj
+        cdef StackCell result_obj
+        cdef StackCell name_cell = self.get_emulator_obj().pack_string(name)
         #first check the resolve methods, see if we get anything from there.
         for mrefdef_obj in self.__assemblyresolve_handlers:
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
                 mdef_obj = <net_row_objects.MethodDef> mrefdef_obj
                 arg_two = net_emu_types.DotNetResolveEventArgs(self.get_emulator_obj())
-                arg_two.ctor([name])
+                arg_two.ctor(&name_cell, 1)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, caller=self)
                 emu_obj._allocate_params(2)
                 emu_obj._add_param(0, self.get_emulator_obj().pack_null())
-                emu_obj._add_param(1, self.pack_object(arg_two))
+                emu_obj._add_param(1, self.get_emulator_obj().pack_object(arg_two))
                 emu_obj.run_function()
-                result_obj = emu_obj.get_stack().pop()
-                if isinstance(result_obj, net_emu_types.DotNetAssembly):
-                    return result_obj
+                result_obj = emu_obj.stack.pop()
+                if not self.get_emulator_obj().cell_is_null(result_obj) and isinstance(<net_emu_types.DotNetObject>result_obj.item.ref, net_emu_types.DotNetAssembly):
+                    self.get_emulator_obj().dealloc_cell(name_cell)
+                    return <net_emu_types.DotNetAssembly>result_obj.item.ref
+        self.get_emulator_obj().dealloc_cell(name_cell)
         
         for asm_obj in self.__loaded_assemblies:
-            asm_name_obj = asm_obj.GetName([])
-            asm_name_str = asm_name_obj.get_Name([])
+            name_cell = asm_obj.GetName(NULL, 0)
+            asm_name_obj = <net_emu_types.DotNetAssemblyName>name_cell.item.ref
+            self.get_emulator_obj().dealloc_cell(name_cell)
+            name_cell = asm_name_obj.get_Name(NULL, 0)
+            asm_name_str = <net_emu_types.DotNetString>name_cell.item.ref
             if asm_name_str == name:
                 return asm_obj
         return None
@@ -2201,7 +2211,8 @@ cdef class EmulatorAppDomain:
         cdef net_row_objects.MethodDef mdef_obj
         cdef net_emu_types.DotNetResolveEventArgs arg_two
         cdef DotNetEmulator emu_obj
-        cdef net_emu_types.DotNetObject result_obj
+        cdef StackCell name_cell = self.get_emulator_obj().pack_string(name)
+        cdef StackCell result_obj
         cdef bytes rsrc_name = name.get_str_data_as_bytes().decode(name.get_str_encoding()).encode('utf-8')
         cdef bytes result = assembly.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
         if result is not None:
@@ -2211,14 +2222,14 @@ cdef class EmulatorAppDomain:
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
                 mdef_obj = <net_row_objects.MethodDef> mrefdef_obj
                 arg_two = net_emu_types.DotNetResolveEventArgs(self.get_emulator_obj())
-                arg_two.ctor([name])
+                arg_two.ctor(&name_cell, 1)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, caller=self)
                 emu_obj._allocate_params(2)
-                emu_obj._add_param(0, self.pack_null())
-                emu_obj._add_param(1, self.pack_object(arg_two))
+                emu_obj._add_param(0, self.get_emulator_obj().pack_null())
+                emu_obj._add_param(1, self.get_emulator_obj().pack_object(arg_two))
                 emu_obj.run_function()
                 result_obj = emu_obj.get_stack().pop()
-                if isinstance(result_obj, net_emu_types.DotNetAssembly):
+                if not self.get_emulator_obj().cell_is_null(result_obj) and isinstance(<net_emu_types.DotNetObject>result_obj.item.ref, net_emu_types.DotNetAssembly):
                     return (<net_emu_types.DotNetAssembly>result_obj).get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
         return None
 
@@ -2501,7 +2512,7 @@ cdef class DotNetEmulator:
             if self.__is_64bit:
                 return one.item.i8 < two.item.i8
             else:
-                return two.item.i4 < two.item.i4
+                return one.item.i4 < two.item.i4
         elif one.tag == CorElementType.ELEMENT_TYPE_R4:
             if two.tag != CorElementType.ELEMENT_TYPE_R4:
                 raise net_exceptions.InvalidArgumentsException()
@@ -2554,7 +2565,7 @@ cdef class DotNetEmulator:
             if self.__is_64bit:
                 return one.item.i8 <= two.item.i8
             else:
-                return two.item.i4 <= two.item.i4
+                return one.item.i4 <= two.item.i4
         elif one.tag == CorElementType.ELEMENT_TYPE_R4:
             if two.tag != CorElementType.ELEMENT_TYPE_R4:
                 raise net_exceptions.InvalidArgumentsException()
