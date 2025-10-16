@@ -5140,6 +5140,7 @@ cdef class DotNetMonitor(DotNetObject):
 cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to fit with the new model.
     def __init__(self, net_emulator.DotNetEmulator emulator_obj): #Capacity probably doesnt actually matter.
         DotNetObject.__init__(self, emulator_obj)
+        self.__intenral_dict = dict()
         self.add_function(b'TryGetValue', <emu_func_type>self.TryGetValue)
         self.add_function(b'set_Item', <emu_func_type>self.set_Item)
         self.add_function(b'Add', <emu_func_type>self.Add)
@@ -5147,18 +5148,18 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         self.add_function(b'get_Count', <emu_func_type>self.get_Count)
 
     cdef DotNetObject duplicate(self):
-        cdef pair[net_emulator.StackCell, net_emulator.StackCell] kv
         cdef DotNetDictionary result = DotNetDictionary(self.get_emulator_obj())
         self.duplicate_into(result)
         return result
 
     cdef void duplicate_into(self, DotNetObject result):
         cdef DotNetDictionary dict_obj = result
-        cdef pair[net_emulator.StackCell, net_emulator.StackCell] kv
         cdef net_emulator.StackCell args[2]
-        for kv in self.__internal_dict:
-            args[0] = kv.first
-            args[1] = kv.second
+        cdef net_emulator.StackCellWrapper k
+        cdef net_emulator.StackCellWrapper v
+        for k, v in self.__intenral_dict.items():
+            args[0] = k.get_wrapped()
+            args[1] = v.get_wrapped()
             dict_obj.set_Item(args, 2)
         DotNetObject.duplicate_into(self, result)
 
@@ -5173,9 +5174,12 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         cdef net_emulator.StackCell param2 = params[1]
         cdef bint result = False
         cdef net_emulator.StackCell value1
+        cdef net_emulator.StackCellWrapper value1_wrapped
+        cdef net_emulator.StackCellWrapper param1_wrapped = self.get_emulator_obj().wrap_cell(param1)
   
-        if self.__internal_dict.find(param1) != self.__internal_dict.end():
-            value1 = self.__internal_dict[param1]
+        if param1_wrapped in self.__internal_dict:
+            value1_wrapped = self.__internal_dict[param1_wrapped]
+            value1 = value1_wrapped.get_wrapped()
             self.get_emulator_obj().set_ref(param2, value1)
             result = True
         return self.get_emulator_obj().pack_bool(result)
@@ -5185,26 +5189,25 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
             raise net_exceptions.InvalidArgumentsException()
         cdef net_emulator.StackCell param1 = self.get_emulator_obj().duplicate_cell(param1)
         cdef net_emulator.StackCell param2 = self.get_emulator_obj().duplicate_cell(param2)
-        cdef net_emulator.StackCell old_key
+        cdef net_emulator.StackCellWrapper param1_wrapped = self.get_emulator_obj().wrap_cell(param1)
+        cdef net_emulator.StackCellWrapper param2_wrapped = self.get_emulator_obj().wrap_cell(param2)
+        cdef net_emulator.StackCellWrapper old_wrapper = None
         cdef net_emulator.StackCell old_value
-        cdef unordered_map[net_emulator.StackCell, net_emulator.StackCell].const_iterator it = self.__internal_dict.begin()
-        if param1.tag == CorElementType.ELEMENT_TYPE_STRING or param1.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-            if param1.item.ref != NULL:
-                Py_INCREF(<DotNetObject>param1.item.ref)
+
         if param2.tag == CorElementType.ELEMENT_TYPE_STRING or param2.tag == CorElementType.ELEMENT_TYPE_OBJECT:
             if param2.item.ref != NULL:
                 Py_INCREF(<DotNetObject>param2.item.ref)
-        it = self.__internal_dict.find(params[0])
-        if it != self.__internal_dict.end():
-            old_key = dereference(it).first
-            old_value = dereference(it).second
-            self.__internal_dict[param1] = param2
-            if old_key.tag == CorElementType.ELEMENT_TYPE_STRING or old_key.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-                Py_XDECREF(old_key.item.ref)
+        if param1_wrapped in self.__internal_dict:
+            old_wrapper = self.__internal_dict[param1_wrapped]
+            old_value = old_wrapper.get_wrapped()
+            self.__internal_dict[param1_wrapped] = param2_wrapped
             if old_value.tag == CorElementType.ELEMENT_TYPE_STRING or old_value.tag == CorElementType.ELEMENT_TYPE_OBJECT:
                 Py_XDECREF(old_value.item.ref)
         else:
-            self.__internal_dict[param1] = param2
+            if param1.tag == CorElementType.ELEMENT_TYPE_STRING or param1.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                if param1.item.ref != NULL:
+                    Py_INCREF(<DotNetObject>param1.item.ref)
+            self.__internal_dict[param1_wrapped] = param2_wrapped
         return self.get_emulator_obj().pack_blanktag()
 
     cdef net_emulator.StackCell Add(self, net_emulator.StackCell * params, int nparams):
@@ -5213,7 +5216,8 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
     cdef net_emulator.StackCell ContainsKey(self, net_emulator.StackCell * params, int nparams):
         if nparams != 1:
             raise net_exceptions.InvalidArgumentsException()
-        cdef bint result = self.__internal_dict.find(params[0]) != self.__internal_dict.end()
+        cdef net_emulator.StackCellWrapper param1_wrapped = self.get_emulator_obj().wrap_cell(params[0])
+        cdef bint result = param1_wrapped in self.__internal_dict
         return self.get_emulator_obj().pack_bool(result)
 
     cdef net_emulator.StackCell get_Count(self, net_emulator.StackCell * params, int nparams):
@@ -5221,14 +5225,19 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         return self.get_emulator_obj().pack_i4(count)
 
     def __dealloc__(self):
-        cdef pair[net_emulator.StackCell, net_emulator.StackCell] kv
-        for kv in self.__internal_dict:
-            if kv.first.tag == CorElementType.ELEMENT_TYPE_STRING or kv.first.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-                Py_XDECREF(kv.first.item.ref)
-            self.get_emulator_obj().dealloc_cell(kv.first)
-            if kv.second.tag == CorElementType.ELEMENT_TYPE_STRING or kv.second.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-                Py_XDECREF(kv.second.item.ref)
-            self.get_emulator_obj().dealloc_cell(kv.second)
+        cdef net_emulator.StackCellWrapper key_wrapped
+        cdef net_emulator.StackCellWrapper value_wrapped
+        cdef net_emulator.StackCell key_cell
+        cdef net_emulator.StackCell value_cell
+        for key_wrapped, value_wrapped in self.__internal_dict.items():
+            key_cell = key_wrapped.get_wrapped()
+            value_cell = value_wrapped.get_wrapped()
+            if key_cell.tag == CorElementType.ELEMENT_TYPE_STRING or key_cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                Py_XDECREF(key_cell.item.ref)
+            self.get_emulator_obj().dealloc_cell(key_cell)
+            if value_cell.tag == CorElementType.ELEMENT_TYPE_STRING or value_cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                Py_XDECREF(value_cell.item.ref)
+            self.get_emulator_obj().dealloc_cell(value_cell)
         self.__internal_dict.clear()
 
 cdef class DotNetConcurrentDictionary(DotNetDictionary):

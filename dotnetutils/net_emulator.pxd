@@ -39,11 +39,17 @@ cdef struct StackCell:
     PyObject * emulator_obj
     void * extra_data
 
-cdef cppclass StackCellHash:
-    pass
-
-cdef cppclass StackCellEquals:
-    pass
+cdef class StackCellWrapper:
+    cdef uint64_t u8_holder
+    cdef PyObject * ref_holder
+    cdef CorElementType cor_type
+    cdef int kind_holder
+    cdef PyObject * owner_holder
+    cdef int idx_holder
+    cdef int rid_holder
+    cdef void * extra_data_holder
+    
+    cdef StackCell get_wrapped(self)
 
 cdef class CctorRegistry:
     cdef list __executed_cctors
@@ -111,17 +117,25 @@ cdef class EmulatorAppDomain:
     cpdef EmulatorAppDomain get_current_appdomain(self)
 
     cdef void set_static_field(self, int idno, StackCell cell)
+    
+    cdef StackCell get_static_field(self, int idno)
+
+    cdef StackCell get_static_field_idx(self, int index)
+
+    cdef void clear_static_fields(self)
+
+    cdef int get_amt_static_fields(self)
 
 cdef class DotNetStack:
     cdef DotNetEmulator __emulator
     cdef vector[StackCell] __internal_stack
     cdef int __max_stack_size
 
-    cpdef void append(self, StackCell obj)
+    cdef void append(self, StackCell obj)
 
-    cpdef StackCell pop(self)
+    cdef StackCell pop(self)
 
-    cpdef StackCell peek(self)
+    cdef StackCell peek(self)
 
     cpdef void clear(self)
 
@@ -170,7 +184,23 @@ cdef class DotNetEmulator:
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
 
+    cpdef void setup_method_params(self, list method_params)
+
+    cdef int get_num_params(self)
+
+    cpdef net_row_objects.MethodDefOrRef get_method_obj(self)
+
+    cpdef DotNetEmulator get_caller(self)
+
+    cdef StackCell convert_unsigned(self, StackCell cell)
+
+    cdef StackCell get_method_param(self, int idx)
+
     cdef void _add_param(self, int idx, StackCell cell)
+
+    cdef void _allocate_params(self, int nparams)
+
+    cdef StackCellWrapper wrap_cell(self, StackCell cell)
 
     cdef StackCell duplicate_cell(self, StackCell cell)
 
@@ -179,6 +209,15 @@ cdef class DotNetEmulator:
     cdef void set_ref(self, StackCell ref, StackCell value)
 
     cdef bint cell_is_false(self, StackCell cell)
+
+    cdef bint cell_is_gt(self, StackCell one, StackCell two)
+
+    cdef bint cell_is_lt(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_and(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_add(self, StackCell one, StackCell two)
+
 
     cdef StackCell cell_not(self, StackCell cell)
 
@@ -258,19 +297,17 @@ cdef class DotNetEmulator:
 
     cdef void initialize_locals(self)
 
-    cpdef net_emu_types.DotNetObject get_local(self, int idx)
+    cdef StackCell get_local(self, int idx)
 
-    cdef void set_local(self, int idx, net_emu_types.DotNetObject obj)
+    cdef void set_local(self, int idx, StackCell obj)
 
     cdef void print_string(self, str string, int print_debug_level)
 
     cpdef void print_current_state(self)
 
-    cpdef net_emu_types.DotNetObject get_static_field(self, int idno)
-
     cpdef CctorRegistry get_executed_cctors(self)
 
-    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDef method_obj, list method_params=*, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*)
+    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*)
 
     cdef StackCell _get_default_value(self, net_sigs.TypeSig type_sig)
 
