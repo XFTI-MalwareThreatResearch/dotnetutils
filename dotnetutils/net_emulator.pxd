@@ -80,6 +80,8 @@ cdef class EmulatorAppDomain:
 
     cdef bint has_static_func(self, int token)
 
+    cdef StackCell get_static_field_idx(self, int index)
+
     cdef void __reserve_static_fields(self)
 
     cdef void register_static_functions(self)
@@ -138,6 +140,8 @@ cdef class DotNetStack:
     cdef StackCell peek(self)
 
     cpdef void clear(self)
+
+    cdef StackCell get(self, int index)
 
 
 cdef class DotNetEmulator:
@@ -204,6 +208,8 @@ cdef class DotNetEmulator:
 
     cdef StackCell duplicate_cell(self, StackCell cell)
 
+    cdef StackCell duplicate_cell_object(self, StackCell cell)
+
     cpdef DotNetStack get_stack(self)
 
     cdef void set_ref(self, StackCell ref, StackCell value)
@@ -214,10 +220,31 @@ cdef class DotNetEmulator:
 
     cdef bint cell_is_lt(self, StackCell one, StackCell two)
 
+    cdef bint cell_is_ge(self, StackCell one, StackCell two)
+
+    cdef bint cell_is_le(self, StackCell one, StackCell two)
+
     cdef StackCell cell_and(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_or(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_xor(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_sub(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_neg(self, StackCell one)
 
     cdef StackCell cell_add(self, StackCell one, StackCell two)
 
+    cdef StackCell cell_shl(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_shr(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_divide(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_rem(self, StackCell one, StackCell two)
+
+    cdef StackCell cell_multiply(self, StackCell one, StackCell two)
 
     cdef StackCell cell_not(self, StackCell cell)
 
