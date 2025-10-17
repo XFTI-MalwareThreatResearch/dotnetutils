@@ -1,6 +1,8 @@
 #cython: language_level=3
 #distutils: language=c++
 
+import traceback
+
 import cython
 import sys
 import base64
@@ -6760,11 +6762,13 @@ cdef class DotNetString(DotNetObject):
         cdef bytearray result = bytearray()
         cdef size_t x = 0
         cdef bint is_wide = self.is_encoding_wide()
-        for num in self.str_data.size():
+        cdef unsigned short num = 0
+        for x in range(self.str_data.size()):
+            num = self.str_data[x]
             if is_wide:
                 result.extend(int.to_bytes(num, 2, 'little'))
             else:
-                result.append(num)
+                result.append(num & 0xFF)
         return bytes(result)
 
     cpdef str get_str_encoding(self):
@@ -6892,11 +6896,13 @@ cdef class DotNetString(DotNetObject):
         cdef int start = params[0].item.i4
         cdef int end_index = <int>len(self)
         cdef str current_string = self.get_str_data_as_str()
+        cdef net_emulator.StackCell result
         if nparams == 2:
             if params[1].tag != CorElementType.ELEMENT_TYPE_I4:
                 raise net_exceptions.InvalidArgumentsException()
             end_index = params[1].item.i4
-        return self.get_emulator_obj().pack_string(DotNetString(self.get_emulator_obj(), current_string[start:end_index].encode(self.get_str_encoding()), self.get_str_encoding()))
+        result = self.get_emulator_obj().pack_string(DotNetString(self.get_emulator_obj(), current_string[start:end_index].encode(self.get_str_encoding()), self.get_str_encoding()))
+        return result
 
     cdef net_emulator.StackCell Split(self, net_emulator.StackCell * params, int nparams):
         if nparams != 1 or check_object(params[0]):
@@ -6954,7 +6960,7 @@ cdef class DotNetString(DotNetObject):
         return app_domain.get_emulator_obj().pack_bool(result)
 
     def __str__(self):
-        return 'string={}, encoding={}, hexlified={}, decoded={}'.format(self.get_str_data().__str__()[:50], self.get_str_encoding(), binascii.hexlify(self.get_str_data_as_bytes())[:50], self.get_str_data_as_bytes().decode(self.get_str_encoding(), errors='ignore')[:50])
+        return 'string={}, encoding={}, hexlified={}'.format(self.get_str_data_as_str(), self.get_str_encoding(), binascii.hexlify(self.get_str_data_as_bytes()), errors='ignore')[:50]
 
     cdef net_emulator.StackCell ToString(self, net_emulator.StackCell * params, int nparams):
         return self.get_emulator_obj().pack_string(self)
@@ -6962,6 +6968,9 @@ cdef class DotNetString(DotNetObject):
     def __hash__(self):
         cdef bytes full_val = bytes(self.get_str_data_as_bytes() + self.get_str_encoding().encode('ascii'))
         return hash(full_val)
+
+    def __dealloc__(self):
+        self.str_data.clear()
 
 #Utility constructor
 cdef class DotNetModule(DotNetObject):

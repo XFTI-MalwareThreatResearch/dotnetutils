@@ -62,7 +62,9 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
         return b'System.Void'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_CHAR:
         return b'System.Char'
-    raise net_exceptions.InvalidArgumentsException()
+    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
+        return b'System.Boolean'
+    raise net_exceptions.InvalidArgumentsException(actual=element_type)
 
 cdef bint is_cortype_number(CorElementType etype):
     return etype == CorElementType.ELEMENT_TYPE_I or etype == CorElementType.ELEMENT_TYPE_U or etype == CorElementType.ELEMENT_TYPE_BOOLEAN or \

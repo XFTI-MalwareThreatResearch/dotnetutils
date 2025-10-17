@@ -1,4 +1,4 @@
-from dotnetutils cimport net_structs, dotnetpefile, net_row_objects, net_tokens
+from dotnetutils cimport net_structs, dotnetpefile, net_row_objects, net_tokens, net_utils
 from dotnetutils import net_exceptions
 
 cdef class TypeSig:
@@ -38,7 +38,8 @@ cdef class CorLibTypeSig(TypeDefOrRefSig):
         return isinstance(other, CorLibTypeSig) and other.get_element_type() == self.get_element_type()
 
     def __str__(self):
-        return 'CorLibTypeSig: {}'.format(self.get_element_type())
+        cdef str element_type_str = net_utils.get_cor_type_name(self.get_element_type()).decode()
+        return 'CorLibTypeSig: {}'.format(element_type_str)
 
 
 cdef class ClassOrValueTypeSig(TypeDefOrRefSig):

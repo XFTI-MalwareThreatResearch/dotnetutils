@@ -577,8 +577,6 @@ cdef bint handle_brtrue_instruction(DotNetEmulator emu): #Good
     emu.dealloc_cell(value1)
     return False
 
-#TODO fix this one for new changes
-#TODO: going to need to add a functionality to enforce parameter types in order for certain functions to work.
 cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj): #Good
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.TypeDefOrRef parent_type
@@ -632,7 +630,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
             if method_obj.method_has_this() or is_newobj:
                 params_start = 1
-            for x in range(params_start + amt_args - 1, params_start - 1): #len(method_obj.get_param_types()) seems to be inaccurate sometimes.
+            for x in range(params_start + amt_args - 1, params_start - 1, -1): #len(method_obj.get_param_types()) seems to be inaccurate sometimes.
                 cell = emu.stack.pop()
                 new_emu._add_param(x, cell)
                 emu.dealloc_cell(cell)
@@ -666,17 +664,14 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         push_obj_reference = False
         if not is_newobj and method_obj.method_has_this():
             push_obj_reference = True
-        if method_args == NULL:
-            raise net_exceptions.EmulatorExecutionException(emu, 'memory error')
         if amt_args != 0:
             method_args = <StackCell*>malloc(sizeof(StackCell) * (amt_args))
             if method_args == NULL:
                 raise net_exceptions.EmulatorExecutionException(emu, 'error allocating memory for args')
             memset(method_args, 0, amt_args * sizeof(StackCell))
-
         if len(emu.stack) < amt_args:
             raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
-        for x in range(amt_args - 1, -1):
+        for x in range(amt_args - 1, -1, -1):
             cell = emu.stack.pop()
             casted_cell = emu.cast_cell(cell, method_signature.get_parameters()[x])
             method_args[x] = casted_cell
@@ -2302,6 +2297,8 @@ cdef class EmulatorAppDomain:
         cdef net_row_objects.Field field_obj = None
         cdef StackCell cell
         cdef net_table_objects.TableObject field_table = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field')
+        if field_table is None:
+            return
         for z in range(1, len(field_table) + 1):
             field_obj = field_table.get(z)
             if field_obj.is_static():
@@ -2560,7 +2557,11 @@ cdef class DotNetStack:
         self.__internal_stack.clear()
 
     cdef StackCell get(self, int index):
-        return self.__emulator.duplicate_cell(self.__internal_stack[index])
+        if <size_t>index >= self.__internal_stack.size():
+            raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell old = self.__internal_stack[index]
+        cdef StackCell duped = self.__emulator.duplicate_cell(self.__internal_stack[index])
+        return duped
 
     def __len__(self) -> int:
         return self.__internal_stack.size()
@@ -2625,7 +2626,6 @@ cdef class DotNetEmulator:
         if not (isinstance(method_obj, net_row_objects.MethodDef)):
             raise net_exceptions.ObjectTypeException
         
-        self.static_fields = dict()
         self.method_obj = method_obj
         if not self.method_obj.has_body():
             print('method obj does not have body')
@@ -2705,9 +2705,11 @@ cdef class DotNetEmulator:
         return new_cell
                 
     cdef StackCell duplicate_cell(self, StackCell cell):
-        cdef StackCell new_cell
-        memcpy(&new_cell, &cell, sizeof(cell))
-        Py_INCREF(<DotNetEmulator>new_cell.emulator_obj)
+        cdef StackCell new_cell = cell
+        if new_cell.emulator_obj != NULL:
+            Py_INCREF(<DotNetEmulator>new_cell.emulator_obj)
+        else:
+            raise net_exceptions.EmulatorExecutionException(self, 'cell of type {} doesnt have emu obj'.format(net_utils.get_cor_type_name(cell.tag)))
         if new_cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             Py_INCREF(<object>new_cell.item.byref.owner)
         elif new_cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or new_cell.tag == CorElementType.ELEMENT_TYPE_STRING:
@@ -3750,76 +3752,79 @@ cdef class DotNetEmulator:
         if cell.tag == CorElementType.ELEMENT_TYPE_END or cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             raise net_exceptions.OperationNotSupportedException()
         cdef net_emu_types.DotNetObject dobj = None
+        cdef net_emu_types.DotNetNumber dnum = None
         cdef net_sigs.CorLibTypeSig cor_sig = None
         cdef CorElementType cor_type
         cdef net_sigs.TypeSig usable_sig = type_sig
         if usable_sig is None:
             usable_sig = net_sigs.CorLibTypeSig(cell.tag, None, None)
-        if isinstance(type_sig, net_sigs.CorLibTypeSig):
-            cor_sig = <net_sigs.CorLibTypeSig>type_sig
+        if isinstance(usable_sig, net_sigs.CorLibTypeSig):
+            cor_sig = <net_sigs.CorLibTypeSig>usable_sig
             cor_type = cor_sig.get_element_type()
-            if cor_type == CorElementType.ELEMENT_TYPE_I:
-                dobj = net_emu_types.DotNetIntPtr(self, None)
+            if cor_type == CorElementType.ELEMENT_TYPE_STRING:
+                return self.duplicate_cell(cell)
+            elif cor_type == CorElementType.ELEMENT_TYPE_I:
+                dnum = net_emu_types.DotNetIntPtr(self, None)
                 if self.__is_64bit:
-                    dobj.from_long(cell.item.i8)
+                    dnum.from_long(cell.item.i8)
                 else:
-                    dobj.from_int(cell.item.i4)
-                return self.pack_object(dobj)
+                    dnum.from_int(cell.item.i4)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_U:
-                dobj = net_emu_types.DotNetUIntPtr(self, None)
+                dnum = net_emu_types.DotNetUIntPtr(self, None)
                 if self.__is_64bit:
-                    dobj.from_ulong(cell.item.u8)
+                    dnum.from_ulong(cell.item.u8)
                 else:
-                    dobj.from_uint(cell.item.u4)
-                return self.pack_object(dobj)
+                    dnum.from_uint(cell.item.u4)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_I1:
-                dobj = net_emu_types.DotNetInt8(self, None)
-                dobj.from_char(<char>cell.item.i4)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetInt8(self, None)
+                dnum.from_char(<char>cell.item.i4)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_U1:
-                dobj = net_emu_types.DotNetUInt8(self, None)
-                dobj.from_uchar(<unsigned char>cell.item.u4)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetUInt8(self, None)
+                dnum.from_uchar(<unsigned char>cell.item.u4)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_I2:
-                dobj = net_emu_types.DotNetInt16(self, None)
-                dobj.from_short(<short>cell.item.i4)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetInt16(self, None)
+                dnum.from_short(<short>cell.item.i4)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_U2:
-                dobj = net_emu_types.DotNetUInt16(self, None)
-                dobj.from_ushort(<unsigned short>cell.item.u4)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetUInt16(self, None)
+                dnum.from_ushort(<unsigned short>cell.item.u4)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_I4:
-                dobj = net_emu_types.DotNetInt32(self, None)
-                dobj.from_int(cell.item.i4)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetInt32(self, None)
+                dnum.from_int(cell.item.i4)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_U4:
-                dobj = net_emu_types.DotNetUInt32(self, None)
-                dobj.from_uint(cell.item.u4)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetUInt32(self, None)
+                dnum.from_uint(cell.item.u4)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_I8:
-                dobj = net_emu_types.DotNetInt64(self, None)
-                dobj.from_long(cell.item.i8)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetInt64(self, None)
+                dnum.from_long(cell.item.i8)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_U8:
-                dobj = net_emu_types.DotNetUInt64(self, None)
-                dobj.from_ulong(cell.item.u8)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetUInt64(self, None)
+                dnum.from_ulong(cell.item.u8)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_R4:
-                dobj = net_emu_types.DotNetSingle(self, None)
-                dobj.from_float(<float>cell.item.r8)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetSingle(self, None)
+                dnum.from_float(<float>cell.item.r8)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_R8:
-                dobj = net_emu_types.DotNetDouble(self, None)
-                dobj.from_double(cell.item.r8)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetDouble(self, None)
+                dnum.from_double(cell.item.r8)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
-                dobj = net_emu_types.DotNetBoolean(self, None)
-                dobj.from_bool(cell.item.b)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetBoolean(self, None)
+                dnum.from_bool(cell.item.b)
+                return self.pack_object(dnum)
             elif cor_type == CorElementType.ELEMENT_TYPE_CHAR:
-                dobj = net_emu_types.DotNetChar(self, None)
-                dobj.from_ushort(<unsigned short>cell.item.u4)
-                return self.pack_object(dobj)
+                dnum = net_emu_types.DotNetChar(self, None)
+                dnum.from_ushort(<unsigned short>cell.item.u4)
+                return self.pack_object(dnum)
             else:
                 raise net_exceptions.FeatureNotImplementedException()
         raise net_exceptions.FeatureNotImplementedException()
@@ -3828,9 +3833,9 @@ cdef class DotNetEmulator:
         if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             raise net_exceptions.OperationNotSupportedException()
         if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT:
-            return cell
+            return self.duplicate_cell(cell)
         if cell.item.ref == NULL:
-            return cell
+            return self.pack_null()
         cdef net_emu_types.DotNetObject dobj = <net_emu_types.DotNetObject> cell.item.ref
         cdef net_emu_types.DotNetNumber nobj = None
         cdef CorElementType cor_type = CorElementType.ELEMENT_TYPE_END
@@ -3934,12 +3939,16 @@ cdef class DotNetEmulator:
                     raise net_exceptions.EmulatorExecutionException(self, 'Weird CorLibTypeSig type')
                 #Should be mostly limited to numbers here.  We dont need to do anything except set tag.
                 result.tag = element_type
+                result.emulator_obj = <PyObject*>self
+                Py_INCREF(self)
+            return result
         elif isinstance(type_sig, net_sigs.ValueTypeSig):
             # handle System.Enums as a different case
             origclass = type_sig.get_type()
             superclass = origclass
             if superclass.get_full_name() == b'System.Enum':
                 result = self.pack_i4(0)
+                return result
             else:
                 superclass = superclass.get_superclass()
                 if superclass is not None: # if superclass is NULL, should DotNetNull or DotNetObject be returned?
@@ -4012,6 +4021,7 @@ cdef class DotNetEmulator:
         cdef uint64_t ival = 0
         cdef str result = ''
         cdef StackCell obj
+        cdef net_emu_types.DotNetObject dobj = None
         if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             obj = self.get_ref(cell)
             result = self.cell_to_str(obj)
@@ -4020,7 +4030,8 @@ cdef class DotNetEmulator:
         elif cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
             if cell.item.ref == NULL:
                 return 'null'
-            return str(<net_emu_types.DotNetObject>cell.item.ref)
+            dobj = <net_emu_types.DotNetObject>cell.item.ref
+            return str(dobj)
         else:
             ptr = <uint64_t*>&cell.item
             ival = ptr[0]
@@ -4037,7 +4048,7 @@ cdef class DotNetEmulator:
         cdef StackCell obj
         cdef Py_ssize_t x = 0
         cdef net_table_objects.TableObject field_table = self.get_method_obj().get_dotnetpe().get_metadata_table('Field')
-        state_str += 'Emulator Method: {}:{} {}\n'.format(self.method_obj.get_table_name(), self.method_obj.get_rid(), self.method_obj.get_token())
+        state_str += 'Emulator Method: {}:{} {}\n'.format(self.method_obj.get_table_name(), self.method_obj.get_rid(), hex(self.method_obj.get_token()))
         if self.method_obj.method_has_this() and self.get_amt_params() >= 1:
             state_str += 'This Object: {}\n'.format(self.cell_to_str(self.__method_params[0]))
         state_str += 'Printing static variables:\n'
@@ -4052,7 +4063,7 @@ cdef class DotNetEmulator:
         state_str += 'Printing stack:\n'
         for x in range(len(self.stack)):
             value = self.stack.get(x)
-            state_str += '{} - {}\n'.format(self.cell_to_str(value), net_utils.get_cor_type_name(value.tag))
+            state_str += '{} - {}\n'.format(self.cell_to_str(value), net_utils.get_cor_type_name(value.tag).decode())
         state_str += 'Last Instruction Execution Time (perf_counter_ns): {}\n'.format(
             self.__last_instr_end - self.__last_instr_start)
         state_str += 'Current EIP: {} Current Offset: {}\n'.format(
