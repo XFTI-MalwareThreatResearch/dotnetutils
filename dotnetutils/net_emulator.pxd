@@ -13,7 +13,7 @@ ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator)
 ctypedef StackCell (*static_func_type)(EmulatorAppDomain, StackCell * params, int nparams)
 ctypedef bint (*emu_instr_handler_type)(DotNetEmulator)
 
-cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args)
+cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj)
 
 cdef void __init_handlers()
 
@@ -143,6 +143,8 @@ cdef class DotNetStack:
 
     cdef StackCell get(self, int index)
 
+    cpdef net_emu_types.DotNetObject pop_obj(self)
+
 
 cdef class DotNetEmulator:
     """
@@ -188,7 +190,7 @@ cdef class DotNetEmulator:
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
 
-    cdef StackCell cast_cell(self, StackCell cell, TypeSig sig)
+    cdef StackCell cast_cell(self, StackCell cell, net_sigs.TypeSig sig)
 
     cpdef void setup_method_params(self, list method_params)
 

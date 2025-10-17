@@ -227,7 +227,7 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
             continue
         emu_obj = net_emulator.DotNetEmulator(method_obj, dont_execute_cctor=True)
         emu_obj.run_function()
-        result = emu_obj.get_stack().pop()
+        result = emu_obj.get_stack().pop_obj()
         method_strings[method_obj] = bytes(result.get_str_data_as_bytes().decode(result.get_str_encoding()).encode('utf-8'))
 
     string_mapping = dict()

@@ -415,6 +415,7 @@ cdef bint handle_ldind_i_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_I
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_i1_instruction(DotNetEmulator emu):
@@ -428,6 +429,7 @@ cdef bint handle_ldind_i1_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_I1
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_i2_instruction(DotNetEmulator emu):
@@ -441,6 +443,7 @@ cdef bint handle_ldind_i2_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_I2
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_i4_instruction(DotNetEmulator emu):
@@ -454,6 +457,7 @@ cdef bint handle_ldind_i4_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_I4
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_i8_instruction(DotNetEmulator emu):
@@ -467,6 +471,7 @@ cdef bint handle_ldind_i8_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_I8
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_r4_instruction(DotNetEmulator emu):
@@ -480,6 +485,7 @@ cdef bint handle_ldind_r4_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_R4
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_r8_instruction(DotNetEmulator emu):
@@ -493,6 +499,7 @@ cdef bint handle_ldind_r8_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_R8
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_ref_instruction(DotNetEmulator emu):
@@ -505,6 +512,7 @@ cdef bint handle_ldind_ref_instruction(DotNetEmulator emu):
         raise net_exceptions.InvalidArgumentsException()
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_u1_instruction(DotNetEmulator emu):
@@ -518,6 +526,7 @@ cdef bint handle_ldind_u1_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_U1
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_u2_instruction(DotNetEmulator emu):
@@ -531,6 +540,7 @@ cdef bint handle_ldind_u2_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_U2
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_ldind_u4_instruction(DotNetEmulator emu):
@@ -544,6 +554,7 @@ cdef bint handle_ldind_u4_instruction(DotNetEmulator emu):
     ref_obj.tag = CorElementType.ELEMENT_TYPE_U4
     emu.stack.append(ref_obj)
     emu.dealloc_cell(ref_obj)
+    emu.dealloc_cell(addr_obj)
     return False
 
 cdef bint handle_br_instruction(DotNetEmulator emu): #Good
@@ -553,18 +564,22 @@ cdef bint handle_brfalse_instruction(DotNetEmulator emu): #Good
     cdef StackCell value1 = emu.stack.pop()
     #if its not null then its an object
     if emu.cell_is_false(value1):
+        emu.dealloc_cell(value1)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_brtrue_instruction(DotNetEmulator emu): #Good
     cdef StackCell value1 = emu.stack.pop()
     if emu.cell_is_true(value1):
+        emu.dealloc_cell(value1)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value1)
     return False
 
 #TODO fix this one for new changes
 #TODO: going to need to add a functionality to enforce parameter types in order for certain functions to work.
-cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args): #Good
+cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj): #Good
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.TypeDefOrRef parent_type
     cdef net_row_objects.MethodDef cctor_method
@@ -591,6 +606,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef StackCell * method_args = NULL
     cdef StackCell boxed_this
     cdef StackCell ret_cell
+    cdef StackCell casted_cell
+    cdef net_sigs.MethodSig method_signature = initial_method_obj.get_method_signature()
     memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj:
         method_obj = force_method_obj
@@ -600,7 +617,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if method_obj.get_parent_type():
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
-                    return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0)
+                    return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0, initial_method_obj)
     if method_obj.get_table_name() == 'MethodDef' and not force_extern_type:
         method_name = method_obj.get_column('Name').get_value_as_bytes()
         amt_params = <int>len(method_obj.get_param_types())
@@ -624,6 +641,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                     raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
                 cell = emu.stack.pop()
                 new_emu._add_param(0, cell)
+                emu.dealloc_cell(cell)
         else:
             for x in range(nforce_method_args):
                 cell = force_method_args[x]
@@ -631,7 +649,9 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         if is_newobj:
             dot_obj = net_emu_types.DotNetObject(emu)
             dot_obj.initialize_type(method_obj.get_parent_type())
-            new_emu._add_param(0, emu.pack_object(dot_obj))
+            cell = emu.pack_object(dot_obj)
+            new_emu._add_param(0, cell)
+            emu.dealloc_cell(cell)
         new_emu.run_function()
         # the handler for ret instruction handles cleaning up the stack after this.
     elif method_obj.get_table_name() == 'MemberRef' or force_extern_type:
@@ -658,22 +678,22 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
         for x in range(amt_args - 1, -1):
             cell = emu.stack.pop()
-            memcpy(&method_args[x], &cell, sizeof(cell))
-            if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-                if cell.item.ref != NULL:
-                    Py_INCREF(<net_emu_types.DotNetObject>cell.item.ref)
+            casted_cell = emu.cast_cell(cell, method_signature.get_parameters()[x])
+            method_args[x] = casted_cell
+            emu.dealloc_cell(cell)
         if not is_newobj and push_obj_reference:
             if len(emu.stack) < 1:
                 raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
-            cell = emu.stack.pop() #TODO: left off fixing here.
+            cell = emu.stack.pop()
             if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
                 obj_ref_initial = cell
                 cell = emu.get_ref(cell)
+                emu.dealloc_cell(obj_ref_initial)
             if cell.item.ref == NULL:
                 raise net_exceptions.InvalidArgumentsException()
             boxed_this = emu.box_value(cell, None) #TODO: should there be a sig here
+            emu.dealloc_cell(cell)
             obj_ref = <net_emu_types.DotNetObject>boxed_this.item.ref
-            
             
         emu_method = None
         if method_obj.is_static_method():
@@ -694,6 +714,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 dot_obj = newobj_func(emu)
             elif parent_type is not None and not is_newobj:
                 #for calls with ctors, do nothing.  Allocation already happened and for our purposes thats when the Ctor is called.
+                for x in range(amt_args):
+                    emu.dealloc_cell(method_args[x])
                 return False
             else:
                 raise net_exceptions.EmulatorExecutionException(emu, 'Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
@@ -705,7 +727,11 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if is_newobj:
                 #A ctor cant return None
                 cell = emu.unbox_value(ret_cell)
+                emu.dealloc_cell(ret_cell)
                 emu.stack.append(cell)
+                emu.dealloc_cell(cell)
+            for x in range(amt_args):
+                emu.dealloc_cell(method_args[x])
             return False 
         else:
             #static methods are handled so this should only be thiscall methods.
@@ -725,23 +751,28 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             ret_cell = emu_func(obj_ref, method_args, amt_args)
         if method_obj.has_return_value():
             cell = emu.unbox_value(ret_cell)
+            emu.dealloc_cell(ret_cell)
             emu.stack.append(cell)
+            emu.dealloc_cell(cell)
+        for x in range(amt_args):
+            emu.dealloc_cell(method_args[x])
     elif method_obj.get_table_name() == 'MethodSpec':
-        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0)
+        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0, initial_method_obj)
     else:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj))
     return False
 
 cdef bint handle_call_instruction(DotNetEmulator emu): #Good
-    return do_call(emu, False, False, None, None, NULL, 0)
+    return do_call(emu, False, False, None, None, NULL, 0, emu.instr.get_argument())
 
-#TODO fix this one for new changes
 cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_objects.TypeDefOrRef force_virt_type=None) except *: #Good
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.TypeDefOrRef parent_type
     cdef int amt_args
     cdef net_emu_types.DotNetObject obj_ref
+    cdef StackCell obj_ref_cell
+    cdef StackCell obj_ref_boxed
     cdef net_row_objects.TypeDefOrRef obj_type
     cdef net_row_objects.MethodDefOrRef actual_method_obj
     cdef net_sigs.MethodSig initial_method_sig
@@ -753,22 +784,26 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if not force_virtcall:
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(),
                                                                             net_row_objects.TypeRef):
-            return do_call(emu, True, False, None, None, NULL, 0)
+            return do_call(emu, True, False, None, None, NULL, 0, method_obj)
         
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec):
             parent_type = method_obj.get_parent_type()
             if isinstance(parent_type.get_type(), net_row_objects.TypeRef):
-                return do_call(emu, True, False, None, parent_type.get_type(), NULL, 0)
+                return do_call(emu, True, False, None, parent_type.get_type(), NULL, 0, method_obj)
 
         if isinstance(method_obj, net_row_objects.MethodDef) and method_obj.has_body():
-            return do_call(emu, True, False, None, None, NULL, 0)
+            return do_call(emu, True, False, None, None, NULL, 0, method_obj)
     if not force_virt_type:
         amt_args = method_obj.get_amt_params() 
         if method_obj.method_has_this():
-            obj_ref = emu.stack[len(emu.stack) - amt_args - 1]
+            obj_ref_cell = emu.stack.get(len(emu.stack) - amt_args - 1)
         else:
-            obj_ref = emu.stack[len(emu.stack) - amt_args] #technically this shouldnt happen but ill leave it here for now TODO
+            obj_ref_cell = emu.stack.get(len(emu.stack) - amt_args)
+        obj_ref_boxed = emu.box_value(obj_ref_cell, None)
+        obj_ref = <net_emu_types.DotNetObject>obj_ref_boxed.item.ref
         obj_type = obj_ref.get_type_obj()
+        emu.dealloc_cell(obj_ref_cell)
+        emu.dealloc_cell(obj_ref_boxed)
     else:
         obj_type = force_virt_type
     if not obj_type:
@@ -814,7 +849,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
                             break
             if not actual_method_obj:
                 #Last resort, try treating it as a call with a forced type.  If this doesnt work, it should error.
-                return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, None, obj_type, NULL, 0)
+                return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, None, obj_type, NULL, 0, method_obj)
             
         if isinstance(obj_type, net_row_objects.TypeDef):
             obj_type = obj_type.get_superclass()
@@ -824,7 +859,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if not actual_method_obj:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj.get_full_name()))
-    return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None, NULL, 0)
+    return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None, NULL, 0, method_obj)
 
 cdef bint handle_callvirt_instruction(DotNetEmulator emu): #Good
     return do_virtcall(emu, False, None)
@@ -838,6 +873,9 @@ cdef bint handle_ceq_instruction(DotNetEmulator emu): #Good
     else:
         result = emu.pack_i4(0)
     emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_cgt_instruction(DotNetEmulator emu): #Good
@@ -849,11 +887,16 @@ cdef bint handle_cgt_instruction(DotNetEmulator emu): #Good
     else:
         result = emu.pack_i4(0)
     emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(result)
     return False 
 
 cdef bint handle_cgt_un_instruction(DotNetEmulator emu): #Good
-    cdef StackCell value2 = emu.convert_unsigned(emu.stack.pop())
-    cdef StackCell value1 = emu.convert_unsigned(emu.stack.pop())
+    cdef StackCell val2 = emu.stack.pop()
+    cdef StackCell val1 = emu.stack.pop()
+    cdef StackCell value2 = emu.convert_unsigned(val2)
+    cdef StackCell value1 = emu.convert_unsigned(val1)
     cdef StackCell result
 
     if emu.cell_is_gt(value1, value2):
@@ -861,6 +904,11 @@ cdef bint handle_cgt_un_instruction(DotNetEmulator emu): #Good
     else:
         result = emu.pack_i4(0)
     emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(result)
+    emu.dealloc_cell(val2)
+    emu.dealloc_cell(val1)
     return False 
 
 cdef bint handle_clt_instruction(DotNetEmulator emu): #Good
@@ -873,11 +921,16 @@ cdef bint handle_clt_instruction(DotNetEmulator emu): #Good
     else:
         result = emu.pack_i4(0)
     emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(result)
     return False 
 
 cdef bint handle_clt_un_instruction(DotNetEmulator emu): #Good
-    cdef StackCell value2 = emu.convert_unsigned(emu.stack.pop())
-    cdef StackCell value1 = emu.convert_unsigned(emu.stack.pop())
+    cdef StackCell val2 = emu.stack.pop()
+    cdef StackCell val1 = emu.stack.pop()
+    cdef StackCell value2 = emu.convert_unsigned(val2)
+    cdef StackCell value1 = emu.convert_unsigned(val1)
     cdef StackCell result
 
     if emu.cell_is_lt(value1, value2):
@@ -885,6 +938,11 @@ cdef bint handle_clt_un_instruction(DotNetEmulator emu): #Good
     else:
         result = emu.pack_i4(0)
     emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(result)
+    emu.dealloc_cell(val2)
+    emu.dealloc_cell(val1)
     return False 
 
 cdef bint handle_add_instruction(DotNetEmulator emu): #Good
@@ -892,6 +950,9 @@ cdef bint handle_add_instruction(DotNetEmulator emu): #Good
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell result = emu.cell_add(value1, value2)
     emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_and_instruction(DotNetEmulator emu): #Good
@@ -899,6 +960,9 @@ cdef bint handle_and_instruction(DotNetEmulator emu): #Good
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell result = emu.cell_and(value1, value2)
     emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_conv_i_instruction(DotNetEmulator emu): #Good
@@ -907,6 +971,7 @@ cdef bint handle_conv_i_instruction(DotNetEmulator emu): #Good
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_I
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_i1_instruction(DotNetEmulator emu):
@@ -915,6 +980,7 @@ cdef bint handle_conv_i1_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_I4
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_i2_instruction(DotNetEmulator emu):
@@ -923,6 +989,7 @@ cdef bint handle_conv_i2_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_I4
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_i4_instruction(DotNetEmulator emu):
@@ -931,6 +998,7 @@ cdef bint handle_conv_i4_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_I4
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_i8_instruction(DotNetEmulator emu):
@@ -939,6 +1007,7 @@ cdef bint handle_conv_i8_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_I8
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_r4_instruction(DotNetEmulator emu):
@@ -947,6 +1016,7 @@ cdef bint handle_conv_r4_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_R4
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_r8_instruction(DotNetEmulator emu):
@@ -955,14 +1025,18 @@ cdef bint handle_conv_r8_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_R8
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_r_un_instruction(DotNetEmulator emu):
-    cdef StackCell value1 = emu.convert_unsigned(emu.stack.pop())
+    cdef StackCell val1 = emu.stack.pop()
+    cdef StackCell value1 = emu.convert_unsigned(val1)
     if value1.tag == CorElementType.ELEMENT_TYPE_BYREF or value1.tag == CorElementType.ELEMENT_TYPE_OBJECT or value1.tag == CorElementType.ELEMENT_TYPE_STRING:
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_R8
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(val1)
     return False
 
 cdef bint handle_conv_u_instruction(DotNetEmulator emu):
@@ -971,6 +1045,7 @@ cdef bint handle_conv_u_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_U
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_u1_instruction(DotNetEmulator emu):
@@ -979,6 +1054,7 @@ cdef bint handle_conv_u1_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_U4
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_u2_instruction(DotNetEmulator emu):
@@ -987,6 +1063,7 @@ cdef bint handle_conv_u2_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_U4
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_u4_instruction(DotNetEmulator emu):
@@ -995,6 +1072,7 @@ cdef bint handle_conv_u4_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_U4
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_conv_u8_instruction(DotNetEmulator emu):
@@ -1003,13 +1081,17 @@ cdef bint handle_conv_u8_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     value1.tag = CorElementType.ELEMENT_TYPE_U8
     emu.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_ldarg_instruction(DotNetEmulator emu):
     cdef int number = emu.instr.get_argument()
+    cdef StackCell cell
     if number >= emu.get_num_params():
         raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to ldarg a parameter that isnt in the emulator')
-    emu.stack.append(emu.get_method_param(number))
+    cell = emu.get_method_param(number)
+    emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_ldarga_instruction(DotNetEmulator emu):
@@ -1019,12 +1101,9 @@ cdef bint handle_ldarga_instruction(DotNetEmulator emu):
         raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to ldarga a parameter that isnt in the emulator')
     result = emu.pack_ref(5, number, emu)
     emu.stack.append(result)
+    emu.dealloc_cell(result)
     return False
 
-
-#TODO: need to see how I fix array before I fix ldelem
-
-#FIXME: we may have some typing issues with DotNetNumber when compiled for non 64 bit of python.
 cdef bint handle_ldelem_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject result_obj = None
     cdef StackCell index = emu.stack.pop()
@@ -1047,6 +1126,9 @@ cdef bint handle_ldelem_instruction(DotNetEmulator emu):
             result_obj = <net_emu_types.DotNetObject>result.item.ref
             result_obj.initialize_type(emu.instr.get_argument())
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_i_instruction(DotNetEmulator emu):
@@ -1070,6 +1152,9 @@ cdef bint handle_ldelem_i_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_I
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_i1_instruction(DotNetEmulator emu):
@@ -1093,6 +1178,9 @@ cdef bint handle_ldelem_i1_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_I1
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_u1_instruction(DotNetEmulator emu):
@@ -1116,6 +1204,9 @@ cdef bint handle_ldelem_u1_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_U1
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_i2_instruction(DotNetEmulator emu):
@@ -1139,6 +1230,9 @@ cdef bint handle_ldelem_i2_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_I2
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_u2_instruction(DotNetEmulator emu):
@@ -1162,6 +1256,9 @@ cdef bint handle_ldelem_u2_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_U2
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_i4_instruction(DotNetEmulator emu):
@@ -1185,6 +1282,9 @@ cdef bint handle_ldelem_i4_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_I4
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_u4_instruction(DotNetEmulator emu):
@@ -1208,6 +1308,9 @@ cdef bint handle_ldelem_u4_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_U4
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_ref_instruction(DotNetEmulator emu):
@@ -1216,7 +1319,6 @@ cdef bint handle_ldelem_ref_instruction(DotNetEmulator emu):
     cdef StackCell arr = emu.stack.pop()
     cdef uint64_t index_val = index.item.u8
     cdef net_emu_types.DotNetArray array_obj = None
-    cdef StackCell * result
     cdef StackCell cell
     if not net_utils.is_cortype_number(index.tag) or arr.tag != CorElementType.ELEMENT_TYPE_OBJECT or arr.item.ref == NULL:
         raise net_exceptions.OperationNotSupportedException()
@@ -1227,6 +1329,9 @@ cdef bint handle_ldelem_ref_instruction(DotNetEmulator emu):
     array_obj = <net_emu_types.DotNetObject>result_obj
     cell = emu.pack_ref(3, <int>index_val, array_obj)
     emu.stack.append(cell)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_ldelem_i8_instruction(DotNetEmulator emu):
@@ -1250,6 +1355,9 @@ cdef bint handle_ldelem_i8_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_I8
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_u8_instruction(DotNetEmulator emu):
@@ -1273,6 +1381,9 @@ cdef bint handle_ldelem_u8_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_U8
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_r4_instruction(DotNetEmulator emu):
@@ -1296,6 +1407,9 @@ cdef bint handle_ldelem_r4_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_R4
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_r8_instruction(DotNetEmulator emu):
@@ -1319,60 +1433,88 @@ cdef bint handle_ldelem_r8_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     result.tag = CorElementType.ELEMENT_TYPE_R8
     emu.stack.append(result)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldc_i4_instruction(DotNetEmulator emu):
     cdef StackCell cell = emu.pack_i4(emu.instr.get_argument())
     emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_ldc_i8_instruction(DotNetEmulator emu):
     cdef StackCell cell = emu.pack_i8(emu.instr.get_argument())
     emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_ldc_r4_instruction(DotNetEmulator emu):
     cdef StackCell cell = emu.pack_r4(emu.instr.get_argument())
     emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_ldc_r8_instruction(DotNetEmulator emu):
     cdef StackCell cell = emu.pack_r8(emu.instr.get_argument())
     emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_ldloc_instruction(DotNetEmulator emu):
     cdef int index = emu.instr.get_argument()
     cdef StackCell local_obj = emu.get_local(index)
     emu.stack.append(local_obj)
+    emu.dealloc_cell(local_obj)
     return False
 
 cdef bint handle_beq_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
     if emu.cell_is_equal(value1, value2):
+        emu.dealloc_cell(value2)
+        emu.dealloc_cell(value1)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_bge_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
     if emu.cell_is_ge(value1, value2):
+        emu.dealloc_cell(value2)
+        emu.dealloc_cell(value1)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_bge_un_instruction(DotNetEmulator emu):
-    cdef StackCell value2 = emu.convert_unsigned(emu.stack.pop())
-    cdef StackCell value1 = emu.convert_unsigned(emu.stack.pop())
+    cdef StackCell val2 = emu.stack.pop()
+    cdef StackCell val1 = emu.stack.pop()
+    cdef StackCell value2 = emu.convert_unsigned(val2)
+    cdef StackCell value1 = emu.convert_unsigned(val1)
     if emu.cell_is_ge(value1, value2):
+        emu.dealloc_cell(value2)
+        emu.dealloc_cell(value1)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(val2)
+    emu.dealloc_cell(val1)
     return False
 
 cdef bint handle_bgt_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
     if emu.cell_is_gt(value1, value2):
+        emu.dealloc_cell(value2)
+        emu.dealloc_cell(value1)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_bgt_un_instruction(DotNetEmulator emu):
@@ -1382,13 +1524,20 @@ cdef bint handle_bgt_un_instruction(DotNetEmulator emu):
 cdef bint handle_div_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_divide(value1, value2))
+    cdef StackCell result = emu.cell_divide(value1, value2)
+    emu.stack.append(result)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_dup_instruction(DotNetEmulator emu):
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(value1) #TODO: Check duplicate_cell refs for correctness since were gonna have it duplicate objects
-    emu.stack.append(emu.duplicate_cell_object(value1)) #TODO fix duplicate_cell to actually create a duplicate reference of the cell.
+    cdef StackCell dup_obj = emu.duplicate_cell_object(value1)
+    emu.stack.append(value1)
+    emu.stack.append(dup_obj)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(dup_obj)
     return False
 
 cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
@@ -1469,24 +1618,30 @@ cdef bint handle_ldsfld_instruction(DotNetEmulator emu):
         if current_obj.tag != CorElementType.ELEMENT_TYPE_END:
             raise net_exceptions.OperationNotSupportedException()
         emu.stack.append(current_obj)
+    emu.dealloc_cell(current_obj)
     return False
 
 cdef bint handle_ldstr_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetString string_obj = net_emu_types.DotNetString(emu, emu.instr.get_argument(), 'utf-16le')
-    emu.stack.append(emu.pack_object(string_obj))
+    cdef StackCell cell = emu.pack_string(string_obj)
+    emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_ldtoken_instruction(DotNetEmulator emu):
     cdef net_row_objects.RowObject internal_item = emu.instr.get_argument()
     cdef str table_name = internal_item.get_table_name()
+    cdef StackCell cell
     if table_name == 'MethodDef' or  table_name == 'MethodRef':
-        emu.stack.append(emu.pack_object(net_emu_types.DotNetRuntimeMethodHandle(emu, internal_item)))
+        cell = emu.pack_object(net_emu_types.DotNetRuntimeMethodHandle(emu, internal_item))
     elif  table_name == 'Field':
-        emu.stack.append(emu.pack_object(net_emu_types.DotNetRuntimeFieldHandle(emu, internal_item)))
+        cell = emu.pack_object(net_emu_types.DotNetRuntimeFieldHandle(emu, internal_item))
     elif table_name == 'TypeDef' or table_name == 'TypeRef' or table_name == 'TypeSpec':
-        emu.stack.append(emu.pack_object(net_emu_types.DotNetRuntimeTypeHandle(emu, internal_item)))
+        cell = emu.pack_object(net_emu_types.DotNetRuntimeTypeHandle(emu, internal_item))
     else:
         raise Exception('invalid table {}'.format(table_name)) #Invalid table
+    emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     return False
 
 cdef net_row_objects.MethodDef resolve_ref(net_row_objects.MemberRef ref_obj):
@@ -1504,26 +1659,36 @@ cdef net_row_objects.MethodDef resolve_ref(net_row_objects.MemberRef ref_obj):
 cdef bint handle_ldftn_instruction(DotNetEmulator emu):
     cdef net_row_objects.RowObject internal_item = emu.instr.get_argument()
     cdef str table_name = internal_item.get_table_name()
+    cdef StackCell cell
     if table_name == 'MethodDef' or  table_name == 'MethodRef':
-        emu.stack.append(emu.pack_object(net_emu_types.DotNetRuntimeMethodHandle(emu, internal_item)))
+        cell = emu.pack_object(net_emu_types.DotNetRuntimeMethodHandle(emu, internal_item))
     elif table_name == 'MemberRef':
         internal_item = resolve_ref(internal_item)
         if internal_item is None:
             raise net_exceptions.EmulatorExecutionException(emu, 'Could not find method obj for ldftn')
-        emu.stack.append(emu.pack_object(net_emu_types.DotNetRuntimeMethodHandle(emu, internal_item)))
+        cell = emu.pack_object(net_emu_types.DotNetRuntimeMethodHandle(emu, internal_item))
     else:
         raise Exception('invalid table {}'.format(table_name)) #Invalid table
+    emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_mul_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_multiply(value1, value2))
+    cdef StackCell result = emu.cell_multiply(value1, value2)
+    emu.stack.append(result)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_neg_instruction(DotNetEmulator emu):
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_neg(value1))
+    cdef StackCell result = emu.cell_neg(value1)
+    emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_newarr_instruction(DotNetEmulator emu):
@@ -1531,28 +1696,47 @@ cdef bint handle_newarr_instruction(DotNetEmulator emu):
     cdef StackCell amt_of_elem = emu.stack.pop()
     cdef int64_t elem_val = amt_of_elem.item.i8
     cdef net_emu_types.DotNetArray value1 = net_emu_types.DotNetArray(emu, elem_val, type_obj)
-    emu.stack.append(emu.pack_object(value1))
+    cdef StackCell result = emu.pack_object(value1)
+    emu.stack.append(result)
+    emu.dealloc_cell(amt_of_elem)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ble_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
     if emu.cell_is_le(value1, value2):
+        emu.dealloc_cell(value1)
+        emu.dealloc_cell(value2)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
     return False
 
 cdef bint handle_ble_un_instruction(DotNetEmulator emu):
-    cdef StackCell value2 = emu.convert_unsigned(emu.stack.pop())
-    cdef StackCell value1 = emu.convert_unsigned(emu.stack.pop())
+    cdef StackCell val2 = emu.stack.pop()
+    cdef StackCell val1 = emu.stack.pop()
+    cdef StackCell value2 = emu.convert_unsigned(val2)
+    cdef StackCell value1 = emu.convert_unsigned(val1)
     if emu.cell_is_le(value1, value2):
+        emu.dealloc_cell(value1)
+        emu.dealloc_cell(value2)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(val2)
+    emu.dealloc_cell(val1)
     return False
 
 cdef bint handle_blt_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
     if emu.cell_is_lt(value1, value2):
+        emu.dealloc_cell(value1)
+        emu.dealloc_cell(value2)
         return handle_general_jump(emu)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(value2)
     return False
 
 cdef bint handle_blt_un_instruction(DotNetEmulator emu):
@@ -1582,12 +1766,19 @@ cdef bint handle_ldfld_instruction(DotNetEmulator emu):
 cdef bint handle_or_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_or(value1, value2))
+    cdef StackCell result = emu.cell_or(value1, value2)
+    emu.stack.append(result)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_not_instruction(DotNetEmulator emu):
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_not(value1))
+    cdef StackCell result = emu.cell_not(value1)
+    emu.stack.append(result)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ret_instruction(DotNetEmulator emu):
@@ -1599,26 +1790,43 @@ cdef bint handle_ret_instruction(DotNetEmulator emu):
     else:
         if emu.method_obj.get_column('Name').get_value_as_bytes() == b'.ctor':
             if emu.caller:
-                emu.caller.stack.append(emu.get_method_param(0))
+                value1 = emu.get_method_param(0)
+                emu.caller.stack.append(value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_shl_instruction(DotNetEmulator emu):
     cdef StackCell bits = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_shl(value1, bits))
+    cdef StackCell result = emu.cell_shl(value1, bits)
+    emu.stack.append(result)
+    emu.dealloc_cell(bits)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_shr_instruction(DotNetEmulator emu):
     cdef StackCell bits = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_shr(value1, bits))
+    cdef StackCell result = emu.cell_shr(value1, bits)
+    emu.stack.append(result)
+    emu.dealloc_cell(bits)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_shr_un_instruction(DotNetEmulator emu):
-    cdef StackCell bits = emu.convert_unsigned(emu.stack.pop())
-    cdef StackCell value1 = emu.convert_unsigned(emu.stack.pop())
+    cdef StackCell bits1 = emu.stack.pop()
+    cdef StackCell value2 = emu.stack.pop()
+    cdef StackCell bits = emu.convert_unsigned(bits1)
+    cdef StackCell value1 = emu.convert_unsigned(value2)
     cdef StackCell result = emu.cell_shr(value1, bits)
     emu.stack.append(result)
+    emu.dealloc_cell(bits)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
+    emu.dealloc_cell(bits1)
+    emu.dealloc_cell(value2)
     return False
 
 cdef bint handle_stfld_instruction(DotNetEmulator emu):
@@ -1657,6 +1865,7 @@ cdef bint handle_stloc_instruction(DotNetEmulator emu):
     cdef int number = emu.instr.get_argument()
     cdef StackCell value1 = emu.stack.pop()
     emu.set_local(number, value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_stsfld_instruction(DotNetEmulator emu):
@@ -1666,12 +1875,17 @@ cdef bint handle_stsfld_instruction(DotNetEmulator emu):
         do_virt_field_lookup(emu, value1)
     else:
         emu.get_appdomain().set_static_field(field_obj.get_rid(), value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_sub_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_sub(value1, value2))
+    cdef StackCell result = emu.cell_sub(value1, value2)
+    emu.stack.append(result)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_switch_instruction(DotNetEmulator emu):
@@ -1680,15 +1894,19 @@ cdef bint handle_switch_instruction(DotNetEmulator emu):
     if value1.item.u4 < len(targets):
         emu.current_offset = targets[value1.item.u4]
         emu.current_eip = emu.disasm_obj.get_instr_index_by_offset(emu.current_offset)
+        emu.dealloc_cell(value1)
         return True
     else:
         #fallthrough case.  No exception here.
+        emu.dealloc_cell(value1)
         return False
 
 cdef bint handle_xor_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_xor(value1, value2))
+    cdef StackCell result = emu.cell_xor(value1, value2)
+    emu.stack.append(result)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_stelem_instruction(DotNetEmulator emu):
@@ -1703,6 +1921,9 @@ cdef bint handle_stelem_instruction(DotNetEmulator emu):
         raise net_exceptions.OperationNotSupportedException()
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
     array_obj._set_item(index_val, value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
     return False
 
 cdef bint handle_stelem_i_instruction(DotNetEmulator emu):
@@ -1718,6 +1939,9 @@ cdef bint handle_stelem_i_instruction(DotNetEmulator emu):
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
     value1.tag = CorElementType.ELEMENT_TYPE_I
     array_obj._set_item(index_val, value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
     return False
 
 cdef bint handle_stelem_i1_instruction(DotNetEmulator emu):
@@ -1733,6 +1957,9 @@ cdef bint handle_stelem_i1_instruction(DotNetEmulator emu):
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
     value1.tag = CorElementType.ELEMENT_TYPE_I1
     array_obj._set_item(index_val, value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
     return False
 
 cdef bint handle_stelem_i2_instruction(DotNetEmulator emu):
@@ -1748,6 +1975,9 @@ cdef bint handle_stelem_i2_instruction(DotNetEmulator emu):
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
     value1.tag = CorElementType.ELEMENT_TYPE_I2
     array_obj._set_item(index_val, value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
     return False
 
 cdef bint handle_stelem_i4_instruction(DotNetEmulator emu):
@@ -1763,6 +1993,9 @@ cdef bint handle_stelem_i4_instruction(DotNetEmulator emu):
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
     value1.tag = CorElementType.ELEMENT_TYPE_I4
     array_obj._set_item(index_val, value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
     return False
 
 cdef bint handle_stelem_i8_instruction(DotNetEmulator emu):
@@ -1778,6 +2011,9 @@ cdef bint handle_stelem_i8_instruction(DotNetEmulator emu):
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
     value1.tag = CorElementType.ELEMENT_TYPE_I8
     array_obj._set_item(index_val, value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
     return False
 
 cdef bint handle_stelem_r4_instruction(DotNetEmulator emu):
@@ -1793,6 +2029,9 @@ cdef bint handle_stelem_r4_instruction(DotNetEmulator emu):
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
     value1.tag = CorElementType.ELEMENT_TYPE_I8
     array_obj._set_item(index_val, value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
     return False
 
 cdef bint handle_stelem_r8_instruction(DotNetEmulator emu):
@@ -1808,19 +2047,33 @@ cdef bint handle_stelem_r8_instruction(DotNetEmulator emu):
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
     value1.tag = CorElementType.ELEMENT_TYPE_R8 
     array_obj._set_item(index_val, value1)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
     return False
 
 cdef bint handle_rem_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.cell_rem(value1, value2))
+    cdef StackCell result = emu.cell_rem(value1, value2)
+    emu.stack.append(result)
+    emu.dealloc_cell(result)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_rem_un_instruction(DotNetEmulator emu):
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
-    cdef StackCell result = emu.cell_rem(emu.convert_unsigned(value1), emu.convert_unsigned(value2))
+    cdef StackCell val2 = emu.convert_unsigned(value2)
+    cdef StackCell val1 = emu.convert_unsigned(value1)
+    cdef StackCell result = emu.cell_rem(val1, val2)
     emu.stack.append(result)
+    emu.dealloc_cell(value2)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(val2)
+    emu.dealloc_cell(val1)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelema_instruction(DotNetEmulator emu):
@@ -1828,13 +2081,18 @@ cdef bint handle_ldelema_instruction(DotNetEmulator emu):
     cdef StackCell arr = emu.stack.pop()
     cdef uint64_t idx = index.item.u8
     cdef net_emu_types.DotNetArray array_obj = None
+    cdef StackCell result
     if not net_utils.is_cortype_number(index.tag) or arr.tag != CorElementType.ELEMENT_TYPE_OBJECT:
         raise net_exceptions.OperationNotSupportedException()
 
     if arr.item.ref == NULL or not isinstance(<net_emu_types.DotNetObject>arr.item.ref, net_emu_types.DotNetArray):
         raise net_exceptions.OperationNotSupportedException()
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
-    emu.stack.append(emu.pack_ref(3, <int>idx, array_obj))
+    result = emu.pack_ref(3, <int>idx, array_obj)
+    emu.stack.append(result)
+    emu.dealloc_cell(result)
+    emu.dealloc_cell(arr)
+    emu.dealloc_cell(index)
     return False
 
 cdef bint handle_box_instruction(DotNetEmulator emu):
@@ -1845,16 +2103,13 @@ cdef bint handle_box_instruction(DotNetEmulator emu):
     """
     cdef net_row_objects.TypeDefOrRef arg_obj = emu.instr.get_argument()
     cdef StackCell value1 = emu.stack.pop()
-    emu.stack.append(emu.box_value(value1, None))
+    cdef StackCell result = emu.box_value(value1, None) #TODO: should this be None?
+    emu.stack.append(result)
+    emu.dealloc_cell(result)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_castclass_instruction(DotNetEmulator emu):
-    """cdef net_row_objects.TypeDefOrRef class_type = emu.instr.get_argument()
-    cdef net_emu_types.DotNetObject obj_ref = emu.stack.pop()
-
-    obj_ref.initialize_type(class_type) #initialize_type() is handled for ArrayAddress. 
-    emu.stack.append(obj_ref)
-    return False"""
     raise net_exceptions.FeatureNotImplementedException()
 
 cdef bint handle_initobj_instruction(DotNetEmulator emu):
@@ -1871,57 +2126,52 @@ cdef bint handle_initobj_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_isinst_instruction(DotNetEmulator emu):
-    """cdef net_emu_types.DotNetObject value1 = emu.stack.pop()
-    cdef net_emu_types.DotNetObject result = None
-    if value1.isinst(emu.instr.get_argument()):
-        emu.stack.append(value1)
-    else:
-        result = net_emu_types.DotNetObject(emu)
-        result.flag_null()
-        emu.stack.append(result)
-    return False"""
     raise net_exceptions.FeatureNotImplementedException()
 
 cdef bint handle_ldflda_instruction(DotNetEmulator emu):
     cdef net_row_objects.Field field_obj = emu.instr.get_argument()
     cdef StackCell obj_ref = emu.stack.pop()
+    cdef StackCell result
     cdef net_emu_types.DotNetObject obj = None
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT or field_obj.is_static() or obj_ref.item.ref == NULL:
         raise net_exceptions.OperationNotSupportedException()
     obj = <net_emu_types.DotNetObject>obj_ref.item.ref
-    emu.stack.append(emu.pack_ref(4, field_obj.get_rid(), obj))
+    result = emu.pack_ref(4, field_obj.get_rid(), obj)
+    emu.stack.append(result)
+    emu.dealloc_cell(result)
+    emu.dealloc_cell(obj_ref)
     return False
 
 cdef bint handle_ldlen_instruction(DotNetEmulator emu):
     cdef StackCell value_obj = emu.stack.pop()
+    cdef StackCell result
     cdef net_emu_types.DotNetObject obj = None
     if value_obj.tag != CorElementType.ELEMENT_TYPE_OBJECT or value_obj.item.ref == NULL:
         raise net_exceptions.OperationNotSupportedException()
     obj = <net_emu_types.DotNetObject> value_obj.item.ref
-    emu.stack.append(emu.pack_u8(len(obj)))
+    result = emu.pack_u8(len(obj))
+    emu.stack.append(result)
+    emu.dealloc_cell(result)
+    emu.dealloc_cell(value_obj)
     return False
 
 cdef bint handle_ldloca_instruction(DotNetEmulator emu):
     cdef int index = emu.instr.get_argument()
-    emu.stack.append(emu.pack_ref(1, index, emu))
+    cdef StackCell result = emu.pack_ref(1, index, emu)
+    emu.stack.append(result)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldsflda_instruction(DotNetEmulator emu):
-    cdef net_row_objects.MemberRef mref_obj
-    cdef net_row_objects.Field field_obj
-    cdef net_row_objects.RowObject arg_obj
-    cdef list args
-    cdef str field_name
-    cdef str type_name
-    cdef type type_obj
+    cdef net_row_objects.RowObject arg_obj = emu.instr.get_argument()
+    cdef net_row_objects.Field field_obj = <net_row_objects.Field>arg_obj
     cdef StackCell cell
-    arg_obj = emu.instr.get_argument()
     if isinstance(arg_obj, net_row_objects.MemberRef):
         raise net_exceptions.FeatureNotImplementedException()
     else:
-        field_obj = <net_row_objects.Field>arg_obj
         cell = emu.pack_ref(2, field_obj.get_rid(), emu)
         emu.stack.append(cell)
+        emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_ldobj_instruction(DotNetEmulator emu):
@@ -1932,6 +2182,7 @@ cdef bint handle_ldobj_instruction(DotNetEmulator emu):
     result = emu.get_ref(addr_obj)
     emu.stack.append(result)
     emu.dealloc_cell(result)
+    emu.dealloc_cell(addr_obj)
     return False 
 
 cdef bint handle_leave_instruction(DotNetEmulator emu):
@@ -1942,6 +2193,7 @@ cdef bint handle_starg_instruction(DotNetEmulator emu):
     cdef int number = emu.instr.get_argument()
     cdef StackCell value1 = emu.stack.pop()
     emu._add_param(number, value1)
+    emu.dealloc_cell(value1)
     return False
 
 cdef bint handle_stobj_instruction(DotNetEmulator emu):
@@ -1956,8 +2208,10 @@ cdef bint handle_stobj_instruction(DotNetEmulator emu):
 
 cdef bint handle_unbox_any_instruction(DotNetEmulator emu):
     cdef StackCell boxed_obj = emu.stack.pop()
-    emu.stack.append(emu.unbox_value(boxed_obj))
+    cdef StackCell unboxed_obj = emu.unbox_value(boxed_obj)
+    emu.stack.append(unboxed_obj)
     emu.dealloc_cell(boxed_obj)
+    emu.dealloc_cell(unboxed_obj)
     return False
 
 cdef bint handle_pop_instruction(DotNetEmulator emu):
@@ -1976,11 +2230,13 @@ cdef bint handle_nop_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_ldnull_instruction(DotNetEmulator emu):
-    emu.stack.append(emu.pack_null())
+    cdef StackCell null = emu.pack_null()
+    emu.stack.append(null)
+    emu.dealloc_cell(null)
     return False
 
 cdef bint handle_newobj_instruction(DotNetEmulator emu):
-    return do_call(emu, False, True, None, None, NULL, 0)
+    return do_call(emu, False, True, None, None, NULL, 0, emu.instr.get_argument())
 
 """
 A lot of the stuff below is for internal use mainly.
@@ -2060,7 +2316,7 @@ cdef class EmulatorAppDomain:
         cdef StackCell old_value = self.__static_fields[actual_index]
         cdef net_row_objects.Field field = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(idno)
         cdef net_sigs.TypeSig sig_obj = field.get_field_signature().get_type_sig()
-        cdef StackCell duped = self.cast_cell(cell, sig_obj)
+        cdef StackCell duped = self.get_emulator_obj().cast_cell(cell, sig_obj)
         self.get_emulator_obj().deref_cell(old_value)
         self.get_emulator_obj().dealloc_cell(old_value)
         self.get_emulator_obj().ref_cell(cell)
@@ -2244,28 +2500,29 @@ cdef class DotNetStack:
         self.__internal_stack.reserve(max_stack_size)
 
     cdef void append(self, StackCell cell):
-        cdef StackCell new_cell
-        if <unsigned int>self.__internal_stack.size() == <unsigned int>self.__max_stack_size:
-            raise net_exceptions.EmulatorExecutionException(self.__emulator, 'violated max_stack_size {} {}'.format(self.__max_stack_size, self.__internal_stack.size()))
-        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_BYREF or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-            if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-                if cell.item.ref != NULL:
-                    Py_INCREF(<net_emu_types.DotNetObject>cell.item.ref)
-            self.__internal_stack.push_back(cell)
-            return
-        new_cell = cell
-        if new_cell.tag == CorElementType.ELEMENT_TYPE_U2 or new_cell.tag == CorElementType.ELEMENT_TYPE_CHAR or new_cell.tag == CorElementType.ELEMENT_TYPE_U1:
-            new_cell.tag = CorElementType.ELEMENT_TYPE_U4
-        elif new_cell.tag == CorElementType.ELEMENT_TYPE_I2 or new_cell.tag == CorElementType.ELEMENT_TYPE_I1:
-            new_cell.tag = CorElementType.ELEMENT_TYPE_I4
-        self.__internal_stack.push_back(new_cell)
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell duped_cell = self.__emulator.duplicate_cell(cell)
+        self.__emulator.ref_cell(duped_cell)
+        self.__internal_stack.push_back(duped_cell)
 
     cdef StackCell pop(self):
         cdef StackCell obj = self.__internal_stack.back()
         self.__internal_stack.pop_back()
-        if obj.tag == CorElementType.ELEMENT_TYPE_OBJECT or obj.tag == CorElementType.ELEMENT_TYPE_STRING:
-            Py_XDECREF(obj.item.ref) #TODO: Should we be decrefing here if we arent increfing for cell starts?  This may cause the underlying object to go stale.
+        self.__emulator.deref_cell(obj)
         return obj
+
+    cpdef net_emu_types.DotNetObject pop_obj(self):
+        cdef StackCell obj = self.__internal_stack.back()
+        cdef StackCell boxed_obj = self.__emulator.box_value(obj, None)
+        cdef net_emu_types.DotNetObject return_value = None
+        self.__internal_stack.pop_back()
+        self.__emulator.deref_cell(obj)
+        self.__emulator.dealloc_cell(obj)
+        if boxed_obj.item.ref != NULL:
+            return_value = <net_emu_types.DotNetObject>boxed_obj.item.ref
+        self.__emulator.dealloc_cell(boxed_obj)
+        return return_value
 
     cdef StackCell peek(self):
         cdef StackCell obj = self.__internal_stack.back()
@@ -2276,6 +2533,7 @@ cdef class DotNetStack:
         cdef StackCell cell
         for i in range(self.__internal_stack.size()):
             cell = self.__internal_stack[i]
+            self.__emulator.deref_cell(cell)
             self.__emulator.dealloc_cell(cell)
         self.__internal_stack.clear()
 
@@ -2701,7 +2959,7 @@ cdef class DotNetEmulator:
         self.__method_params = <StackCell*>malloc(sizeof(StackCell) * nparams)
         memset(self.__method_params, 0, sizeof(StackCell) * nparams)
 
-    cdef StackCell cast_cell(self, StackCell cell, TypeSig sig):
+    cdef StackCell cast_cell(self, StackCell cell, net_sigs.TypeSig sig):
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef void _add_param(self, int idx, StackCell cell):

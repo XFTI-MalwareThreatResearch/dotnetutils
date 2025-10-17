@@ -7328,7 +7328,7 @@ cdef class DotNetDelegate(DotNetObject):
             memcpy(&args[1], params, sizeof(net_emulator.StackCell) * nparams)
         else:
             memcpy(args, params, sizeof(net_emulator.StackCell) * nparams)
-        net_emulator.do_call(self.get_emulator_obj(), False, self.dn_methodinfo.internal_method.get_column('Name') == b'.ctor', self.dn_methodinfo.internal_method, None, args, amt_args)
+        net_emulator.do_call(self.get_emulator_obj(), False, self.dn_methodinfo.internal_method.get_column('Name') == b'.ctor', self.dn_methodinfo.internal_method, None, args, amt_args, self.dn_methodinfo.internal_method)
         if self.dn_type is not None: #TODO: make sure for force_method_args we dont clean up the args ourselves in do_call(), let the do_call from invoke do it.
             self.get_emulator_obj().dealloc_cell(args[0])
         free(args)
