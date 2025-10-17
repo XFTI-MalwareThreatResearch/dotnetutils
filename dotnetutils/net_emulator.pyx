@@ -2486,9 +2486,9 @@ cdef class EmulatorAppDomain:
         cdef StackCell cell
         cdef net_emu_types.DotNetObject result = None
         cdef bytes rsrc_name = name.get_str_data_as_bytes().decode(name.get_str_encoding()).encode('utf-8')
-        cdef bytes result = assembly.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
-        if result is not None:
-            return result
+        cdef bytes result_b = assembly.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
+        if result_b is not None:
+            return result_b
         #first check the resolve methods, see if we get anything from there.
         for mrefdef_obj in self.__resourceresolve_handlers: #TODO: Exceptions wont properly show in this, need to fix.
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
@@ -2497,8 +2497,12 @@ cdef class EmulatorAppDomain:
                 arg_two.ctor(&name_cell, 1)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, caller=self)
                 emu_obj._allocate_params(2)
-                emu_obj._add_param(0, self.get_emulator_obj().pack_null())
-                emu_obj._add_param(1, self.get_emulator_obj().pack_object(arg_two))
+                cell = self.__emu_obj.pack_null()
+                emu_obj._add_param(0, cell)
+                self.__emu_obj.dealloc_cell(cell)
+                cell = self.__emu_obj.pack_object(arg_two)
+                emu_obj._add_param(1, cell)
+                self.__emu_obj.dealloc_cell(cell)
                 emu_obj.run_function()
                 result_obj = emu_obj.get_stack().pop()
                 if not self.get_emulator_obj().cell_is_null(result_obj) and isinstance(<net_emu_types.DotNetObject>result_obj.item.ref, net_emu_types.DotNetAssembly):
@@ -2928,14 +2932,14 @@ cdef class DotNetEmulator:
             if tag1 == tag2:
                 result.item.i8 |= two.item.i8
                 return result
-        elif tag1 == CorElementYpe.ELEMENT_TYPE_I:
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
             if tag1 == tag2:
                 if self.__is_64bit:
                     result.item.i8 |= two.item.i8
                 else:
                     result.item.i4 |= two.item.i4
                 return result
-            elif tag2 == CorElemenType.ELEMENT_TYPE_I4:
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
                 if self.__is_64bit:
                     result.item.i8 |= two.item.i4
                 else:
@@ -2965,14 +2969,14 @@ cdef class DotNetEmulator:
             if tag1 == tag2:
                 result.item.i8 ^= two.item.i8
                 return result
-        elif tag1 == CorElementYpe.ELEMENT_TYPE_I:
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
             if tag1 == tag2:
                 if self.__is_64bit:
                     result.item.i8 ^= two.item.i8
                 else:
                     result.item.i4 ^= two.item.i4
                 return result
-            elif tag2 == CorElemenType.ELEMENT_TYPE_I4:
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
                 if self.__is_64bit:
                     result.item.i8 ^= two.item.i4
                 else:
@@ -3303,9 +3307,11 @@ cdef class DotNetEmulator:
         memset(self.__method_params, 0, sizeof(StackCell) * nparams)
 
     cdef StackCell cast_cell(self, StackCell cell, net_sigs.TypeSig sig):
+        cdef CorElementType etype = CorElementType.ELEMENT_TYPE_END
+        cdef StackCell result
         if isinstance(sig, net_sigs.CorLibTypeSig):
-            cdef CorElementType etype = sig.get_element_type()
-            cdef StackCell result = self.duplicate_cell(cell)
+            etype = sig.get_element_type()
+            result = self.duplicate_cell(cell)
             if net_utils.is_cortype_number(etype):
                 result.tag = etype
                 return result
@@ -3401,7 +3407,7 @@ cdef class DotNetEmulator:
             owner_obj.set_field(ref.item.byref.idx, value)
         elif ref.item.byref.kind == 5: #argument
             owner_emu = <DotNetEmulator>ref.item.byref.owner
-            owner_emu.set_param(ref.item.byref.idx, value)
+            owner_emu._add_param(ref.item.byref.idx, value)
         raise net_exceptions.OperationNotSupportedException()
     
     cdef bint cell_is_true(self, StackCell cell):

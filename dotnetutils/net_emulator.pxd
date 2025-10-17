@@ -256,8 +256,6 @@ cdef class DotNetEmulator:
 
     cdef StackCell get_ref(self, StackCell ref)
 
-    cdef void set_param(self, int idx, StackCell value)
-
     cdef void ref_cell(self, StackCell cell)
     
     cdef bint cell_is_true(self, StackCell cell)
