@@ -1864,7 +1864,7 @@ cdef bint handle_initobj_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetObject dot_obj = None
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT:
         raise net_exceptions.ObjectTypeException
-    dot_obj = <net_emu_types.DotNetObject>obj_ref
+    dot_obj = <net_emu_types.DotNetObject>obj_ref.item.ref
     dot_obj.initialize_type(type_obj)
     emu.dealloc_cell(orig_cell)
     emu.dealloc_cell(obj_ref)
@@ -2034,6 +2034,7 @@ cdef class EmulatorAppDomain:
         cdef StackCell cell
         for x in range(self.__static_fields.size()):
             cell = self.__static_fields[x]
+            self.get_emulator_obj().deref_cell(cell)
             self.get_emulator_obj().dealloc_cell(cell)
         self.__static_fields.clear()
 
@@ -2056,17 +2057,19 @@ cdef class EmulatorAppDomain:
 
     cdef void set_static_field(self, int idno, StackCell cell):
         cdef int actual_index = self.__static_field_mappings[idno]
-        cdef StackCell * ptr = &self.__static_fields[actual_index]
-        self.get_emulator_obj().dealloc_cell(ptr[0])
-        memcpy(ptr, &cell, sizeof(cell))
-        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-            if cell.item.ref != NULL:
-                Py_INCREF(<net_emu_types.DotNetObject>cell.item.ref)
-        ptr.rid = idno
+        cdef StackCell old_value = self.__static_fields[actual_index]
+        cdef net_row_objects.Field field = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(idno)
+        cdef net_sigs.TypeSig sig_obj = field.get_field_signature().get_type_sig()
+        cdef StackCell duped = self.cast_cell(cell, sig_obj)
+        self.get_emulator_obj().deref_cell(old_value)
+        self.get_emulator_obj().dealloc_cell(old_value)
+        self.get_emulator_obj().ref_cell(cell)
+        duped.rid = idno
+        self.__static_fields[idno] = duped
 
     cdef StackCell get_static_field(self, int idno):
         cdef int actual_index = self.__static_field_mappings[idno]
-        return self.__static_fields[actual_index]
+        return self.get_emulator_obj().duplicate_cell(self.__static_fields[actual_index])
 
     cdef static_func_type get_static_func(self, int token):
         return self.__static_functions[token]
@@ -2230,7 +2233,7 @@ cdef class EmulatorAppDomain:
                 emu_obj.run_function()
                 result_obj = emu_obj.get_stack().pop()
                 if not self.get_emulator_obj().cell_is_null(result_obj) and isinstance(<net_emu_types.DotNetObject>result_obj.item.ref, net_emu_types.DotNetAssembly):
-                    return (<net_emu_types.DotNetAssembly>result_obj).get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
+                    return (<net_emu_types.DotNetAssembly>result_obj.item.ref).get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
         return None
 
 cdef class DotNetStack:
@@ -2698,18 +2701,22 @@ cdef class DotNetEmulator:
         self.__method_params = <StackCell*>malloc(sizeof(StackCell) * nparams)
         memset(self.__method_params, 0, sizeof(StackCell) * nparams)
 
+    cdef StackCell cast_cell(self, StackCell cell, TypeSig sig):
+        raise net_exceptions.FeatureNotImplementedException()
+
     cdef void _add_param(self, int idx, StackCell cell):
         if idx >= self.__nparams:
-            raise net_exceptions.OperationNotSupportedException()
+            raise net_exceptions.InvalidArgumentsException()
         cdef StackCell old = self.__method_params[idx]
-        self.dealloc_cell(old) #would do nothing if its ELEMENT_TYPE_END (0)
-        memcpy(&self.__method_params, &cell, sizeof(cell))
-        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-            if cell.item.ref != NULL:
-                Py_INCREF(<net_emu_types.DotNetObject>cell.item.ref)
+        cdef net_sigs.MethodSig msig_obj = self.method_obj.get_method_signature()
+        cdef StackCell casted_val = self.cast_cell(cell, msig_obj.get_parameters()[idx])
+        self.ref_cell(casted_val)
+        self.deref_cell(old)
+        self.dealloc_cell(old)
+        self.__method_params[idx] = casted_val
 
     cdef StackCell get_method_param(self, int idx):
-        return self.__method_params[idx]
+        return self.duplicate_cell(self.__method_params[idx])
 
     cdef int get_num_params(self):
         return self.__nparams
@@ -3439,15 +3446,16 @@ cdef class DotNetEmulator:
         self.print_string(state_str, 1)
 
     cdef StackCell get_local(self, int idx):
-        return self.localvars[idx]
+        cdef StackCell return_value = self.duplicate_cell(self.localvars[idx])
+        return return_value
 
     cdef void set_local(self, int idx, StackCell obj):
         cdef StackCell prev_val = self.get_local(idx)
+        cdef StackCell dup_obj = self.cast_cell(obj, <net_sigs.TypeSig>self.local_var_sigs[idx])
+        self.ref_cell(dup_obj)
+        self.deref_cell(prev_val)
         self.dealloc_cell(prev_val)
-        self.localvars[idx] = obj
-        if obj.tag == CorElementType.ELEMENT_TYPE_OBJECT or obj.tag == CorElementType.ELEMENT_TYPE_STRING:
-            if obj.item.ref != NULL:
-                Py_INCREF(<net_emu_types.DotNetObject>obj.item.ref)
+        self.localvars[idx] = dup_obj
 
     cdef void print_instr(self, net_cil_disas.Instruction instr):            
         if False: #isinstance(self.method_obj, net_emu_types.DotNetDynamicMethod):
@@ -3591,7 +3599,8 @@ cdef class DotNetEmulator:
         cdef unsigned int key = 0
         for key in range(self.localvars.size()):
             obj = self.localvars[key]
-            self.dealloc_cell(obj)
+            self.deref_cell(obj) #Remove local var ref
+            self.dealloc_cell(obj) #Remove cell ref
         for key in range(self.local_var_sigs.size()):
             Py_XDECREF(self.local_var_sigs[key])
         self.local_var_sigs.clear()
@@ -3600,5 +3609,8 @@ cdef class DotNetEmulator:
             for key in range(<unsigned int>self.__nparams):
                 obj = self.__method_params[key]
                 self.dealloc_cell(obj)
+            for key in range(self.get_amt_params()):
+                self.deref_cell(self.__method_params[key])
+                self.dealloc_cell(self.__method_params[key])
             free(self.__method_params)
             self.__method_params = NULL

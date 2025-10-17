@@ -188,6 +188,8 @@ cdef class DotNetEmulator:
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
 
+    cdef StackCell cast_cell(self, StackCell cell, TypeSig sig)
+
     cpdef void setup_method_params(self, list method_params)
 
     cdef int get_num_params(self)

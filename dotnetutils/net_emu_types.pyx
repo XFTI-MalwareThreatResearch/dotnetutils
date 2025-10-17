@@ -154,25 +154,26 @@ cdef class DotNetObject:
 
     cdef void set_field(self, int idno, net_emulator.StackCell val):
         cdef net_emulator.StackCell old_val
+        cdef net_sigs.TypeSig sig = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(idno).get_field_signature().get_type_sig()
         if self.__fields.find(idno) != self.__fields.end():
             old_val = self.__fields[idno]
             #get rid of both the field incref and the cell incref
+            self.get_emulator_obj().deref_cell(old_val)
             self.get_emulator_obj().dealloc_cell(old_val)
-        self.__fields[idno] = val
-        if val.tag == CorElementType.ELEMENT_TYPE_OBJECT or val.tag == CorElementType.ELEMENT_TYPE_STRING:
-            if val.item.ref != NULL:
-                Py_INCREF(<DotNetObject>val.item.ref)
+        self.get_emulator_obj().ref_cell(val)
+        self.__fields[idno] = self.get_emulator_obj().cast_cell(val, sig)
 
     cdef void __clear_fields(self):
         cdef pair[int, net_emulator.StackCell] kv
         for kv in self.__fields:
+            self.get_emulator_obj().deref_cell(kv.second)
             self.get_emulator_obj().dealloc_cell(kv.second)
         self.__fields.clear()
 
     cdef net_emulator.StackCell get_field(self, int idno):
         if self.__fields.find(idno) == self.__fields.end():
             self._initialize_field(idno)
-        return self.__fields[idno]
+        return self.get_emulator_obj().duplicate_cell(self.__fields[idno])
 
     cpdef net_row_objects.TypeDefOrRef get_type_obj(self):
         return self.type_obj
@@ -5187,26 +5188,24 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
     cdef net_emulator.StackCell set_Item(self, net_emulator.StackCell * params, int nparams):
         if nparams != 2:
             raise net_exceptions.InvalidArgumentsException()
-        cdef net_emulator.StackCell param1 = self.get_emulator_obj().duplicate_cell(param1)
+        cdef net_emulator.StackCell param1 = params[0]
         cdef net_emulator.StackCell param2 = self.get_emulator_obj().duplicate_cell(param2)
         cdef net_emulator.StackCellWrapper param1_wrapped = self.get_emulator_obj().wrap_cell(param1)
         cdef net_emulator.StackCellWrapper param2_wrapped = self.get_emulator_obj().wrap_cell(param2)
         cdef net_emulator.StackCellWrapper old_wrapper = None
         cdef net_emulator.StackCell old_value
 
-        if param2.tag == CorElementType.ELEMENT_TYPE_STRING or param2.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-            if param2.item.ref != NULL:
-                Py_INCREF(<DotNetObject>param2.item.ref)
+        self.get_emulator_obj().ref_cell(param2)
         if param1_wrapped in self.__internal_dict:
             old_wrapper = self.__internal_dict[param1_wrapped]
             old_value = old_wrapper.get_wrapped()
             self.__internal_dict[param1_wrapped] = param2_wrapped
-            if old_value.tag == CorElementType.ELEMENT_TYPE_STRING or old_value.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-                Py_XDECREF(old_value.item.ref)
+            self.get_emulator_obj().deref_cell(old_value)
+            self.get_emulator_obj().dealloc_cell(old_value)
         else:
-            if param1.tag == CorElementType.ELEMENT_TYPE_STRING or param1.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-                if param1.item.ref != NULL:
-                    Py_INCREF(<DotNetObject>param1.item.ref)
+            param1 = self.get_emulator_obj().duplicate_cell(param1)
+            self.get_emulator_obj().ref_cell(param1)
+            self.get_emulator_obj().ref_cell(param2)
             self.__internal_dict[param1_wrapped] = param2_wrapped
         return self.get_emulator_obj().pack_blanktag()
 
@@ -5232,12 +5231,10 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         for key_wrapped, value_wrapped in self.__internal_dict.items():
             key_cell = key_wrapped.get_wrapped()
             value_cell = value_wrapped.get_wrapped()
-            if key_cell.tag == CorElementType.ELEMENT_TYPE_STRING or key_cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-                Py_XDECREF(key_cell.item.ref)
-            self.get_emulator_obj().dealloc_cell(key_cell)
-            if value_cell.tag == CorElementType.ELEMENT_TYPE_STRING or value_cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-                Py_XDECREF(value_cell.item.ref)
+            self.get_emulator_obj().deref_cell(key_cell)
+            self.get_emulator_obj().deref_cell(value_cell)
             self.get_emulator_obj().dealloc_cell(value_cell)
+            self.get_emulator_obj().dealloc_cell(key_cell)
         self.__internal_dict.clear()
 
 cdef class DotNetConcurrentDictionary(DotNetDictionary):
@@ -5903,8 +5900,7 @@ cdef class DotNetArray(DotNetObject):
         if self.__internal_array != NULL:
             for x in range(self.__size):
                 cell = self.__internal_array[x]
-                if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-                    Py_XDECREF(cell.item.ref)
+                self.get_emulator_obj().deref_cell(cell)
                 self.get_emulator_obj().dealloc_cell(cell)
             free(self.__internal_array)
             self.__internal_array = NULL
@@ -5921,13 +5917,10 @@ cdef class DotNetArray(DotNetObject):
             raise net_exceptions.InvalidArgumentsException()
         cdef net_emulator.StackCell old = self.__internal_array[index]
         cdef net_emulator.StackCell duped = self.get_emulator_obj().duplicate_cell(cell)
-        if old.tag == CorElementType.ELEMENT_TYPE_OBJECT or old.tag == CorElementType.ELEMENT_TYPE_STRING:
-            Py_XDECREF(old.item.ref)
-        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-            if cell.item.ref != NULL:
-                Py_INCREF(<DotNetObject>cell.item.ref)
+        self.get_emulator_obj().deref_cell(old)
+        self.get_emulator_obj().ref_cell(duped)
         self.get_emulator_obj().dealloc_cell(old)
-        memcpy(&self.__internal_array[index], &duped, sizeof(duped))
+        self.__internal_array[index] = duped
         return True
 
     cdef DotNetObject duplicate(self):
@@ -6777,7 +6770,7 @@ cdef class DotNetString(DotNetObject):
         return self.str_encoding
 
     cdef unsigned short get_str_item(self, int x):
-        if x >= self.str_data.size():
+        if <size_t>x >= self.str_data.size():
             raise net_exceptions.InvalidArgumentsException()
         return self.str_data[x]
 
