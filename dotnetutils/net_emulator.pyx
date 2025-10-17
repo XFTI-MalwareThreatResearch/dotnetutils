@@ -1694,7 +1694,7 @@ cdef bint handle_newarr_instruction(DotNetEmulator emu):
     cdef net_row_objects.TypeDefOrRef type_obj = emu.instr.get_argument()
     cdef StackCell amt_of_elem = emu.stack.pop()
     cdef int64_t elem_val = amt_of_elem.item.i8
-    cdef net_emu_types.DotNetArray value1 = net_emu_types.DotNetArray(emu, elem_val, type_obj)
+    cdef net_emu_types.DotNetArray value1 = net_emu_types.DotNetArray(emu, elem_val, type_obj, initialize=True)
     cdef StackCell result = emu.pack_object(value1)
     emu.stack.append(result)
     emu.dealloc_cell(amt_of_elem)
@@ -2308,6 +2308,7 @@ cdef class EmulatorAppDomain:
             if field_obj.is_static():
                 self.__static_field_mappings[field_obj.get_rid()] = x
                 cell = self.get_emulator_obj()._get_default_value(field_obj.get_field_signature().get_type_sig())
+                cell.rid = field_obj.get_rid()
                 self.__emu_obj.ref_cell(cell)
                 self.__static_fields.push_back(cell)
                 x += 1
@@ -3989,6 +3990,8 @@ cdef class DotNetEmulator:
         elif isinstance(type_sig, net_sigs.SZArraySig):
             #arrays are treated as objects currently so we can just set this to null I think.
             return self.pack_null()
+        elif isinstance(type_sig, net_sigs.ClassSig):
+            return self.pack_null()
         else:
             raise Exception('weird sig {}'.format(type(type_sig)))
         return self.pack_null()
@@ -4076,6 +4079,7 @@ cdef class DotNetEmulator:
         cdef StackCell obj
         cdef Py_ssize_t x = 0
         cdef net_table_objects.TableObject field_table = self.get_method_obj().get_dotnetpe().get_metadata_table('Field')
+        cdef net_sigs.FieldSig field_sig = None
         state_str += 'Emulator Method: {}:{} {}\n'.format(self.method_obj.get_table_name(), self.method_obj.get_rid(), hex(self.method_obj.get_token()))
         if self.method_obj.method_has_this() and self.get_amt_params() >= 1:
             state_str += 'This Object: {}\n'.format(self.cell_to_str(self.__method_params[0]))
@@ -4083,7 +4087,8 @@ cdef class DotNetEmulator:
         if field_table is not None:
             for idno in range(self.get_appdomain().get_amt_static_fields()):
                 obj = self.get_appdomain().get_static_field_idx(idno)
-                state_str += '{}: {} - {}\n'.format(hex(obj.rid), self.cell_to_str(obj), str((<net_row_objects.Field>field_table.get(obj.rid)).get_field_signature().get_type_sig()))
+                field_sig = (<net_row_objects.Field>field_table.get(obj.rid)).get_field_signature()
+                state_str += '{}: {} - {}\n'.format(hex(obj.rid), self.cell_to_str(obj), str(field_sig.get_type_sig()))
         state_str += 'Printing local vars:\n'
         for key in range(self.localvars.size()):
             value = self.localvars[key]

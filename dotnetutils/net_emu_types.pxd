@@ -36,6 +36,7 @@ cdef class DotNetObject:
     cdef net_row_objects.TypeDefOrRef type_obj
     cdef net_sigs.TypeSig type_sig_obj
     cdef bint __initialized
+    cdef bint __is_null
     cdef unordered_map[string, emu_func_type] __functions
 
     cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
@@ -44,13 +45,13 @@ cdef class DotNetObject:
 
     cdef bint has_function(self, bytes name)
 
-    cdef bint is_null(self)
-
     cdef bint is_true(self)
 
     cdef bint is_false(self)
 
     cdef void flag_null(self)
+
+    cdef bint is_null(self)
 
     cdef void __clear_fields(self)
 

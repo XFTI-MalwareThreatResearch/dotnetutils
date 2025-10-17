@@ -290,7 +290,7 @@ cdef class DotNetObject:
         if self.is_null():
             return 'null'
         if self.get_type_obj():
-            if self.fields.size() > 0:
+            if self.__fields.size() > 0:
                 str_val = object.__str__(self) + ',type_obj={}:{}, fields='.format(self.get_type_obj().get_table_name(),
                                                                                   self.get_type_obj().get_rid())
                 str_val += '{'
@@ -300,7 +300,7 @@ cdef class DotNetObject:
                 return str_val                
             return object.__str__(self) + ',type_obj={}:{}'.format(self.get_type_obj().get_table_name(), self.get_type_obj().get_rid())
         else:
-            if self.fields.size() > 0:
+            if self.__fields.size() > 0:
                 str_val = object.__str__(self) + ',fields={'
                 for kv in self.__fields:
                     str_val += str(kv.first) + ': ' + self.get_emulator_obj().cell_to_str(kv.second) + ','
