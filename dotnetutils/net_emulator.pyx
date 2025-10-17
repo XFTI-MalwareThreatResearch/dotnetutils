@@ -3059,7 +3059,11 @@ cdef class DotNetEmulator:
         raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_rem(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException() #TODO implement this
+        if one.tag == CorElementType.ELEMENT_TYPE_I4 and two.tag == one.tag:
+            return self.pack_i4(net_emu_types.rem_i4(one.item.i4, two.item.i4))
+        elif one.tag == CorElementType.ELEMENT_TYPE_I8 and one.tag == two.tag:
+            return self.pack_i8(net_emu_types.rem_i8(one.item.i8, two.item.i8))
+        raise net_exceptions.InvalidArgumentsException()
 
     cdef bint cell_is_lt(self, StackCell one, StackCell two):
         cdef StackCell ref_one

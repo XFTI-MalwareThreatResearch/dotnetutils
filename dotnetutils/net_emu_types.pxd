@@ -21,6 +21,14 @@ ctypedef net_emulator.StackCell (*static_func_type)(net_emulator.EmulatorAppDoma
 
 ctypedef DotNetObject (*newobj_func_type)(net_emulator.DotNetEmulator emulator_obj)
 
+cdef int rem_i4(int one, int two)
+
+cdef unsigned int rem_u4(unsigned int one, unsigned int two)
+
+cdef int64_t rem_i8(int64_t one, int64_t two)
+
+cdef uint64_t rem_u8(uint64_t one, uint64_t two)
+
 #NOTE: probably can remove cython sigs for all methods that arent in DotNetObject, its going to be called as a python object anyway.
 cdef class DotNetObject:
     cdef net_emulator.DotNetEmulator __emulator_obj
