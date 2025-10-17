@@ -2307,6 +2307,7 @@ cdef class EmulatorAppDomain:
             if field_obj.is_static():
                 self.__static_field_mappings[field_obj.get_rid()] = x
                 cell = self.get_emulator_obj()._get_default_value(field_obj.get_field_signature().get_type_sig())
+                self.__emu_obj.ref_cell(cell)
                 self.__static_fields.push_back(cell)
                 x += 1
                 amt_fields += 1
@@ -2435,6 +2436,8 @@ cdef class EmulatorAppDomain:
         cdef DotNetEmulator emu_obj
         cdef StackCell result_obj
         cdef StackCell name_cell = self.get_emulator_obj().pack_string(name)
+        cdef StackCell cell
+        cdef net_emu_types.DotNetAssembly result
         #first check the resolve methods, see if we get anything from there.
         for mrefdef_obj in self.__assemblyresolve_handlers:
             if isinstance(mrefdef_obj, net_row_objects.MethodDef):
@@ -2443,13 +2446,20 @@ cdef class EmulatorAppDomain:
                 arg_two.ctor(&name_cell, 1)
                 emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, caller=self)
                 emu_obj._allocate_params(2)
-                emu_obj._add_param(0, self.get_emulator_obj().pack_null())
-                emu_obj._add_param(1, self.get_emulator_obj().pack_object(arg_two))
+                cell = self.__emu_obj.pack_null()
+                emu_obj._add_param(0, cell)
+                self.__emu_obj.dealloc_cell(cell)
+                cell = self.__emu_obj.pack_object(arg_two)
+                emu_obj._add_param(1, cell)
+                self.__emu_obj.dealloc_cell(cell)
                 emu_obj.run_function()
                 result_obj = emu_obj.stack.pop()
                 if not self.get_emulator_obj().cell_is_null(result_obj) and isinstance(<net_emu_types.DotNetObject>result_obj.item.ref, net_emu_types.DotNetAssembly):
                     self.get_emulator_obj().dealloc_cell(name_cell)
-                    return <net_emu_types.DotNetAssembly>result_obj.item.ref
+                    result = <net_emu_types.DotNetAssembly>result_obj.item.ref
+                    self.__emu_obj.dealloc_cell(result_obj)
+                    return result
+                self.__emu_obj.dealloc_cell(result_obj)
         self.get_emulator_obj().dealloc_cell(name_cell)
         
         for asm_obj in self.__loaded_assemblies:
@@ -2458,6 +2468,7 @@ cdef class EmulatorAppDomain:
             self.get_emulator_obj().dealloc_cell(name_cell)
             name_cell = asm_name_obj.get_Name(NULL, 0)
             asm_name_str = <net_emu_types.DotNetString>name_cell.item.ref
+            self.__emu_obj.dealloc_cell(name_cell)
             if asm_name_str == name:
                 return asm_obj
         return None
@@ -2472,6 +2483,8 @@ cdef class EmulatorAppDomain:
         cdef DotNetEmulator emu_obj
         cdef StackCell name_cell = self.get_emulator_obj().pack_string(name)
         cdef StackCell result_obj
+        cdef StackCell cell
+        cdef net_emu_types.DotNetObject result = None
         cdef bytes rsrc_name = name.get_str_data_as_bytes().decode(name.get_str_encoding()).encode('utf-8')
         cdef bytes result = assembly.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
         if result is not None:
@@ -2489,7 +2502,12 @@ cdef class EmulatorAppDomain:
                 emu_obj.run_function()
                 result_obj = emu_obj.get_stack().pop()
                 if not self.get_emulator_obj().cell_is_null(result_obj) and isinstance(<net_emu_types.DotNetObject>result_obj.item.ref, net_emu_types.DotNetAssembly):
-                    return (<net_emu_types.DotNetAssembly>result_obj.item.ref).get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
+                    result = <net_emu_types.DotNetAssembly>result_obj.item.ref
+                    self.__emu_obj.dealloc_cell(result_obj)
+                    self.__emu_obj.dealloc_cell(name_cell)
+                    return result.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
+                self.__emu_obj.dealloc_cell(result_obj)
+        self.__emu_obj.dealloc_cell(name_cell)
         return None
 
 cdef class DotNetStack:
@@ -2694,7 +2712,20 @@ cdef class DotNetEmulator:
         return new_cell
 
     cdef StackCell duplicate_cell_object(self, StackCell cell):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef StackCell duped_cell
+        cdef net_emu_types.DotNetObject dup_object = None
+        if cell.tag == CorElementType.ELEMENT_TYPE_STRING or cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if cell.item.ref == NULL:
+                return self.pack_null()
+            dup_obj = <net_emu_types.DotNetObject>cell.item.ref
+            dup_obj = dup_obj.duplicate()
+            if not isinstance(dup_obj, net_emu_types.DotNetString):
+                duped_cell = self.pack_object(dup_obj)
+            else:
+                duped_cell = self.pack_string(dup_obj)
+        else:
+            duped_cell = self.duplicate_cell(cell)
+        return duped_cell
 
     cdef bint cell_is_not_equal(self, StackCell one, StackCell two):
         return not self.cell_is_equal(one, two)
@@ -2703,34 +2734,328 @@ cdef class DotNetEmulator:
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef StackCell cell_add(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef CorElementType tag1 = one.tag
+        cdef CorElementType tag2 = two.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag2 == tag1:
+                result.item.i4 += two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                result.tag = CorElementType.ELEMENT_TYPE_I
+                if self.__is_64bit:
+                    result.item.i8 += two.item.i8
+                else:
+                    result.item.i4 += two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag2 == tag1:
+                result.item.i8 += two.item.i8
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                result.tag = CorElementType.ELEMENT_TYPE_I
+                if self.__is_64bit:
+                    result.item.i8 += two.item.i8
+                else:
+                    result.item.i4 += two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if tag2 == tag1:
+                if self.__is_64bit:
+                    result.item.i8 += two.item.i8
+                else:
+                    result.item.i4 += two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                if self.__is_64bit:
+                    result.item.i8 += two.item.i4
+                else:
+                    result.item.i4 += two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag2 == CorElementType.ELEMENT_TYPE_R8:
+            if tag1 == tag2:
+                result.item.r8 += two.item.r8
+                return result
+        raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_divide(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
-
+        cdef CorElementType tag1 = one.tag
+        cdef CorElementType tag2 = two.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag2 == tag1:
+                result.item.i4 /= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                result.tag = CorElementType.ELEMENT_TYPE_I
+                if self.__is_64bit:
+                    result.item.i8 /= two.item.i8
+                else:
+                    result.item.i4 /= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag2 == tag1:
+                result.item.i8 /= two.item.i8
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                result.tag = CorElementType.ELEMENT_TYPE_I
+                if self.__is_64bit:
+                    result.item.i8 /= two.item.i8
+                else:
+                    result.item.i4 /= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if tag2 == tag1:
+                if self.__is_64bit:
+                    result.item.i8 /= two.item.i8
+                else:
+                    result.item.i4 /= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                if self.__is_64bit:
+                    result.item.i8 /= two.item.i4
+                else:
+                    result.item.i4 /= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag2 == CorElementType.ELEMENT_TYPE_R8:
+            if tag1 == tag2:
+                result.item.r8 /= two.item.r8
+                return result
+        raise net_exceptions.InvalidArgumentsException()
+    
     cdef StackCell cell_sub(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef CorElementType tag1 = one.tag
+        cdef CorElementType tag2 = two.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag2 == tag1:
+                result.item.i4 -= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                result.tag = CorElementType.ELEMENT_TYPE_I
+                if self.__is_64bit:
+                    result.item.i8 -= two.item.i8
+                else:
+                    result.item.i4 -= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag2 == tag1:
+                result.item.i8 -= two.item.i8
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                result.tag = CorElementType.ELEMENT_TYPE_I
+                if self.__is_64bit:
+                    result.item.i8 -= two.item.i8
+                else:
+                    result.item.i4 -= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if tag2 == tag1:
+                if self.__is_64bit:
+                    result.item.i8 -= two.item.i8
+                else:
+                    result.item.i4 -= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                if self.__is_64bit:
+                    result.item.i8 -= two.item.i4
+                else:
+                    result.item.i4 -= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag2 == CorElementType.ELEMENT_TYPE_R8:
+            if tag1 == tag2:
+                result.item.r8 -= two.item.r8
+                return result
+        raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_shl(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef CorElementType tag1 = one.tag
+        cdef CorElementType tag2 = two.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag2 == tag1:
+                result.item.i4 <<= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag2 == tag1:
+                result.item.i8 <<= two.item.i8
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if tag2 == tag1:
+                if self.__is_64bit:
+                    result.item.i8 <<= two.item.i8
+                else:
+                    result.item.i4 <<= two.item.i4
+                return result
+        raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_shr(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef CorElementType tag1 = one.tag
+        cdef CorElementType tag2 = two.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag2 == tag1:
+                result.item.i4 <<= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag2 == tag1:
+                result.item.i8 <<= two.item.i8
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if tag2 == tag1:
+                if self.__is_64bit:
+                    result.item.i8 <<= two.item.i8
+                else:
+                    result.item.i4 <<= two.item.i4
+                return result
+        raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_or(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef CorElementType tag1 = one.tag
+        cdef CorElementType tag2 = two.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag1 == tag2:
+                result.item.i4 |= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                if self.__is_64bit:
+                    result.item.i4 |= two.item.i8
+                else:
+                    result.item.i4 |= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag1 == tag2:
+                result.item.i8 |= two.item.i8
+                return result
+        elif tag1 == CorElementYpe.ELEMENT_TYPE_I:
+            if tag1 == tag2:
+                if self.__is_64bit:
+                    result.item.i8 |= two.item.i8
+                else:
+                    result.item.i4 |= two.item.i4
+                return result
+            elif tag2 == CorElemenType.ELEMENT_TYPE_I4:
+                if self.__is_64bit:
+                    result.item.i8 |= two.item.i4
+                else:
+                    result.item.i4 |= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I8:
+                if self.__is_64bit:
+                    result.item.i8 |= two.item.i8
+                    return result
+        raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_xor(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef CorElementType tag1 = one.tag
+        cdef CorElementType tag2 = two.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag1 == tag2:
+                result.item.i4 ^= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                if self.__is_64bit:
+                    result.item.i4 ^= two.item.i8
+                else:
+                    result.item.i4 ^= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag1 == tag2:
+                result.item.i8 ^= two.item.i8
+                return result
+        elif tag1 == CorElementYpe.ELEMENT_TYPE_I:
+            if tag1 == tag2:
+                if self.__is_64bit:
+                    result.item.i8 ^= two.item.i8
+                else:
+                    result.item.i4 ^= two.item.i4
+                return result
+            elif tag2 == CorElemenType.ELEMENT_TYPE_I4:
+                if self.__is_64bit:
+                    result.item.i8 ^= two.item.i4
+                else:
+                    result.item.i4 ^= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I8:
+                if self.__is_64bit:
+                    result.item.i8 ^= two.item.i8
+                    return result
+        raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_neg(self, StackCell one):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef CorElementType tag1 = one.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            result.item.i4 = -1 * result.item.i4
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            result.item.i8 = -1 * result.item.i8
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if self.__is_64bit:
+                result.item.i8 = -1 * result.item.i8
+            else:
+                result.item.i4 = -1 * result.item.i4
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_R4:
+            result.item.r8 = -1 * <float>result.item.r8
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_R8:
+            result.item.r8 = -1 * result.item.r8
+            return result
+
+        raise net_exceptions.InvalidArgumentsException()
+            
 
     cdef StackCell cell_multiply(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef CorElementType tag1 = one.tag
+        cdef CorElementType tag2 = two.tag
+        cdef StackCell result = self.duplicate_cell(one)
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag2 == tag1:
+                result.item.i4 *= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                result.tag = CorElementType.ELEMENT_TYPE_I
+                if self.__is_64bit:
+                    result.item.i8 *= two.item.i8
+                else:
+                    result.item.i4 *= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag2 == tag1:
+                result.item.i8 *= two.item.i8
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                result.tag = CorElementType.ELEMENT_TYPE_I
+                if self.__is_64bit:
+                    result.item.i8 *= two.item.i8
+                else:
+                    result.item.i4 *= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if tag2 == tag1:
+                if self.__is_64bit:
+                    result.item.i8 *= two.item.i8
+                else:
+                    result.item.i4 *= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                if self.__is_64bit:
+                    result.item.i8 *= two.item.i4
+                else:
+                    result.item.i4 *= two.item.i4
+                return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag2 == CorElementType.ELEMENT_TYPE_R8:
+            if tag1 == tag2:
+                result.item.r8 *= two.item.r8
+                return result
+        raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_rem(self, StackCell one, StackCell two):
-        raise net_exceptions.FeatureNotImplementedException()
+        raise net_exceptions.FeatureNotImplementedException() #TODO implement this
 
     cdef bint cell_is_lt(self, StackCell one, StackCell two):
         cdef StackCell ref_one
@@ -2948,7 +3273,25 @@ cdef class DotNetEmulator:
         return StackCellWrapper(self, cell.tag, cell.item.u8, <object>cell.item.ref, cell.item.byref.kind, cell.item.byref.idx, <object>cell.item.byref.owner, cell.rid, <uint64_t>cell.extra_data)
 
     cpdef void setup_method_params(self, list method_params):
-        raise net_exceptions.FeatureNotImplementedException()
+        cdef net_emu_types.DotNetObject param_val = None
+        cdef int x = 0
+        cdef StackCell unboxed
+        cdef StackCell obj
+        cdef StackCell casted
+        cdef net_sigs.MethodSig method_sig = self.method_obj.get_method_signature()
+        self._allocate_params(<int>len(method_params))
+        for param_val in method_params:
+            if isinstance(param_val, net_emu_types.DotNetString):
+                obj = self.pack_string(param_val)
+            else:
+                obj = self.pack_object(param_val)
+            unboxed = self.unbox_value(obj)
+            casted = self.cast_cell(unboxed, method_sig.get_parameters()[x])
+            self._add_param(x, casted)
+            self.dealloc_cell(obj)
+            self.dealloc_cell(unboxed)
+            self.dealloc_cell(casted)
+            x += 1
 
     cdef void _allocate_params(self, int nparams):
         if self.__method_params != NULL:
@@ -2960,7 +3303,17 @@ cdef class DotNetEmulator:
         memset(self.__method_params, 0, sizeof(StackCell) * nparams)
 
     cdef StackCell cast_cell(self, StackCell cell, net_sigs.TypeSig sig):
-        raise net_exceptions.FeatureNotImplementedException()
+        if isinstance(sig, net_sigs.CorLibTypeSig):
+            cdef CorElementType etype = sig.get_element_type()
+            cdef StackCell result = self.duplicate_cell(cell)
+            if net_utils.is_cortype_number(etype):
+                result.tag = etype
+                return result
+            elif etype == CorElementType.ELEMENT_TYPE_STRING:
+                return result
+            raise net_exceptions.InvalidArgumentsException()
+        else:
+            return self.duplicate_cell(cell)
 
     cdef void _add_param(self, int idx, StackCell cell):
         if idx >= self.__nparams:
@@ -3050,9 +3403,6 @@ cdef class DotNetEmulator:
             owner_emu = <DotNetEmulator>ref.item.byref.owner
             owner_emu.set_param(ref.item.byref.idx, value)
         raise net_exceptions.OperationNotSupportedException()
-
-    cdef void set_param(self, int idx, StackCell value):
-        raise Exception()
     
     cdef bint cell_is_true(self, StackCell cell):
         cdef net_emu_types.DotNetObject obj = None
@@ -3071,7 +3421,7 @@ cdef class DotNetEmulator:
         return cell.item.u8 != 0
 
     cdef bint cell_is_null(self, StackCell one):
-        return one.tag == CorElementType.ELEMENT_TYPE_OBJECT and one.item.ref == NULL
+        return (one.tag == CorElementType.ELEMENT_TYPE_OBJECT or one.tag == CorElementType.ELEMENT_TYPE_STRING )and one.item.ref == NULL
 
     cdef bint cell_is_equal(self, StackCell one, StackCell two):
         cdef StackCell uone = one
@@ -3205,7 +3555,6 @@ cdef class DotNetEmulator:
             return
         if cell.item.ref == NULL:
             return
-
         cdef net_emu_types.DotNetObject obj = <net_emu_types.DotNetObject>cell.item.ref
         Py_INCREF(obj)
 
@@ -3352,7 +3701,6 @@ cdef class DotNetEmulator:
         cell.item.ref = <PyObject*>obj
         return cell
 
-    #TODO: change pack_object() to pack_string() when packing strings
     cdef StackCell pack_string(self, net_emu_types.DotNetString obj):
         cdef StackCell cell
         memset(&cell, 0, sizeof(cell))
@@ -3391,7 +3739,6 @@ cdef class DotNetEmulator:
             return cell
         if cell.tag == CorElementType.ELEMENT_TYPE_END or cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             raise net_exceptions.OperationNotSupportedException()
-        cdef StackCell result
         cdef net_emu_types.DotNetObject dobj = None
         cdef net_sigs.CorLibTypeSig cor_sig = None
         cdef CorElementType cor_type
@@ -3477,7 +3824,6 @@ cdef class DotNetEmulator:
         cdef net_emu_types.DotNetObject dobj = <net_emu_types.DotNetObject> cell.item.ref
         cdef net_emu_types.DotNetNumber nobj = None
         cdef CorElementType cor_type = CorElementType.ELEMENT_TYPE_END
-        cdef StackCell result
         if not dobj.is_number():
             raise net_exceptions.OperationNotSupportedException()
         nobj = <net_emu_types.DotNetNumber>dobj
@@ -3733,6 +4079,7 @@ cdef class DotNetEmulator:
             tsig = self.disasm_obj.local_types[index]
             ref = self._get_default_value(tsig)
             Py_INCREF(tsig)
+            self.ref_cell(ref)
             self.local_var_sigs.push_back(<PyObject*>tsig)
             self.localvars.push_back(ref)
 
