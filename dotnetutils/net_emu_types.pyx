@@ -650,14 +650,14 @@ cdef class DotNetNumber(DotNetObject):
     cdef net_emulator.StackCell ToString(self, net_emulator.StackCell * params, int nparams):
         cdef object py_obj = None
         if self.__num_type == CorElementType.ELEMENT_TYPE_CHAR:
-            return self.get_emulator_obj().pack_object(DotNetString(self.get_emulator_obj(), self._ptr[:self.__amt_bytes], 'utf-16le'))
+            return self.get_emulator_obj().pack_string(DotNetString(self.get_emulator_obj(), self._ptr[:self.__amt_bytes], 'utf-16le'))
         elif self.__num_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
             if self._ptr[0]:
-                return self.get_emulator_obj().pack_object(DotNetString(self.get_emulator_obj(), 'true'.encode('utf-16le'), 'utf-16le'))
-            return self.get_emulator_obj().pack_object(DotNetString(self.get_emulator_obj(), 'false'.encode('utf-16le'), 'utf-16le'))
+                return self.get_emulator_obj().pack_string(DotNetString(self.get_emulator_obj(), 'true'.encode('utf-16le'), 'utf-16le'))
+            return self.get_emulator_obj().pack_string(DotNetString(self.get_emulator_obj(), 'false'.encode('utf-16le'), 'utf-16le'))
         else:
             py_obj = self.as_python_obj() #May want to change this up a bit later.
-            return self.get_emulator_obj().pack_object(DotNetString(self.get_emulator_obj(), str(py_obj).encode('utf-16le'), 'utf-16le'))
+            return self.get_emulator_obj().pack_string(DotNetString(self.get_emulator_obj(), str(py_obj).encode('utf-16le'), 'utf-16le'))
     
     def __str__(self):
         if self.is_float():
@@ -7409,10 +7409,13 @@ cdef class DotNetConvert(DotNetObject):
 
     @staticmethod
     cdef net_emulator.StackCell ToString(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):
-        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
+        if nparams != 1:
             raise net_exceptions.InvalidArgumentsException()
-        cdef DotNetObject obj1 = <DotNetObject>params[0].item.ref
-        return obj1.ToString(NULL, 0)
+        cdef net_emulator.StackCell boxed_value = app_domain.get_emulator_obj().box_value(params[0], None)
+        cdef DotNetObject obj1 = <DotNetObject>boxed_value.item.ref
+        cdef net_emulator.StackCell result = obj1.ToString(NULL, 0)
+        app_domain.get_emulator_obj().dealloc_cell(boxed_value)
+        return result
 
 """
 cdef class DotNetOpCode(DotNetObject):

@@ -909,9 +909,11 @@ cdef bint handle_cgt_un_instruction(DotNetEmulator emu): #Good
 cdef bint handle_clt_instruction(DotNetEmulator emu): #Good
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
+    cdef StackCell val2 = emu.convert_signed(value2)
+    cdef StackCell val1 = emu.convert_signed(value1)
     cdef StackCell result
 
-    if emu.cell_is_lt(value1, value2):
+    if emu.cell_is_lt(val1, val2):
         result = emu.pack_i4(1)
     else:
         result = emu.pack_i4(0)
@@ -919,7 +921,9 @@ cdef bint handle_clt_instruction(DotNetEmulator emu): #Good
     emu.dealloc_cell(value1)
     emu.dealloc_cell(value2)
     emu.dealloc_cell(result)
-    return False 
+    emu.dealloc_cell(val1)
+    emu.dealloc_cell(val2)
+    return False
 
 cdef bint handle_clt_un_instruction(DotNetEmulator emu): #Good
     cdef StackCell val2 = emu.stack.pop()
@@ -2703,6 +2707,27 @@ cdef class DotNetEmulator:
             else:
                 raise net_exceptions.InvalidArgumentsException()
         return new_cell
+
+    cdef StackCell convert_signed(self, StackCell cell):
+        cdef StackCell new_cell = self.duplicate_cell(cell)
+        if not net_utils.is_cortype_number(cell.tag):
+            raise net_exceptions.InvalidArgumentsException()
+        if net_utils.is_cortype_signed(cell.tag):
+            return new_cell
+        else:
+            if cell.tag == CorElementType.ELEMENT_TYPE_U:
+                new_cell.tag = CorElementType.ELEMENT_TYPE_I
+            elif cell.tag == CorElementType.ELEMENT_TYPE_U1:
+                new_cell.tag = CorElementType.ELEMENT_TYPE_I1
+            elif cell.tag == CorElementType.ELEMENT_TYPE_U2:
+                new_cell.tag = CorElementType.ELEMENT_TYPE_I2
+            elif cell.tag == CorElementType.ELEMENT_TYPE_U4:
+                new_cell.tag = CorElementType.ELEMENT_TYPE_I4
+            elif cell.tag == CorElementType.ELEMENT_TYPE_U8:
+                new_cell.tag = CorElementType.ELEMENT_TYPE_I8
+            else:
+                raise net_exceptions.InvalidArgumentsException()
+        return new_cell
                 
     cdef StackCell duplicate_cell(self, StackCell cell):
         cdef StackCell new_cell = cell
@@ -2743,36 +2768,36 @@ cdef class DotNetEmulator:
         cdef CorElementType tag1 = one.tag
         cdef CorElementType tag2 = two.tag
         cdef StackCell result = self.duplicate_cell(one)
-        if tag1 == CorElementType.ELEMENT_TYPE_I4:
-            if tag2 == tag1:
+        if tag1 == CorElementType.ELEMENT_TYPE_I4 or tag1 == CorElementType.ELEMENT_TYPE_U4:
+            if tag2 == CorElementType.ELEMENT_TYPE_I4 or tag2 == CorElementType.ELEMENT_TYPE_U4:
                 result.item.i4 += two.item.i4
                 return result
-            elif tag2 == CorElementType.ELEMENT_TYPE_I:
-                result.tag = CorElementType.ELEMENT_TYPE_I
+            elif tag2 == CorElementType.ELEMENT_TYPE_I or tag2 == CorElementType.ELEMENT_TYPE_U:
+                result.tag = tag2
                 if self.__is_64bit:
                     result.item.i8 += two.item.i8
                 else:
                     result.item.i4 += two.item.i4
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
-            if tag2 == tag1:
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8 or tag1 == CorElementType.ELEMENT_TYPE_U8:
+            if tag2 == CorElementType.ELEMENT_TYPE_I8 or tag2 == CorElementType.ELEMENT_TYPE_U8:
                 result.item.i8 += two.item.i8
                 return result
-            elif tag2 == CorElementType.ELEMENT_TYPE_I:
-                result.tag = CorElementType.ELEMENT_TYPE_I
+            elif tag2 == CorElementType.ELEMENT_TYPE_I or tag2 == CorElementType.ELEMENT_TYPE_U:
+                result.tag = CorElementType.ELEMENT_TYPE_U
                 if self.__is_64bit:
                     result.item.i8 += two.item.i8
                 else:
                     result.item.i4 += two.item.i4
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_I:
-            if tag2 == tag1:
+        elif tag1 == CorElementType.ELEMENT_TYPE_I or tag1 == CorElementType.ELEMENT_TYPE_U:
+            if tag2 == CorElementType.ELEMENT_TYPE_U or tag2 == CorElementType.ELEMENT_TYPE_I:
                 if self.__is_64bit:
                     result.item.i8 += two.item.i8
                 else:
                     result.item.i4 += two.item.i4
                 return result
-            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4 or tag2 == CorElementType.ELEMENT_TYPE_U4:
                 if self.__is_64bit:
                     result.item.i8 += two.item.i4
                 else:
@@ -2878,16 +2903,16 @@ cdef class DotNetEmulator:
         cdef CorElementType tag1 = one.tag
         cdef CorElementType tag2 = two.tag
         cdef StackCell result = self.duplicate_cell(one)
-        if tag1 == CorElementType.ELEMENT_TYPE_I4:
-            if tag2 == tag1:
+        if tag1 == CorElementType.ELEMENT_TYPE_I4 or tag1 == CorElementType.ELEMENT_TYPE_U4:
+            if tag2 == CorElementType.ELEMENT_TYPE_U4 or tag2 == CorElementType.ELEMENT_TYPE_I4:
                 result.item.i4 <<= two.item.i4
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
-            if tag2 == tag1:
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8 or tag1 == CorElementType.ELEMENT_TYPE_U8:
+            if tag2 == CorElementType.ELEMENT_TYPE_U8 or tag2 == CorElementType.ELEMENT_TYPE_I8:
                 result.item.i8 <<= two.item.i8
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_I:
-            if tag2 == tag1:
+        elif tag1 == CorElementType.ELEMENT_TYPE_I or tag1 == CorElementType.ELEMENT_TYPE_U:
+            if tag2 == CorElementType.ELEMENT_TYPE_I or tag2 == CorElementType.ELEMENT_TYPE_U:
                 if self.__is_64bit:
                     result.item.i8 <<= two.item.i8
                 else:
@@ -3961,6 +3986,9 @@ cdef class DotNetEmulator:
                 #we can just return a non null .NETObject here I think
                 result = self.pack_object(new_obj)
                 return result
+        elif isinstance(type_sig, net_sigs.SZArraySig):
+            #arrays are treated as objects currently so we can just set this to null I think.
+            return self.pack_null()
         else:
             raise Exception('weird sig {}'.format(type(type_sig)))
         return self.pack_null()

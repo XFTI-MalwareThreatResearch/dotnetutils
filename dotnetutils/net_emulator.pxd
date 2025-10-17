@@ -201,6 +201,8 @@ cdef class DotNetEmulator:
     cpdef DotNetEmulator get_caller(self)
 
     cdef StackCell convert_unsigned(self, StackCell cell)
+    
+    cdef StackCell convert_signed(self, StackCell cell)
 
     cdef StackCell get_method_param(self, int idx)
 
