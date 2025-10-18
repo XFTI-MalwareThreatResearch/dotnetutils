@@ -600,7 +600,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef int x = 0
     cdef int params_start = 0
     cdef int params_end = 1
-    cdef Py_ssize_t amt_args = 0
+    cdef int amt_args = 0
     cdef StackCell cell
     cdef StackCell * method_args = NULL
     cdef StackCell boxed_this
@@ -793,9 +793,9 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if not force_virt_type:
         amt_args = method_obj.get_num_params() 
         if method_obj.method_has_this():
-            obj_ref_cell = emu.stack.get(len(emu.stack) - amt_args - 1)
+            obj_ref_cell = emu.stack.get(<int>len(emu.stack) - amt_args - 1)
         else:
-            obj_ref_cell = emu.stack.get(len(emu.stack) - amt_args)
+            obj_ref_cell = emu.stack.get(<int>len(emu.stack) - amt_args)
         obj_ref_boxed = emu.box_value(obj_ref_cell, None)
         obj_ref = <net_emu_types.DotNetObject>obj_ref_boxed.item.ref
         obj_type = obj_ref.get_type_obj()
@@ -2310,7 +2310,7 @@ cdef class EmulatorAppDomain:
         if field_table is None:
             return
         for z in range(1, len(field_table) + 1):
-            field_obj = field_table.get(z)
+            field_obj = field_table.get(<int>z)
             if field_obj.is_static():
                 self.__static_field_mappings[field_obj.get_rid()] = x
                 cell = self.get_emulator_obj()._get_default_value(field_obj.get_field_signature().get_type_sig())
@@ -2997,7 +2997,7 @@ cdef class DotNetEmulator:
                 return result
             elif tag2 == CorElementType.ELEMENT_TYPE_I:
                 if self.__is_64bit:
-                    result.item.i4 |= two.item.i8
+                    result.item.i4 |= two.item.i4
                 else:
                     result.item.i4 |= two.item.i4
                 return result
@@ -3014,7 +3014,7 @@ cdef class DotNetEmulator:
                 return result
             elif tag2 == CorElementType.ELEMENT_TYPE_I4:
                 if self.__is_64bit:
-                    result.item.i8 |= two.item.i4
+                    result.item.i8 |= <int64_t>two.item.i4
                 else:
                     result.item.i4 |= two.item.i4
                 return result
@@ -3034,7 +3034,7 @@ cdef class DotNetEmulator:
                 return result
             elif tag2 == CorElementType.ELEMENT_TYPE_I or tag2 == CorElementType.ELEMENT_TYPE_U:
                 if self.__is_64bit:
-                    result.item.i4 ^= two.item.i8
+                    result.item.i4 ^= two.item.i4 
                 else:
                     result.item.i4 ^= two.item.i4
                 return result
@@ -3452,7 +3452,7 @@ cdef class DotNetEmulator:
         return cell.item.u8 == 0
 
     cdef void deref_cell(self, StackCell cell):
-        if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT or cell.tag != CorElementType.ELEMENT_TYPE_STRING:
+        if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT and cell.tag != CorElementType.ELEMENT_TYPE_STRING:
             return
         Py_XDECREF(cell.item.ref)
 
@@ -4168,7 +4168,7 @@ cdef class DotNetEmulator:
             state_str += '{}: {} - {}\n'.format(hex(key), self.cell_to_str(value), str(<net_sigs.TypeSig>self.local_var_sigs[key]))
         state_str += 'Printing stack:\n'
         for x in range(len(self.stack)):
-            value = self.stack.get(x)
+            value = self.stack.get(<int>x)
             state_str += '{} - {}\n'.format(self.cell_to_str(value), net_utils.get_cor_type_name(value.tag).decode())
         state_str += 'Last Instruction Execution Time (perf_counter_ns): {}\n'.format(
             self.__last_instr_end - self.__last_instr_start)

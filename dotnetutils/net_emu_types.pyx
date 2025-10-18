@@ -5195,7 +5195,7 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         if nparams != 2:
             raise net_exceptions.InvalidArgumentsException()
         cdef net_emulator.StackCell param1 = params[0]
-        cdef net_emulator.StackCell param2 = self.get_emulator_obj().duplicate_cell(param2)
+        cdef net_emulator.StackCell param2 = self.get_emulator_obj().duplicate_cell(params[1])
         cdef net_emulator.StackCellWrapper param1_wrapped = self.get_emulator_obj().wrap_cell(param1)
         cdef net_emulator.StackCellWrapper param2_wrapped = self.get_emulator_obj().wrap_cell(param2)
         cdef net_emulator.StackCellWrapper old_wrapper = None
@@ -5385,11 +5385,11 @@ cdef class DotNetStream(DotNetObject):
         if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
             raise net_exceptions.InvalidArgumentsException()
         cdef int count = params[0].item.i4
-        cdef int x = 0
+        cdef int64_t x = 0
         cdef net_emulator.StackCell cell
         cdef DotNetArray arr_obj = DotNetArray(self.get_emulator_obj(), count, self._internal.get_type_obj())
         for x in range(self._position, self._position + count):
-            cell = self._internal._get_item(x)
+            cell = self._internal._get_item(<uint64_t>x)
             arr_obj._set_item(x, cell)
             self.get_emulator_obj().dealloc_cell(cell)
 
@@ -5730,7 +5730,7 @@ cdef bint list_sort_helper(net_emulator.StackCell a, net_emulator.StackCell b): 
     temp_params[1] = comparison.get_emulator_obj().duplicate_cell(a)
     temp_params[2] = comparison.get_emulator_obj().duplicate_cell(b)
     for x in range(3):
-        emu_obj._add_param(x, temp_params[x])
+        emu_obj._add_param(<int>x, temp_params[x])
     emu_obj.run_function()
     result = emu_obj.get_stack().pop()
     for x in range(3):
@@ -6859,7 +6859,7 @@ cdef class DotNetString(DotNetObject):
         cdef size_t s = -1
         if it != self.str_data.end():
             s = distance(self.str_data.begin(), it)
-        return self.get_emulator_obj().pack_i4(s)
+        return self.get_emulator_obj().pack_i4(<int>s)
     
     cdef net_emulator.StackCell StartsWith(self, net_emulator.StackCell * params, int nparams):
         if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_STRING or params[0].item.ref == NULL:
@@ -6882,7 +6882,7 @@ cdef class DotNetString(DotNetObject):
 
     cdef net_emulator.StackCell get_Length(self, net_emulator.StackCell * params, int nparams):
         cdef size_t s = self.str_data.size()
-        return self.get_emulator_obj().pack_i4(s)
+        return self.get_emulator_obj().pack_i4(<int>s)
 
     cpdef bint is_encoding_wide(self):
         cdef str str_encoding = self.get_str_encoding()
