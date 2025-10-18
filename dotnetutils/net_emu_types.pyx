@@ -5424,8 +5424,23 @@ cdef class DotNetMemoryStream(DotNetStream):
         return self.get_emulator_obj().pack_object(self._internal)
 
     def __str__(self):
-        return str(self._internal[:50]) + ' Object: ' + DotNetObject.__str__(self) + ' position: {}'.format(
-            self._position)
+        cdef Py_ssize_t x = 0
+        cdef net_emulator.StackCell cell
+        cdef str result = '['
+        cdef net_emulator.DotNetEmulator emu = self.get_emulator_obj()
+        cdef Py_ssize_t internal_len = len(self._internal)
+        for x in range(len(self._internal)):
+            if x == 50:
+                break
+            cell = self._internal._get_item(x)
+            if x == 49 or x == (internal_len - 1):
+                result += emu.cell_to_str(cell)
+            else:
+                result += emu.cell_to_str(cell) + ', '
+            emu.dealloc_cell(cell)
+            
+
+        return result + ' Object: ' + DotNetObject.__str__(self) + ' position: {}'.format(self._position)
 
 #TODO: No ctor needed internal use?
 cdef class DotNetAssemblyName(DotNetObject):
@@ -5969,7 +5984,8 @@ cdef class DotNetArray(DotNetObject):
                     num = self.get_emulator_obj().pack_null()
                     self._set_item(index + x, num)
                 else:
-                    dno = DotNetObject(self.get_emulator_obj(), self.get_type_obj())
+                    dno = DotNetObject(self.get_emulator_obj())
+                    dno.initialize_type(self.get_type_obj())
                     num = self.get_emulator_obj().pack_object(dno)
                     self._set_item(index + x, num)
                 self.get_emulator_obj().dealloc_cell(num)

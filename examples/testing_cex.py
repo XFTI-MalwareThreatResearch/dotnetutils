@@ -11,9 +11,7 @@ start = end
 ep = dpe.get_entry_point()
 print('entry point {}'.format(ep))
 emu = net_emulator.DotNetEmulator(ep, end_method_rid=2, end_offset=0x4b)
-emu.set_print_debugging(True, True)
-#emu = net_emulator.DotNetEmulator(ep, end_method_rid=1, end_offset=0x1EA)
-#emu.set_print_debugging(False, False, print_debug_methods=[40, 41, 42, 43, 44, 45, 46])
+#emu.set_print_debugging(True, True)
 try:
     emu.run_function()
 except net_exceptions.EmulatorEndExecutionException as e:

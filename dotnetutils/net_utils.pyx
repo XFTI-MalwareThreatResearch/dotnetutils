@@ -70,6 +70,8 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
         return b'System.IntPtr'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U:
         return b'System.UIntPtr'
+    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_BYREF:
+        return b'ELEMENT_TYPE_BYREF'
     raise net_exceptions.InvalidArgumentsException(actual=element_type)
 
 cdef bint is_cortype_number(CorElementType etype):
@@ -114,4 +116,6 @@ cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name):
         return net_sigs.get_CorSig_String()
     elif type_name == b'System.Boolean':
         return net_sigs.get_CorSig_Boolean()
+    elif type_name == b'System.Byte':
+        return net_sigs.get_CorSig_Byte()
     return None
