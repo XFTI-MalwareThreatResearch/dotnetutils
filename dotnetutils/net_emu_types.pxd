@@ -32,14 +32,20 @@ cdef uint64_t rem_u8(uint64_t one, uint64_t two)
 #NOTE: probably can remove cython sigs for all methods that arent in DotNetObject, its going to be called as a python object anyway.
 cdef class DotNetObject:
     cdef net_emulator.DotNetEmulator __emulator_obj
-    cdef unordered_map[int, net_emulator.StackCell] __fields
     cdef net_row_objects.TypeDefOrRef type_obj
     cdef net_sigs.TypeSig type_sig_obj
     cdef bint __initialized
     cdef bint __is_null
     cdef unordered_map[string, emu_func_type] __functions
+    cdef net_emulator.StackCell * __fields
+    cdef int __num_fields
+    cdef int orig_type_token
 
     cdef net_emulator.StackCell ctor(self, net_emulator.StackCell * params, int nparams)
+
+    cdef int __get_num_fields(self, net_row_objects.TypeDefOrRef ref)
+
+    cdef void __init_fields(self, net_row_objects.TypeDefOrRef ref)
 
     cdef bint is_number(self)
 
@@ -67,17 +73,13 @@ cdef class DotNetObject:
 
     cpdef net_row_objects.TypeDefOrRef get_type_obj(self)
 
-    cpdef void set_type_obj(self, net_row_objects.TypeDefOrRef type_obj)
-
     cpdef net_sigs.TypeSig get_type_sig_obj(self)
 
     cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj)
 
     cdef void _initialize_field(self, int field_rid)
 
-    cpdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj)
-
-    cpdef get_type(self)
+    cdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj)
 
     cdef void duplicate_into(self, DotNetObject result)
 

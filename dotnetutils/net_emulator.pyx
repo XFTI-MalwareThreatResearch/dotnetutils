@@ -647,9 +647,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 cell = force_method_args[x]
                 new_emu._add_param(x, cell)
         if is_newobj:
-            dot_obj = net_emu_types.DotNetObject(emu)
-            dot_obj.initialize_type(method_obj.get_parent_type())
-            cell = emu.pack_object(dot_obj)
+            cell = emu.pack_slimobject(initial_method_obj.get_parent_type())
             new_emu._add_param(0, cell)
             emu.dealloc_cell(cell)
         new_emu.run_function()
@@ -1100,7 +1098,7 @@ cdef bint handle_ldarga_instruction(DotNetEmulator emu):
     cdef StackCell result
     if number >= emu.get_num_params():
         raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to ldarga a parameter that isnt in the emulator')
-    result = emu.pack_ref(5, number, emu)
+    result = emu.pack_ref(5, number, <void*><PyObject*>emu)
     emu.stack.append(result)
     emu.dealloc_cell(result)
     return False
@@ -1328,7 +1326,7 @@ cdef bint handle_ldelem_ref_instruction(DotNetEmulator emu):
     if not isinstance(result_obj, net_emu_types.DotNetArray):
         raise net_exceptions.OperationNotSupportedException()
     array_obj = <net_emu_types.DotNetObject>result_obj
-    cell = emu.pack_ref(3, <int>index_val, array_obj)
+    cell = emu.pack_ref(3, <int>index_val, <void*><PyObject*>array_obj)
     emu.stack.append(cell)
     emu.dealloc_cell(index)
     emu.dealloc_cell(arr)
@@ -1534,7 +1532,7 @@ cdef bint handle_div_instruction(DotNetEmulator emu):
 
 cdef bint handle_dup_instruction(DotNetEmulator emu):
     cdef StackCell value1 = emu.stack.pop()
-    cdef StackCell dup_obj = emu.duplicate_cell_object(value1)
+    cdef StackCell dup_obj = emu.duplicate_cell(value1)
     emu.stack.append(value1)
     emu.stack.append(dup_obj)
     emu.dealloc_cell(value1)
@@ -1749,17 +1747,19 @@ cdef bint handle_bne_un_instruction(DotNetEmulator emu):
     return handle_brfalse_instruction(emu)
 
 cdef bint handle_ldfld_instruction(DotNetEmulator emu):
-    cdef net_row_objects.Field field_obj
+    cdef net_row_objects.Field field_obj = emu.instr.get_argument()
     cdef StackCell orig_cell = emu.stack.pop()
     cdef StackCell obj_ref = emu.get_ref(orig_cell)
     cdef net_emu_types.DotNetObject dot_obj = None
+    cdef StackCell cell
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT:
         raise net_exceptions.OperationNotSupportedException()
-    dot_obj = <net_emu_types.DotNetObject>obj_ref.item.ref
-    field_obj = emu.instr.get_argument()
-    if field_obj.is_static():
-        raise net_exceptions.OperationNotSupportedException()
-    emu.stack.append(dot_obj.get_field(field_obj.get_rid()))
+    if obj_ref.is_slim_object:
+        cell = emu.get_slimobj_field(obj_ref, field_obj.get_rid())
+    else:
+        raise net_exceptions.InvalidArgumentsException()
+    emu.stack.append(cell)
+    emu.dealloc_cell(cell)
     emu.dealloc_cell(orig_cell)
     emu.dealloc_cell(obj_ref)
     return False
@@ -1842,21 +1842,10 @@ cdef bint handle_stfld_instruction(DotNetEmulator emu):
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT or field_obj.is_static():
         raise net_exceptions.OperationNotSupportedException()
     local_type_sig = field_obj.get_field_signature().get_type_sig()
-    if obj_ref.item.ref == NULL:
-        raise net_exceptions.OperationNotSupportedException()
-    dot_obj = <net_emu_types.DotNetObject>obj_ref.item.ref
-    if isinstance(local_type_sig, net_sigs.CorLibTypeSig):
-        e_type = local_type_sig.get_element_type()
-        if net_utils.is_cortype_number(e_type):
-            value1.tag = e_type
-        dot_obj.set_field(field_obj.get_rid(), value1)
+    if obj_ref.is_slim_object:
+        emu.set_slimobj_field(obj_ref, field_obj.get_rid(), value1)
     else:
-        deref_cell = emu.get_ref(value1)
-        if deref_cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
-            if deref_cell.item.ref != NULL:
-                (<net_emu_types.DotNetObject>deref_cell.item.ref).set_type_sig_obj(local_type_sig)
-        dot_obj.set_field(field_obj.get_rid(), value1)
-        emu.dealloc_cell(deref_cell)
+        raise net_exceptions.InvalidArgumentsException()
     emu.dealloc_cell(orig_cell)
     emu.dealloc_cell(obj_ref)
     emu.dealloc_cell(value1)
@@ -2089,7 +2078,7 @@ cdef bint handle_ldelema_instruction(DotNetEmulator emu):
     if arr.item.ref == NULL or not isinstance(<net_emu_types.DotNetObject>arr.item.ref, net_emu_types.DotNetArray):
         raise net_exceptions.OperationNotSupportedException()
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
-    result = emu.pack_ref(3, <int>idx, array_obj)
+    result = emu.pack_ref(3, <int>idx, <void*><PyObject*>array_obj)
     emu.stack.append(result)
     emu.dealloc_cell(result)
     emu.dealloc_cell(arr)
@@ -2123,8 +2112,9 @@ cdef bint handle_initobj_instruction(DotNetEmulator emu):
         raise net_exceptions.InvalidArgumentsException()
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT:
         raise net_exceptions.ObjectTypeException
-    dot_obj = <net_emu_types.DotNetObject>obj_ref.item.ref
-    dot_obj.initialize_type(type_obj)
+    if not obj_ref.is_slim_object:
+        dot_obj = <net_emu_types.DotNetObject>obj_ref.item.ref
+        dot_obj.initialize_type(type_obj)
     emu.set_ref(orig_cell, obj_ref)
     emu.dealloc_cell(orig_cell)
     emu.dealloc_cell(obj_ref)
@@ -2137,11 +2127,11 @@ cdef bint handle_ldflda_instruction(DotNetEmulator emu):
     cdef net_row_objects.Field field_obj = emu.instr.get_argument()
     cdef StackCell obj_ref = emu.stack.pop()
     cdef StackCell result
-    cdef net_emu_types.DotNetObject obj = None
-    if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT or field_obj.is_static() or obj_ref.item.ref == NULL:
+    cdef SlimObject* obj = NULL
+    if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT or field_obj.is_static() or not obj_ref.is_slim_object:
         raise net_exceptions.OperationNotSupportedException()
-    obj = <net_emu_types.DotNetObject>obj_ref.item.ref
-    result = emu.pack_ref(4, field_obj.get_rid(), obj)
+    obj = <SlimObject*>obj_ref.item.slim_object
+    result = emu.pack_ref(4, field_obj.get_rid(), <void*>obj)
     emu.stack.append(result)
     emu.dealloc_cell(result)
     emu.dealloc_cell(obj_ref)
@@ -2162,7 +2152,7 @@ cdef bint handle_ldlen_instruction(DotNetEmulator emu):
 
 cdef bint handle_ldloca_instruction(DotNetEmulator emu):
     cdef int index = emu.instr.get_argument()
-    cdef StackCell result = emu.pack_ref(1, index, emu)
+    cdef StackCell result = emu.pack_ref(1, index, <void*><PyObject*>emu)
     emu.stack.append(result)
     emu.dealloc_cell(result)
     return False
@@ -2174,7 +2164,7 @@ cdef bint handle_ldsflda_instruction(DotNetEmulator emu):
     if isinstance(arg_obj, net_row_objects.MemberRef):
         raise net_exceptions.FeatureNotImplementedException()
     else:
-        cell = emu.pack_ref(2, field_obj.get_rid(), emu)
+        cell = emu.pack_ref(2, field_obj.get_rid(), <void*><PyObject*>emu)
         emu.stack.append(cell)
         emu.dealloc_cell(cell)
     return False
@@ -2280,6 +2270,68 @@ cdef class EmulatorAppDomain:
         self.load_dotnetpe_as_assembly(dpe)
         self.register_static_functions()
         self.__reserve_static_fields()
+        self.__field_index_registrations = dict()
+        self.__field_counter_registrations = dict()
+        self.__create_field_mappings()
+
+    cdef void __create_field_mappings(self):
+        cdef net_table_objects.TableObject tdeftable = self.__emu_obj.get_method_obj().get_dotnetpe().get_metadata_table('TypeDef')
+        cdef net_row_objects.TypeDef tdef = None
+        cdef net_row_objects.TypeDefOrRef ptr = None
+        cdef Py_ssize_t x = 0
+        cdef list fields_list = None
+        cdef int counter = 0
+        cdef net_row_objects.Field field
+        if tdeftable is None:
+            return
+
+        for x in range(1, len(tdeftable) + 1):
+            tdef = tdeftable.get(x)
+            ptr = tdef
+            counter = 0
+            if tdef.get_token() not in self.__field_index_registrations:
+                self.__field_index_registrations[tdef.get_token()] = dict()
+            if tdef.get_token() not in self.__field_counter_registrations:
+                self.__field_counter_registrations[tdef.get_token()] = dict()
+            while ptr is not None:
+                if isinstance(ptr, net_row_objects.TypeRef):
+                    break
+                if isinstance(ptr, net_row_objects.TypeSpec):
+                    ptr = (<net_row_objects.TypeSpec>ptr).get_type()
+                    continue
+                if isinstance(ptr, net_row_objects.TypeDef):
+                    fields_list = ptr.get_column('FieldList').get_formatted_value()
+                    if fields_list is not None:
+                        for field in fields_list:
+                            if field.is_static():
+                                continue
+                            self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
+                            self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
+                            counter += 1
+                    ptr = ptr.get_superclass()
+
+    cdef int get_field_rid(self, int field_index, int type_token):
+        if type_token == 0:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef dict mapping = None
+        cdef int result = 0
+        if type_token not in self.__field_counter_registrations:
+            raise Exception('Type token not in reg{}'.format(hex(type_token)))
+        mapping = self.__field_counter_registrations[type_token]
+        if field_index not in mapping:
+            raise Exception('mapping not have index {} {} {}'.format(hex(type_token), field_index, mapping))
+        
+        result = mapping[field_index]
+        return result
+
+    cdef int get_field_index(self, int field_rid, int type_token):
+        if type_token == 0:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef dict mapping = self.__field_index_registrations[type_token]
+        if field_rid not in mapping:
+            raise Exception('type token {} {}'.format(hex(type_token), mapping))
+        cdef int result = mapping[field_rid]
+        return result
 
     cdef int get_amt_static_fields(self):
         return <int>self.__static_fields.size()
@@ -2742,22 +2794,55 @@ cdef class DotNetEmulator:
         return new_cell
                 
     cdef StackCell duplicate_cell(self, StackCell cell):
-        cdef StackCell new_cell = cell
+        cdef StackCell new_cell
+        cdef int x = 0
+        cdef SlimObject * slim = NULL
+        memcpy(&new_cell, &cell, sizeof(new_cell))
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            return self.pack_blanktag()
         if new_cell.emulator_obj != NULL:
             Py_INCREF(<DotNetEmulator>new_cell.emulator_obj)
         else:
             raise net_exceptions.EmulatorExecutionException(self, 'cell of type {} doesnt have emu obj'.format(net_utils.get_cor_type_name(cell.tag)))
         if new_cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
-            Py_INCREF(<object>new_cell.item.byref.owner)
+            if new_cell.item.byref.kind != 4:
+                Py_INCREF(<object>new_cell.item.byref.owner)
+            else:
+                slim = <SlimObject*>new_cell.item.byref.owner
+                slim.refs += 1
         elif new_cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or new_cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-            if new_cell.item.ref != NULL:
-                Py_INCREF(<net_emu_types.DotNetObject>new_cell.item.ref)
+            if new_cell.is_slim_object:
+                new_cell.item.slim_object.refs += 1
+            else:
+                if new_cell.item.ref != NULL:
+                    Py_INCREF(<net_emu_types.DotNetObject>new_cell.item.ref)
         return new_cell
 
     cdef StackCell duplicate_cell_object(self, StackCell cell):
         cdef StackCell duped_cell
         cdef net_emu_types.DotNetObject dup_object = None
+        cdef int x = 0
+        memset(&duped_cell, 0, sizeof(duped_cell))
         if cell.tag == CorElementType.ELEMENT_TYPE_STRING or cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if cell.is_slim_object:
+                duped_cell.is_slim_object = True
+                duped_cell.tag = CorElementType.ELEMENT_TYPE_OBJECT
+                duped_cell.item.slim_object = <SlimObject*>malloc(sizeof(SlimObject))
+                duped_cell.rid = cell.rid
+                if duped_cell.item.slim_object == NULL:
+                    raise net_exceptions.EmulatorExecutionException(self, 'memory error')
+                memset(duped_cell.item.slim_object, 0, sizeof(SlimObject))
+                duped_cell.item.slim_object.refs = 1
+                duped_cell.item.slim_object.num_fields = cell.item.slim_object.num_fields
+                duped_cell.item.slim_object.type_token = cell.item.slim_object.type_token
+                if cell.item.slim_object.num_fields > 0:
+                    duped_cell.item.slim_object.fields = <StackCell*>malloc(sizeof(StackCell) * cell.item.slim_object.num_fields)
+                    if duped_cell.item.slim_object.fields == NULL:
+                        raise net_exceptions.EmulatorExecutionException(self, 'memory error')
+                    memset(duped_cell.item.slim_object.fields, 0, sizeof(StackCell) * cell.item.slim_object.num_fields)
+                    for x in range(duped_cell.item.slim_object.num_fields):
+                        duped_cell.item.slim_object.fields[x] = self.duplicate_cell_object(cell.item.slim_object.fields[x])
+                        self.ref_cell(duped_cell.item.slim_object.fields[x])
             if cell.item.ref == NULL:
                 return self.pack_null()
             dup_obj = <net_emu_types.DotNetObject>cell.item.ref
@@ -3415,8 +3500,6 @@ cdef class DotNetEmulator:
                 casted_val = self.duplicate_cell(cell)
             else:
                 casted_val = self.cast_cell(cell, msig_obj.get_parameters()[idx])
-        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT and casted_val.tag != CorElementType.ELEMENT_TYPE_OBJECT and not isinstance(<net_emu_types.DotNetObject>cell.item.ref, net_emu_types.DotNetNumber):
-            raise Exception()
         self.ref_cell(casted_val)
         self.deref_cell(old)
         self.dealloc_cell(old)
@@ -3445,6 +3528,8 @@ cdef class DotNetEmulator:
             self.dealloc_cell(ref)
             return result
         if cell.tag == CorElementType.ELEMENT_TYPE_STRING or cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if cell.is_slim_object:
+                raise net_exceptions.FeatureNotImplementedException()
             if cell.item.ref == NULL:
                 return True
             obj = <net_emu_types.DotNetObject>cell.item.ref
@@ -3454,6 +3539,11 @@ cdef class DotNetEmulator:
     cdef void deref_cell(self, StackCell cell):
         if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT and cell.tag != CorElementType.ELEMENT_TYPE_STRING:
             return
+        if cell.is_slim_object:
+            if cell.item.slim_object == NULL or cell.item.slim_object.refs == 0:
+                raise net_exceptions.InvalidArgumentsException()
+            cell.item.slim_object.refs -= 1
+            return
         Py_XDECREF(cell.item.ref)
 
     cdef StackCell get_ref(self, StackCell cell):
@@ -3461,6 +3551,8 @@ cdef class DotNetEmulator:
             return self.duplicate_cell(cell)
         cdef DotNetEmulator owner_emu = None
         cdef net_emu_types.DotNetObject owner_obj = None
+        cdef SlimObject * slim = NULL
+        cdef StackCell cell1
         if cell.item.byref.kind == 1: #local variable
             owner_emu = <DotNetEmulator>cell.item.byref.owner
             return owner_emu.get_local(cell.item.byref.idx)
@@ -3471,8 +3563,12 @@ cdef class DotNetEmulator:
             owner_obj = <net_emu_types.DotNetObject>cell.item.byref.owner
             return (<net_emu_types.DotNetArray>owner_obj)._get_item(cell.item.byref.idx)
         elif cell.item.byref.kind == 4: #field
-            owner_obj = <net_emu_types.DotNetObject>cell.item.byref.owner
-            return owner_obj.get_field(cell.item.byref.idx)
+            slim = <SlimObject*>cell.item.byref.owner
+            memset(&cell1, 0x0, sizeof(cell))
+            cell1.tag = CorElementType.ELEMENT_TYPE_OBJECT
+            cell1.is_slim_object = True
+            cell1.item.slim_object = slim
+            return self.get_slimobj_field(cell1, cell.item.byref.idx)
         elif cell.item.byref.kind == 5: #argument
             owner_emu = <DotNetEmulator>cell.item.byref.owner
             return self.duplicate_cell(owner_emu.__method_params[cell.item.byref.idx])
@@ -3482,7 +3578,9 @@ cdef class DotNetEmulator:
         if ref.tag != CorElementType.ELEMENT_TYPE_BYREF:
             raise net_exceptions.OperationNotSupportedException()
         cdef DotNetEmulator owner_emu = None
+        cdef SlimObject * owner_slim = NULL
         cdef net_emu_types.DotNetObject owner_obj = None
+        cdef StackCell cell
         if ref.item.byref.kind == 1: #local variable
             owner_emu = <DotNetEmulator>ref.item.byref.owner
             owner_emu.set_local(ref.item.byref.idx, value)
@@ -3493,8 +3591,16 @@ cdef class DotNetEmulator:
             owner_obj = <net_emu_types.DotNetObject>ref.item.byref.owner
             (<net_emu_types.DotNetArray>owner_obj)._set_item(ref.item.byref.idx, value)
         elif ref.item.byref.kind == 4: #field
-            owner_obj = <net_emu_types.DotNetObject>ref.item.byref.owner
-            owner_obj.set_field(ref.item.byref.idx, value)
+            if ref.is_slim_object:
+                raise net_exceptions.FeatureNotImplementedException() #TODO implement slim objects for references.
+            else:
+                memset(&cell, 0x0, sizeof(cell))
+                cell.tag = CorElementType.ELEMENT_TYPE_OBJECT
+                cell.item.ref = NULL
+                cell.is_slim_object = True
+                owner_slim = <SlimObject*>ref.item.byref.owner
+                cell.item.slim_object = owner_slim
+                self.set_slimobj_field(cell, ref.item.byref.idx, value)
         elif ref.item.byref.kind == 5: #argument
             owner_emu = <DotNetEmulator>ref.item.byref.owner
             owner_emu._add_param(ref.item.byref.idx, value)
@@ -3511,6 +3617,8 @@ cdef class DotNetEmulator:
             self.dealloc_cell(ref)
             return result
         if cell.tag == CorElementType.ELEMENT_TYPE_STRING or cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if cell.is_slim_object:
+                raise net_exceptions.FeatureNotImplementedException()
             if cell.item.ref == NULL:
                 return False
             obj = <net_emu_types.DotNetObject>cell.item.ref
@@ -3518,7 +3626,7 @@ cdef class DotNetEmulator:
         return cell.item.u8 != 0
 
     cdef bint cell_is_null(self, StackCell one):
-        return (one.tag == CorElementType.ELEMENT_TYPE_OBJECT or one.tag == CorElementType.ELEMENT_TYPE_STRING )and one.item.ref == NULL
+        return (one.tag == CorElementType.ELEMENT_TYPE_OBJECT or one.tag == CorElementType.ELEMENT_TYPE_STRING ) and not one.is_slim_object and one.item.ref == NULL
 
     cdef bint cell_is_equal(self, StackCell one, StackCell two):
         cdef StackCell uone = one
@@ -3551,6 +3659,8 @@ cdef class DotNetEmulator:
             obj2 = <net_emu_types.DotNetObject> utwo.item.ref
             return obj1.equals(obj2)
         elif type_one == CorElementType.ELEMENT_TYPE_OBJECT or type_two == CorElementType.ELEMENT_TYPE_OBJECT:
+            if uone.is_slim_object or utwo.is_slim_object:
+                raise net_exceptions.FeatureNotImplementedException()
             if type_one != type_two:
                 return False
             if self.cell_is_null(uone) or self.cell_is_null(utwo):
@@ -3584,13 +3694,33 @@ cdef class DotNetEmulator:
             raise net_exceptions.FeatureNotImplementedException()
 
     cdef void dealloc_cell(self, StackCell cell):
+        cdef int x
+        cdef SlimObject * slim = NULL
         Py_XDECREF(cell.emulator_obj)
         cell.emulator_obj = NULL
         if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if cell.is_slim_object:
+                if cell.item.slim_object == NULL:
+                    raise net_exceptions.InvalidArgumentsException()
+                cell.item.slim_object.refs -= 1
+                if cell.item.slim_object.refs == 0:
+                    for x in range(cell.item.slim_object.num_fields):
+                        self.deref_cell(cell.item.slim_object.fields[x])
+                        self.dealloc_cell(cell.item.slim_object.fields[x])
+                    free(cell.item.slim_object.fields)
+                    cell.item.slim_object.fields = NULL
+                    cell.item.slim_object.num_fields = 0
+                    free(cell.item.slim_object)
+                    cell.item.slim_object = NULL
+                return
             Py_XDECREF(cell.item.ref)
             cell.item.ref = NULL
         elif cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
-            Py_XDECREF(cell.item.byref.owner)
+            if cell.item.byref.kind == 4:
+                slim = <SlimObject*>cell.item.byref.owner
+                slim.refs -= 1
+            else:
+                Py_XDECREF(<PyObject*>cell.item.byref.owner)
             cell.item.byref.owner = NULL
         #Ints and such dont need to have anything done
 
@@ -3600,6 +3730,8 @@ cdef class DotNetEmulator:
         cdef StackCell deref = self.get_ref(cell) #TODO: make deref return a copy
         cdef net_emu_types.DotNetObject dobj = None
         if deref.tag == CorElementType.ELEMENT_TYPE_OBJECT or deref.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if deref.is_slim_object:
+                raise net_exceptions.FeatureNotImplementedException()
             if deref.item.ref == NULL:
                 self.dealloc_cell(deref)
                 return 0
@@ -3618,6 +3750,8 @@ cdef class DotNetEmulator:
         cdef StackCell deref = self.get_ref(cell)
         cdef char * ptr = NULL
         if deref.tag == CorElementType.ELEMENT_TYPE_STRING or deref.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+            if deref.is_slim_object:
+                raise net_exceptions.FeatureNotImplementedException()
             if deref.item.ref == NULL:
                 self.dealloc_cell(deref)
                 return bytes()
@@ -3650,6 +3784,9 @@ cdef class DotNetEmulator:
     cdef void ref_cell(self, StackCell cell):
         if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT and cell.tag != CorElementType.ELEMENT_TYPE_STRING:
             return
+        if cell.is_slim_object:
+            cell.item.slim_object.refs += 1
+            return
         if cell.item.ref == NULL:
             return
         cdef net_emu_types.DotNetObject obj = <net_emu_types.DotNetObject>cell.item.ref
@@ -3658,6 +3795,54 @@ cdef class DotNetEmulator:
     cdef StackCell pack_blanktag(self):
         cdef StackCell cell
         memset(&cell, 0, sizeof(cell))
+        return cell
+
+    cdef int _get_num_fields(self, net_row_objects.TypeDefOrRef ref):
+        cdef net_row_objects.TypeDefOrRef ptr = ref
+        cdef int result = 0
+        cdef list fields = None
+        cdef int x = 0
+        cdef net_row_objects.Field fobj = None
+        while ptr is not None:
+            if isinstance(ptr, net_row_objects.TypeRef):
+                return result
+
+            if isinstance(ptr, net_row_objects.TypeSpec):
+                ptr = (<net_row_objects.TypeSpec>ptr).get_type()
+                continue
+            
+            if isinstance(ptr, net_row_objects.TypeDef):
+                fields = ptr.get_column('FieldList').get_formatted_value()
+                for x in range(<int>len(fields)):
+                    fobj = fields[x]
+                    if not fobj.is_static():
+                        result += 1      
+                        
+                ptr = ptr.get_superclass()
+        return result
+
+    cdef StackCell pack_slimobject(self, net_row_objects.TypeDef ref):
+        if ref is None:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell cell
+        cdef int flags = 0
+        memset(&cell, 0, sizeof(cell))
+        cell.emulator_obj = <PyObject*>self
+        Py_INCREF(self)
+        cell.tag = CorElementType.ELEMENT_TYPE_OBJECT
+        cell.is_slim_object = True
+        cell.item.slim_object = <SlimObject*>malloc(sizeof(SlimObject))
+        if cell.item.slim_object == NULL:
+            raise net_exceptions.EmulatorExecutionException(self, 'memory error')
+        memset(cell.item.slim_object, 0, sizeof(SlimObject))
+        cell.item.slim_object.num_fields = self._get_num_fields(ref)
+        cell.item.slim_object.refs = 1
+        if cell.item.slim_object.num_fields > 0:
+            cell.item.slim_object.fields = <StackCell *>malloc(sizeof(StackCell) * cell.item.slim_object.num_fields)
+            if cell.item.slim_object.fields == NULL:
+                raise net_exceptions.EmulatorExecutionException(self, 'memory error')
+            memset(cell.item.slim_object.fields, 0, sizeof(StackCell) * cell.item.slim_object.num_fields)
+        cell.item.slim_object.type_token = ref.get_token()
         return cell
 
     cdef StackCell pack_i4(self, int i):
@@ -3808,17 +3993,22 @@ cdef class DotNetEmulator:
         cell.item.ref = <PyObject*>obj
         return cell
 
-    cdef StackCell pack_ref(self, int kind, int idx, object owner):
+    cdef StackCell pack_ref(self, int kind, int idx, void * owner):
         cdef StackCell cell
+        cdef SlimObject * slim = NULL
         memset(&cell, 0, sizeof(cell))
         cell.tag = CorElementType.ELEMENT_TYPE_BYREF
         cell.item.byref.kind = kind
         cell.item.byref.idx = idx
         cell.emulator_obj = <PyObject*>self
         Py_INCREF(self)
-        if owner is not None:
-            cell.item.byref.owner = <PyObject*>owner
-            Py_INCREF(owner)
+        if (kind == 4 and owner != NULL) or (owner != NULL and (<object>owner) is not None):
+            cell.item.byref.owner = owner
+            if kind == 4:
+                slim = <SlimObject*>owner
+                slim.refs += 1
+            else:
+                Py_INCREF(<object>owner)
         else:
             cell.item.byref.owner = NULL
         return cell
@@ -3833,8 +4023,10 @@ cdef class DotNetEmulator:
 
     cdef StackCell box_value(self, StackCell cell, net_sigs.TypeSig type_sig):
         if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-            return cell
+            return self.duplicate_cell(cell)
         if cell.tag == CorElementType.ELEMENT_TYPE_END or cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        if cell.is_slim_object:
             raise net_exceptions.OperationNotSupportedException()
         cdef net_emu_types.DotNetObject dobj = None
         cdef net_emu_types.DotNetNumber dnum = None
@@ -3915,7 +4107,7 @@ cdef class DotNetEmulator:
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef StackCell unbox_value(self, StackCell cell):
-        if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
+        if cell.tag == CorElementType.ELEMENT_TYPE_BYREF or cell.is_slim_object:
             raise net_exceptions.OperationNotSupportedException()
         if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT:
             return self.duplicate_cell(cell)
@@ -4012,6 +4204,8 @@ cdef class DotNetEmulator:
         cdef StackCell result
         cdef net_emu_types.DotNetString string = None
         cdef net_emu_types.DotNetObject new_obj = None
+        cdef net_row_objects.TypeDefOrRef origclass = None
+        cdef net_row_objects.TypeDefOrRef superclass = None
         memset(&result, 0, sizeof(result))
         if isinstance(type_sig, net_sigs.CorLibTypeSig):
             element_type = type_sig.get_element_type()
@@ -4031,21 +4225,13 @@ cdef class DotNetEmulator:
             # handle System.Enums as a different case
             origclass = type_sig.get_type()
             superclass = origclass
-            if superclass.get_full_name() == b'System.Enum':
+            if origclass.is_enum():
                 result = self.pack_i4(0)
                 return result
             else:
-                superclass = superclass.get_superclass()
-                if superclass is not None: # if superclass is NULL, should DotNetNull or DotNetObject be returned?
-                    if superclass.get_full_name() == b'System.Enum':
-                        result = self.pack_i4(0)
-                        return result
-                #so for GCHandle even though its a valuetype it cant be instantiated. Only from GCHandle.Alloc().
-                new_obj = net_emu_types.DotNetObject(self)
-                new_obj.initialize_type(origclass)
-                #we can just return a non null .NETObject here I think
-                result = self.pack_object(new_obj)
-                return result
+                if isinstance(origclass, net_row_objects.TypeRef):
+                    return self.pack_null()
+                return self.pack_slimobject(origclass)
         elif isinstance(type_sig, net_sigs.SZArraySig):
             #arrays are treated as objects currently so we can just set this to null I think.
             return self.pack_null()
@@ -4106,6 +4292,54 @@ cdef class DotNetEmulator:
         new_emu.running_thread = self.running_thread
         return new_emu
 
+    cdef void set_slimobj_field(self, StackCell slim_obj, int idno, StackCell val):
+        if not slim_obj.is_slim_object:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef int field_index = self.get_appdomain().get_field_index(idno, slim_obj.item.slim_object.type_token)
+        cdef StackCell * fields = slim_obj.item.slim_object.fields
+        cdef StackCell old = fields[field_index]
+        cdef net_table_objects.TableObject field_table = self.get_method_obj().get_dotnetpe().get_metadata_table('Field')
+        cdef net_row_objects.Field field = field_table.get(idno)
+        cdef net_sigs.FieldSig fsig = field.get_field_signature()
+        cdef StackCell new = self.cast_cell(val, fsig.get_type_sig())
+        self.ref_cell(new)
+        self.deref_cell(old)
+        self.dealloc_cell(old)
+        fields[field_index] = new
+
+    cdef StackCell get_slimobj_field(self, StackCell slim_obj, int idno):
+        if not slim_obj.is_slim_object:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef int instr_index = self.get_appdomain().get_field_index(idno, slim_obj.item.slim_object.type_token)
+        cdef StackCell * fields = slim_obj.item.slim_object.fields
+        cdef StackCell cell = fields[instr_index]
+        cdef net_table_objects.TableObject field_table = self.get_method_obj().get_dotnetpe().get_metadata_table('Field')
+        cdef net_row_objects.Field field = field_table.get(idno)
+        cdef net_sigs.FieldSig fsig = field.get_field_signature()
+        if slim_obj.item.slim_object.fields == NULL:
+            raise net_exceptions.OperationNotSupportedException()
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            cell = self._get_default_value(fsig.get_type_sig())
+            self.set_slimobj_field(slim_obj, idno, cell)
+            self.dealloc_cell(cell)
+        return self.duplicate_cell(fields[instr_index])
+
+    cdef str slimobj_to_str(self, StackCell cell):
+        if not cell.is_slim_object:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef str str_val
+        cdef StackCell * fields = cell.item.slim_object.fields
+        cdef int num_fields = cell.item.slim_object.num_fields
+        if num_fields > 0:
+            str_val = 'SlimDotNetObject,type_obj={}, fields='.format(hex(cell.item.slim_object.type_token))
+            str_val += '{'
+            for x in range(num_fields):
+                rid = self.get_appdomain().get_field_rid(x, cell.item.slim_object.type_token)
+                str_val += str(rid) + ': ' + self.cell_to_str(fields[x]) + ','
+            str_val = str_val.rstrip(',') + '}'
+            return str_val                
+        return 'SlimDotNetObject,type_obj={}'.format(hex(cell.item.slim_object.type_token))
+
     cdef str cell_to_str(self, StackCell cell):
         cdef uint64_t * ptr = NULL
         cdef uint64_t ival = 0
@@ -4118,13 +4352,15 @@ cdef class DotNetEmulator:
             self.dealloc_cell(obj)
             return 'Reference: ' + result
         elif cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
+            if cell.is_slim_object:
+                return self.slimobj_to_str(cell)
             if cell.item.ref == NULL:
                 return 'null'
             dobj = <net_emu_types.DotNetObject>cell.item.ref
             return str(dobj)
         else:
             if cell.tag == CorElementType.ELEMENT_TYPE_END:
-                raise net_exceptions.InvalidArgumentsException()
+                return 'Blank Cell'
             ptr = <uint64_t*>&cell.item
             ival = ptr[0]
             return hex(ival)
@@ -4170,6 +4406,7 @@ cdef class DotNetEmulator:
         for x in range(len(self.stack)):
             value = self.stack.get(<int>x)
             state_str += '{} - {}\n'.format(self.cell_to_str(value), net_utils.get_cor_type_name(value.tag).decode())
+            self.dealloc_cell(value)
         state_str += 'Last Instruction Execution Time (perf_counter_ns): {}\n'.format(
             self.__last_instr_end - self.__last_instr_start)
         state_str += 'Current EIP: {} Current Offset: {}\n'.format(
@@ -4194,7 +4431,7 @@ cdef class DotNetEmulator:
                                                                              instr.get_argument()), 1)
         else:
             self.print_string(
-                'Emulator={}:{}, Offset={}, Instr={} {}'.format(self.method_obj.get_table_name(), self.method_obj.get_rid(),
+                'Emulator={}:{}:{}, Offset={}, Instr={} {}'.format(self.method_obj.get_table_name(), hex(self.method_obj.get_token()), self.method_obj.get_rid(),
                                                                 hex(self.current_offset), instr.get_name(),
                                                                 instr.get_argument()), 1)
 
@@ -4331,6 +4568,7 @@ cdef class DotNetEmulator:
 
         if not self.already_init:
             self.get_appdomain().set_calling_dotnetpe(None)
+        self.stack.clear()
         self.cleanup()
 
     cdef void cleanup(self):
@@ -4345,9 +4583,6 @@ cdef class DotNetEmulator:
         self.local_var_sigs.clear()
         self.localvars.clear()
         if self.__method_params != NULL:
-            for key in range(<unsigned int>self.__nparams):
-                obj = self.__method_params[key]
-                self.dealloc_cell(obj)
             for key in range(<unsigned int>self.get_num_params()):
                 self.deref_cell(self.__method_params[key])
                 self.dealloc_cell(self.__method_params[key])

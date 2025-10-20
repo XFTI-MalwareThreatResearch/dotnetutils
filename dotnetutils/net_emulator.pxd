@@ -20,7 +20,13 @@ cdef void __init_handlers()
 cdef struct ByRefItem:
     int kind
     int idx
-    PyObject * owner
+    void * owner
+
+cdef struct SlimObject:
+    int type_token
+    StackCell * fields
+    int num_fields
+    int refs
 
 cdef union StackCellItem:
     int32_t i4
@@ -31,6 +37,13 @@ cdef union StackCellItem:
     bint b
     PyObject * ref
     ByRefItem byref
+    void * vt_data
+    PyObject * vt_layout
+    SlimObject * slim_object
+
+cdef struct SlimStackCell:
+    unsigned char tag
+    StackCellItem item
 
 cdef struct StackCell:
     CorElementType tag
@@ -38,6 +51,7 @@ cdef struct StackCell:
     StackCellItem item
     PyObject * emulator_obj
     void * extra_data
+    bint is_slim_object
 
 cdef class StackCellWrapper:
     cdef uint64_t u8_holder
@@ -70,9 +84,17 @@ cdef class EmulatorAppDomain:
     cdef unordered_map[int, static_func_type] __static_functions
     cdef unordered_map[int, newobj_func_type] __newobj_ctors
     cdef unordered_map[int, int] __static_field_mappings
+    cdef dict __field_index_registrations
+    cdef dict __field_counter_registrations
     cdef vector[StackCell] __static_fields
 
     cdef static_func_type get_static_func(self, int token)
+
+    cdef int get_field_index(self, int field_rid, int type_token)
+
+    cdef int get_field_rid(self, int field_counter, int type_token)
+
+    cdef void __create_field_mappings(self)
 
     cdef newobj_func_type get_ctor_func(self, int token)
 
@@ -190,11 +212,21 @@ cdef class DotNetEmulator:
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
 
+    cdef str slimobj_to_str(self, StackCell cell)
+
+    cdef void set_slimobj_field(self, StackCell slim_obj, int idno, StackCell val)
+
+    cdef void set_slimobj_field(self, StackCell slim_obj, int idno, StackCell val)
+
+    cdef StackCell get_slimobj_field(self, StackCell slim_obj, int idno)
+
     cdef StackCell cast_cell(self, StackCell cell, net_sigs.TypeSig sig)
 
     cpdef void setup_method_params(self, list method_params)
 
     cdef int get_num_params(self)
+
+    cdef int _get_num_fields(self, net_row_objects.TypeDefOrRef ref)
 
     cpdef net_row_objects.MethodDefOrRef get_method_obj(self)
 
@@ -276,6 +308,8 @@ cdef class DotNetEmulator:
 
     cdef str cell_to_str(self, StackCell cell)
 
+    cdef StackCell pack_slimobject(self, net_row_objects.TypeDef ref)
+
     cdef StackCell pack_blanktag(self)
 
     cdef StackCell pack_i4(self, int i)
@@ -310,7 +344,7 @@ cdef class DotNetEmulator:
 
     cdef StackCell pack_string(self, net_emu_types.DotNetString obj)
 
-    cdef StackCell pack_ref(self, int kind, int idx, object owner)
+    cdef StackCell pack_ref(self, int kind, int idx, void* owner)
 
     cdef StackCell pack_null(self)
 

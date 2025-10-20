@@ -126,6 +126,8 @@ cdef class TypeDefOrRef(RowObject):
 
     cpdef bint is_valuetype(self)
 
+    cpdef bint is_enum(self)
+
     cdef void process(self)
 
     cpdef list get_methods(self)
@@ -178,6 +180,8 @@ cdef class TypeDef(TypeDefOrRef):
     cpdef list get_generic_params(self)
 
     cpdef bint is_valuetype(self)
+
+    cpdef bint is_enum(self)
 
     cdef void process(self)
 

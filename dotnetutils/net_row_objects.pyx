@@ -483,6 +483,9 @@ cdef class TypeDefOrRef(RowObject):
     cpdef bint is_valuetype(self):
         return False
 
+    cpdef bint is_enum(self):
+        return False
+
     cdef void process(self):
         pass
 
@@ -628,13 +631,30 @@ cdef class TypeDef(TypeDefOrRef):
         """
         Determines whether or not the class is a System.ValueType.
         """
-        cdef bytes extends_name
-        if not self.__superclass and self.__has_superclass:
-            self.get_superclass()  # make sure the superclass field is populated.
-        if self.__superclass and not self.__is_valuetype:
-            extends_name = self.__superclass.get_full_name()
-            self.__is_valuetype = extends_name == b'System.ValueType'
-        return self.__is_valuetype
+        if not self.__has_superclass:
+            return False
+        cdef TypeDefOrRef ptr = self.get_superclass()
+        while ptr is not None:
+            if isinstance(ptr, TypeDef):
+                ptr = ptr.get_superclass()
+            elif isinstance(ptr, TypeRef):
+                return ptr.is_valuetype()
+            elif isinstance(ptr, TypeSpec):
+                ptr = ptr.get_type()
+        return False
+
+    cpdef bint is_enum(self):
+        if not self.__has_superclass:
+            return False
+        cdef TypeDefOrRef ptr = self.get_superclass()
+        while ptr is not None:
+            if isinstance(ptr, TypeDef):
+                ptr = ptr.get_superclass()
+            elif isinstance(ptr, TypeRef):
+                return ptr.is_enum()
+            elif isinstance(ptr, TypeSpec):
+                ptr = ptr.get_type()
+        return False
 
     cdef void process(self):
         cdef int field_start_index
@@ -906,6 +926,12 @@ cdef class TypeRef(TypeDefOrRef):
         self.__cctor_method = None
         self.__full_name = None
         self._memberrefs = list()
+
+    cpdef bint is_enum(self):
+        return self.get_full_name() == b'System.Enum'
+
+    cpdef bint is_valuetype(self):
+        return self.get_full_name() == b'System.ValueType'
 
     cpdef list get_member_refs(self):
         """
