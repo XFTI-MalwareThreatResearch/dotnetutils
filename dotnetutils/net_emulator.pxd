@@ -29,10 +29,15 @@ cdef struct SlimObject:
     int refs
 
 cdef union StackCellItem:
+    char i1
+    short i2
     int32_t i4
+    unsigned char u1
+    unsigned short u2
     uint32_t u4
     int64_t i8
     uint64_t u8
+    float r4
     double r8
     bint b
     PyObject * ref
@@ -41,17 +46,19 @@ cdef union StackCellItem:
     PyObject * vt_layout
     SlimObject * slim_object
 
+#For instances where the extra information is not needed.
 cdef struct SlimStackCell:
-    unsigned char tag
+    char tag
+    char is_slim_object
     StackCellItem item
 
 cdef struct StackCell:
-    CorElementType tag
+    char tag
     int rid
     StackCellItem item
     PyObject * emulator_obj
     void * extra_data
-    bint is_slim_object
+    char is_slim_object
 
 cdef class StackCellWrapper:
     cdef uint64_t u8_holder
@@ -211,6 +218,10 @@ cdef class DotNetEmulator:
     cdef net_emu_types.DotNetThread running_thread
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
+
+    cdef SlimStackCell slim_cell(self, StackCell cell)
+
+    cdef StackCell unslim_cell(self, DotNetEmulator emu_obj, SlimStackCell cell)
 
     cdef str slimobj_to_str(self, StackCell cell)
 

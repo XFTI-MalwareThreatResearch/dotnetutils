@@ -892,7 +892,7 @@ cdef class DotNetList(DotNetObject):
     cdef net_emulator.StackCell Sort(self, net_emulator.StackCell * params, int nparams)
 
 cdef class DotNetArray(DotNetObject):
-    cdef net_emulator.StackCell * __internal_array
+    cdef net_emulator.SlimStackCell * __internal_array
     cdef uint64_t __size
 
     cdef net_emulator.StackCell _get_item(self, uint64_t index)
