@@ -17,3 +17,4 @@ TODO:
 - Expand indexes to int64_t for ArrayAddress to be safe.
 - Add support for MemberRef fields for cleanup_names()
 - double check that cctors arent being called twice.
+- Check over GenericMVar creation for e2f0

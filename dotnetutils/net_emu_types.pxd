@@ -895,6 +895,8 @@ cdef class DotNetArray(DotNetObject):
     cdef net_emulator.SlimStackCell * __internal_array
     cdef uint64_t __size
 
+    cpdef list as_python_obj(self)
+
     cdef net_emulator.StackCell _get_item(self, uint64_t index)
 
     cdef bint _set_item(self, uint64_t index, net_emulator.StackCell cell)

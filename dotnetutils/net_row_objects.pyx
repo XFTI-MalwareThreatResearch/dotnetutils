@@ -1541,7 +1541,7 @@ cdef class MethodSpec(MethodDefOrRef):
             signature = self.get_column('Signature').get_value()
             sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
             try:
-                self.__parsed_sig = sig_reader.handle_method_sig()
+                self.__parsed_sig = sig_reader.read_calling_convention_sig()
             except net_exceptions.InvalidSignatureException:
                 pass
         return self.__parsed_sig

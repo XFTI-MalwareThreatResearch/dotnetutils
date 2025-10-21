@@ -97,6 +97,9 @@ cdef class GenericMVar(GenericSig):
     def __init__(self, TypeSig _next, int number):
         GenericSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_MVAR, _next, False, number)
 
+    def __str__(self):
+        return 'GenericMVar: next={}, is_type_var={}, number={}'.format(self.get_next(), self.is_type_var(), self.get_number())
+
 
 cdef class SentinelSig(LeafSig):
     def __init__(self, TypeSig _next):
@@ -110,7 +113,6 @@ cdef class FnPtrSig(LeafSig):
 
     cpdef NonLeafSig get_signature(self):
         return self.__signature
-
 
 cdef class GenericInstSig(LeafSig):
     def __init__(self, TypeSig _next, TypeSig generic_type, int gen_arg_count=0):
@@ -359,7 +361,6 @@ cdef class LocalSig(CallingConventionSig):
     cpdef list get_local_vars(self):
         return self.__local_vars
 
-
 cdef class GenericInstMethodSig(CallingConventionSig):
     def __init__(self, int calling_conv, bytes extra_data, list generic_args):
         CallingConventionSig.__init__(self, calling_conv, extra_data)
@@ -367,7 +368,6 @@ cdef class GenericInstMethodSig(CallingConventionSig):
 
     cpdef list get_generic_args(self):
         return self.__generic_args
-
 
 cdef class SignatureReader():
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, bytes data, net_row_objects.RowObject reference=None):

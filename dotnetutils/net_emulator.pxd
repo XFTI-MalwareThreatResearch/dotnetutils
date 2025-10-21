@@ -61,11 +61,12 @@ cdef struct StackCell:
     char is_slim_object
 
 cdef class StackCellWrapper:
+    cdef DotNetEmulator __emu_obj
     cdef uint64_t u8_holder
     cdef PyObject * ref_holder
     cdef CorElementType cor_type
     cdef int kind_holder
-    cdef PyObject * owner_holder
+    cdef void * owner_holder
     cdef int idx_holder
     cdef int rid_holder
     cdef void * extra_data_holder
@@ -94,6 +95,8 @@ cdef class EmulatorAppDomain:
     cdef dict __field_index_registrations
     cdef dict __field_counter_registrations
     cdef vector[StackCell] __static_fields
+
+    cdef void _initialize(self)
 
     cdef static_func_type get_static_func(self, int token)
 
@@ -164,6 +167,8 @@ cdef class DotNetStack:
 
     cdef void append(self, StackCell obj)
 
+    cpdef void append_obj(self, net_emu_types.DotNetObject obj)
+
     cdef StackCell pop(self)
 
     cdef StackCell peek(self)
@@ -181,6 +186,7 @@ cdef class DotNetEmulator:
     """
 
     cdef net_row_objects.MethodDefOrRef method_obj
+    cdef net_row_objects.MethodSpec spec_obj
     cdef net_cil_disas.MethodDisassembler disasm_obj
     cdef StackCell * __method_params
     cdef int __nparams
@@ -218,6 +224,8 @@ cdef class DotNetEmulator:
     cdef net_emu_types.DotNetThread running_thread
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
+
+    cpdef void set_static_field_obj(self, int idno, net_emu_types.DotNetObject obj) #So that users can modify static fields
 
     cdef SlimStackCell slim_cell(self, StackCell cell)
 
@@ -383,9 +391,9 @@ cdef class DotNetEmulator:
 
     cpdef CctorRegistry get_executed_cctors(self)
 
-    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*)
+    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*)
 
-    cdef StackCell _get_default_value(self, net_sigs.TypeSig type_sig)
+    cdef StackCell _get_default_value(self, net_sigs.TypeSig type_sig, net_row_objects.TypeDefOrRef tref)
 
     cdef void print_instr(self, net_cil_disas.Instruction instr)
 
