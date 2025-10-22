@@ -19,7 +19,7 @@ cdef void __init_handlers()
 
 cdef struct ByRefItem:
     int kind
-    int idx
+    int64_t idx
     void * owner
 
 cdef struct SlimObject:
@@ -363,7 +363,7 @@ cdef class DotNetEmulator:
 
     cdef StackCell pack_string(self, net_emu_types.DotNetString obj)
 
-    cdef StackCell pack_ref(self, int kind, int idx, void* owner)
+    cdef StackCell pack_ref(self, int kind, int64_t idx, void* owner)
 
     cdef StackCell pack_null(self)
 

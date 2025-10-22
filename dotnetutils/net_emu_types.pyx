@@ -5995,10 +5995,10 @@ cdef class DotNetArray(DotNetObject):
             free(self.__internal_array)
             self.__internal_array = NULL
 
-    cdef net_emulator.StackCell _get_item(self, uint64_t index):
+    cdef net_emulator.StackCell _get_item(self, int64_t index):
         cdef net_emulator.StackCell cell
         cdef net_emulator.SlimStackCell slim_cell
-        if index < self.__size:
+        if 0 <= index < <int64_t>self.__size:
             slim_cell = self.__internal_array[index]
             if slim_cell.tag == CorElementType.ELEMENT_TYPE_END:
                 self.setup_default_value(index, 1)
@@ -6010,8 +6010,8 @@ cdef class DotNetArray(DotNetObject):
             raise net_exceptions.InvalidArgumentsException()
         return self.get_emulator_obj().pack_blanktag()
 
-    cdef bint _set_item(self, uint64_t index, net_emulator.StackCell cell):
-        if index >= <uint64_t>self.__size:
+    cdef bint _set_item(self, int64_t index, net_emulator.StackCell cell):
+        if index < 0 or index >= <int64_t>self.__size:
             raise net_exceptions.InvalidArgumentsException()
         if cell.tag == CorElementType.ELEMENT_TYPE_END:
             raise net_exceptions.InvalidArgumentsException()
