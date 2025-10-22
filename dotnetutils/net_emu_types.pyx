@@ -6515,35 +6515,11 @@ cdef class DotNetMath(DotNetObject):
         if params[0].tag != params[1].tag:
             raise net_exceptions.InvalidArgumentsException()
 
-        cdef net_emulator.StackCell cell
-
-        cdef uint64_t val_one = 0
-        cdef uint64_t val_two = 0
-        cdef int64_t val_three = 0
-        cdef int64_t val_four = 0
-
-        if net_utils.is_cortype_signed(<CorElementType>params[0].tag):
-            val_three = params[0].item.i8
-            val_four = params[1].item.i8
-            if val_three > val_four:
-                cell = app_domain.get_emulator_obj().pack_i8(val_three)
-                cell.tag = params[0].tag
-            else:
-                cell = app_domain.get_emulator_obj().pack_i8(val_four)
-                cell.tag = params[1].tag
-            return cell
-        elif net_utils.is_cortype_unsigned(<CorElementType>params[0].tag):
-            val_one = params[0].item.u8
-            val_two = params[1].item.u8
-            if val_three > val_four:
-                cell = app_domain.get_emulator_obj().pack_u8(val_one)
-                cell.tag = params[0].tag
-            else:
-                cell = app_domain.get_emulator_obj().pack_u8(val_two)
-                cell.tag = params[1].tag
-            return cell
-        raise net_exceptions.InvalidArgumentsException()
-                
+        cdef bint is_greater = app_domain.get_emulator_obj().cell_is_gt(params[0], params[1])
+        if is_greater:
+            return app_domain.get_emulator_obj().duplicate_cell(params[0])
+        else:
+            return app_domain.get_emulator_obj().duplicate_cell(params[1])                
 
     @staticmethod
     cdef net_emulator.StackCell Abs(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):
