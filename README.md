@@ -18,3 +18,5 @@ TODO:
 - Add support for MemberRef fields for cleanup_names()
 - double check that cctors arent being called twice.
 - Check over GenericMVar creation for e2f0
+- Make cleanup_names() change event names
+- For cleanup_names, make sure we arent renaming certain virtual methods (example problematic sample: 4e8a0b39246b7ee6ebd14ea988f7e3e834b165ecfae48143728c4d1e4d79e53d)

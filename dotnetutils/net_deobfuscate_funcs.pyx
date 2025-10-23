@@ -1193,7 +1193,8 @@ cpdef bytes cleanup_names(bytes data,
                   bint change_field_names=True,
                   bint change_property_names=True,
                   bint force_main_method=True,
-                  bint change_import_names=True) except *:
+                  bint change_import_names=True,
+                  bint change_events=True) except *:
     """
     Changes various names throughout the binary to more readable values
     Intended for instances when the names have been obfuscated.
@@ -1244,6 +1245,7 @@ cpdef bytes cleanup_names(bytes data,
     cdef net_row_objects.RowObject prop
     cdef net_row_objects.MethodDefOrRef getter_method
     cdef net_row_objects.MethodDefOrRef setter_method
+    cdef net_row_objects.MethodDefOrRef fire_method
     cdef list semantics
     cdef net_row_objects.MethodSemantic semantic
     cdef bytes setter_name
@@ -1268,11 +1270,14 @@ cpdef bytes cleanup_names(bytes data,
     cdef net_table_objects.TableObject table_obj1
     cdef net_table_objects.TableObject table_obj2
     cdef net_table_objects.MethodSemanticsTable semantics_table
+    cdef net_table_objects.TableObject event_table
     cdef int new_offset = 0
     cdef net_processing.StringHeapObject string_heap = None
     cdef net_row_objects.ColumnValue col_val = None
     cdef net_row_objects.ColumnValue col_val2 = None
     cdef dict method_names = dict()
+    cdef bytes fire_name
+    cdef int ecount = 0
     if dotnetpe is None:
         raise net_exceptions.InvalidArgumentsException()
     string_heap = dotnetpe.get_heap('#Strings')
@@ -1585,14 +1590,157 @@ cpdef bytes cleanup_names(bytes data,
                 if len(property_name) == 0: 
                     property_name = make_string(b'Property', num_prop)
                     num_prop += 1
-                    new_index = string_heap.append_tx(property_name)
-                    method_names[new_index] = property_name
-
                     if getter_method:
+                        name = b'get_' + property_name
+                        new_index = string_heap.append_tx(name)
+                        method_names[new_index] = name
+
                         getter_method.get_column('Name').set_raw_value(new_index)
 
                     if setter_method:
+                        name = b'set_' + property_name
+                        new_index = string_heap.append_tx(name)
+                        method_names[new_index] = name
                         setter_method.get_column('Name').set_raw_value(new_index)
+
+                    new_index = string_heap.append_tx(property_name)
+
+                    prop.get_column('Name').set_raw_value(new_index)
+        string_heap.end_append_tx()
+    event_table = dotnetpe.get_metadata_table('Event')
+    if change_events and event_table is not None:
+        string_heap.begin_append_tx()
+        if not dotnetpe.has_metadata_table('MethodSemantics'):
+            for x in range(1, len(event_table) + 1):
+                prop = event_table.get(x)
+                col_val = prop.get_column('Name')
+                if not has_prefix(col_val.get_original_value()):
+                    new_name = make_string(b'Event', ecount)
+                    new_index = string_heap.append_tx(new_name)
+                    method_names[new_index] = new_name
+                    col_val.set_raw_value(new_index)
+                    ecount += 1
+        else:
+            semantics_table = dotnetpe.get_metadata_table('MethodSemantics')
+            for x in range(1, len(event_table) + 1):
+                prop = event_table.get(x)
+                semantics = semantics_table.get_semantics_for_item(prop)
+                getter_method = None
+                setter_method = None
+                fire_method = None
+                if len(semantics) != 0:
+                    for y in range(len(semantics)):
+                        semantic = semantics[y]
+                        if semantic.is_fire():
+                            fire_method = semantic.get_method()
+                        elif semantic.is_add_on():
+                            setter_method = semantic.get_method()
+                        elif semantic.is_remove_on():
+                            getter_method = semantic.get_method()
+
+                        if getter_method != None and setter_method != None and fire_method != None:
+                            break
+                else:
+                    col_val = prop.get_column('Name')
+                    setter_name = b'add_' + col_val.get_original_value()
+                    getter_name = b'remove_' + col_val.get_original_value()
+                    fire_name = b'raise_'  + col_val.get_original_value()
+                    table_obj2 = dotnetpe.get_metadata_table('MemberRef')
+                    for y in range(1, len(table_obj2) + 1):
+                        memberref = table_obj2.get(y)
+                        col_val = memberref.get_column('Name')
+                        if col_val.get_raw_value() in method_names:
+                            name = method_names[col_val.get_raw_value()]
+                        else:
+                            name = col_val.get_original_value()
+                        if name == setter_name:
+                            setter_method = memberref
+                        elif name == getter_name:
+                            getter_method = memberref
+                        elif name == fire_name:
+                            fire_method = memberref
+                        
+
+                        if setter_method != None and getter_method != None and fire_method != None:
+                            break
+
+                # check if method exists in memberref
+                property_name = bytes()
+                if setter_method:
+                    # if the end of setter method matches name of property, set.
+                    col_val = setter_method.get_column('Name')
+                    if col_val.get_original_value().startswith(b'add_'):
+                        # name is probably correct, use it.
+                        property_name = col_val.get_original_value().replace(
+                            b'add_', b'')
+                        col_val = prop.get_column('Name')
+                        if col_val.get_raw_value() in method_names:
+                            name = method_names[col_val.get_raw_value()]
+                        else:
+                            name = col_val.get_original_value()
+                        if name != property_name:
+                            new_index = string_heap.append_tx(property_name)
+                            method_names[new_index] = property_name
+                            col_val.set_raw_value(new_index)
+
+                if getter_method:
+                    # if the end of setter method matches name of property, set.
+                    col_val = getter_method.get_column('Name')
+                    if col_val.get_original_value().startswith(b'remove_'):
+                        # name is probably correct, use it.
+                        property_name = col_val.get_original_value().replace(
+                            b'remove_', b'')
+                        col_val = prop.get_column('Name')
+                        if col_val.get_raw_value() in method_names:
+                            name = method_names[col_val.get_raw_value()]
+                        else:
+                            name = col_val.get_original_value()
+                        if name != property_name:
+                            new_index = string_heap.append_tx(property_name)
+                            method_names[new_index] = property_name
+                            col_val.set_raw_value(new_index)
+                if fire_method:
+                    # if the end of setter method matches name of property, set.
+                    col_val = fire_method.get_column('Name')
+                    if col_val.get_original_value().startswith(b'raise_'):
+                        # name is probably correct, use it.
+                        property_name = col_val.get_original_value().replace(
+                            b'raise_', b'')
+                        col_val = prop.get_column('Name')
+                        if col_val.get_raw_value() in method_names:
+                            name = method_names[col_val.get_raw_value()]
+                        else:
+                            name = col_val.get_original_value()
+                        if name != property_name:
+                            new_index = string_heap.append_tx(property_name)
+                            method_names[new_index] = property_name
+                            col_val.set_raw_value(new_index)
+
+
+                # if the method names arent correct, rename the property.
+                if len(property_name) == 0: 
+                    property_name = make_string(b'Event', ecount)
+                    ecount += 1
+                    if getter_method:
+                        name = b'remove_' + property_name
+                        new_index = string_heap.append_tx(name)
+                        method_names[new_index] = name
+
+                        getter_method.get_column('Name').set_raw_value(new_index)
+
+                    if setter_method:
+                        name = b'add_' + property_name
+                        new_index = string_heap.append_tx(name)
+                        method_names[new_index] = name
+                        setter_method.get_column('Name').set_raw_value(new_index)
+
+                    if fire_method:
+                        name = b'raise_' + property_name
+                        new_index = string_heap.append_tx(name)
+                        method_names[new_index] = name
+                        fire_method.get_column('Name').set_raw_value(new_index)
+
+                    new_index = string_heap.append_tx(property_name)
 
                     prop.get_column('Name').set_raw_value(new_index)
         string_heap.end_append_tx()

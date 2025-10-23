@@ -164,6 +164,7 @@ cdef class DotNetEmulator:
     cdef uint64_t timeout_ns
     cdef public DotNetEmulator caller
     cdef public int end_eip
+    cdef bint strict_typing
     cdef bint should_break
     cdef bint print_debug
     cdef bint print_hex
@@ -352,7 +353,7 @@ cdef class DotNetEmulator:
 
     cpdef CctorRegistry get_executed_cctors(self)
 
-    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*, int timeout_seconds=*)
+    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*, int timeout_seconds=*, bint strict_typing=*)
 
     cdef StackCell _get_default_value(self, net_sigs.TypeSig type_sig, net_row_objects.TypeDefOrRef tref)
 

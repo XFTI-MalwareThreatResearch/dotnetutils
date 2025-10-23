@@ -36,4 +36,5 @@ cpdef bytes cleanup_names(bytes data,
                   bint change_field_names=*,
                   bint change_property_names=*,
                   bint force_main_method=*,
-                  bint change_import_names=*) except *
+                  bint change_import_names=*,
+                  bint change_events=*) except *

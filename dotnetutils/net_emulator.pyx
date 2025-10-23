@@ -755,8 +755,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 return False
             else:
                 ret_call = emu.pack_null()
-                print('Warning: Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
-                #raise net_exceptions.EmulatorExecutionException(emu, 'Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
+                if not emu.strict_typing:
+                    print('Warning: Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
+                else:
+                    raise net_exceptions.EmulatorExecutionException(emu, 'Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
             if newobj_func != NULL and not dot_obj.has_function(method_name):
                 raise net_exceptions.EmulatorExecutionException(emu, 'type is missing .ctor')
             if newobj_func != NULL:
@@ -2869,7 +2871,7 @@ cdef class DotNetEmulator:
     This class is capable of emulating most .NET CIL instructions.
     """
 
-    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), EmulatorAppDomain app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None):
+    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), EmulatorAppDomain app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False):
         """
         Initializes a new DotNetEmulator
         :param method_obj: The MethodDef to emulate.
@@ -2889,6 +2891,7 @@ cdef class DotNetEmulator:
         self.method_obj = method_obj
         if not self.method_obj.has_body():
             raise net_exceptions.InvalidArgumentsException()
+        self.strict_typing = strict_typing
         self.disasm_obj = self.method_obj.disassemble_method()
         self.end_offset = end_offset
         self.stack = DotNetStack(self, self.disasm_obj.max_stack)
@@ -5140,9 +5143,8 @@ cdef class DotNetEmulator:
         self.running_thread = thread_obj
 
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=0, int end_offset=-1, DotNetEmulator caller=None,
-                           int end_method_rid=-1, int end_eip=-1, net_row_objects.MethodSpec spec_obj=None, int timeout_seconds=-1):
-        cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset,
-                                 end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj)
+                           int end_method_rid=-1, int end_eip=-1, net_row_objects.MethodSpec spec_obj=None, int timeout_seconds=-1, bint strict_typing=False):
+        cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset, end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj, strict_typing=strict_typing)
         """
         Use this method to create a new emulator off an existing one.
         For instance, if you are trying to deobfuscate strings, the usual way to do it would be to emulate some cctor method
