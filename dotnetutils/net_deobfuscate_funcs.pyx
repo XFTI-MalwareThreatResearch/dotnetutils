@@ -1079,7 +1079,7 @@ cdef bint has_prefix(bytes type_name):
     cdef int x
     cdef int y
     prefixes = [b'Class', b'NameSpace', b'field', b'param', b'Method', b'Property', b'VirtualMethod',
-            b'mfield', b'gparam']
+            b'mfield', b'gparam', b'Event']
     nums = b'0123456789'
     if type_name.startswith(b'set_') or type_name.startswith(b'get_') or type_name.startswith(b'op_'):
         return True
@@ -1236,21 +1236,6 @@ cdef bytes check_for_inherited_name(net_row_objects.MethodDefOrRef mdef, net_row
             ptr = ptr.get_superclass()
     return None
 
-cdef void iterate_type(net_row_objects.TypeDefOrRef tdefref, dict already_renamed):
-    if tdef.get_superclass() is not None:
-        raise net_exceptions.InvalidArgumentsException()
-
-    #Ok so start at our base class, then continuously go down.  Account for interfaces as well.
-    cdef net_row_objects.TypeDefOrRef prev_type = None
-    cdef net_row_objects.TypeDefOrRef ptr = tdefref
-    cdef int counter = 0
-    
-
-    
-
-
-
-
 cpdef bytes cleanup_names2(bytes data,
                   bint change_namespaces=True,
                   bint change_method_names=True,
@@ -1288,6 +1273,9 @@ cpdef bytes cleanup_names2(bytes data,
     cdef net_row_objects.MethodDef mdef_obj = None
     cdef net_row_objects.MethodDefOrRef mdefref_obj = None
     cdef net_row_objects.MethodDefOrRef mdefref2_obj = None
+    cdef net_row_objects.MethodDefOrRef mdefref3_obj = None
+    cdef net_row_objects.TypeDefOrRef tdefref = None
+    cdef net_row_objects.TypeDefOrRef tdefref_ptr = None
     cdef net_table_objects.TableObject table_obj = None
     cdef list blocklisted_methods = [
         b'.cctor',
@@ -1334,6 +1322,9 @@ cpdef bytes cleanup_names2(bytes data,
     cdef net_table_objects.TableObject table_obj2 = None
     cdef net_row_objects.MethodSemantic msemantic = None
     cdef net_table_objects.MethodSemanticsTable msem_table = None
+    cdef list msemantics = None
+    cdef bytes temp_name = None
+    cdef bytes prop_name = None
 
 
     if dotnet is None:
@@ -1404,11 +1395,15 @@ cpdef bytes cleanup_names2(bytes data,
 
             #now handle TypeNamespace
             name = row_obj.get_column('TypeNamespace').get_value_as_bytes()
-            if name is None or not has_prefix(name) and change_namespaces:
-                name = make_string(b'NameSpace', count2)
-                count2 += 1
-                new_index = string_heap.append_tx(name)
-                row_obj.get_column('TypeNamespace').set_raw_value(new_index)
+            if name is not None or not has_prefix(name) and change_namespaces:
+                if name not in changed_namespaces:
+                    name = make_string(b'NameSpace', count2)
+                    count2 += 1
+                    new_index = string_heap.append_tx(name)
+                    row_obj.get_column('TypeNamespace').set_raw_value(new_index)
+                    changed_namespaces[prop_name] = new_index
+                else:
+                    row_obj.get_column('TypeNamespace').set_raw_value(changed_namespaces[name])
         string_heap.end_append_tx()
     count = 0
     count2 = 0
@@ -1469,6 +1464,9 @@ cpdef bytes cleanup_names2(bytes data,
                 row_obj = table_obj.get(<int>x)
                 col_val = row_obj.get_column('Name')
                 name = col_val.get_value_as_bytes()
+                mdefref_obj = None
+                mdefref2_obj = None
+                prop_name = None
                 if name is None or not has_prefix(name):
                     if msem_table is None:
                         name = make_string(b'Property', count)
@@ -1476,16 +1474,136 @@ cpdef bytes cleanup_names2(bytes data,
                         new_index = string_heap.append_tx(name)
                         col_val.set_raw_value(new_index)
                     else:
-                        msemantic = msem_table.get_semantics_for_item(row_obj)
-                        if msemantic is None:
+                        msemantics = msem_table.get_semantics_for_item(row_obj)
+                        if len(msemantics) == 0:
                             name = make_string(b'Property', count)
                             count += 1
                             new_index = string_heap.append_tx(name)
                             col_val.set_raw_value(new_index)
                         else:
-                            if msemantic.is_getter():
-                                pass
+                            for msemantic in msemantics:
+                                if msemantic.is_getter():
+                                    mdefref_obj = <net_row_objects.MethodDefOrRef>msemantic.get_method()
+                                elif msemantic.is_setter():
+                                    mdefref2_obj = <net_row_objects.MethodDefOrRef>msemantic.get_method()
+                                if mdefref_obj and mdefref2_obj:
+                                    break
 
+                            if mdefref_obj is not None:
+                                temp_name = mdefref_obj.get_column('Name').get_value_as_bytes()
+                                if temp_name is not None and temp_name.startswith(b'get_'):
+                                    prop_name = temp_name.lstrip(b'get_')
+
+                            if mdefref2_obj is not None and prop_name is None:
+                                temp_name = mdefref2_obj.get_column('Name').get_value_as_bytes()
+                                if temp_name is not None and temp_name.startswith(b'set_'):
+                                    prop_name = temp_name.lstrip(b'set_')
+                            
+                            if prop_name is None:
+                                prop_name = make_string(b'Property', count)
+                                count += 1
+                            
+                            if mdefref_obj.get_column('Name').get_value_as_bytes() != (b'get_' + prop_name):
+                                new_index = string_heap.append_tx(b'get_' + prop_name)
+                                mdefref_obj.get_column('Name').set_raw_value(new_index)
+
+                            if mdefref2_obj.get_column('Name').get_value_as_bytes() != (b'set_' + prop_name):
+                                new_index = string_heap.append_tx(b'set_' + prop_name)
+                                mdefref2_obj.get_column('Name').set_raw_value(new_index)
+                            if col_val.get_value_as_bytes() != prop_name:
+                                new_index = string_heap.append_tx(prop_name)
+                                col_val.set_raw_value(new_index)
+            string_heap.end_append_tx()
+            count = 0
+
+    if change_events:
+        table_obj = dotnet.get_metadata_table('Event')
+        msem_table = dotnet.get_metadata_table('MethodSemantics')
+        if table_obj is not None:
+            string_heap.begin_append_tx()
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                col_val = row_obj.get_column('Name')
+                name = col_val.get_value_as_bytes()
+                mdefref_obj = None
+                mdefref2_obj = None
+                mdefref3_obj = None
+                prop_name = None
+                if name is None or not has_prefix(name):
+                    if msem_table is None:
+                        name = make_string(b'Event', count)
+                        count += 1
+                        new_index = string_heap.append_tx(name)
+                        col_val.set_raw_value(new_index)
+                    else:
+                        msemantics = msem_table.get_semantics_for_item(row_obj)
+                        if len(msemantics) == 0:
+                            name = make_string(b'Event', count)
+                            count += 1
+                            new_index = string_heap.append_tx(name)
+                            col_val.set_raw_value(new_index)
+                        else:
+                            for msemantic in msemantics:
+                                if msemantic.is_add_on():
+                                    mdefref_obj = <net_row_objects.MethodDefOrRef>msemantic.get_method()
+                                elif msemantic.is_remove_on():
+                                    mdefref2_obj = <net_row_objects.MethodDefOrRef>msemantic.get_method()
+                                elif msemantic.is_fire():
+                                    mdefref3_obj = <net_row_objects.MethodDefOrRef>msemantic.get_method()
+                                if mdefref_obj and mdefref2_obj and mdefref3_obj:
+                                    break
+
+                            if mdefref_obj is not None:
+                                temp_name = mdefref_obj.get_column('Name').get_value_as_bytes()
+                                if temp_name is not None and temp_name.startswith(b'add_'):
+                                    prop_name = temp_name.lstrip(b'add_')
+
+                            if mdefref2_obj is not None and prop_name is None:
+                                temp_name = mdefref2_obj.get_column('Name').get_value_as_bytes()
+                                if temp_name is not None and temp_name.startswith(b'remove_'):
+                                    prop_name = temp_name.lstrip(b'remove_')
+
+                            if mdefref3_obj is not None and prop_name is None:
+                                temp_name = mdefref3_obj.get_column('Name').get_value_as_bytes()
+                                if temp_name is not None and temp_name.startswith(b'raise_'):
+                                    prop_name = temp_name.lstrip(b'raise_')
+                            
+                            
+                            if prop_name is None:
+                                prop_name = make_string(b'Event', count)
+                                count += 1
+                            
+                            if mdefref_obj.get_column('Name').get_value_as_bytes() != (b'add_' + prop_name):
+                                new_index = string_heap.append_tx(b'add_' + prop_name)
+                                mdefref_obj.get_column('Name').set_raw_value(new_index)
+
+                            if mdefref2_obj.get_column('Name').get_value_as_bytes() != (b'remove_' + prop_name):
+                                new_index = string_heap.append_tx(b'remove_' + prop_name)
+                                mdefref2_obj.get_column('Name').set_raw_value(new_index)
+                            if mdefref3_obj.get_column('Name').get_value_as_bytes() != (b'raise_' + prop_name):
+                                new_index = string_heap.append_tx(b'remove_' + prop_name)
+                                mdefref3_obj.get_column('Name').set_raw_value(new_index)
+                            if col_val.get_value_as_bytes() != prop_name:
+                                new_index = string_heap.append_tx(prop_name)
+                                col_val.set_raw_value(new_index)
+            string_heap.end_append_tx()
+            count = 0
+
+    #Ok so now comes the hard part: type inheritence chains.
+    #For these, lets start at our base classes and walk down.
+    count = 0
+    if change_method_names:
+        #Change method names by iterating the type inheritence chain.
+        table_obj = dotnet.get_metadata_table('TypeDef')
+        for x in range(1, len(table_obj) + 1):
+            tdefref = table_obj.get(<int>x)
+            tdefref_ptr = tdefref.get_superclass()
+            if isinstance(tdefref_ptr, net_row_objects.TypeSpec):
+                tdefref_ptr = tdefref_ptr.get_type()
+            if tdefref_ptr is None or isinstance(tdefref_ptr, net_row_objects.TypeRef):
+                #When the superclass is None or TypeRef, we have a base class.  Rename the methods accordingly.
+                #first rename any interfaces methods.
+                pass
 
 cpdef bytes cleanup_names(bytes data,
                   bint change_namespaces=True,
