@@ -5348,7 +5348,8 @@ cdef class DotNetEmulator:
             if self.print_debug:
                 self.print_current_state()
         while self.current_eip < len(self.disasm_obj):
-            PyErr_CheckSignals()
+            if PyErr_CheckSignals() == -1:
+                raise net_exceptions.EmulatorExecutionException(self, 'PyErr_CheckSignals() returned -1')
             self.should_break = False
             self.instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if self.instr == None:
@@ -5383,7 +5384,6 @@ cdef class DotNetEmulator:
 
                 if has_timeout:
                     if (self.__last_instr_end - self.start_time) > self.timeout_ns:
-                        print('timing out')
                         raise net_exceptions.EmulatorTimeoutException(self)
             except net_exceptions.InstructionNotSupportedException as e:
                 if self.break_on_unsupported:
