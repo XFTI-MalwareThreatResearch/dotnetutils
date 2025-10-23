@@ -5127,7 +5127,10 @@ cdef class DotNetEmulator:
         else:
             new_emu.end_method_rid = end_method_rid
         new_emu.end_eip = end_eip
-        new_emu.start_time = self.start_time
+        if new_emu.caller is not None:
+            new_emu.start_time = self.start_time
+        else:
+            new_emu.start_time = _perf_counter_ns()
         new_emu.timeout_ns = self.timeout_ns
         new_emu.print_debug_children = self.print_debug_children
         if self.print_debug_children:
