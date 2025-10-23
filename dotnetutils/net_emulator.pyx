@@ -2869,7 +2869,7 @@ cdef class DotNetEmulator:
     This class is capable of emulating most .NET CIL instructions.
     """
 
-    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), EmulatorAppDomain app_domain=None, int timeout=-1, net_row_objects.MethodSpec spec_obj=None):
+    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), EmulatorAppDomain app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None):
         """
         Initializes a new DotNetEmulator
         :param method_obj: The MethodDef to emulate.
@@ -2939,8 +2939,8 @@ cdef class DotNetEmulator:
         
         if not __is_handlers_initialized:
             __init_handlers()
-        if timeout > 0:
-            self.timeout_ns = <uint64_t>(timeout * 1000000000ULL)
+        if timeout_seconds > 0:
+            self.timeout_ns = <uint64_t>(timeout_seconds * 1000000000ULL)
         else:
             self.timeout_ns = 0
         self.start_time = 0
