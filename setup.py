@@ -30,6 +30,7 @@ ext_modules = cythonize([
     Extension("dotnetutils.net_row_objects", ["dotnetutils/net_row_objects.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
     Extension("dotnetutils.net_patch", ["dotnetutils/net_patch.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
     Extension("dotnetutils.net_sigs", ["dotnetutils/net_sigs.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
+    Extension("dotnetutils.net_emu_structs", ["dotnetutils/net_emu_structs.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
 ], annotate=True)
 
 setup(
