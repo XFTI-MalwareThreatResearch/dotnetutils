@@ -1,12 +1,14 @@
 #cython: language_level=3
+#distutils: language=c++
+
+from cpython.ref cimport Py_INCREF, PyObject, Py_XDECREF
 from dotnetutils cimport net_tokens
-from dotnetutils cimport dotnetpefile, net_structs, net_row_objects, net_cil_disas
+from dotnetutils cimport dotnetpefile, net_processing, net_structs, net_row_objects, net_cil_disas
 from dotnetutils import net_exceptions
 
 from logging import getLogger
 
 logger = getLogger(__name__)
-
 
 cdef int get_single_table_index_size(int table_id, list row_amt_list):
     row_amt = 0
@@ -16,13 +18,11 @@ cdef int get_single_table_index_size(int table_id, list row_amt_list):
             break
     if row_amt == 0:
         return 2
-    if row_amt >= 65536: #2^16 as per ECMA Partition 2 section 24.2.6
+    if row_amt > 65536:
         return 4
     return 2
 
-
 cdef int get_multiple_table_index_size(list potential_table_ids, list row_amt_list, int bits_used):
-    #TODO may need to refwork this function.
     max_value = 65536 >> bits_used
     for ident in potential_table_ids:
         row_amt = 0
@@ -352,19 +352,41 @@ cdef NET_METADATA_TABLE_HANDLERS = {
 
 cdef class TableObject:
 
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        self.rows = rows
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
         self.name = name
         self.tid = tid
         self.dotnetpe = dotnetpe
+
+    def __dealloc__(self):
+        cdef PyObject * item = NULL
+        cdef size_t x = 0
+        for x in range(self.rows.size()):
+            item = self.rows.at(x)
+            Py_XDECREF(item)
+        self.rows.clear()
+
+    cdef void add_row(self, net_row_objects.RowObject row):
+        Py_INCREF(row)
+        self.rows.push_back(<PyObject*>row)
+
+    cdef list as_list(self):
+        cdef list result = list()
+        cdef PyObject * item = NULL
+        cdef net_row_objects.RowObject row
+        for item in self.rows:
+            row = <net_row_objects.RowObject>item
+            result.append(row)
+        return result
 
     cpdef net_row_objects.RowObject get(self, int index):
         """
         Obtain an item by RID in this table.
         RIDs are basically indexes but 1 based.
         """
-        if (index - 1) < len(self.rows):
-            return self.rows[index - 1]
+        cdef net_row_objects.RowObject result = None
+        if index > 0 and <unsigned int>(index - 1) < self.rows.size():
+            result = <net_row_objects.RowObject>self.rows[index - 1]
+            return result
         else:
             return None  # again prevent errors from corrupted tables.
 
@@ -372,36 +394,42 @@ cdef class TableObject:
         """
         Check if the table has RID index
         """
-        cdef int actual_index
-        actual_index = index - 1
+        cdef unsigned int actual_index = <unsigned int>index - 1
         if actual_index < 0:
             return False
-        if actual_index < len(self.rows):
+        if actual_index < self.rows.size():
             return True
         return False
 
     def __len__(self):
-        return len(self.rows)
+        return self.rows.size()
 
     def __iter__(self):
-        return iter(self.rows)
+        return iter(self.as_list())
     
     def __getitem__(self, items):
+        cdef int start
+        cdef int end
+        cdef net_row_objects.RowObject result = None
         if isinstance(items, slice):
             start = items.start - 1
             end = items.stop - 1
-            return self.rows[start:end]
+            return self.as_list()[start:end]
         elif isinstance(items, int):
-            return self.rows[items - 1]
+            result = <net_row_objects.RowObject>self.rows.at(<int>items-1)
+            return result
         else:
             raise net_exceptions.InvalidArgumentsException()
         
     cdef void process(self):
-        cdef net_row_objects.RowObject item
+        cdef PyObject * item
+        cdef net_row_objects.RowObject row
         for item in self.rows:
-            item.process()
+            row = <net_row_objects.RowObject>item
+            row.process()
         for item in self.rows:
-            item.post_process()
+            row = <net_row_objects.RowObject>item
+            row.post_process()
         self.post_process()
 
     cdef void post_process(self):
@@ -411,26 +439,30 @@ cdef class TableObject:
         pass
 
     cpdef bytes to_bytes(self):
-        cdef net_row_objects.RowObject item
+        cdef PyObject * item
+        cdef net_row_objects.RowObject row
         cdef bytes result
         result = b''
         for item in self.rows:
-            result += item.to_bytes()
+            row = <net_row_objects.RowObject>item
+            result += row.to_bytes()
         return result
 
 
 cdef class TypeDefTable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.TypeDef get_type_by_full_name(self, bytes full_name):
         """
         Obtain a TypeDef by its full name.
         """
-        cdef net_row_objects.TypeDef item
+        cdef net_row_objects.TypeDef row
+        cdef PyObject * item
         for item in self.rows:
-            if full_name == item.get_full_name():
-                return item
+            row = <net_row_objects.TypeDef>item
+            if full_name == row.get_full_name():
+                return row
         return None
 
     cpdef list get_types_by_name(self, bytes name):
@@ -438,43 +470,49 @@ cdef class TypeDefTable(TableObject):
         Obtain a list of TypeDefs with name 'name'
         """
         cdef list results
-        cdef net_row_objects.TypeDef item
+        cdef net_row_objects.TypeDef row
+        cdef PyObject * item
         results = list()
         for item in self.rows:
-            if name == item['TypeName'].get_value():
-                results.append(item)
+            row = <net_row_objects.TypeDef>item
+            if name == row['TypeName'].get_value():
+                results.append(row)
         return results
 
 
 cdef class ClassLayoutTable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.RowObject get_layout_by_parent(self, int parent):
         """
         Obtain a classlayout object that has Parent 'parent'
         """
-        cdef net_row_objects.RowObject item
+        cdef net_row_objects.RowObject row
+        cdef PyObject * item = NULL
         for item in self.rows:
-            if parent == item['Parent'].get_raw_value():
-                return item
+            row = <net_row_objects.RowObject>item
+            if parent == row['Parent'].get_raw_value():
+                return row
         return None
 
 
 cdef class MethodDefTable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef list get_methods_by_name(self, bytes name):
         """
         Obtain a list of MethodDef objects with name 'name'
         """
         cdef list result
-        cdef net_row_objects.MethodDef item
+        cdef net_row_objects.MethodDef row
         result = list()
+        cdef PyObject * item
         for item in self.rows:
-            if item['Name'].get_value() == name:
-                result.append(item)
+            row = <net_row_objects.MethodDef>item
+            if row['Name'].get_value() == name:
+                result.append(row)
         return result
 
     cdef void post_process(self):
@@ -490,7 +528,7 @@ cdef class MethodDefTable(TableObject):
                 try:
                     disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
                 except Exception as e:
-                    logger.warn('Error processing method {}.  Its possible the method is encrypted.'.format(hex(method_obj.get_token())))
+                    logger.warn('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
                     disasm_obj = None
                 if disasm_obj != None:
                     for x in range(len(disasm_obj)):
@@ -500,45 +538,49 @@ cdef class MethodDefTable(TableObject):
                             #handle method references here.
                             instr_arg = instr.get_argument()
                             if instr_arg != None:
-                                instr_arg._add_xref(method_obj.get_rid(), x)
+                                instr_arg._add_xref(method_obj.get_rid(), instr.get_instr_offset())
                         elif instr_name == 'stsfld' or instr_name == 'ldsfld' or instr_name == 'ldfld' or instr_name == 'stfld':
                             instr_arg = instr.get_argument()
                             if instr_arg != None:
-                                instr_arg._add_xref(method_obj.get_rid(), x)
+                                instr_arg._add_xref(method_obj.get_rid(), instr.get_instr_offset())
 
 
 cdef class FieldRVATable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.RowObject get_by_field_rid(self, int field_rid):
         """
         Obtain a FieldRVA object that matches field 'field_rid'
         """
-        cdef net_row_objects.RowObject item
+        cdef net_row_objects.RowObject row
+        cdef PyObject * item
         for item in self.rows:
-            if item['Field'].get_raw_value() == field_rid:
-                return item
+            row = <net_row_objects.RowObject>item
+            if row['Field'].get_raw_value() == field_rid:
+                return row
         return None
 
 
 cdef class TypeRefTable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.TypeRef get_type_by_full_name(self, bytes name):
         """
         Obtain a TypeRef by its full name.
         """
-        cdef net_row_objects.TypeRef item
+        cdef net_row_objects.TypeRef row
+        cdef PyObject * item
         for item in self.rows:
-            if item.get_full_name() == name:
-                return item
+            row = <net_row_objects.TypeRef>item
+            if row.get_full_name() == name:
+                return row
         return None
 
 cdef class MethodImplTable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
         self.__method_dict = dict()
 
     cdef void post_process(self):
@@ -576,8 +618,8 @@ cdef class MethodImplTable(TableObject):
 
     
 cdef class MethodSemanticsTable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef list get_semantics_for_item(self, net_row_objects.RowObject item):
         """
@@ -603,8 +645,8 @@ cdef class MethodSemanticsTable(TableObject):
         return False
     
 cdef class PropertyMapTable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef list get_properties_for_parent(self, net_row_objects.RowObject parent):
         """
@@ -629,8 +671,8 @@ cdef class PropertyMapTable(TableObject):
         return None
 
 cdef class MemberRefTable(TableObject):
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, list rows, int tid):
-        TableObject.__init__(self, dotnetpe, name, rows, tid)
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.MemberRef get_ref_by_name(self, bytes name):
         """
@@ -690,20 +732,19 @@ NET_METADATA_TABLE_TYPES = {
     'GenericParamConstraint': TableObject
 }
 
-
-def get_table_name_from_id(identifier):
+cpdef str get_table_name_from_id(int identifier):
     return NET_METADATA_TABLE_HANDLERS[identifier][0]
 
-
-def get_table_id_from_name(name):
+cpdef int get_table_id_from_name(str name):
+    cdef int table_id = 0
     for table_id in NET_METADATA_TABLE_HANDLERS:
         if NET_METADATA_TABLE_HANDLERS[table_id][0] == name:
             return table_id
     return -1
 
-
 cdef class MetadataTableHeader:
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, bytes file_data, int offset):
+    #TODO Clean this class up a bit.
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, int offset):
         self.start_offset = offset
         self.reserved = 0
         self.majorversion = 0
@@ -716,7 +757,7 @@ cdef class MetadataTableHeader:
         self.table_amt_rows = list()  # we need to preserve order here.
         self.end_offset = 0
         self.dotnetpe = dotnetpe
-        self.parse_table_header(file_data)
+        self.parse_table_header(dotnetpe.get_exe_data())
 
     cdef void parse_table_header(self, bytes file_data):
         cdef int current_offset
@@ -784,148 +825,3 @@ cdef class MetadataTableHeader:
         if (self.heapoffsetsizes_curr & bitmask) != 0:
             return 4
         return 2
-
-
-cdef class MetadataHeap:
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, int offset, MetadataTableHeader table_header):
-        self.table_header = table_header
-        self.table_objects = dict()
-        self.dotnetpe = dotnetpe
-        self.start_offset = offset
-        self.end_offset = 0
-
-    cpdef int get_start_offset(self):
-        return self.start_offset
-
-    cdef MetadataTableHeader get_table_header(self):
-        return self.table_header
-
-    cdef void parse_tables(self, bytes file_data):
-        cdef unsigned long tables_curr_offset
-        cdef int table_id
-        cdef int single_table_id
-        cdef int table_amt_rows
-        cdef str tbl_name
-        cdef dict col_type_handler
-        cdef list obj_rows
-        cdef bint fill_sizes
-        cdef list sizes
-        cdef int x
-        cdef list raw_row
-        cdef unsigned long row_offset
-        cdef str field_name
-        cdef net_tokens.BaseToken field_type
-        cdef int size_of_value
-        cdef net_structs.CorHeapBitmask bitmask
-        cdef list table_ids
-        cdef int identifier
-        cdef unsigned long field_value
-        cdef unsigned long rid
-        tables_curr_offset = self.table_header.end_offset
-        for table_id, table_amt_rows in self.table_header.table_amt_rows:
-            if table_id not in NET_METADATA_TABLE_HANDLERS:
-                raise net_exceptions.FeatureNotImplementedException()
-            tbl_name, col_type_handler = NET_METADATA_TABLE_HANDLERS[table_id]
-            obj_rows = list()
-            fill_sizes = True
-            sizes = list()  # we only need to fill sizes once since its the same for every row.
-            for x in range(table_amt_rows):
-                raw_row = list()
-                row_offset = tables_curr_offset
-
-                for field_name, field_type in col_type_handler.items():
-                    if fill_sizes and len(sizes) == len(col_type_handler):
-                        fill_sizes = False
-                    if field_type is None:
-                        raise net_exceptions.InvalidMetadataException
-                    if field_type.get_fixed_size() != -1:
-                        size_of_value = field_type.get_fixed_size()
-                    else:
-                        if field_type.is_stream():
-                            if field_type.get_token_types()[0] == '#Blob':
-                                bitmask = net_structs.CorHeapBitmask.BITMASK_BLOB
-                            elif field_type.get_token_types()[0] == '#GUID':
-                                bitmask = net_structs.CorHeapBitmask.BITMASK_GUID
-                            elif field_type.get_token_types()[0] == '#Strings':
-                                bitmask = net_structs.CorHeapBitmask.BITMASK_STRINGS
-                            else:
-                                raise net_exceptions.FeatureNotImplementedException()
-                            size_of_value = self.table_header.get_heap_offset_size(bitmask)
-                        else:
-                            if len(field_type.get_token_types()) == 1:
-                                single_table_id = get_table_id_from_name(field_type.get_token_types()[0])
-                                size_of_value = get_single_table_index_size(single_table_id, self.table_header.table_amt_rows)
-                            else:
-                                table_ids = list()
-                                for table_name in field_type.get_token_types():
-                                    if table_name == '':
-                                        continue
-
-                                    identifier = get_table_id_from_name(table_name)
-                                    if identifier == -1:
-                                        raise net_exceptions.FeatureNotImplementedException()
-
-                                    table_ids.append(identifier)
-                                
-                                size_of_value = get_multiple_table_index_size(table_ids,
-                                                                              self.table_header.table_amt_rows,
-                                                                              field_type.get_bits())
-                    field_value = int.from_bytes(file_data[tables_curr_offset:tables_curr_offset + size_of_value], 'little', signed=False)
-                    raw_row.append(field_value)
-                    
-                    tables_curr_offset += size_of_value
-
-                    if fill_sizes:
-                        sizes.append(size_of_value)
-                raw_row.append(row_offset)
-                rid = x + 1
-                obj_rows.append(net_row_objects.get_rowobject_for_table(tbl_name)(self.dotnetpe, raw_row, rid, sizes,
-                                                                                 col_type_handler, tbl_name))
-            self.table_objects[tbl_name] = NET_METADATA_TABLE_TYPES[tbl_name](self.dotnetpe, tbl_name, obj_rows, table_id)
-        self.end_offset = tables_curr_offset
-
-    cdef void process_tables(self):
-        cdef TableObject table_obj
-        for table_obj in self.table_objects.values():
-            table_obj.process()
-
-    cpdef bint has_table(self, str table_name):
-        return table_name in self.table_objects.keys()
-
-    cpdef TableObject obtain_table(self, str table_name):
-        if self.has_table(table_name):
-            return self.table_objects[table_name]
-        return None
-
-    cpdef TableObject get_item(self, index):
-        cdef TableObject table
-        if isinstance(index, int):
-            for table in self.table_objects.values():
-                if table.tid == index:
-                    return table
-        elif isinstance(index, str):
-            return self.obtain_table(index)
-        return None
-
-    def __getitem__(self, item):
-        return self.get_item(item)
-
-    cpdef list present_tables(self):
-        return self.table_objects.keys()
-
-    cpdef bytes to_bytes(self):
-        cdef bytes result
-        cdef int table_id
-        cdef int amt_rows
-        cdef str table_name
-        result = self.table_header.to_bytes()
-        for table_id, amt_rows in self.table_header.table_amt_rows:
-            table_name, _ = NET_METADATA_TABLE_HANDLERS[table_id]
-            result += self.obtain_table(table_name).to_bytes()
-        return result
-    
-    cpdef dict get_tables(self):
-        return self.table_objects
-
-    def __iter__(self):
-        return iter(self.table_objects.values())

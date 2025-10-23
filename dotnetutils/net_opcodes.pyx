@@ -1,4 +1,5 @@
 #cython: language_level=3
+#distutils: language=c++
 
 from dotnetutils import net_exceptions
 

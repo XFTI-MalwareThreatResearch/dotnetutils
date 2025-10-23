@@ -1,6 +1,9 @@
 #cython: language_level=3
+#distutils: language=c++
 
-from dotnetutils cimport dotnetpefile, net_utils, net_cil_disas, net_tokens, net_table_objects, net_structs
+
+from dotnetutils cimport dotnetpefile, net_sigs, net_cil_disas, net_tokens, net_table_objects, net_structs
+from libc.stdint cimport uint64_t
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type)
 
@@ -12,7 +15,7 @@ cdef class RowObject:
     cdef str table_name
     cdef list sizes
 
-    cpdef ColumnValue get_column(self, str col_name) except *
+    cpdef ColumnValue get_column(self, str col_name)
     
     cpdef list get_sizes(self)
 
@@ -47,7 +50,7 @@ cdef class ColumnValue:
     cdef RowObject row_obj
     cdef net_tokens.BaseToken col_type
     cdef object formatted_value
-    cdef object changed_value
+    cdef bint has_changed_value
     cdef object cached_value
     cdef dotnetpefile.DotNetPeFile dotnetpe
     cdef object original_value
@@ -67,7 +70,7 @@ cdef class ColumnValue:
 
     cpdef object get_original_value(self)
 
-    cpdef void change_value(self, object new_value)
+    cpdef void change_value(self, object new_value) except *
     
     cdef object __retrieve_value(self)
     
@@ -99,7 +102,9 @@ cdef class ColumnValue:
 
 cdef class TypeDefOrRef(RowObject):
 
-    cpdef MethodDef get_cctor_method(self)
+    cpdef MethodDef get_static_constructor(self)
+
+    cpdef list get_constructors(self)
 
     cpdef TypeDef get_enclosing_type(self)
 
@@ -113,11 +118,15 @@ cdef class TypeDefOrRef(RowObject):
 
     cpdef void _add_child_class(self, TypeDefOrRef obj)
 
+    cdef void _add_method(self, MethodDefOrRef method_obj)
+
     cpdef list get_member_refs(self)
 
     cpdef list get_generic_params(self)
 
     cpdef bint is_valuetype(self)
+
+    cpdef bint is_enum(self)
 
     cdef void process(self)
 
@@ -150,7 +159,9 @@ cdef class TypeDef(TypeDefOrRef):
     cdef bint __is_valuetype
     cdef MethodDef __cctor_method
 
-    cpdef MethodDef get_cctor_method(self)
+    cpdef MethodDef get_static_constructor(self)
+
+    cpdef list get_constructors(self)
 
     cpdef TypeDef get_enclosing_type(self)
 
@@ -169,6 +180,8 @@ cdef class TypeDef(TypeDefOrRef):
     cpdef list get_generic_params(self)
 
     cpdef bint is_valuetype(self)
+
+    cpdef bint is_enum(self)
 
     cdef void process(self)
 
@@ -194,7 +207,7 @@ cdef class Field(RowObject):
 
     cpdef list get_xrefs(self)
 
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type)
 
@@ -202,7 +215,7 @@ cdef class Field(RowObject):
 
     cdef void process(self)
 
-    cpdef net_utils.FieldSig get_field_signature(self)
+    cpdef net_sigs.FieldSig get_field_signature(self)
 
     cdef void post_process(self)
 
@@ -235,9 +248,13 @@ cdef class TypeRef(TypeDefOrRef):
 
     cpdef list get_methods(self)
 
+    cdef void _add_method(self, MethodDefOrRef method_obj)
+
     cpdef list get_methods_by_name(self, bytes method_name)
 
-    cpdef MethodDef get_cctor_method(self)
+    cpdef MethodDef get_static_constructor(self)
+
+    cpdef list get_constructors(self)
 
     cpdef bytes get_full_name(self)
 
@@ -249,7 +266,7 @@ cdef class MethodDefOrRef(RowObject):
 
     cpdef list get_xrefs(self)
 
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type)
 
@@ -269,7 +286,7 @@ cdef class MethodDefOrRef(RowObject):
 
     cpdef bint is_static_method(self)
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self)
+    cpdef net_sigs.CallingConventionSig get_method_signature(self)
 
     cpdef bint is_entrypoint(self)
 
@@ -296,7 +313,7 @@ cdef class MethodDef(MethodDefOrRef):
     cdef TypeDefOrRef __parent_type
     cdef bint __has_return_value
     cdef bint __method_has_this
-    cdef net_utils.MethodSig __sig_obj
+    cdef net_sigs.MethodSig __sig_obj
     cdef net_cil_disas.MethodDisassembler __disasm_obj
     cdef bint __has_invalid_signature
     cdef list __xrefs
@@ -307,7 +324,7 @@ cdef class MethodDef(MethodDefOrRef):
 
     cpdef list get_xrefs(self)
 
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type)
 
@@ -327,7 +344,7 @@ cdef class MethodDef(MethodDefOrRef):
 
     cpdef bint is_static_method(self)
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self)
+    cpdef net_sigs.CallingConventionSig get_method_signature(self)
 
     cpdef bint is_entrypoint(self)
 
@@ -350,7 +367,7 @@ cdef class MethodDef(MethodDefOrRef):
 cdef class MemberRef(MethodDefOrRef):
     cdef bytes __full_name
     cdef TypeDefOrRef __parent_type
-    cdef net_utils.MethodBaseSig __sig_obj
+    cdef net_sigs.CallingConventionSig __sig_obj
     cdef bint __method_has_this
     cdef bint __method_has_this_called
     cdef bint __is_field
@@ -383,11 +400,11 @@ cdef class MemberRef(MethodDefOrRef):
 
     cpdef int get_amt_params(self)
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self)
+    cpdef net_sigs.CallingConventionSig get_method_signature(self)
 
     cpdef list get_xrefs(self)
 
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef bint is_static_method(self)
 
@@ -403,16 +420,17 @@ cdef class MethodSpec(MethodDefOrRef):
     
     cpdef bytes get_full_name(self)
 
-    cpdef net_utils.MethodSig get_sig_obj(self)
+    cpdef net_sigs.CallingConventionSig get_sig_obj(self)
 
     cpdef list get_xrefs(self)
     
-    cpdef void _add_xref(self, int rid, int instr_index)
+    cpdef void _add_xref(self, int rid, int instr_offset)
 
 
 cdef class TypeSpec(TypeDefOrRef):
-    cdef net_utils.TypeSig __parsed_sig
+    cdef net_sigs.TypeSig __parsed_sig
     cdef bint __has_invalid_signature
+    cdef bint __has_type
 
     cpdef void _add_child_class(self, TypeDefOrRef to_add)
 
@@ -426,12 +444,12 @@ cdef class TypeSpec(TypeDefOrRef):
 
     cpdef TypeDefOrRef get_superclass(self)
 
-    cpdef net_utils.TypeSig get_sig_obj(self)
+    cpdef net_sigs.TypeSig get_sig_obj(self)
     
 cdef class StandAloneSig(RowObject):
-    cdef net_utils.TypeSig __parsed_sig
+    cdef net_sigs.TypeSig __parsed_sig
     cdef bint __has_invalid_signature
-    cpdef net_utils.TypeSig get_sig_obj(self)
+    cpdef net_sigs.TypeSig get_sig_obj(self)
 
 cdef class MethodImpl(RowObject):
     cdef RowObject __class

@@ -1,6 +1,9 @@
 #cython: language_level=3
-from dotnetutils cimport dotnetpefile, net_table_objects
+#distutils: language=c++
+
+from dotnetutils cimport dotnetpefile, net_table_objects, net_processing
 from dotnetutils.net_structs cimport IMAGE_COR20_HEADER
+from libc.stdint cimport uint64_t
 
 
 cdef class MetaDataHeader:
@@ -32,7 +35,7 @@ cdef class MetaDataDirectory:
     """
     cdef dotnetpefile.DotNetPeFile dotnetpe
     cdef IMAGE_COR20_HEADER net_header
-    cdef unsigned int net_header_offset
+    cdef uint64_t net_header_offset
     cdef MetaDataHeader metadata_header
     cdef net_table_objects.MetadataTableHeader metadata_table_header
     cdef dict heaps
@@ -46,7 +49,7 @@ cdef class MetaDataDirectory:
     cdef bint process_directory(self, bytes file_data) except *
     cdef void process_metadata_heap(self, bint dont_process)
     cpdef net_table_objects.MetadataTableHeader get_metadata_table_header(self)
-    cpdef object get_heap(self, str name)
+    cpdef net_processing.HeapObject get_heap(self, str name)
     cpdef dict get_heaps(self)
     cpdef int get_metadata_heap_size(self)
     cpdef IMAGE_COR20_HEADER get_net_header(self)

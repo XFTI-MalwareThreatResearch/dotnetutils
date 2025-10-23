@@ -1,15 +1,22 @@
 #cython: language_level=3
+#distutils: language=c++
+
+
 import os
 import hashlib
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_structs
-from dotnetutils cimport net_utils
+from dotnetutils cimport net_sigs
 from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
+from dotnetutils cimport net_processing
 from typing import Union
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
+    """
+    Obtains the name of a CorElementType.
+    """
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
         return b'System.Int8'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
@@ -62,9 +69,7 @@ cdef class RowObject:
             self.values[col_name.lower()] = cval
             index += 1
 
-    cpdef ColumnValue get_column(self, str col_name) except *:
-        if not hasattr(col_name, 'lower'):
-            raise net_exceptions.ObjectTypeException
+    cpdef ColumnValue get_column(self, str col_name):
         return <ColumnValue>self.values[col_name.lower()]
     
     cpdef list get_sizes(self):
@@ -105,7 +110,8 @@ cdef class RowObject:
         return self.file_offset
 
     def __len__(self):
-        result = 0
+        cdef Py_ssize_t result = 0
+        cdef ColumnValue value = None
         for value in self.values.values():
             result += len(value)
         return result
@@ -125,7 +131,7 @@ cdef class RowObject:
     def __str__(self):
         if 'name' in self.values:
             try:
-                return self['Name'].get_value().decode('ascii')
+                return self.get_column('Name').get_value().decode('ascii')
             except UnicodeDecodeError:
                 pass
         return '{}:{}'.format(self.get_table_name(), self.get_rid())
@@ -140,23 +146,14 @@ cdef class RowObject:
         """
         Obtain the offset in bytes to the column matching col_name
         """
-        cdef int result
+        cdef int result = 0
         cdef str key
         cdef ColumnValue value
-        result = 0
         for key, value in self.values.items():
             if key == col_name.lower():
                 break
-            result += len(value)
+            result += <int>len(value)
         return result
-
-    #cpdef int get_col_size(self, str col_name):
-    #    """
-    #    Get the size of a column's raw value.
-    #    """
-    #    if not isinstance(col_name, str):
-    #       raise net_exceptions.ObjectTypeException
-    #    return len(self.get_column(col_name))
 
     cdef void process(self):
         """
@@ -203,7 +200,7 @@ cdef class ColumnValue:
         self.col_size = col_size
         self.raw_value = raw_value
         self.formatted_value = None
-        self.changed_value = None
+        self.has_changed_value = False
         self.cached_value = None
         self.dotnetpe = dotnetpe
         self.col_size = self.internal_get_size()
@@ -213,8 +210,6 @@ cdef class ColumnValue:
         self.__has_no_value = False
         self.__formatter_method = None
         self.__formatter_param = None
-
-    #Trying to see if these will improve speed in net_deobfuscate.
 
     cdef bytes get_value_as_bytes(self):
         return <bytes>self.get_value()
@@ -256,20 +251,38 @@ cdef class ColumnValue:
             self.get_value()
         return self.original_value
 
-    cpdef void change_value(self, object new_value):
+    cpdef void change_value(self, object new_value) except *:
         """
         Change a value
         Currently only works with CodedTokens specifically,
         but this function does the legwork to change a value. 
         An example of when this might be useful is deobfuscating method names
         """
+        cdef str table_name = None
+        cdef int table_rid = 0
+        cdef int orig_value = self.raw_value
+        cdef net_processing.HeapObject stream = None
         if self.original_value == None:
             self.get_value()
         if new_value is None:
-            raise net_exceptions.InvalidArgumentsException
-        self.changed_value = new_value
-        #instead of going through and making the modifications, make them upon a reconstruct executable call.
-        #having get_value return the changed value should be enough - changing the raw value can probably be done on reconstruction
+            raise net_exceptions.InvalidArgumentsException()
+        if self.col_type.is_stream():
+            table_name = self.col_type.get_token_types()[0]
+            stream = self.dotnetpe.get_heap(table_name)
+            if stream is None:
+                raise net_exceptions.InvalidArgumentsException()
+            table_rid = stream.append_item(new_value)
+            self.raw_value = table_rid
+            self.cached_value = None
+            self.__has_no_value = False #Reset everything for next grab.
+            if orig_value != 0: #Stream.del_item() already handles references checks.  It will warn for now but thats fine.
+                stream.del_item(orig_value)
+        elif self.col_type.is_fixed_value():
+            self.raw_value = new_value
+        else:
+            #I dont think it would be safe to edit metadata columns that reference other metadata columns.
+            #Nor can I really think of a good reason to do it right now.  May be something to implement later.
+            raise net_exceptions.FeatureNotImplementedException()
     
     cdef object __retrieve_value(self):
         """
@@ -278,6 +291,8 @@ cdef class ColumnValue:
         cdef str table_name
         cdef int table_rid
         cdef net_table_objects.TableObject table_obj
+        cdef net_processing.HeapObject heap_obj
+        cdef object result
         #TODO: add some sort of detection for calling this function when the tables arent fully initialized.
         try:
             table_name, table_rid = self.col_type.decode_token(self.raw_value)
@@ -287,16 +302,18 @@ cdef class ColumnValue:
             return table_rid
         elif self.col_type.is_stream():
             if self.dotnetpe.has_heap(table_name):
-                return self.dotnetpe.get_heap(table_name).get_item(table_rid)
+                heap_obj = self.dotnetpe.get_heap(table_name)
+                result = heap_obj.get_item(table_rid)
+                return result
         elif self.col_type.is_fixed_value():
             return self.raw_value
         else:
             if self.dotnetpe.has_metadata_table(table_name):
-                return self.dotnetpe.get_heap('#~')[table_name].get(table_rid)
-        if table_name == None:
+                return self.dotnetpe.get_heap('#~').get_table(table_name).get(table_rid)
+        if table_name is None:
             return None
         table_obj = self.dotnetpe.get_metadata_table(table_name)
-        if table_obj == None:
+        if table_obj is None:
             self.__has_no_value = True
             return None
         return table_obj.get(table_rid)
@@ -313,8 +330,6 @@ cdef class ColumnValue:
         :return: The processed value corresponding to the column
         """
         #check if value was changed
-        if self.changed_value != None:
-            return self.changed_value
         if self.__has_no_value:
             return None
         if self.cached_value == None:
@@ -350,7 +365,7 @@ cdef class ColumnValue:
         """
         Get the new value of a ColumnValue (will return none if change_value() was never called.)
         """
-        return self.changed_value
+        return self.get_value()
 
     cpdef unsigned int get_raw_value(self) except *:
         """
@@ -363,13 +378,18 @@ cdef class ColumnValue:
         """
         Was the value changed?
         """
-        return self.changed_value != None and self.changed_value != self.original_value
+        if self.original_value is None:
+            return False
+        return self.original_value != self.cached_value
     
     cpdef void set_raw_value(self, unsigned int new_value):
         """
         Set the raw value of the column.
         """
+        self.has_changed_value = True
         self.raw_value = new_value
+        self.cached_value = None
+        self.__has_no_value = False
 
     def __len__(self):
         return self.col_size
@@ -410,7 +430,6 @@ cdef class ColumnValue:
         try:
             return int.to_bytes(self.get_raw_value(), self.internal_get_size(), 'little', signed=False)
         except Exception as e:
-            print('Error converting value {} with size {} in column type {}'.format(hex(self.get_raw_value()), hex(self.internal_get_size()), self.get_value_table_name()))
             raise e
 
     cpdef net_tokens.BaseToken get_col_type(self):
@@ -428,8 +447,14 @@ cdef class TypeDefOrRef(RowObject):
         RowObject.__init__(self, dotnetpe, raw_data, rid,
                            sizes, col_types, table_name)
 
-    cpdef MethodDef get_cctor_method(self):
+    cdef void _add_method(self, MethodDefOrRef method_obj):
+        pass #This should never be called.
+
+    cpdef MethodDef get_static_constructor(self):
         return None
+
+    cpdef list get_constructors(self):
+        return list()
 
     cpdef TypeDef get_enclosing_type(self):
         return None
@@ -458,6 +483,9 @@ cdef class TypeDefOrRef(RowObject):
     cpdef bint is_valuetype(self):
         return False
 
+    cpdef bint is_enum(self):
+        return False
+
     cdef void process(self):
         pass
 
@@ -480,7 +508,7 @@ cdef class TypeDefOrRef(RowObject):
         return None
 
     cpdef TypeDefOrRef get_type(self):
-        return None
+        return self
 
 cdef class TypeDef(TypeDefOrRef):
 
@@ -501,7 +529,7 @@ cdef class TypeDef(TypeDefOrRef):
         self.__cctor_method = None
         self.__full_name = None
 
-    cpdef MethodDef get_cctor_method(self):
+    cpdef MethodDef get_static_constructor(self):
         """
         Obtain the type's static constructor if exists.
         """
@@ -511,6 +539,9 @@ cdef class TypeDef(TypeDefOrRef):
             if len(results) == 1:
                 self.__cctor_method = results[0]
         return self.__cctor_method
+
+    cpdef list get_constructors(self):
+        return self.get_methods_by_name(b'.ctor')
 
     cpdef TypeDef get_enclosing_type(self):
         """
@@ -522,9 +553,9 @@ cdef class TypeDef(TypeDefOrRef):
             nested_classes = self.get_dotnetpe().get_metadata_table('NestedClass')
             if nested_classes is not None:
                 for nested in nested_classes:
-                    if nested['NestedClass'].get_raw_value() == self.rid:
+                    if <int>nested.get_column('NestedClass').get_raw_value() == self.rid:
                         self.__enclosing_type = self.get_dotnetpe().get_metadata_table('TypeDef').get(
-                            nested['EnclosingClass'].get_raw_value())
+                            nested.get_column('EnclosingClass').get_raw_value())
                         break
             if not self.__enclosing_type:
                 self.__has_enclosing_type = False
@@ -549,14 +580,14 @@ cdef class TypeDef(TypeDefOrRef):
         """
         Obtain the type's superclass if exists.
         """
-        if self['Extends'].get_raw_value() != 0 and self.__has_superclass and not self.__superclass:
+        if self.get_column('Extends').get_raw_value() != 0 and self.__has_superclass and not self.__superclass:
             skip = False
-            if self['Extends'].get_value_table_name() == 'TypeRef':
-                extends_obj = self['Extends'].get_value()
-                if not extends_obj or extends_obj['TypeName'].get_value() == b'Object':
+            if self.get_column('Extends').get_value_table_name() == 'TypeRef':
+                extends_obj = self.get_column('Extends').get_value()
+                if not extends_obj or extends_obj.get_column('TypeName').get_value() == b'Object': #TODO: should object be considered a valid superclass?
                     skip = True
             if not skip:
-                self.__superclass = self['Extends'].get_value()
+                self.__superclass = self.get_column('Extends').get_value()
                 if isinstance(self.__superclass, TypeDefOrRef):
                     add_to = self.__superclass
                     if hasattr(add_to, '_add_child_class'):
@@ -600,18 +631,34 @@ cdef class TypeDef(TypeDefOrRef):
         """
         Determines whether or not the class is a System.ValueType.
         """
-        cdef bytes extends_name
-        if not self.__superclass and self.__has_superclass:
-            self.get_superclass()  # make sure the superclass field is populated.
-        if self.__superclass and not self.__is_valuetype:
-            extends_name = self.__superclass.get_full_name()
-            self.__is_valuetype = extends_name == b'System.ValueType'
-        return self.__is_valuetype
+        if not self.__has_superclass:
+            return False
+        cdef TypeDefOrRef ptr = self.get_superclass()
+        while ptr is not None:
+            if isinstance(ptr, TypeDef):
+                ptr = ptr.get_superclass()
+            elif isinstance(ptr, TypeRef):
+                return ptr.is_valuetype()
+            elif isinstance(ptr, TypeSpec):
+                ptr = ptr.get_type()
+        return False
+
+    cpdef bint is_enum(self):
+        if not self.__has_superclass:
+            return False
+        cdef TypeDefOrRef ptr = self.get_superclass()
+        while ptr is not None:
+            if isinstance(ptr, TypeDef):
+                ptr = ptr.get_superclass()
+            elif isinstance(ptr, TypeRef):
+                return ptr.is_enum()
+            elif isinstance(ptr, TypeSpec):
+                ptr = ptr.get_type()
+        return False
 
     cdef void process(self):
         cdef int field_start_index
         cdef list fieldlist
-        cdef net_table_objects.MetadataHeap metadata_heap
         cdef int field_end_index
         cdef int x
         cdef Field field_obj
@@ -619,82 +666,80 @@ cdef class TypeDef(TypeDefOrRef):
         cdef int method_start_index
         cdef int method_table_len
         cdef int method_index_end
-        cdef net_table_objects.MethodDefTable method_table
-        cdef net_table_objects.TableObject methodptr_table = None
-        cdef net_table_objects.TableObject fieldptr_table = None
+        cdef net_table_objects.MethodDefTable method_table = self.get_dotnetpe().get_metadata_table('MethodDef')
+        cdef net_table_objects.TableObject methodptr_table = self.get_dotnetpe().get_metadata_table('MethodPtr')
+        cdef net_table_objects.TableObject fieldptr_table = self.get_dotnetpe().get_metadata_table('FieldPtr')
+        cdef net_table_objects.TypeDefTable typedef_table = self.get_dotnetpe().get_metadata_table('TypeDef')
+        cdef net_table_objects.TableObject field_table = self.get_dotnetpe().get_metadata_table('Field')
         cdef MethodDef method
-        field_start_index = self['FieldList'].get_raw_value()
+        field_start_index = self.get_column('FieldList').get_raw_value()
         fieldlist = list()
-        metadata_heap = self.get_dotnetpe().get_heap('#~')
-        if metadata_heap.has_table('Field') and self['FieldList'].get_raw_value() != 0:
-            if not self.get_dotnetpe().has_metadata_table('FieldPtr'):
-                field_end_index = len(metadata_heap.obtain_table('Field')) + 1
-                if metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
-                    field_end_index = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)['fieldlist'].get_raw_value()
-                if not metadata_heap.obtain_table('Field').has_index(field_end_index):
-                    field_end_index = len(metadata_heap.obtain_table('Field')) + 1
+        if field_table is not None and self.get_column('FieldList').get_raw_value() != 0:
+            if fieldptr_table is None:
+                field_end_index = <int>len(field_table) + 1
+                if typedef_table.has_index(self.rid + 1):
+                    field_end_index = typedef_table.get(self.rid + 1).get_column('FieldList').get_raw_value()
+                if not field_table.has_index(field_end_index):
+                    field_end_index = <int>len(field_table) + 1
             else:
-                fieldptr_table = self.get_dotnetpe().get_metadata_table('FieldPtr')
-                if metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
-                    field_end_index = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)['fieldlist'].get_raw_value()
-                if not metadata_heap.obtain_table('FieldPtr').has_index(field_end_index):
-                    field_end_index = len(fieldptr_table) + 1
+                field_end_index = <int>len(fieldptr_table) + 1
+                if typedef_table.has_index(self.rid + 1):
+                    field_end_index = typedef_table.get(self.rid + 1).get_column('FieldList').get_raw_value()
+                if not fieldptr_table.has_index(field_end_index):
+                    field_end_index = <int>len(fieldptr_table) + 1
             for x in range(field_start_index, field_end_index):
                 if fieldptr_table is None:
-                    field_obj = metadata_heap.obtain_table('Field').get(x)
+                    field_obj = field_table.get(x)
                 else:
-                    field_obj = fieldptr_table.get(x)['Field'].get_value()
+                    field_obj = fieldptr_table.get(x).get_column('Field').get_value()
                 if field_obj:
                     field_obj._set_parent_type(self)
                     fieldlist.append(field_obj)
-            self['FieldList'].set_formatted_value(fieldlist)
-        if metadata_heap.has_table('MethodDef') and self['MethodList'].get_raw_value() != 0:
+            self.get_column('FieldList').set_formatted_value(fieldlist)
+        if method_table is not None and self.get_column('MethodList').get_raw_value() != 0:
             methodlist = list()
-            method_start_index = self['MethodList'].get_raw_value()
-            if not self.get_dotnetpe().has_metadata_table('MethodPtr'):
-                method_table_len = len(metadata_heap.obtain_table('MethodDef')) + 1
+            method_start_index = self.get_column('MethodList').get_raw_value()
+            if methodptr_table is None:
+                method_table_len = <int>len(method_table) + 1
                 method_index_end = method_table_len
-                method_table = metadata_heap.obtain_table('MethodDef')
-                if  metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
-                    method_index_end = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)[
-                        'methodlist'].get_raw_value()
-                if not metadata_heap.obtain_table('MethodDef').has_index(method_index_end):
-                    method_index_end = len(metadata_heap.obtain_table('MethodDef')) + 1
+
+                if typedef_table.has_index(self.rid + 1):
+                    method_index_end = typedef_table.get(self.rid + 1).get_column('MethodList').get_raw_value()
+                if not method_table.has_index(method_index_end):
+                    method_index_end =<int> len(method_table) + 1
             else:
-                methodptr_table = self.get_dotnetpe().get_metadata_table('MethodPtr')
-                method_table_len = len(methodptr_table) + 1
+                method_table_len = <int>len(methodptr_table) + 1
                 method_index_end = method_table_len
-                if  metadata_heap.obtain_table('TypeDef').has_index(self.rid + 1):
-                    method_index_end = metadata_heap.obtain_table('TypeDef').get(self.rid + 1)[
-                        'methodlist'].get_raw_value()
-                if not metadata_heap.obtain_table('MethodDef').has_index(method_index_end):
+                if typedef_table.has_index(self.rid + 1):
+                    method_index_end = typedef_table.get(self.rid + 1).get_column('MethodList').get_raw_value()
+                if not methodptr_table.has_index(method_index_end):
                     method_index_end = method_table_len
             for x in range(method_start_index, method_index_end):
-                if methodptr_table is not None:
-                    method = methodptr_table.get(x)['Method'].get_value()
-                else:
+                if methodptr_table is None:
                     method = method_table.get(x)
+                else:
+                    method = methodptr_table.get(x).get_column('Method').get_value()
                 method._set_parent_type(self)
                 methodlist.append(method)
-            self['MethodList'].set_formatted_value(methodlist)
+            self.get_column('MethodList').set_formatted_value(methodlist)
 
     cpdef list get_methods(self):
         """
         Obtain a list of MethodDef objects associated with the TypeDef.
         """
-        return self['MethodList'].get_formatted_value()
+        return self.get_column('MethodList').get_formatted_value()
 
     cdef void post_process(self):
-        cdef net_table_objects.MetadataHeap metadata_heap
+        cdef net_processing.MetadataTableHeapObject metadata_heap
         cdef RowObject item
         cdef RowObject interface_obj
         
         if self.__has_interfaces:
             metadata_heap = self.get_dotnetpe().get_heap('#~')
             if metadata_heap.has_table('InterfaceImpl'):
-                for item in metadata_heap.obtain_table('InterfaceImpl'):
-                    if item['Class'].get_raw_value() == self.rid:
-                        interface_obj = item['Interface'].get_value()
+                for item in metadata_heap.get_table('InterfaceImpl'):
+                    if <int>item.get_column('Class').get_raw_value() == self.rid:
+                        interface_obj = item.get_column('Interface').get_value()
                         if interface_obj:
                             interface_obj._add_child_class(self)
 
@@ -709,20 +754,23 @@ cdef class TypeDef(TypeDefOrRef):
         cdef TypeDef ptr
         cdef bytes result
         cdef TypeDef old_ptr
+        cdef bytes type_namespace = None
         if not self.__full_name: # ensure enclosing_type is populated.
             ptr = self.get_enclosing_type()
             if ptr is None:
-                if self['TypeNamespace'].get_value() == b'':
-                    return self['TypeName'].get_value()
-                return self['TypeNamespace'].get_value() + b'.' + self['TypeName'].get_value()
-            result = self['TypeName'].get_value()
+                type_namespace = self.get_column('TypeNamespace').get_value()
+                if type_namespace is None or type_namespace == b'':
+                    return self.get_column('TypeName').get_value()
+                return type_namespace + b'.' + self.get_column('TypeName').get_value()
+            result = self.get_column('TypeName').get_value()
             old_ptr = None
             while ptr is not None:
-                result = ptr['TypeName'].get_value() + b'.' + result
+                result = ptr.get_column('TypeName').get_value() + b'.' + result
                 old_ptr = ptr
                 ptr = ptr.get_enclosing_type()
-            if old_ptr['TypeNamespace'].get_value() != b'':
-                result = old_ptr['TypeNamespace'].get_value() + b'.' + result
+            type_namespace = old_ptr.get_column('TypeNamespace').get_value()
+            if type_namespace is not None and type_namespace != b'':
+                result = type_namespace + b'.' + result
             self.__full_name = result
 
         return self.__full_name
@@ -738,8 +786,8 @@ cdef class TypeDef(TypeDefOrRef):
         Obtain a field object matching 'name' from the type
         """
         cdef Field field
-        for field in self['FieldList'].get_formatted_value():
-            if field['Name'].get_value() == name:
+        for field in self.get_column('FieldList').get_formatted_value():
+            if field.get_column('Name').get_value() == name:
                 return field
         return None
 
@@ -749,11 +797,11 @@ cdef class TypeDef(TypeDefOrRef):
         """
         cdef list result
         cdef MethodDef method
-        if name == self['TypeName'].get_value():
+        if name == self.get_column('TypeName').get_value():
             return self.get_methods_by_name(b'.ctor')
         result = list()
-        for method in self['MethodList'].get_formatted_value():
-            if method['Name'].get_value() == name:
+        for method in self.get_column('MethodList').get_formatted_value():
+            if method.get_column('Name').get_value() == name:
                 result.append(method)
         return result
 
@@ -779,13 +827,13 @@ cdef class Field(RowObject):
 
     cpdef list get_xrefs(self):
         """
-        Obtain a list of tuples (method_rid, instr_index) representing references of a Field.
+        Obtain a list of tuples (method_rid, instr_offset) representing references of a Field.
         Field references occur when stsfld, ldsfld, stfld, ldfld are called on a Field.
         """
         return self.__xrefs
 
-    cpdef void _add_xref(self, int rid, int instr_index):
-        self.__xrefs.append((rid, instr_index))
+    cpdef void _add_xref(self, int rid, int instr_offset):
+        self.__xrefs.append((rid, instr_offset))
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type):
         self.__parent_type = parent_type
@@ -802,7 +850,7 @@ cdef class Field(RowObject):
         if fieldrva_table:
             self.__rva_object = fieldrva_table.get_by_field_rid(self.get_rid())
 
-    cpdef net_utils.FieldSig get_field_signature(self):
+    cpdef net_sigs.FieldSig get_field_signature(self):
         """
         Obtains the signature object associated with the field.
         """
@@ -812,21 +860,21 @@ cdef class Field(RowObject):
 
     cdef void __initialize_sig(self):
         cdef bytes sig
-        cdef net_utils.SignatureReader sig_reader
-        cdef net_utils.TypeSig type_obj
+        cdef net_sigs.SignatureReader sig_reader
+        cdef net_sigs.TypeSig type_obj
         cdef TypeDefOrRef typedef_obj
-        sig = self['Signature'].get_value()
+        sig = self.get_column('Signature').get_value()
         if sig:
-            sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), sig)
+            sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), sig)
             self.__sig_obj = sig_reader.read_signature()
-            if isinstance(self.__sig_obj, net_utils.FieldSig):
+            if isinstance(self.__sig_obj, net_sigs.FieldSig):
                 type_obj = self.__sig_obj.get_type_sig()
-                if isinstance(type_obj, net_utils.TypeDefOrRefSig) and type_obj.get_type() != None:
+                if isinstance(type_obj, net_sigs.TypeDefOrRefSig) and type_obj.get_type() != None:
                     typedef_obj = type_obj.get_type()
                     self.__field_type = typedef_obj
                     if isinstance(typedef_obj, TypeDef) and typedef_obj.get_classlayout_obj():
-                        self.__class_size = typedef_obj.get_classlayout_obj()['ClassSize'].get_value()
-                elif isinstance(type_obj, net_utils.CorLibTypeSig):
+                        self.__class_size = typedef_obj.get_classlayout_obj().get_column('ClassSize').get_value()
+                elif isinstance(type_obj, net_sigs.CorLibTypeSig):
                     if type_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I8:
                         self.__class_size = 8
                     elif type_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R4:
@@ -836,14 +884,14 @@ cdef class Field(RowObject):
         """
         Checks if the field is static or not.
         """
-        return self['Flags'].get_value() & net_structs.CorFieldAttr.fdStatic != 0
+        return self.get_column('Flags').get_value() & net_structs.CorFieldAttr.fdStatic != 0
 
     cpdef bytes get_data(self):
         """
         If the field has initial constant data, attempt to obtain it.
         """
         cdef int rva
-        cdef int offset
+        cdef uint64_t offset
         if not self.__rva_object:
             return None
 
@@ -853,7 +901,7 @@ cdef class Field(RowObject):
         if self.__class_size == 0:
             return None
 
-        rva = self.__rva_object['RVA'].get_value()
+        rva = self.__rva_object.get_column('RVA').get_value()
         if rva == 0:
             return None
 
@@ -878,6 +926,12 @@ cdef class TypeRef(TypeDefOrRef):
         self.__cctor_method = None
         self.__full_name = None
         self._memberrefs = list()
+
+    cpdef bint is_enum(self):
+        return self.get_full_name() == b'System.Enum'
+
+    cpdef bint is_valuetype(self):
+        return self.get_full_name() == b'System.ValueType'
 
     cpdef list get_member_refs(self):
         """
@@ -905,16 +959,9 @@ cdef class TypeRef(TypeDefOrRef):
         Obtains any child classes for the type.
         """
         return self.__child_classes
-
-    cdef void process(self):
-        cdef MemberRef member_ref
-        cdef str class_table
-        for member_ref in self.get_dotnetpe().get_metadata_table('MemberRef'):
-            class_table = member_ref['Class'].get_value_table_name()
-            if class_table == 'TypeRef':
-                if member_ref['Class'].get_value_rid() == self.get_rid():
-                    self.__methods.append(member_ref)
-                    member_ref._set_parent_type(self)
+    
+    cdef void _add_method(self, MethodDefOrRef method_obj):
+        self.__methods.append(method_obj)
 
     cpdef list get_methods(self):
         """
@@ -927,13 +974,14 @@ cdef class TypeRef(TypeDefOrRef):
         cdef RowObject method
         result = list()
         for method in self.__methods:
-            if method['Name'].get_value() == method_name:
+            if method.get_column('Name').get_value() == method_name:
                 result.append(method)
         return result
 
-    cpdef MethodDef get_cctor_method(self):
+    cpdef MethodDef get_static_constructor(self):
         """
         Obtains the type's static constructor if exists.
+        I dont think this is a thing for TypeRefs
         """
         cdef list results
         if not self.__cctor_method:
@@ -942,6 +990,9 @@ cdef class TypeRef(TypeDefOrRef):
                 self.__cctor_method = results[0]
         return self.__cctor_method
 
+    cpdef list get_constructors(self):
+        return self.get_methods_by_name(b'.ctor')
+
     cpdef bytes get_full_name(self):
         """
         Obtains the full name of the type.
@@ -949,8 +1000,8 @@ cdef class TypeRef(TypeDefOrRef):
         cdef bytes type_namespace
         cdef bytes type_name
         if not self.__full_name:
-            type_namespace = self['TypeNamespace'].get_value()
-            type_name = self['TypeName'].get_value()
+            type_namespace = self.get_column('TypeNamespace').get_value()
+            type_name = self.get_column('TypeName').get_value()
             if type_name:
                 if type_namespace:
                     self.__full_name = type_namespace + b'.' + type_name
@@ -978,7 +1029,7 @@ cdef class MethodDefOrRef(RowObject):
     cpdef list get_xrefs(self):
         return list()
 
-    cpdef void _add_xref(self, int rid, int instr_index):
+    cpdef void _add_xref(self, int rid, int instr_offset):
         pass
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type):
@@ -1008,7 +1059,7 @@ cdef class MethodDefOrRef(RowObject):
     cpdef bint is_static_method(self):
         return False
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self):
+    cpdef net_sigs.CallingConventionSig get_method_signature(self):
         return None
 
     cpdef bint is_entrypoint(self):
@@ -1091,23 +1142,23 @@ cdef class MethodDef(MethodDefOrRef):
         """
         Obtain the methods data based on the original copy of the exe.
         """
-        cdef unsigned long file_offset
+        cdef uint64_t file_offset
         cdef unsigned long method_size
-        if self['RVA'].get_value() == 0:
+        if self.get_column('RVA').get_value() == 0:
             return None
-        file_offset = self.get_dotnetpe().get_pe().get_offset_from_rva(self['RVA'].get_value())
+        file_offset = self.get_dotnetpe().get_pe().get_offset_from_rva(self.get_column('RVA').get_value())
         method_size = net_cil_disas.get_total_method_size(self.get_dotnetpe().get_original_exe_data()[file_offset:])
         return self.get_dotnetpe().get_original_exe_data()[file_offset: file_offset + method_size]
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type):
         self.__parent_type = parent_type
 
-    cpdef void _add_xref(self, int rid, int instr_index):
-        self.__xrefs.append((rid, instr_index))
+    cpdef void _add_xref(self, int rid, int instr_offset):
+        self.__xrefs.append((rid, instr_offset))
 
     cpdef list get_xrefs(self):
         """
-        Obtains a list of tuples (method_rid, instr_index) representing xrefs of a method.
+        Obtains a list of tuples (method_rid, instr_offset) representing xrefs of a method.
         A method xref is when call or callvirt is used on a methoddef object.
         """
         return self.__xrefs
@@ -1116,46 +1167,44 @@ cdef class MethodDef(MethodDefOrRef):
         """
         Returns true if the method is abstract, false otherwise.
         """
-        return self['Flags'].get_raw_value() & net_structs.CorMethodAttr.mdAbstract != 0
+        return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdAbstract != 0
 
     cdef void process(self):
-        cdef net_table_objects.MetadataHeap metadata_heap
+        cdef net_processing.MetadataTableHeapObject metadata_heap
         cdef int params_list_end
         cdef int params_list_len
         cdef int params_list_start
         cdef list paramlist
-        cdef net_table_objects.TableObject paramptr_table = None
+        cdef net_table_objects.TableObject param_table = self.get_dotnetpe().get_metadata_table('Param')
+        cdef net_table_objects.TableObject paramptr_table = self.get_dotnetpe().get_metadata_table('ParamPtr')
+        cdef net_table_objects.TableObject methoddef_table = self.get_dotnetpe().get_metadata_table('MethodDef')
+
 
         # process paramslist
-        metadata_heap = self.get_dotnetpe().get_heap('#~')
-        if metadata_heap.has_table('Param'):
-            if not self.get_dotnetpe().has_metadata_table('ParamPtr'):
-                params_list_len = len(metadata_heap.obtain_table('Param'))
+        if param_table is not None and self.get_column('ParamList').get_raw_value() != 0:
+            if paramptr_table is None:
+                params_list_len = <int>len(param_table)
                 params_list_end = params_list_len + 1
 
-                if metadata_heap.obtain_table('MethodDef').has_index(self.get_rid() + 1):
-                    params_list_end = metadata_heap.obtain_table('MethodDef').get(self.get_rid() + 1).values[
-                        'paramlist'].get_raw_value()
-                if not metadata_heap.obtain_table('Param').has_index(params_list_end):
+                if methoddef_table.has_index(self.get_rid() + 1):
+                    params_list_end = methoddef_table.get(self.get_rid() + 1).get_column('ParamList').get_raw_value()
+                if not param_table.has_index(params_list_end):
                     params_list_end = params_list_len + 1
             else:
-                paramptr_table = self.get_dotnetpe().get_metadata_table('ParamPtr')
-                params_list_len = len(paramptr_table)
+                params_list_len = <int>len(paramptr_table)
                 params_list_end = params_list_len + 1
-
-                if metadata_heap.obtain_table('MethodDef').has_index(self.get_rid() + 1):
-                    params_list_end = metadata_heap.obtain_table('MethodDef').get(self.get_rid() + 1).values[
-                        'paramlist'].get_raw_value()
+                if methoddef_table.has_index(self.get_rid() + 1):
+                    params_list_end = methoddef_table.get(self.get_rid() + 1).get_column('ParamList').get_raw_value()
                 if not paramptr_table.has_index(params_list_end):
                     params_list_end = params_list_len + 1
-            params_list_start = self.values['paramlist'].get_raw_value()
+            params_list_start = self.get_column('ParamList').get_raw_value()
             paramlist = list()
             for x in range(params_list_start, params_list_end):
-                if paramptr_table is not None:
-                    paramlist.append(paramptr_table.get(x)['Param'].get_value())
+                if paramptr_table is None:
+                    paramlist.append(param_table.get(x))
                 else:
-                    paramlist.append(metadata_heap.obtain_table('Param').get(x))
-            self['ParamList'].set_formatted_value(paramlist)
+                    paramlist.append(paramptr_table.get(x).get_column('Param').get_value())
+            self.get_column('ParamList').set_formatted_value(paramlist)
 
     cpdef list get_param_types(self):
         """
@@ -1169,44 +1218,44 @@ cdef class MethodDef(MethodDefOrRef):
         """
         if not self.__full_name:
             if self.__parent_type is None:
-                self.__full_name = self['Name'].get_value()
+                self.__full_name = self.get_column('Name').get_value()
             else:
-                self.__full_name = self.__parent_type.get_full_name() + b'.' + self['Name'].get_value()
+                self.__full_name = self.__parent_type.get_full_name() + b'.' + self.get_column('Name').get_value()
         return self.__full_name
     
     cpdef bint is_virtual(self):
         """
         Returns True if a method is virtual, false otherwise.
         """
-        return self['Flags'].get_raw_value() & net_structs.CorMethodAttr.mdVirtual != 0
+        return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdVirtual != 0
 
     cpdef bint is_hidebysig(self):
         """
         Returns True if a method is HideBySig, false otherwise.
         """
-        return self['Flags'].get_raw_value() & net_structs.CorMethodAttr.mdHideBySig != 0
+        return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdHideBySig != 0
 
     cpdef bint is_static_method(self):
         """
         Is the method static?
         """
-        return self['Flags'].get_raw_value() & net_structs.CorMethodAttr.mdStatic != 0
+        return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdStatic != 0
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self):
+    cpdef net_sigs.CallingConventionSig get_method_signature(self):
         """
         Obtains the method's signature object.
         """
         cdef bytes signature_data
-        cdef net_utils.SignatureReader sig_reader
+        cdef net_sigs.SignatureReader sig_reader
         if self.__sig_obj == None and not self.__has_invalid_signature:
-            signature_data = self['Signature'].get_value()
+            signature_data = self.get_column('Signature').get_value()
             try:
-                sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), signature_data, self)
+                sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature_data, self)
                 self.__sig_obj = sig_reader.read_signature()
-                if not isinstance(self.__sig_obj, net_utils.MethodSig):
+                if not isinstance(self.__sig_obj, net_sigs.MethodSig):
                     raise net_exceptions.InvalidSignatureException('Sig mismatch')
                 self.__has_return_value = not isinstance(
-                    self.__sig_obj.get_return_type(), net_utils.CorLibTypeSig) or self.__sig_obj.get_return_type() != net_utils.get_CorSig_Void()
+                    self.__sig_obj.get_return_type(), net_sigs.CorLibTypeSig) or self.__sig_obj.get_return_type() != net_sigs.get_CorSig_Void()
                 self.__method_has_this = self.__sig_obj.get_calling_conv() & net_structs.CorCallingConvention.HasThis != 0
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True
@@ -1226,13 +1275,13 @@ cdef class MethodDef(MethodDefOrRef):
         """
         Checks if the method is a static constructor.
         """
-        return self['Name'].get_value() == b'.cctor'
+        return self.get_column('Name').get_value() == b'.cctor'
 
     cpdef bint is_constructor(self):
         """
         Checks if the method is an instance constructor.
         """
-        return self['Name'].get_value() == b'.ctor'
+        return self.get_column('Name').get_value() == b'.ctor'
 
     def __str__(self):
         return 'MethodDef:{}='.format(self.get_rid()) + self.get_full_name().__str__()
@@ -1241,11 +1290,11 @@ cdef class MethodDef(MethodDefOrRef):
         """
         Obtain the method body's data.
         """
-        cdef int file_offset
+        cdef uint64_t file_offset
         cdef int method_size
-        if self['RVA'].get_value() == 0:
+        if self.get_column('RVA').get_value() == 0:
             return None
-        file_offset = self.get_dotnetpe().get_pe().get_offset_from_rva(self['RVA'].get_value())
+        file_offset = self.get_dotnetpe().get_pe().get_offset_from_rva(self.get_column('RVA').get_value())
         method_size = net_cil_disas.get_total_method_size(self.get_dotnetpe().get_exe_data()[file_offset:])
         return self.get_dotnetpe().get_exe_data()[file_offset: file_offset + method_size]
 
@@ -1253,7 +1302,7 @@ cdef class MethodDef(MethodDefOrRef):
         """
         Does the method object contain an actual method body?
         """
-        return self['RVA'].get_value() != 0
+        return self.get_column('RVA').get_value() != 0
 
     cpdef TypeDefOrRef get_parent_type(self):
         """
@@ -1279,7 +1328,7 @@ cdef class MethodDef(MethodDefOrRef):
         """
         Obtain the amount of parameters that the function takes.
         """
-        return len(self['ParamList'].get_formatted_value())
+        return <int>len(self.get_method_signature().get_parameters())
 
 
 cdef class MemberRef(MethodDefOrRef):
@@ -1299,12 +1348,12 @@ cdef class MemberRef(MethodDefOrRef):
 
     cpdef list get_xrefs(self):
         """
-        Obtain a list of xrefs for a MemberRef (a list of tuples with values (method_rid, instr_index))
+        Obtain a list of xrefs for a MemberRef (a list of tuples with values (method_rid, instr_offset))
         """
         return self.__xrefs
 
-    cpdef void _add_xref(self, int rid, int instr_index):
-        self.__xrefs.append((rid, instr_index))
+    cpdef void _add_xref(self, int rid, int instr_offset):
+        self.__xrefs.append((rid, instr_offset))
 
     cpdef TypeDefOrRef get_parent_type(self):
         """
@@ -1316,10 +1365,11 @@ cdef class MemberRef(MethodDefOrRef):
         self.__parent_type = parent_type
 
     cdef void post_process(self):
-        cdef RowObject class_obj
+        cdef TypeDefOrRef class_obj
         cdef RowObject sig_type
-        class_obj = self['Class'].get_value()
+        class_obj = self.get_column('Class').get_value()
         if class_obj:
+            class_obj._add_method(self) #This wont do anything for MethodDefs, only MemberRefs
             if class_obj.get_table_name() == 'TypeRef':
                 self._set_parent_type(class_obj)
             elif class_obj.get_table_name() == 'ModuleRef':
@@ -1350,8 +1400,8 @@ cdef class MemberRef(MethodDefOrRef):
             if isinstance(parent_type, TypeSpec):
                 sig_type = parent_type.get_type()
                 if sig_type and isinstance(sig_type, TypeDef):
-                    for method in sig_type['MethodList'].get_formatted_value():
-                        if method['Name'].get_original_value() == self['Name'].get_original_value():
+                    for method in sig_type.get_column('MethodList').get_formatted_value():
+                        if method.get_column('Name').get_original_value() == self.get_column('Name').get_original_value():
                             if method.get_method_signature() == self.get_method_signature():
                                 return method
         return None
@@ -1361,13 +1411,13 @@ cdef class MemberRef(MethodDefOrRef):
         """
         Returns True if the memberref object represents a field.
         """
-        return isinstance(self.get_method_signature(), net_utils.FieldSig)
+        return isinstance(self.get_method_signature(), net_sigs.FieldSig)
     
     cpdef bint is_method(self):
         """
         Returns True if the memberref object represents a method.
         """
-        return isinstance(self.get_method_signature(), net_utils.MethodSig)
+        return isinstance(self.get_method_signature(), net_sigs.MethodSig)
 
     cpdef bint is_static_method(self):
         return not self.method_has_this()
@@ -1384,18 +1434,18 @@ cdef class MemberRef(MethodDefOrRef):
             if self.__parent_type:
                 parent_name = self.__parent_type.get_full_name()
                 if parent_name is not None:
-                    self.__full_name = parent_name + b'.' + self['Name'].get_value()
+                    self.__full_name = parent_name + b'.' + self.get_column('Name').get_value()
                 else:
-                    self.__full_name = self['Name'].get_value()
+                    self.__full_name = self.get_column('Name').get_value()
             else:
-                self.__full_name = self['Name'].get_value()
+                self.__full_name = self.get_column('Name').get_value()
         return self.__full_name
 
     cpdef bint has_return_value(self):
         """
         Does the method have a return value?
         """
-        return self.get_method_signature().get_return_type() != net_utils.get_CorSig_Void()
+        return self.get_method_signature().get_return_type() != net_sigs.get_CorSig_Void()
 
     cpdef list get_param_types(self):
         """
@@ -1413,16 +1463,17 @@ cdef class MemberRef(MethodDefOrRef):
         """
         Obtain the amount of parameters that the function takes.
         """
-        return len(self.get_param_types())
+        return <int>len(self.get_param_types())
 
-    cpdef net_utils.MethodBaseSig get_method_signature(self):
+    cpdef net_sigs.CallingConventionSig get_method_signature(self):
         """
         Obtain the signature object associated with the method.
         """
         if self.__sig_obj == None:
             try:
-                self.__sig_obj = net_utils.SignatureReader(self.get_dotnetpe(), self['Signature'].get_value()).read_signature()
-            except:
+                self.__sig_obj = net_sigs.SignatureReader(self.get_dotnetpe(), self.get_column('Signature').get_value_as_bytes()).read_signature()
+            except Exception as e:
+                print('exception parsing memberref sig {} {}'.format(hex(self.get_token()), str(e)))
                 return None
         return self.__sig_obj
 
@@ -1437,7 +1488,7 @@ cdef class GenericParam(RowObject):
 
     cdef void process(self):
         cdef RowObject owner_obj
-        owner_obj = self['Owner'].get_value()
+        owner_obj = self.get_column('Owner').get_value()
         if owner_obj:
             if isinstance(owner_obj, TypeDef):
                 owner_obj._generic_params.append(self)
@@ -1455,18 +1506,18 @@ cdef class MethodSpec(MethodDefOrRef):
 
     cpdef list get_xrefs(self):
         """
-        Obtain a list of xrefs (tuples with (method_rid, instr_index)) for the MethodSpec
+        Obtain a list of xrefs (tuples with (method_rid, instr_offset)) for the MethodSpec
         """
         return self.__xrefs
 
-    cpdef void _add_xref(self, int rid, int instr_index):
-        self.__xrefs.append((rid, instr_index))
+    cpdef void _add_xref(self, int rid, int instr_offset):
+        self.__xrefs.append((rid, instr_offset))
 
     cpdef MethodDefOrRef get_method(self):
         """
         Get the base method for the MethodSpec
         """
-        return self['Method'].get_value()
+        return self.get_column('Method').get_value()
     
     cpdef bytes get_full_name(self):
         """
@@ -1480,17 +1531,17 @@ cdef class MethodSpec(MethodDefOrRef):
         else:
             return self.get_method() == other
 
-    cpdef net_utils.MethodSig get_sig_obj(self):
+    cpdef net_sigs.CallingConventionSig get_sig_obj(self):
         """
         Obtain the Type's signature object.
         """
         cdef bytes signature
-        cdef net_utils.SignatureReader sig_reader
+        cdef net_sigs.SignatureReader sig_reader
         if not self.__parsed_sig:
-            signature = self['Signature'].get_value()
-            sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), signature)
+            signature = self.get_column('Signature').get_value()
+            sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
             try:
-                self.__parsed_sig = sig_reader.handle_method_sig()
+                self.__parsed_sig = sig_reader.read_calling_convention_sig()
             except net_exceptions.InvalidSignatureException:
                 pass
         return self.__parsed_sig
@@ -1500,23 +1551,29 @@ cdef class TypeSpec(TypeDefOrRef):
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, list raw_data, int rid, list sizes, dict col_types, str table_name):
         TypeDefOrRef.__init__(self, dotnetpe, raw_data, rid,
                            sizes, col_types, table_name)
+        self.__has_type = False
         self.__parsed_sig = None
         self.__has_invalid_signature = False
 
+    cdef void post_process(self):
+        self.__has_type = self.get_type() is not None
+
     cpdef void _add_child_class(self, TypeDefOrRef to_add):
+        if not self.__has_type:
+            return
         self.get_type()._add_child_class(to_add)
 
     cpdef TypeDefOrRef get_type(self):
         """
         Attempts to obtain a TypeDef or TypeRef object behind the TypeSpec signature.
         """
-        cdef net_utils.TypeSig sig_obj
+        cdef net_sigs.TypeSig sig_obj
         cdef net_structs.CorElementType element_type
         cdef bytes element_type_name
         sig_obj = self.get_sig_obj()
-        if isinstance(sig_obj, net_utils.GenericInstSig):
+        if isinstance(sig_obj, net_sigs.GenericInstSig):
             return sig_obj.get_generic_type().get_type()
-        elif isinstance(sig_obj, net_utils.CorLibTypeSig):
+        elif isinstance(sig_obj, net_sigs.CorLibTypeSig):
             element_type = sig_obj.get_element_type()
             element_type_name = get_cor_type_name(element_type)
             return self.get_dotnetpe().get_typeref_by_full_name(element_type_name)
@@ -1533,7 +1590,7 @@ cdef class TypeSpec(TypeDefOrRef):
         type_obj = self.get_type()
         if type_obj is None:
             #first check and see if we have a corlibtypesig, maybe we can still get the name off that. 
-            if isinstance(self.get_sig_obj(), net_utils.CorLibTypeSig):
+            if isinstance(self.get_sig_obj(), net_sigs.CorLibTypeSig):
                 try:
                     return get_cor_type_name(self.get_sig_obj().get_element_type())
                 except:
@@ -1545,18 +1602,29 @@ cdef class TypeSpec(TypeDefOrRef):
         """
         Attempts to obtain all methods associated with a typespec.
         """
+        if not self.__has_type:
+            return None
         return self.get_type().get_methods()
+
+    cdef void _add_method(self, MethodDefOrRef method_obj):
+        if not self.__has_type:
+            return
+        self.get_type()._add_method(method_obj)
 
     cpdef list get_member_refs(self):
         """
         Attempts to obtain all memberrefs associated with a TypeSpec
         """
+        if not self.__has_type:
+            return None
         return self.get_type().get_member_refs()
 
     cpdef TypeDefOrRef get_superclass(self):
         """
         Attempts to obtain the superclass of a TypeSpec if it exists.
         """
+        if not self.__has_type:
+            return None
         return self.get_type().get_superclass()
 
     def __eq__(self, other):
@@ -1565,16 +1633,16 @@ cdef class TypeSpec(TypeDefOrRef):
         else:
             return self.get_type() == other
 
-    cpdef net_utils.TypeSig get_sig_obj(self):
+    cpdef net_sigs.TypeSig get_sig_obj(self):
         """
         Obtain the Type's signature object.
         """
-        cdef net_utils.SignatureReader sig_reader
+        cdef net_sigs.SignatureReader sig_reader
         cdef bytes signature
         if not self.__parsed_sig and not self.__has_invalid_signature:
-            signature = self['Signature'].get_value()
+            signature = self.get_column('Signature').get_value()
             try:
-                sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), signature)
+                sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
                 self.__parsed_sig = sig_reader.handle_type_sig()
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True
@@ -1588,16 +1656,16 @@ cdef class StandAloneSig(RowObject):
         self.__parsed_sig = None
         self.__has_invalid_signature
 
-    cpdef net_utils.TypeSig get_sig_obj(self):
+    cpdef net_sigs.TypeSig get_sig_obj(self):
         """
         Obtain the Signature object.
         """
-        cdef net_utils.SignatureReader sig_reader
+        cdef net_sigs.SignatureReader sig_reader
         cdef bytes signature
         if not self.__parsed_sig and not self.__has_invalid_signature:
-            signature = self['Signature'].get_value()
+            signature = self.get_column('Signature').get_value()
             try:
-                sig_reader = net_utils.SignatureReader(self.get_dotnetpe(), signature)
+                sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
                 self.__parsed_sig = sig_reader.handle_type_sig()
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True
@@ -1617,7 +1685,7 @@ cdef class MethodImpl(RowObject):
         Obtain the Class column of a MethodImpl
         """
         if not self.__class:
-            self.__class = self['Class'].get_value()
+            self.__class = self.get_column('Class').get_value()
         return self.__class
     
     cpdef RowObject get_declaration(self):
@@ -1625,7 +1693,7 @@ cdef class MethodImpl(RowObject):
         Obtain the MethodDeclaration column of MethodImpl
         """
         if not self.__declaration:
-            self.__declaration = self['MethodDeclaration'].get_value()
+            self.__declaration = self.get_column('MethodDeclaration').get_value()
 
         return self.__declaration
     
@@ -1634,7 +1702,7 @@ cdef class MethodImpl(RowObject):
         Obtain the MethodBody column of a MethodImpl
         """
         if not self.__body:
-            self.__body = self['MethodBody'].get_value()
+            self.__body = self.get_column('MethodBody').get_value()
         return self.__body
     
 cdef class MethodSemantic(RowObject):
@@ -1646,49 +1714,49 @@ cdef class MethodSemantic(RowObject):
         """
         Obtains the Method object associated with the semantic.
         """
-        return self['Method'].get_value()
+        return self.get_column('Method').get_value()
     
     cpdef RowObject get_assocciation(self):
         """
         Obtain the event or property the semantic is associated with.
         """
-        return self['Association'].get_value()
+        return self.get_column('Association').get_value()
     
     cpdef bint is_setter(self):
         """
         Is the method marked as a property setter method?
         """
-        return self['Semantics'].get_raw_value() & net_structs.CorMethodSemanticsAttr.msSetter != 0
+        return self.get_column('Semantics').get_raw_value() & net_structs.CorMethodSemanticsAttr.msSetter != 0
     
     cpdef bint is_getter(self):
         """
         Is the method marked as a property getter method?
         """
-        return self['Semantics'].get_raw_value() & net_structs.CorMethodSemanticsAttr.msGetter != 0
+        return self.get_column('Semantics').get_raw_value() & net_structs.CorMethodSemanticsAttr.msGetter != 0
 
     cpdef bint is_other(self):
         """
         Is the method marked as an other method for a property or event?
         """
-        return self['Semantics'].get_raw_value() & net_structs.CorMethodSemanticsAttr.msOther != 0
+        return self.get_column('Semantics').get_raw_value() & net_structs.CorMethodSemanticsAttr.msOther != 0
     
     cpdef bint is_add_on(self):
         """
         Is the method marked as a addon method for an event?
         """
-        return self['Semantics'].get_raw_value() & net_structs.CorMethodSemanticsAttr.msAddOn != 0
+        return self.get_column('Semantics').get_raw_value() & net_structs.CorMethodSemanticsAttr.msAddOn != 0
     
     cpdef bint is_remove_on(self):
         """
         Is the method marked as a RemoveOn method for an event?
         """
-        return self['Semantics'].get_raw_value() & net_structs.CorMethodSemanticsAttr.msRemoveOn != 0
+        return self.get_column('Semantics').get_raw_value() & net_structs.CorMethodSemanticsAttr.msRemoveOn != 0
     
     cpdef bint is_fire(self):
         """
         is the method marked as a Fire method for an event?
         """
-        return self['Semantics'].get_raw_value() & net_structs.CorMethodSemanticsAttr.msFire != 0
+        return self.get_column('Semantics').get_raw_value() & net_structs.CorMethodSemanticsAttr.msFire != 0
     
     
 cdef class PropertyMap(RowObject):
@@ -1701,45 +1769,45 @@ cdef class PropertyMap(RowObject):
         cdef int property_list_len
         cdef int property_list_start
         cdef list propertylist
-        cdef net_table_objects.TableObject propertyptr_table = None
         cdef int x
-        if not self.get_dotnetpe().has_metadata_table('PropertyPtr'):
-            property_list_len = len(self.get_dotnetpe().get_metadata_table('Property')) + 1
+        cdef net_table_objects.TableObject property_table = self.get_dotnetpe().get_metadata_table('Property')
+        cdef net_table_objects.PropertyMapTable propertymap_table = self.get_dotnetpe().get_metadata_table('PropertyMap')
+        cdef net_table_objects.TableObject propertyptr_table = self.get_dotnetpe().get_metadata_table('PropertyPtr')
+        if propertyptr_table is None:
+            property_list_len = <int>len(property_table)
             property_list_end = property_list_len
-            if self.get_rid() + 1 < len(self.get_dotnetpe().get_metadata_table('PropertyMap')):
-                property_list_end = self.get_dotnetpe().get_metadata_table('PropertyMap').get(self.get_rid() + 1)['PropertyList'].get_raw_value()
+            if propertymap_table.has_index(self.get_rid() + 1):
+                property_list_end = propertymap_table.get(self.get_rid() + 1).get_column('PropertyList').get_raw_value()
             if property_list_end > property_list_len:
                 property_list_end = property_list_len
         else:
-            propertyptr_table = self.get_dotnetpe().get_metadata_table('PropertyPtr')
-            property_list_len = len(propertyptr_table) + 1
+            property_list_len = <int>len(propertyptr_table) + 1
             property_list_end = property_list_len
-            if self.get_rid() + 1 < len(self.get_dotnetpe().get_metadata_table('PropertyMap')):
-                property_list_end = self.get_dotnetpe().get_metadata_table('PropertyMap').get(self.get_rid() + 1)['PropertyList'].get_raw_value()
-            if not propertyptr_table.has_index(property_list_end):
+            if propertymap_table.has_index(self.get_rid() + 1):
+                property_list_end = propertymap_table.get(self.get_rid() + 1).get_column('PropertyList').get_raw_value()
+            if not property_table.has_index(property_list_end):
                 property_list_end = property_list_len
-
-
-        property_list_start = self['PropertyList'].get_raw_value()
+        
+        property_list_start = self.get_column('PropertyList').get_raw_value()
         propertylist = list()
         for x in range(property_list_start, property_list_end):
-            if propertyptr_table is not None:
-                propertylist.append(propertyptr_table.get(x)['Property'].get_value())
+            if propertyptr_table is None:
+                propertylist.append(property_table.get(x))
             else:
-                propertylist.append(self.get_dotnetpe().get_metadata_table('Property').get(x))
-        self['PropertyList'].set_formatted_value(propertylist)
+                propertylist.append(propertyptr_table.get(x).get_column('Property').get_value())
+        self.get_column('PropertyList').set_formatted_value(propertylist)
 
     cpdef RowObject get_parent(self):
         """
         Get the parent type for a property.
         """
-        return self['Parent'].get_value()
+        return self.get_column('Parent').get_value()
     
     cpdef list get_properties(self):
         """
         Get all of the properties associated with a parent.
         """
-        return self['PropertyList'].get_formatted_value()
+        return self.get_column('PropertyList').get_formatted_value()
 
 cdef dict NET_METADATA_ROW_TYPES = {
     'Module': RowObject,

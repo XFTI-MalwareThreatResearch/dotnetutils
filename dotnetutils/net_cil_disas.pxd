@@ -1,26 +1,33 @@
 #cython: language_level=3
+#distutils: language=c++
+
 from dotnetutils cimport dotnetpefile
 from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_structs
 from dotnetutils cimport net_opcodes
+from cpython.ref cimport PyObject
+from cython.operator cimport dereference
+from libcpp.vector cimport vector
+from libcpp.unordered_map cimport unordered_map
 
 cdef class Instruction:
-
     cdef net_opcodes.OpCode opcode_one
-    cdef list arguments
+    cdef bytes arguments
     cdef int instr_size
-    cdef int offset
+    cdef unsigned int offset
     cdef object __saved_argument
     cdef MethodDisassembler __disasm_obj
-    cdef int instr_index
+    cdef unsigned int instr_index
 
     cpdef int get_instr_size(self)
 
-    cpdef int get_instr_index(self)
+    cpdef unsigned int get_instr_index(self)
 
-    cpdef int get_instr_offset(self)
+    cpdef unsigned int get_instr_offset(self)
 
     cdef void add_argument(self, int argument)
+    
+    cdef void __set_arguments(self, bytes arguments)
 
     cpdef str get_name(self)
 
@@ -57,8 +64,11 @@ cdef class MethodDisassembler:
     cdef list local_types
     cdef list exception_blocks
     cdef int flags
-    cdef dict instrs
+    cdef vector[PyObject*] instrs
+    cdef unordered_map[int, int] offsets
     cdef net_structs.DotNetDataReader __reader
+
+    cpdef int get_max_stack_size(self)
 
     cpdef object get_method(self)
 
@@ -74,13 +84,15 @@ cdef class MethodDisassembler:
 
     cdef void parse_header(self)
 
-    cdef dict disassemble_loop(self)
+    cdef void disassemble_loop(self)
 
     cpdef Instruction get_instr_at_offset(self, int offset)
 
+    cpdef Instruction get_instr_at_index(self, int index)
+
     cpdef int get_instr_offset(self, int instr_index)
 
-    cpdef int get_instr_index_by_offset(self, int instr_offset)
+    cpdef unsigned int get_instr_index_by_offset(self, unsigned int instr_offset)
 
 
 cpdef get_total_method_size(data)
