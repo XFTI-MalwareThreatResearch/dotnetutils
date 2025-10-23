@@ -590,8 +590,7 @@ cdef class TypeDef(TypeDefOrRef):
                 self.__superclass = self.get_column('Extends').get_value()
                 if isinstance(self.__superclass, TypeDefOrRef):
                     add_to = self.__superclass
-                    if hasattr(add_to, '_add_child_class'):
-                        add_to._add_child_class(self)
+                    addd_to._add_child_class(self)
                 else:
                     self.__superclass = None
                     self.__has_superclass = False
@@ -613,7 +612,8 @@ cdef class TypeDef(TypeDefOrRef):
         return self.__child_classes
 
     cpdef void _add_child_class(self, TypeDefOrRef obj):
-        self.__child_classes.append(obj)
+        if obj not in self.__child_classes:
+            self.__child_classes.append(obj)
 
     cpdef list get_member_refs(self):
         """
@@ -746,6 +746,7 @@ cdef class TypeDef(TypeDefOrRef):
                             self.__interfaces.append(interface_obj)
             if len(self.__interfaces) == 0:
                 self.__has_interfaces = False
+        self.get_superclass()
 
     cpdef bytes get_full_name(self):
         """
@@ -952,7 +953,8 @@ cdef class TypeRef(TypeDefOrRef):
         return self.__interfaces
 
     cpdef void _add_child_class(self, TypeDefOrRef obj):
-        self.__child_classes.append(obj)
+        if obj not in self.__child_classes:
+            self.__child_classes.append(obj)
 
     cpdef list get_child_classes(self):
         """
@@ -1372,6 +1374,7 @@ cdef class MemberRef(MethodDefOrRef):
             class_obj._add_method(self) #This wont do anything for MethodDefs, only MemberRefs
             if class_obj.get_table_name() == 'TypeRef':
                 self._set_parent_type(class_obj)
+                class_obj._memberrefs.append(self)
             elif class_obj.get_table_name() == 'ModuleRef':
                 self._set_parent_type(class_obj)
             elif class_obj.get_table_name() == 'MethodDef':

@@ -1083,6 +1083,8 @@ cdef bint has_prefix(bytes type_name):
     nums = b'0123456789'
     if type_name.startswith(b'set_') or type_name.startswith(b'get_') or type_name.startswith(b'op_'):
         return True
+    if type_name.startswith(b'raise_') or type_name.startswith(b'add_') or type_name.startswith(b'remove_'):
+        return True
     for x in range(len(prefixes)):
         prefix = prefixes[x]
         if type_name.startswith(prefix):
@@ -1184,6 +1186,307 @@ cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.
         check_type(
             method_obj, tdefref, parent_method_name, new_index, parent_method_signature, checked_types, method_names)
 
+cdef bytes check_for_inherited_name(net_row_objects.MethodDefOrRef mdef, net_row_objects.TypeDefOrRef tref):
+    cdef net_row_objects.TypeDefOrRef ptr = tref
+    cdef net_row_objects.MethodDefOrRef mptr = None
+    cdef net_row_objects.TypeDefOrRef tptr = None
+    cdef bytes result
+    cdef bint debug = False
+    if mdef.get_rid() == 2213:
+        debug = True
+        print('target method')
+    while ptr is not None:
+        if debug:
+            print('cehcking ptr {}'.format(ptr))
+        if isinstance(ptr, net_row_objects.TypeRef):
+            if debug:
+                print('tref')
+            for mptr in ptr.get_member_refs():
+                if debug:
+                    print('checking method {} {} {}'.format(mptr.get_column('Name').get_value(), mdef.get_column('Name').get_value(), mptr.get_parent_type()))
+                if mdef.is_hidebysig():
+                    if debug:
+                        print('is hidebysig')
+                    if mptr.get_column('Name').get_original_value() == mdef.get_column('Name').get_original_value():
+                        if mptr.get_method_signature() == mdef.get_method_signature():
+                            if isinstance(mptr.get_parent_type(), net_row_objects.TypeRef):
+                                return mptr.get_column('Name').get_original_value()
+                            elif isinstance(mptr.get_parent_type(), net_row_objects.TypeSpec):
+                                if isinstance(mptr.get_parent_type().get_type(), net_row_objects.TypeRef):
+                                    return mptr.get_column('Name').get_original_value()
+                else:
+                    if debug:
+                        print('not hidebysig {} {}'.format(mptr.get_method_signature(), mdef.get_method_signature()))
+                    if mptr.get_method_signature() == mdef.get_method_signature():
+                        if isinstance(mptr.get_parent_type(), net_row_objects.TypeRef):
+
+                            return mptr.get_column('Name').get_original_value()
+                        elif isinstance(mptr.get_parent_type(), net_row_objects.TypeSpec):
+                            if isinstance(mptr.get_parent_type().get_type(), net_row_objects.TypeRef):
+                                return mptr.get_column('Name').get_original_value()
+
+            break
+        elif isinstance(ptr, net_row_objects.TypeSpec):
+            ptr = ptr.get_type()
+        elif isinstance(ptr, net_row_objects.TypeDef):
+            for tptr in ptr.get_interfaces():
+                result = check_for_inherited_name(mdef, tptr)
+                if result is not None:
+                    return result
+            ptr = ptr.get_superclass()
+    return None
+
+cdef void iterate_type(net_row_objects.TypeDefOrRef tdefref, dict already_renamed):
+    if tdef.get_superclass() is not None:
+        raise net_exceptions.InvalidArgumentsException()
+
+    #Ok so start at our base class, then continuously go down.  Account for interfaces as well.
+    cdef net_row_objects.TypeDefOrRef prev_type = None
+    cdef net_row_objects.TypeDefOrRef ptr = tdefref
+    cdef int counter = 0
+    
+
+    
+
+
+
+
+cpdef bytes cleanup_names2(bytes data,
+                  bint change_namespaces=True,
+                  bint change_method_names=True,
+                  bint change_param_names=True,
+                  bint change_module_name=True,
+                  bint change_type_names=True,
+                  bint change_field_names=True,
+                  bint change_property_names=True,
+                  bint force_main_method=True,
+                  bint change_import_names=True,
+                  bint change_events=True) except *:
+    """
+    Changes various names throughout the binary to more readable values
+    Intended for instances when the names have been obfuscated.
+    This function will recover what it can, but for the most part only imported functions can be changed to original names.
+    Additionally this function now supports inheritence and can be used on more complex binaries.
+    :param data: the original binary data
+    All other parameters are to control what is changed.  By default everything is changed.
+    :param change_namespaces: Should namespace names be changed?
+    :param change_method_names: Should method names be changed?
+    :param change_param_names: Should parameter names be changed?
+    :param change_module_name: Should the module name be changed?
+    :param change_type_names: Should type names be changed?
+    :param change_field_names: Should field names be changed?
+    :param change_property_names: Should property names be changed?
+    :param force_main_method:  Should the entrypoint be forced to have a name of "Main"?
+    """
+    cdef dotnetpefile.DotNetPeFile dotnet = dotnetpefile.try_get_dotnetpe(pe_data=data)
+    cdef net_processing.StringHeapObject strings_heap = None
+    cdef dict already_handled = dict()
+    cdef Py_ssize_t x = 0
+    cdef net_row_objects.RowObject row_obj = None
+    cdef net_row_objects.ColumnValue col_val = None
+    cdef int count = 0
+    cdef net_row_objects.MethodDef mdef_obj = None
+    cdef net_row_objects.MethodDefOrRef mdefref_obj = None
+    cdef net_row_objects.MethodDefOrRef mdefref2_obj = None
+    cdef net_table_objects.TableObject table_obj = None
+    cdef list blocklisted_methods = [
+        b'.cctor',
+        b'Main',
+        b'.ctor',
+        b'Equals',
+        b'Finalize',
+        b'GetHashCode',
+        b'GetType',
+        b'MemberwiseClone',
+        b'ReferenceEquals',
+        b'ToString',
+        b'Invoke',
+        b'BeginInvoke',
+        b'EndInvoke',
+        b'Compare',
+        b'GetEnumerator',
+        b'TransformBlock',
+        b'TransformFinalBlock',
+        b'CreateEncryptor',
+        b'CreateDecryptor',
+        b'Flush',
+        b'Dispose',
+        b'ReleaseHandle',
+        b'GenerateKey',
+        b'GetBytes',
+        b'Reset',
+        b'Read',
+        b'MoveNext',
+        b'SetStateMachine',
+        b'Finalize'
+    ]
+
+    cdef list blocklisted_types = [
+        b'<Module>',
+        b'Program'
+    ]
+
+    cdef bytes name = None
+    cdef int new_index = 0
+    cdef net_row_objects.RowObject row_obj2 = None
+    cdef int count2 = 0
+    cdef dict changed_namespaces = dict()
+    cdef net_table_objects.TableObject table_obj2 = None
+    cdef net_row_objects.MethodSemantic msemantic = None
+    cdef net_table_objects.MethodSemanticsTable msem_table = None
+
+
+    if dotnet is None:
+        raise net_exceptions.InvalidArgumentsException()
+
+    strings_heap = dotnet.get_heap('#Strings')
+
+    if strings_heap is None:
+        raise net_exceptions.InvalidArgumentsException()
+
+    """
+    Start off with the easy things to get that over with.
+    """
+    already_handled['MethodDef'] = list()
+    already_handled['MemberRef'] = list()
+    already_handled['Field'] = list()
+    already_handled['TypeDef'] = list()
+    already_handled['TypeRef'] = list()
+    if change_module_name:
+        for row_obj in dotnetpe.get_metadata_table('Module'):
+            name = make_string(b'Module', count)
+            row_obj.get_column('Name').change_value(name)
+            count += 1
+    count = 0
+
+    mdef_obj = dotnetpe.get_entry_point()
+    if mdef_obj is not None and force_main_method:
+        ep_name = mdef_obj.get_column('Name').get_value_as_bytes()
+        if ep_name != b'Main':
+            mdef_obj.get_column('Name').change_value(b'Main')
+        already_handled['MethodDef'].append(mdef_obj.get_rid())
+
+    """
+    This part is pretty consistent - sometimes .NET obfuscators will change the names of C imported functions, those we can recover with certainty.
+    """
+    string_heap.begin_append_tx()
+    if change_method_names or change_import_names:
+        table_obj = dotnetpe.get_metadata_table('ImplMap')
+        if table_obj is not None:
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                col_val = row_obj.get_column('ImportName')
+                row_obj2 = row_obj.get_column('MemberForwarded').get_value_as_rowobject()
+                name = row_obj.get_column('ImportName').get_original_value()
+                # apply the new index
+                if row_obj2.get_column('Name').get_value_as_bytes() != name:
+                    new_index = string_heap.append_tx(name)
+                    row_obj2.get_column('Name').set_raw_value(new_index)
+                already_handled[row_obj2.get_table_name()].append(row_obj2.get_rid())
+    string_heap.end_append_tx()
+
+    """
+    Now we can handle Type names since those should be pretty consistent.  Save methods for later.
+    """
+
+    count = 0
+    table_obj = dotnet.get_metadata_table('TypeDef')
+    if table_obj is not None and (change_type_names or change_namespaces):
+        string_heap.begin_append_tx()
+        for x in range(1, len(table_obj) + 1):
+            row_obj = table_obj.get(<int>x)
+            name = row_obj.get_column('TypeName').get_value_as_bytes()
+            if name not in blocklisted_types and not has_prefix(name) and change_type_names:
+                name = make_string(b'Class', count)
+                count += 1
+                new_index = string_heap.append_tx(name)
+                row_obj.get_column('TypeName').set_raw_value(new_index)
+
+            #now handle TypeNamespace
+            name = row_obj.get_column('TypeNamespace').get_value_as_bytes()
+            if name is None or not has_prefix(name) and change_namespaces:
+                name = make_string(b'NameSpace', count2)
+                count2 += 1
+                new_index = string_heap.append_tx(name)
+                row_obj.get_column('TypeNamespace').set_raw_value(new_index)
+        string_heap.end_append_tx()
+    count = 0
+    count2 = 0
+
+    if change_param_names:
+        table_obj = dotnet.get_metadata_table('Param')
+        if table_obj is not None:
+            string_heap.begin_append_tx()
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                col_val = row_obj.get_column('Name')
+                name = col_val.get_value_as_bytes()
+                if name is None or not has_prefix(name):
+                    name = make_string(b'param', count)
+                    count += 1
+                    new_index = string_heap.append_tx(name)
+                    col_val.set_raw_value(new_index)
+            string_heap.end_append_tx()
+        count = 0
+
+        table_obj = dotnet.get_metadata_table('GenericParam')
+        if table_obj is not None:
+            string_heap.begin_append_tx()
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                col_val = row_obj.get_column('Name')
+                name = col_val.get_value_as_bytes()
+                if name is None or not has_prefix(name):
+                    name = make_string(b'gparam', count)
+                    count += 1
+                    new_index = string_heap.append_tx(name)
+                    col_val.set_raw_value(new_index)
+            string_heap.end_append_tx()
+            count = 0
+
+    if change_field_names:
+        table_obj = dotnet.get_metadata_table('Field')
+        if table_obj is not None:
+            string_heap.begin_append_tx()
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                col_val = row_obj.get_column('Name')
+                name = col_val.get_value_as_bytes()
+                if name is None or not has_prefix(name):
+                    name = make_string(b'field', count)
+                    count += 1
+                    new_index = string_heap.append_tx(name)
+                    col_val.set_raw_value(new_index)
+            string_heap.end_append_tx()
+            count = 0
+    count = 0
+    if change_property_names:
+        table_obj = dotnet.get_metadata_table('Property')
+        msem_table = dotnet.get_metadata_table('MethodSemantics')
+        if table_obj is not None:
+            string_heap.begin_append_tx()
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                col_val = row_obj.get_column('Name')
+                name = col_val.get_value_as_bytes()
+                if name is None or not has_prefix(name):
+                    if msem_table is None:
+                        name = make_string(b'Property', count)
+                        count += 1
+                        new_index = string_heap.append_tx(name)
+                        col_val.set_raw_value(new_index)
+                    else:
+                        msemantic = msem_table.get_semantics_for_item(row_obj)
+                        if msemantic is None:
+                            name = make_string(b'Property', count)
+                            count += 1
+                            new_index = string_heap.append_tx(name)
+                            col_val.set_raw_value(new_index)
+                        else:
+                            if msemantic.is_getter():
+                                pass
+
+
 cpdef bytes cleanup_names(bytes data,
                   bint change_namespaces=True,
                   bint change_method_names=True,
@@ -1277,6 +1580,7 @@ cpdef bytes cleanup_names(bytes data,
     cdef net_row_objects.ColumnValue col_val2 = None
     cdef dict method_names = dict()
     cdef bytes fire_name
+    cdef bytes inherited_name = b''
     cdef int ecount = 0
     if dotnetpe is None:
         raise net_exceptions.InvalidArgumentsException()
@@ -1424,8 +1728,12 @@ cpdef bytes cleanup_names(bytes data,
                     name = col_val.get_original_value()
                 else:
                     name = method_names[col_val.get_raw_value()]
-                if not has_prefix(name) and name not in blacklisted_methods:
-                    new_name = make_string(b'Method', method_count)
+                inherited_name = check_for_inherited_name(method, typedef)
+                if name not in blacklisted_methods and not has_prefix(name):
+                    if inherited_name is not None:
+                        new_name = inherited_name
+                    else:
+                        new_name = make_string(b'Method', method_count)
                     new_index = string_heap.append_tx(new_name)
                     method_names[new_index] = new_name
                     col_val.set_raw_value(new_index)
@@ -1810,8 +2118,12 @@ cpdef bytes cleanup_names(bytes data,
             if method.has_body() and name not in blacklisted_methods:
                 if (method.is_virtual() or method.is_abstract()):
                     if method.get_rid() not in blacklisted_method_rids:
+                        inherited_name = check_for_inherited_name(method, method.get_parent_type())
                         if not has_prefix(name):
-                            name = make_string(b'VirtualMethod', vmethod_id)
+                            if inherited_name is None:
+                                name = make_string(b'VirtualMethod', vmethod_id)
+                            else:
+                                name = inherited_name
                             new_index = string_heap.append_tx(name)
                             method_names[new_index] = name
                             vmethod_id += 1
