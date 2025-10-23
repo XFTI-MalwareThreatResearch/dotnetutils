@@ -897,6 +897,8 @@ cdef class DotNetArray(DotNetObject):
 
     cpdef list as_python_obj(self)
 
+    cpdef void from_python_obj(self, list obj)
+
     cdef net_emulator.StackCell _get_item(self, int64_t index)
 
     cdef bint _set_item(self, int64_t index, net_emulator.StackCell cell)

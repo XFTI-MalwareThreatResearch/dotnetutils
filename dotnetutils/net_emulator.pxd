@@ -175,6 +175,8 @@ cdef class DotNetStack:
 
     cpdef void clear(self)
 
+    cpdef void remove_obj(self)
+
     cdef StackCell get(self, int index)
 
     cpdef net_emu_types.DotNetObject pop_obj(self)
@@ -202,7 +204,7 @@ cdef class DotNetEmulator:
     cdef uint64_t __last_instr_end
     cdef uint64_t start_time
     cdef uint64_t timeout_ns
-    cdef DotNetEmulator caller
+    cdef public DotNetEmulator caller
     cdef public int end_eip
     cdef bint should_break
     cdef bint print_debug
@@ -224,6 +226,7 @@ cdef class DotNetEmulator:
     cdef net_emu_types.DotNetThread running_thread
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
+    cdef bint is_destroyed
 
     cpdef void set_static_field_obj(self, int idno, net_emu_types.DotNetObject obj) #So that users can modify static fields
 

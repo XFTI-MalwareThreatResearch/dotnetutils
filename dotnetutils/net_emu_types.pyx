@@ -23,7 +23,7 @@ from dotnetutils cimport dotnetpefile
 
 from dotnetutils cimport net_emulator
 from libc.math cimport exp, cos, sin, tan, log, fmod
-from libc.stdlib cimport malloc, free, div, div_t, lldiv, lldiv_t
+from libc.stdlib cimport malloc, free, div, div_t, lldiv, lldiv_t, calloc
 from libc.string cimport memcmp, memset, memcpy
 from libc.stdint cimport uint64_t, int64_t #ensure we avoid any Windows / Linux based quirks
 from libc.limits cimport INT_MIN, LLONG_MIN
@@ -5955,13 +5955,9 @@ cdef class DotNetArray(DotNetObject):
         self.__size = size
         self.initialize_type(type_obj)
         #If I change how this is set up, it will save a literal ton of time.
-        self.__internal_array = <net_emulator.SlimStackCell*>malloc(sizeof(net_emulator.SlimStackCell) * self.__size)
+        self.__internal_array = <net_emulator.SlimStackCell*>calloc(sizeof(net_emulator.SlimStackCell), self.__size)
         if self.__internal_array == NULL and self.__size > 0:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error for array')
-        if self.__internal_array != NULL:
-            memset(self.__internal_array, 0, sizeof(net_emulator.SlimStackCell) * self.__size)
-        if False:
-            self.setup_default_value(0, size)
 
     cpdef list as_python_obj(self):
         cdef list result = list()
@@ -5981,6 +5977,16 @@ cdef class DotNetArray(DotNetObject):
                     result.append(<DotNetObject>boxed.item.ref)
                 self.get_emulator_obj().dealloc_cell(boxed)
         return result
+
+    cpdef void from_python_obj(self, list obj):
+        cdef net_emulator.StackCell cell
+        cdef uint64_t x = 0
+        if len(obj) != self.__size:
+            raise net_exceptions.InvalidArgumentsException()
+        for x in range(self.__size):
+            cell = self.get_emulator_obj().pack_u1(obj[x])
+            self._set_item(x, cell)
+            self.get_emulator_obj().dealloc_cell(cell)
 
     def __dealloc__(self):
         cdef uint64_t x = 0
@@ -6043,7 +6049,7 @@ cdef class DotNetArray(DotNetObject):
         return tdef.get_full_name() == b'System.Array' or DotNetObject.isinst(self, tdef)
 
     cpdef bytes as_bytes(self):
-        cdef bytes result = b''
+        cdef bytearray result = bytearray()
         cdef bytes type_name = None
         cdef uint64_t x = 0
         if self.get_type_obj() is not None:
@@ -6052,8 +6058,8 @@ cdef class DotNetArray(DotNetObject):
                 for x in range(self.__size):
                     if self.__internal_array[x].tag == CorElementType.ELEMENT_TYPE_END:
                         raise net_exceptions.OperationNotSupportedException()
-                    result += bytes([self.__internal_array[x].item.u4])
-                return result
+                    result.append(self.__internal_array[x].item.u1)
+                return bytes(result)
         raise net_exceptions.OperationNotSupportedException()
 
     cdef void setup_default_value(self, uint64_t index, uint64_t size):
@@ -6196,10 +6202,12 @@ cdef class DotNetArray(DotNetObject):
         cdef net_emulator.StackCell cell
         array_str += '['
         for x in range(int_len):
+            if x == 40: #dont print a ton of them.  Harder for debug but so be it.
+                break
             cell = self.get_emulator_obj().unslim_cell(self.get_emulator_obj(), self.__internal_array[x])
             array_str += self.get_emulator_obj().cell_to_str(cell)
             Py_XDECREF(cell.emulator_obj)
-            if x != (int_len - 1):
+            if x != (int_len - 1) and x != 39:
                 array_str += ', '
         array_str += ']'
         if len(array_str) > 250:
@@ -6514,12 +6522,13 @@ cdef class DotNetMath(DotNetObject):
             raise net_exceptions.InvalidArgumentsException()
         if params[0].tag != params[1].tag:
             raise net_exceptions.InvalidArgumentsException()
-
+        cdef net_emulator.StackCell result
         cdef bint is_greater = app_domain.get_emulator_obj().cell_is_gt(params[0], params[1])
         if is_greater:
-            return app_domain.get_emulator_obj().duplicate_cell(params[0])
+            result = app_domain.get_emulator_obj().duplicate_cell(params[0])
         else:
-            return app_domain.get_emulator_obj().duplicate_cell(params[1])                
+            result = app_domain.get_emulator_obj().duplicate_cell(params[1])
+        return result           
 
     @staticmethod
     cdef net_emulator.StackCell Abs(net_emulator.EmulatorAppDomain app_domain, net_emulator.StackCell * params, int nparams):

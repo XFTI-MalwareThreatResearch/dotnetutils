@@ -565,7 +565,7 @@ cdef bint handle_ldind_u2_instruction(DotNetEmulator emu):
         raise net_exceptions.InvalidArgumentsException()
     casted = emu.cast_cell(ref_obj, net_sigs.get_CorSig_UInt16())
     result = emu.cast_cell(casted, net_sigs.get_CorSig_Int32())
-    emu.stack.append(casted)
+    emu.stack.append(result)
     emu.dealloc_cell(ref_obj)
     emu.dealloc_cell(addr_obj)
     emu.dealloc_cell(casted)
@@ -1744,7 +1744,7 @@ cdef bint handle_newarr_instruction(DotNetEmulator emu):
     cdef net_row_objects.TypeDefOrRef type_obj = emu.instr.get_argument()
     cdef StackCell amt_of_elem = emu.stack.pop()
     cdef int64_t elem_val = amt_of_elem.item.i8
-    cdef net_emu_types.DotNetArray value1 = net_emu_types.DotNetArray(emu, elem_val, type_obj, initialize=True)
+    cdef net_emu_types.DotNetArray value1 = net_emu_types.DotNetArray(emu, elem_val, type_obj)
     cdef StackCell result = emu.pack_object(value1)
     emu.stack.append(result)
     emu.dealloc_cell(amt_of_elem)
@@ -2785,6 +2785,11 @@ cdef class DotNetStack:
         self.__emulator.dealloc_cell(boxed_obj)
         return return_value
 
+    cpdef void remove_obj(self):
+        cdef StackCell obj = self.__internal_stack.back()
+        self.__internal_stack.pop_back()
+        self.__emulator.deref_cell(obj)
+
     cdef StackCell peek(self):
         cdef StackCell obj = self.__internal_stack.back()
         return obj
@@ -2862,6 +2867,7 @@ cdef class DotNetEmulator:
         :param caller: Used internally by the call instruction.
         :param break_on_unsupported: 
         """
+        self.is_destroyed = False
         if isinstance(method_obj, net_row_objects.MethodSpec):
             self.spec_obj = method_obj
             method_obj = (<net_row_objects.MethodSpec>method_obj).get_method()
@@ -5116,6 +5122,8 @@ cdef class DotNetEmulator:
         new_emu.executed_cctors = self.executed_cctors
         if end_method_rid == -1:
             new_emu.end_method_rid = self.end_method_rid
+            if self.end_method_rid != -1:
+                new_emu.end_offset = self.end_offset
         else:
             new_emu.end_method_rid = end_method_rid
         new_emu.end_eip = end_eip
@@ -5230,6 +5238,8 @@ cdef class DotNetEmulator:
         cdef net_sigs.FieldSig field_sig = None
         cdef list param_sigs = self.method_obj.get_method_signature().get_parameters()
         cdef int params_start = 0
+        if self.is_destroyed:
+            raise net_exceptions.OperationNotSupportedException()
         state_str += 'Emulator Method: {}:{} {}:{}\n'.format(self.method_obj.get_table_name(), self.method_obj.get_rid(), hex(self.method_obj.get_token()), self.method_obj.get_full_name())
         if self.method_obj.method_has_this() and self.get_num_params() >= 1:
             state_str += 'This Object: {}\n'.format(self.cell_to_str(self.__method_params[0]))
@@ -5434,6 +5444,7 @@ cdef class DotNetEmulator:
             Py_XDECREF(self.local_var_sigs[key])
         self.local_var_sigs.clear()
         self.localvars.clear()
+        self.is_destroyed = True
         if self.__method_params != NULL:
             for key in range(<unsigned int>self.get_num_params()):
                 self.deref_cell(self.__method_params[key])
