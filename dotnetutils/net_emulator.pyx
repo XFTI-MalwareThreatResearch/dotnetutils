@@ -5140,7 +5140,7 @@ cdef class DotNetEmulator:
         self.running_thread = thread_obj
 
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=0, int end_offset=-1, DotNetEmulator caller=None,
-                           int end_method_rid=-1, int end_eip=-1, net_row_objects.MethodSpec spec_obj=None):
+                           int end_method_rid=-1, int end_eip=-1, net_row_objects.MethodSpec spec_obj=None, int timeout_seconds=-1):
         cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset,
                                  end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj)
         """
@@ -5156,11 +5156,12 @@ cdef class DotNetEmulator:
         else:
             new_emu.end_method_rid = end_method_rid
         new_emu.end_eip = end_eip
-        if new_emu.caller is not None:
-            new_emu.start_time = self.start_time
-        else:
+        if timeout_seconds > 0:
             new_emu.start_time = _perf_counter_ns()
-        new_emu.timeout_ns = self.timeout_ns
+            new_emu.timeout_ns = <uint64_t>(timeout_seconds * 1000000000ULL)
+        else:
+            new_emu.timeout_ns = self.timeout_ns
+            new_emu.start_time = self.start_time
         new_emu.print_debug_children = self.print_debug_children
         if self.print_debug_children:
             new_emu.print_debug = self.print_debug
