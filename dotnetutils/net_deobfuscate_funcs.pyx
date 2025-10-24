@@ -1322,6 +1322,7 @@ cpdef bytes cleanup_names2(bytes data,
     cdef net_table_objects.TableObject table_obj2 = None
     cdef net_row_objects.MethodSemantic msemantic = None
     cdef net_table_objects.MethodSemanticsTable msem_table = None
+    cdef net_row_objects.TypeDefOrRef interface = None
     cdef list msemantics = None
     cdef bytes temp_name = None
     cdef bytes prop_name = None
@@ -1595,15 +1596,28 @@ cpdef bytes cleanup_names2(bytes data,
     if change_method_names:
         #Change method names by iterating the type inheritence chain.
         table_obj = dotnet.get_metadata_table('TypeDef')
-        for x in range(1, len(table_obj) + 1):
-            tdefref = table_obj.get(<int>x)
-            tdefref_ptr = tdefref.get_superclass()
-            if isinstance(tdefref_ptr, net_row_objects.TypeSpec):
-                tdefref_ptr = tdefref_ptr.get_type()
-            if tdefref_ptr is None or isinstance(tdefref_ptr, net_row_objects.TypeRef):
-                #When the superclass is None or TypeRef, we have a base class.  Rename the methods accordingly.
-                #first rename any interfaces methods.
-                pass
+        if table_obj is not None:
+            string_heap.begin_append_tx()
+            for x in range(1, len(table_obj) + 1):
+                tdefref = table_obj.get(<int>x)
+                tdefref_ptr = tdefref.get_superclass()
+                if isinstance(tdefref_ptr, net_row_objects.TypeSpec):
+                    tdefref_ptr = tdefref_ptr.get_type()
+                if tdefref_ptr is None or isinstance(tdefref_ptr, net_row_objects.TypeRef):
+                    #When the superclass is None or TypeRef, we have a base class.  Rename the methods accordingly.
+                    #first rename any interfaces methods.
+                    while tdefref is not None:
+                        for interface in tdefref.get_interfaces():
+                            if isinstance(interface, net_row_objects.TypeSpec):
+                                interface = interface.get_type()
+                            if isinstance(interface, net_row_objects.TypeRef):
+                                #If its a ref interface, assume the names are correct from the ref.
+                                for mdefref_obj in interface.get_member_refs():
+                                    for mdefref2_obj in tdefref.get_methods():
+                                        if not has_prefix(mdefref2_obj.get_column('Name').get_value_as_bytes()):
+                                            if mdefref2_obj.get_method_signature() == mdefref_obj.get_method_signature():
+                                                pass
+            string_heap.end_append_tx()
 
 cpdef bytes cleanup_names(bytes data,
                   bint change_namespaces=True,
