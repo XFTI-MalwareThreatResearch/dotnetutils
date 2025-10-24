@@ -590,7 +590,7 @@ cdef class TypeDef(TypeDefOrRef):
                 self.__superclass = self.get_column('Extends').get_value()
                 if isinstance(self.__superclass, TypeDefOrRef):
                     add_to = self.__superclass
-                    addd_to._add_child_class(self)
+                    add_to._add_child_class(self)
                 else:
                     self.__superclass = None
                     self.__has_superclass = False
@@ -1058,6 +1058,12 @@ cdef class MethodDefOrRef(RowObject):
     cpdef bint is_hidebysig(self):
         return False
 
+    cpdef bint is_newslot(self):
+        return False
+
+    cpdef bint is_final(self):
+        return False
+
     cpdef bint is_static_method(self):
         return False
 
@@ -1225,6 +1231,18 @@ cdef class MethodDef(MethodDefOrRef):
                 self.__full_name = self.__parent_type.get_full_name() + b'.' + self.get_column('Name').get_value()
         return self.__full_name
     
+    cpdef bint is_final(self):
+        """
+        Returns True if a method is final, false otherwise.
+        """
+        return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdFinal != 0
+
+    cpdef bint is_newslot(self):
+        """
+        Returns True if a method is newslot, false otherwise.
+        """
+        return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdNewSlot != 0
+
     cpdef bint is_virtual(self):
         """
         Returns True if a method is virtual, false otherwise.

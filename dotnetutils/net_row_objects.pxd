@@ -266,6 +266,10 @@ cdef class MethodDefOrRef(RowObject):
 
     cpdef list get_xrefs(self)
 
+    cpdef bint is_final(self)
+
+    cpdef bint is_newslot(self)
+
     cpdef void _add_xref(self, int rid, int instr_offset)
 
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type)

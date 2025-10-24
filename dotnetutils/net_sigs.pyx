@@ -46,21 +46,17 @@ cdef class ClassOrValueTypeSig(TypeDefOrRefSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
         TypeDefOrRefSig.__init__(self, element_type, _next, type_def_or_ref)
 
+    def __eq__(self, other):
+        return isinstance(other, ClassOrValueTypeSig) and self.get_type() == other.get_type()
+
 
 cdef class ValueTypeSig(ClassOrValueTypeSig):
     def __init__(self, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
         ClassOrValueTypeSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_VALUETYPE, _next, type_def_or_ref)
 
-    def __eq__(self, other):
-        return isinstance(other, ValueTypeSig) and other.get_type() == self.get_type()
-
-
 cdef class ClassSig(ClassOrValueTypeSig):
     def __init__(self, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
         ClassOrValueTypeSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_CLASS, _next, type_def_or_ref)
-
-    def __eq__(self, other):
-        return isinstance(other, ClassSig) and self.get_type() == other.get_type()
 
     def __str__(self):
         return 'ClassSig: next={}, type_def_or_ref={}'.format(self.get_next(), self.get_type())
@@ -113,6 +109,9 @@ cdef class FnPtrSig(LeafSig):
 
     cpdef NonLeafSig get_signature(self):
         return self.__signature
+
+    def __eq__(self, other):
+        return isinstance(other, FnPtrSig) and self.get_signature() == other.get_signature()
 
 cdef class GenericInstSig(LeafSig):
     def __init__(self, TypeSig _next, TypeSig generic_type, int gen_arg_count=0):
@@ -242,6 +241,9 @@ cdef class CmodOptSig(ModifierSig):
 cdef class PinnedSig(NonLeafSig):
     def __init__(self, TypeSig next_sig):
         NonLeafSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_PINNED, next_sig)
+
+    def __eq__(self, other):
+        return isinstance(other, PinnedSig) and other.get_next_sig() == self.get_next_sig()
 
 
 cdef class ValueArraySig(NonLeafSig):
