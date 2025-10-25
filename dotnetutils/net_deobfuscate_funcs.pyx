@@ -1097,243 +1097,20 @@ cdef bint has_prefix(bytes type_name):
 
     return False
 
-cdef void check_type(net_row_objects.MethodDefOrRef method_obj, net_row_objects.TypeDefOrRef type_obj, bytes parent_method_name, int new_method_name,
-                                    net_sigs.MethodSig parent_method_signature, list checked_types, dict method_names):
-    
-    cdef net_row_objects.TypeDefOrRef superclass_type
-    cdef bytes name
-    cdef list types_to_check
-    cdef net_row_objects.MethodDefOrRef method2
-    cdef net_row_objects.TypeDefOrRef interface
-    cdef net_row_objects.TypeDefOrRef int_obj
-    cdef net_row_objects.ColumnValue col_val
-    cdef net_row_objects.TypeDefOrRef tdefref
-    cdef long x
-    cdef long y
-    cdef list methods
-    cdef list interfaces
-    cdef int new_index = new_method_name
-    cdef net_processing.StringHeapObject string_heap = method_obj.get_dotnetpe().get_heap('#Strings')
-    if type_obj == None:
-        return
-    if type_obj in checked_types:
-        return
-    checked_types.append(type_obj)
-    superclass_type = type_obj.get_superclass()
-    types_to_check = list()
-    if superclass_type:
-        types_to_check.append(superclass_type)
-
-        methods = superclass_type.get_methods()
-
-        for x in range(len(methods)):
-            method2 = methods[x]
-            if method2.get_column('Name').get_original_value() == parent_method_name:
-                if parent_method_signature == method2.get_method_signature():
-                    if isinstance(method2, net_row_objects.MemberRef) and isinstance(superclass_type, net_row_objects.TypeRef):
-                        #for this situation, make the method name the name of the memberref.
-                        new_index = method2.get_column('Name').get_raw_value()
-                        break
-                    col_val = method2.get_column('Name')
-                    if col_val.get_raw_value() not in method_names:
-                        name = col_val.get_original_value()
-                    else:
-                        name = method_names[col_val.get_raw_value()]
-                    if not has_prefix(name):
-                        col_val.set_raw_value(new_index)
-                    else:
-                        new_index = col_val.get_raw_value()
-    interfaces = method_obj.get_parent_type().get_interfaces()
-    for x in range(len(interfaces)):
-        interface = interfaces[x]
-        int_obj = interface
-        if isinstance(interface, net_row_objects.TypeSpec):
-            int_obj = interface.get_type()
-        types_to_check.append(int_obj)
-        methods = int_obj.get_methods()
-        for y in range(len(methods)):
-            method2 = methods[y]
-            col_val = method2.get_column('Name')
-            if col_val.get_raw_value() in method_names:
-                name = method_names[col_val.get_raw_value()]
-            else:
-                name = col_val.get_original_value()
-            if name == parent_method_name:
-                if parent_method_signature == method2.get_method_signature():
-                    if not has_prefix(name):
-                        col_val.set_raw_value(new_index)
-                    else:
-                        new_index = col_val.get_raw_value()
-        methods = int_obj.get_member_refs()
-        for y in range(len(methods)):
-            method2 = methods[y]
-            col_val = method2.get_column('Name')
-
-            if col_val.get_original_value() == parent_method_name:
-                if parent_method_signature == method2.get_method_signature():
-                    if col_val.get_raw_value() not in method_names:
-                        name = col_val.get_original_value()
-                    else:
-                        name = method_names[col_val.get_raw_value()]
-                    if not has_prefix(name):
-                        col_val.set_raw_value(new_index)
-                    else:
-                        col_val.get_raw_value()
-    method_obj.get_column('Name').set_raw_value(new_index)
-
-    for x in range(len(types_to_check)):
-        tdefref = types_to_check[x]
-        check_type(
-            method_obj, tdefref, parent_method_name, new_index, parent_method_signature, checked_types, method_names)
-
-cdef bytes check_for_inherited_name(net_row_objects.MethodDefOrRef mdef, net_row_objects.TypeDefOrRef tref):
-    cdef net_row_objects.TypeDefOrRef ptr = tref
-    cdef net_row_objects.MethodDefOrRef mptr = None
-    cdef net_row_objects.TypeDefOrRef tptr = None
-    cdef bytes result
-    cdef bint debug = False
-    if mdef.get_rid() == 2213:
-        debug = True
-        print('target method')
-    while ptr is not None:
-        if debug:
-            print('cehcking ptr {}'.format(ptr))
-        if isinstance(ptr, net_row_objects.TypeRef):
-            if debug:
-                print('tref')
-            for mptr in ptr.get_member_refs():
-                if debug:
-                    print('checking method {} {} {}'.format(mptr.get_column('Name').get_value_as_bytes(), mdef.get_column('Name').get_value_as_bytes(), mptr.get_parent_type()))
-                if mdef.is_hidebysig():
-                    if debug:
-                        print('is hidebysig')
-                    if mptr.get_column('Name').get_original_value() == mdef.get_column('Name').get_original_value():
-                        if mptr.get_method_signature() == mdef.get_method_signature():
-                            if isinstance(mptr.get_parent_type(), net_row_objects.TypeRef):
-                                return mptr.get_column('Name').get_original_value()
-                            elif isinstance(mptr.get_parent_type(), net_row_objects.TypeSpec):
-                                if isinstance(mptr.get_parent_type().get_type(), net_row_objects.TypeRef):
-                                    return mptr.get_column('Name').get_original_value()
-                else:
-                    if debug:
-                        print('not hidebysig {} {}'.format(mptr.get_method_signature(), mdef.get_method_signature()))
-                    if mptr.get_method_signature() == mdef.get_method_signature():
-                        if isinstance(mptr.get_parent_type(), net_row_objects.TypeRef):
-
-                            return mptr.get_column('Name').get_original_value()
-                        elif isinstance(mptr.get_parent_type(), net_row_objects.TypeSpec):
-                            if isinstance(mptr.get_parent_type().get_type(), net_row_objects.TypeRef):
-                                return mptr.get_column('Name').get_original_value()
-
-            break
-        elif isinstance(ptr, net_row_objects.TypeSpec):
-            ptr = ptr.get_type()
-        elif isinstance(ptr, net_row_objects.TypeDef):
-            for tptr in ptr.get_interfaces():
-                result = check_for_inherited_name(mdef, tptr)
-                if result is not None:
-                    return result
-            ptr = ptr.get_superclass()
-    return None
-
-cdef bint type_sig_compare(net_sigs.TypeSig sig_one, net_sigs.TypeSig sig_two, net_sigs.GenericInstMethodSig gensig, net_sigs.GenericInstSig gentypesig):
-    cdef net_sigs.TypeSig comp_one = sig_one
-    cdef net_sigs.TypeSig comp_two = sig_two
-    return comp_one == comp_two
-
-cdef bint method_sig_compare(net_sigs.MethodSig sig_one, net_sigs.MethodSig sig_two, net_sigs.GenericInstMethodSig gensig, net_sigs.GenericInstSig gentypesig):
-    cdef net_sigs.TypeSig ret_one = sig_one.get_return_type()
-    cdef net_sigs.TypeSig ret_two = sig_two.get_return_type()
-    cdef int number = 0
-    cdef Py_ssize_t x = 0
-
-    if not type_sig_compare(sig_one.get_type_sig(), sig_two.get_type_sig(), gensig, gentypesig):
+cdef bint is_in_chain(dict method_chains, net_row_objects.MethodDefOrRef mdef, net_row_objects.TypeDefOrRef base_type):
+    if base_type not in method_chains:
         return False
+    cdef dict chain = method_chains[base_type]
+    cdef set item = None
+    if mdef in chain.keys():
+        return True
+    for item in chain.values():
+        if mdef in item:
+            return True
+    return False
 
-    if len(sig_one.get_parameters()) != len(sig_two.get_parameters()):
-        return False
-
-    if sig_one.get_calling_conv() != sig_two.get_calling_conv():
-        return False
-
-    if sig_one.get_generic_params_count() != sig_two.get_generic_params_count():
-        return False
-
-    while isinstance(ret_one, net_sigs.GenericVar) or isinstance(ret_one, net_sigs.GenericMVar):
-        if isinstance(ret_one, net_sigs.GenericVar):
-            number = ret_one.get_number()
-            if gentypesig is None:
-                raise net_exceptions.InvalidArgumentsException()
-
-            ret_one = gentypesig.get_generic_args()[number]
-
-        if isinstance(ret_one, net_sigs.GenericMVar):
-            number = ret_one.get_number()
-            if gensig is None:
-                raise net_exceptions.InvalidArgumentsException()
-
-            ret_one = gensig.get_generic_args()[number]
-    while isinstance(ret_two, net_sigs.GenericVar) or isinstance(ret_two, net_sigs.GenericMVar):
-        if isinstance(ret_two, net_sigs.GenericVar):
-            number = ret_two.get_number()
-            if gentypesig is None:
-                raise net_exceptions.InvalidArgumentsException()
-
-            ret_two = gentypesig.get_generic_args()[number]
-
-
-
-        if isinstance(ret_two, net_sigs.GenericMVar):
-            number = ret_two.get_number()
-            if gensig is None:
-                raise net_exceptions.InvalidArgumentsException()
-
-            ret_two = gensig.get_generic_args()[number]
-
-    if not type_sig_compare(ret_one, ret_two, gensig, gentypesig):
-        return False
-
-    for x in range(len(sig_one.get_parameters())):
-        ret_one = sig_one.get_parameters()[x]
-        ret_two = sig_two.get_parameters()[x]
-        while isinstance(ret_one, net_sigs.GenericMVar) or isinstance(ret_one, net_sigs.GenericVar):
-            if isinstance(ret_one, net_sigs.GenericVar):
-                number = ret_one.get_number()
-                if gentypesig is None:
-                    raise net_exceptions.InvalidArgumentsException()
-
-                ret_one = gentypesig.get_generic_args()[number]
-
-
-            if isinstance(ret_one, net_sigs.GenericMVar):
-                number = ret_one.get_number()
-                if gensig is None:
-                    raise net_exceptions.InvalidArgumentsException()
-
-                ret_one = gensig.get_generic_args()[number]
-        while isinstance(ret_two, net_sigs.GenericVar) or isinstance(ret_two, net_sigs.GenericMVar):
-            if isinstance(ret_two, net_sigs.GenericVar):
-                number = ret_two.get_number()
-                if gentypesig is None:
-                    raise net_exceptions.InvalidArgumentsException()
-
-                ret_two = gentypesig.get_generic_args()[number]
-
-
-            if isinstance(ret_two, net_sigs.GenericMVar):
-                number = ret_two.get_number()
-                if gensig is None:
-                    raise net_exceptions.InvalidArgumentsException()
-
-                ret_two = gensig.get_generic_args()[number]
-        
-        if not type_sig_compare(ret_one, ret_two, gensig, gentypesig):
-            return False
-
-    return True
-
-cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_row_objects.TypeDef base_type, net_row_objects.TypeDef tdef, dict inst_sigs, dict override_chains, list sealed_slots):
-    cdef net_row_objects.TypeDefOrRef ptr = None
+cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_row_objects.TypeDefOrRef base_type, net_row_objects.TypeDefOrRef tdef, dict inst_sigs, dict override_chains, list sealed_slots):
+    cdef net_row_objects.TypeDefOrRef ptr = tdef
     cdef net_row_objects.MethodDefOrRef mptr = None
     cdef net_row_objects.MethodDefOrRef mptr2 = None
     cdef bint result = False
@@ -1341,54 +1118,40 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
 
     if base_type not in override_chains:
         override_chains[base_type] = dict()
-
-    ptr = tdef.get_superclass()
     if isinstance(ptr, net_row_objects.TypeSpec):
         ptr = ptr.get_type()
-    if isinstance(ptr, net_row_objects.TypeRef):
-        #Process TypeRef methods.
-        for mptr in ptr.get_member_refs():
-            #Make sure all of these methods are in the override chain
-            if methodimpl is not None:
-                mptr2 = methodimpl.get_method_body(mptr)
-                if mptr2 is not None:
-                    if mptr not in override_chains[base_type]:
-                        override_chains[base_type][mptr] = set()
-                    override_chains[base_type][mptr].add(mptr2)
-                    continue
-            if mptr not in override_chains[base_type]:
-                override_chains[base_type][mptr] = set()
-            else:
-                raise net_exceptions.InvalidArgumentsException()
 
     for ptr in tdef.get_interfaces():
         #Again interface methods are all going to be new.
         for mptr in ptr.get_methods():
             if methodimpl is not None:
                 mptr2 = methodimpl.get_method_body(mptr)
+
                 if mptr2 is not None:
+                    if is_in_chain(override_chains, mptr2, base_type):
+                        continue
                     if mptr not in override_chains[base_type]:
                         override_chains[base_type][mptr] = set()
                     override_chains[base_type][mptr].add(mptr2)
                     continue
             if mptr not in override_chains[base_type]:
                 override_chains[base_type][mptr] = set()
-            else:
-                raise net_exceptions.InvalidArgumentsException()
 
         #Again interface methods are all going to be new.
         for mptr in ptr.get_member_refs():
+            if not isinstance(mptr.get_method_signature(), net_sigs.MethodSig):
+                continue
             if methodimpl is not None:
                 mptr2 = methodimpl.get_method_body(mptr)
                 if mptr2 is not None:
+                    if is_in_chain(override_chains, mptr2, base_type):
+                        continue
                     if mptr not in override_chains[base_type]:
                         override_chains[base_type][mptr] = set()
                     override_chains[base_type][mptr].add(mptr2)
                     continue
             if mptr not in override_chains[base_type]:
                 override_chains[base_type][mptr] = set()
-            else:
-                raise net_exceptions.InvalidArgumentsException()
 
     #now for handling the actual methods and memberrefs
     for mptr in tdef.get_methods():
@@ -1397,6 +1160,8 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
         if methodimpl is not None:
             mptr2 = methodimpl.get_method_body(mptr)
             if mptr2 is not None:
+                if is_in_chain(override_chains, mptr2, base_type):
+                    continue
                 if mptr not in override_chains[base_type]:
                     override_chains[base_type][mptr] = set()
                 override_chains[base_type][mptr].add(mptr2)
@@ -1411,21 +1176,25 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
                         if mptr.is_hidebysig():
                             if mptr2 in inst_sigs:
                                 if mptr2.get_parent_type() not in inst_sigs:
-                                    result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], None)
+                                    result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], None)
                                 else:
-                                    result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], inst_sigs[mptr2.get_parent_type()])
+                                    result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], inst_sigs[mptr2.get_parent_type()])
                             else:
                                 if mptr2.get_parent_type() not in inst_sigs:
-                                    result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, None)
+                                    result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, None)
                                 else:
-                                    result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, inst_sigs[mptr2.get_parent_type()])
+                                    result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, inst_sigs[mptr2.get_parent_type()])
                             if result:
+                                if is_in_chain(override_chains, mptr, base_type):
+                                    continue
                                 override_chains[base_type][mptr2].add(mptr)
                                 if mptr.is_final():
                                     sealed_slots.append(mptr2)
                                 found = True
                                 break
                         else:
+                            if is_in_chain(override_chains, mptr, base_type):
+                                continue
                             if mptr.is_final():
                                 sealed_slots.append(mptr2)
                             override_chains[base_type][mptr2].add(mptr)
@@ -1436,15 +1205,11 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
                     if mptr.is_final():
                         sealed_slots.append(mptr)
                     override_chains[base_type][mptr] = set()
-                else:
-                    raise net_exceptions.InvalidArgumentsException()
         else:
             #deal with virtualization.
             if mptr.is_abstract():
                 #an abstract method is definitely the base.
-                if mptr in override_chains[base_type]:
-                    raise net_exceptions.InvalidArgumentsException()
-                else:
+                if mptr not in override_chains[base_type]:
                     override_chains[base_type][mptr] = set()
             else:
                 if mptr.is_virtual() and not mptr.is_newslot():
@@ -1454,15 +1219,17 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
                         if mptr2.get_column('Name').get_value_as_bytes() == mptr.get_column('Name').get_value_as_bytes():
                             if mptr2 in inst_sigs:
                                 if mptr2.get_parent_type() not in inst_sigs:
-                                    result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], None)
+                                    result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], None)
                                 else:
-                                    result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], inst_sigs[mptr2.get_parent_type()])
+                                    result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], inst_sigs[mptr2.get_parent_type()])
                             else:
                                 if mptr2.get_parent_type() not in inst_sigs:
-                                    result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, None)
+                                    result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, None)
                                 else:
-                                    result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, inst_sigs[mptr2.get_parent_type()])
+                                    result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, inst_sigs[mptr2.get_parent_type()])
                             if result:
+                                if is_in_chain(override_chains, mptr, base_type):
+                                    continue
                                 override_chains[base_type][mptr2].add(mptr)
                                 if mptr.is_final():
                                     sealed_slots.append(mptr2)
@@ -1477,21 +1244,25 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
                             if mptr.is_hidebysig():
                                 if mptr2 in inst_sigs:
                                     if mptr2.get_parent_type() not in inst_sigs:
-                                        result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], None)
+                                        result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], None)
                                     else:
-                                        result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], inst_sigs[mptr2.get_parent_type()])
+                                        result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], inst_sigs[mptr2.get_parent_type()])
                                 else:
                                     if mptr2.get_parent_type() not in inst_sigs:
-                                        result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, None)
+                                        result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, None)
                                     else:
-                                        result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, inst_sigs[mptr2.get_parent_type()])
+                                        result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, inst_sigs[mptr2.get_parent_type()])
                                 if result:
+                                    if is_in_chain(override_chains, mptr, base_type):
+                                        continue
                                     override_chains[base_type][mptr2].add(mptr)
                                     if mptr.is_final():
                                         sealed_slots.append(mptr2)
                                     found = True
                                     break
                             else:
+                                if is_in_chain(override_chains, mptr, base_type):
+                                    continue
                                 if mptr.is_final():
                                     sealed_slots.append(mptr2)
                                 override_chains[base_type][mptr2].add(mptr)
@@ -1502,8 +1273,6 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
                     if mptr.is_final():
                         sealed_slots.append(mptr)
                     override_chains[base_type][mptr] = set()
-                else:
-                    raise net_exceptions.InvalidArgumentsException()
 
 
     for mptr in tdef.get_member_refs():
@@ -1515,6 +1284,8 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
         if methodimpl is not None:
             mptr2 = methodimpl.get_method_body(mptr)
             if mptr2 is not None:
+                if is_in_chain(override_chains, mptr2, base_type):
+                    continue
                 if mptr not in override_chains[base_type]:
                     override_chains[base_type][mptr] = set()
                 override_chains[base_type][mptr].add(mptr2)
@@ -1523,19 +1294,21 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
             if mptr2 in sealed_slots:
                 continue
             if mptr2.get_column('Name').get_value_as_bytes() == mptr.get_column('Name').get_value_as_bytes():
-                if mptr2.get_parent_type() in inst_sigs:
-                    if mptr2 in inst_sigs:
-                        result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], inst_sigs[mptr2.get_parent_type()])
+                if mptr.get_parent_type() in inst_sigs:
+                    if mptr in inst_sigs:
+                        result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr], inst_sigs[mptr.get_parent_type()])
                     else:
-                        result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, inst_sigs[mptr2.get_parent_type()])
+                        result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, inst_sigs[mptr.get_parent_type()])
                 else:
-                    if mptr2 in inst_sigs:
-                        result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr2], None)
+                    if mptr in inst_sigs:
+                        result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), inst_sigs[mptr], None)
                     else:
-                        result = method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, None)
+                        result = net_sigs.method_sig_compare(mptr.get_method_signature(), mptr2.get_method_signature(), None, None)
                 if result:
+                    if is_in_chain(override_chains, mptr, base_type):
+                        continue
                     override_chains[base_type][mptr2].add(mptr)
-                    if mptr.is_final():
+                    if mptr2.is_final():
                         sealed_slots.append(mptr2)
                     found = True
                     break
@@ -1543,9 +1316,7 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
             if mptr not in override_chains[base_type]:
                 if mptr.is_final():
                     sealed_slots.append(mptr)
-                override_chains[base_type][mptr] = list()
-            else:
-                raise net_exceptions.InvalidArgumentsException()
+                override_chains[base_type][mptr] = set()
 
     for ptr in tdef.get_child_classes():
         if isinstance(ptr, net_row_objects.TypeSpec):
@@ -1583,9 +1354,8 @@ cpdef bytes cleanup_names(bytes data,
     :param change_property_names: Should property names be changed?
     :param force_main_method:  Should the entrypoint be forced to have a name of "Main"?
     """
-    cdef dotnetpefile.DotNetPeFile dotnet = dotnetpefile.try_get_dotnetpe(pe_data=data)
+    cdef dotnetpefile.DotNetPeFile dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     cdef net_processing.StringHeapObject strings_heap = None
-    cdef dict already_handled = dict()
     cdef Py_ssize_t x = 0
     cdef net_row_objects.RowObject row_obj = None
     cdef net_row_objects.ColumnValue col_val = None
@@ -1649,7 +1419,13 @@ cpdef bytes cleanup_names(bytes data,
     cdef bytes prop_name = None
     cdef dict method_chains = dict()
     cdef list sealed_methods = list()
+    cdef dict type_method_chain = None
+    cdef set chained_methods = None
+    cdef list renamed_methods = list()
     cdef net_table_objects.MethodImplTable methodimpl = dotnet.get_metadata_table('MethodImpl')
+    cdef net_sigs.CallingConventionSig csig = None
+    cdef bint found = False
+    cdef net_sigs.TypeSig tsig = None
 
 
     if dotnet is None:
@@ -1663,24 +1439,18 @@ cpdef bytes cleanup_names(bytes data,
     """
     Start off with the easy things to get that over with.
     """
-    already_handled['MethodDef'] = list()
-    already_handled['MemberRef'] = list()
-    already_handled['Field'] = list()
-    already_handled['TypeDef'] = list()
-    already_handled['TypeRef'] = list()
     if change_module_name:
         for row_obj in dotnet.get_metadata_table('Module'):
             name = make_string(b'Module', count)
             row_obj.get_column('Name').change_value(name)
             count += 1
     count = 0
-
     mdef_obj = dotnet.get_entry_point()
     if mdef_obj is not None and force_main_method:
         ep_name = mdef_obj.get_column('Name').get_value_as_bytes()
         if ep_name != b'Main':
             mdef_obj.get_column('Name').change_value(b'Main')
-        already_handled['MethodDef'].add(mdef_obj.get_rid())
+            renamed_methods.append(mdef_obj.get_token())
 
     """
     This part is pretty consistent - sometimes .NET obfuscators will change the names of C imported functions, those we can recover with certainty.
@@ -1698,7 +1468,7 @@ cpdef bytes cleanup_names(bytes data,
                 if row_obj2.get_column('Name').get_value_as_bytes() != name:
                     new_index = strings_heap.append_tx(name)
                     row_obj2.get_column('Name').set_raw_value(new_index)
-                already_handled[row_obj2.get_table_name()].append(row_obj2.get_rid())
+                    renamed_methods.append(row_obj2.get_token())
     strings_heap.end_append_tx()
 
     """
@@ -1720,8 +1490,9 @@ cpdef bytes cleanup_names(bytes data,
 
             #now handle TypeNamespace
             name = row_obj.get_column('TypeNamespace').get_value_as_bytes()
-            if name is not None or not has_prefix(name) and change_namespaces:
+            if name is not None and not has_prefix(name) and change_namespaces:
                 if name not in changed_namespaces:
+                    prop_name = name
                     name = make_string(b'NameSpace', count2)
                     count2 += 1
                     new_index = strings_heap.append_tx(name)
@@ -1732,7 +1503,6 @@ cpdef bytes cleanup_names(bytes data,
         strings_heap.end_append_tx()
     count = 0
     count2 = 0
-
     if change_param_names:
         table_obj = dotnet.get_metadata_table('Param')
         if table_obj is not None:
@@ -1763,7 +1533,6 @@ cpdef bytes cleanup_names(bytes data,
                     col_val.set_raw_value(new_index)
             strings_heap.end_append_tx()
             count = 0
-
     if change_field_names:
         table_obj = dotnet.get_metadata_table('Field')
         if table_obj is not None:
@@ -1779,6 +1548,98 @@ cpdef bytes cleanup_names(bytes data,
                     col_val.set_raw_value(new_index)
             strings_heap.end_append_tx()
             count = 0
+    #Ok so now comes the hard part: type inheritence chains.
+    #For these, lets start at our base classes and walk down.
+    count = 0
+    if change_method_names:
+        #Change method names by iterating the type inheritence chain.
+        table_obj = dotnet.get_metadata_table('TypeSpec')
+        #First get a listing of all instance sigs.
+        if table_obj is not None:
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                inst_sigs[row_obj] = row_obj.get_sig_obj()
+        table_obj = dotnet.get_metadata_table('MethodSpec')
+        if table_obj is not None:
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                inst_sigs[row_obj] = row_obj.get_sig_obj()
+        table_obj = dotnet.get_metadata_table('TypeDef')
+        if table_obj is not None:
+            for x in range(1, len(table_obj) + 1):
+                tdefref = table_obj.get(<int>x)
+                tdefref_ptr = tdefref.get_superclass()
+                if isinstance(tdefref_ptr, net_row_objects.TypeSpec):
+                    tdefref_ptr = tdefref_ptr.get_type()
+                if tdefref_ptr is None or isinstance(tdefref_ptr, net_row_objects.TypeRef):
+                    if tdefref_ptr is None:
+                        find_method_chains(methodimpl, tdefref, tdefref, inst_sigs, method_chains, sealed_methods)
+                    else:
+                        find_method_chains(methodimpl, tdefref_ptr, tdefref_ptr, inst_sigs, method_chains, sealed_methods)
+        count = 0
+        strings_heap.begin_append_tx()
+        for tdefref_ptr, type_method_chain in method_chains.items(): #TODO swap to list to allow for ordering
+            for mdefref_obj, chained_methods in type_method_chain.items():
+                tdefref = mdefref_obj.get_parent_type()
+                name = None
+                if isinstance(tdefref, net_row_objects.TypeSpec):
+                    tdefref = tdefref.get_type()
+                if isinstance(tdefref, net_row_objects.TypeRef):
+                    name = mdefref_obj.get_column('Name').get_value_as_bytes()
+
+                if mdefref_obj.get_column('Name').get_value_as_bytes() in blocklisted_methods:
+                    name = mdefref_obj.get_column('Name').get_value_as_bytes()
+                
+                if name is None:
+                    for mdefref2_obj in chained_methods:
+                        tdefref = mdefref2_obj.get_parent_type()
+                        if isinstance(tdefref, net_row_objects.TypeSpec):
+                            tdefref = tdefref.get_type()
+                        if isinstance(tdefref, net_row_objects.TypeRef):
+                            name = mdefref2_obj.get_column('Name').get_value_as_bytes()
+                            break
+                if name is None:
+                    name = make_string(b'Method', count)
+                    count += 1
+                new_index = strings_heap.append_tx(name)
+                if mdefref_obj.get_token() not in renamed_methods:
+                    mdefref_obj.get_column('Name').set_raw_value(new_index)
+                    renamed_methods.append(mdefref_obj.get_token())
+                for mdefref2_obj in chained_methods:
+                    if mdefref2_obj.get_token() not in renamed_methods:
+                        mdefref2_obj.get_column('Name').set_raw_value(new_index)
+                        renamed_methods.append(mdefref2_obj.get_token())
+        strings_heap.end_append_tx()
+        table_obj = dotnet.get_metadata_table('MemberRef')
+        if table_obj is not None:
+            for x in range(1, len(table_obj) + 1):
+                row_obj = table_obj.get(<int>x)
+                tdefref = row_obj.get_parent_type()
+                tdefref_ptr = None
+                tsig = None
+                found = False
+
+                if isinstance(tdefref, net_row_objects.TypeSpec):
+                    tdefref_ptr = tdefref
+                    tdefref = tdefref.get_type()
+                    tsig = tdefref_ptr.get_sig_obj()
+
+
+                if isinstance(tdefref, net_row_objects.TypeRef):
+                    continue
+                csig = row_obj.get_method_signature()
+                if csig is not None:
+                    if isinstance(csig, net_sigs.MethodSig):
+                        continue
+                    if isinstance(csig, net_sigs.FieldSig):
+                        for row_obj2 in tdefref.get_column('FieldList').get_formatted_value():
+                            if row_obj2.get_column('Name').get_original_value() == row_obj.get_column('Name').get_original_value():
+                                if net_sigs.field_sig_compare(row_obj2.get_field_signature(), csig, None, tsig):
+                                    row_obj.get_column('Name').set_raw_value(row_obj2.get_column('Name').get_raw_value())
+                                    found = True
+
+                if not found:
+                    print('Warning: memberref field not found.')
     count = 0
     if change_property_names:
         table_obj = dotnet.get_metadata_table('Property')
@@ -1828,11 +1689,11 @@ cpdef bytes cleanup_names(bytes data,
                                 prop_name = make_string(b'Property', count)
                                 count += 1
                             
-                            if mdefref_obj.get_column('Name').get_value_as_bytes() != (b'get_' + prop_name):
+                            if mdefref_obj is not None and mdefref_obj.get_column('Name').get_value_as_bytes() != (b'get_' + prop_name):
                                 new_index = strings_heap.append_tx(b'get_' + prop_name)
                                 mdefref_obj.get_column('Name').set_raw_value(new_index)
 
-                            if mdefref2_obj.get_column('Name').get_value_as_bytes() != (b'set_' + prop_name):
+                            if mdefref2_obj is not None and mdefref2_obj.get_column('Name').get_value_as_bytes() != (b'set_' + prop_name):
                                 new_index = strings_heap.append_tx(b'set_' + prop_name)
                                 mdefref2_obj.get_column('Name').set_raw_value(new_index)
                             if col_val.get_value_as_bytes() != prop_name:
@@ -1840,7 +1701,6 @@ cpdef bytes cleanup_names(bytes data,
                                 col_val.set_raw_value(new_index)
             strings_heap.end_append_tx()
             count = 0
-
     if change_events:
         table_obj = dotnet.get_metadata_table('Event')
         msem_table = dotnet.get_metadata_table('MethodSemantics')
@@ -1898,14 +1758,14 @@ cpdef bytes cleanup_names(bytes data,
                                 prop_name = make_string(b'Event', count)
                                 count += 1
                             
-                            if mdefref_obj.get_column('Name').get_value_as_bytes() != (b'add_' + prop_name):
+                            if mdefref_obj is not None and mdefref_obj.get_column('Name').get_value_as_bytes() != (b'add_' + prop_name):
                                 new_index = strings_heap.append_tx(b'add_' + prop_name)
                                 mdefref_obj.get_column('Name').set_raw_value(new_index)
 
-                            if mdefref2_obj.get_column('Name').get_value_as_bytes() != (b'remove_' + prop_name):
+                            if mdefref2_obj is not None and mdefref2_obj.get_column('Name').get_value_as_bytes() != (b'remove_' + prop_name):
                                 new_index = strings_heap.append_tx(b'remove_' + prop_name)
                                 mdefref2_obj.get_column('Name').set_raw_value(new_index)
-                            if mdefref3_obj.get_column('Name').get_value_as_bytes() != (b'raise_' + prop_name):
+                            if mdefref3_obj is not None and mdefref3_obj.get_column('Name').get_value_as_bytes() != (b'raise_' + prop_name):
                                 new_index = strings_heap.append_tx(b'remove_' + prop_name)
                                 mdefref3_obj.get_column('Name').set_raw_value(new_index)
                             if col_val.get_value_as_bytes() != prop_name:
@@ -1913,716 +1773,7 @@ cpdef bytes cleanup_names(bytes data,
                                 col_val.set_raw_value(new_index)
             strings_heap.end_append_tx()
             count = 0
-
-    #Ok so now comes the hard part: type inheritence chains.
-    #For these, lets start at our base classes and walk down.
-    count = 0
-
-    if change_method_names:
-        #Change method names by iterating the type inheritence chain.
-        table_obj = dotnet.get_metadata_table('TypeSpec')
-        #First get a listing of all instance sigs.
-        if table_obj is not None:
-            for x in range(1, len(table_obj) + 1):
-                row_obj = table_obj.get(<int>x)
-                inst_sigs[row_obj.get_type()] = row_obj.get_sig_obj()
-        table_obj = dotnet.get_metadata_table('MethodSpec')
-        if table_obj is not None:
-            for x in range(1, len(table_obj) + 1):
-                row_obj = table_obj.get(<int>x)
-                inst_sigs[row_obj.get_method()] = row_obj.get_sig_obj()
-        table_obj = dotnet.get_metadata_table('TypeDef')
-        if table_obj is not None:
-            for x in range(1, len(table_obj) + 1):
-                tdefref = table_obj.get(<int>x)
-                tdefref_ptr = tdefref.get_superclass()
-                if isinstance(tdefref_ptr, net_row_objects.TypeSpec):
-                    tdefref_ptr = tdefref_ptr.get_type()
-                if tdefref_ptr is None or isinstance(tdefref_ptr, net_row_objects.TypeRef):
-                    find_method_chains(methodimpl, tdefref, tdefref, inst_sigs, method_chains, sealed_methods)
-
-        for typedef in method_chains.get_keys():
-            print('printing method chains for TypeDef {}'.format(typedef))
-            chains = method_chains[typedef]
-            for base_method, others in chains.items():
-                print('Base method {}'.format(base_method))
-                for item in others:
-                    print('overridding method {}'.format(item))
-        raise Exception()
-
-cpdef bytes cleanup_names2(bytes data,
-                  bint change_namespaces=True,
-                  bint change_method_names=True,
-                  bint change_param_names=True,
-                  bint change_module_name=True,
-                  bint change_type_names=True,
-                  bint change_field_names=True,
-                  bint change_property_names=True,
-                  bint force_main_method=True,
-                  bint change_import_names=True,
-                  bint change_events=True) except *:
-    """
-    Changes various names throughout the binary to more readable values
-    Intended for instances when the names have been obfuscated.
-    This function will recover what it can, but for the most part only imported functions can be changed to original names.
-    Additionally this function now supports inheritence and can be used on more complex binaries.
-    :param data: the original binary data
-    All other parameters are to control what is changed.  By default everything is changed.
-    :param change_namespaces: Should namespace names be changed?
-    :param change_method_names: Should method names be changed?
-    :param change_param_names: Should parameter names be changed?
-    :param change_module_name: Should the module name be changed?
-    :param change_type_names: Should type names be changed?
-    :param change_field_names: Should field names be changed?
-    :param change_property_names: Should property names be changed?
-    :param force_main_method:  Should the entrypoint be forced to have a name of "Main"?
-    """
-    cdef dotnetpefile.DotNetPeFile dotnetpe = dotnetpefile.DotNetPeFile(pe_data=data)
-    cdef unsigned int namespace_count
-    cdef unsigned int class_count
-    cdef list blacklisted_methods
-    cdef list blacklisted_types
-    cdef list blacklisted_method_rids
-    cdef list blacklisted_field_rids
-    cdef unsigned int module_count
-    cdef net_row_objects.RowObject row_obj
-    cdef net_row_objects.MethodDefOrRef method
-    cdef net_table_objects.TableObject implmap_table
-    cdef net_row_objects.RowObject item
-    cdef str table_name
-    cdef unsigned long table_rid
-    cdef bytes name
-    cdef long u_index
-    cdef list typedefs
-    cdef dict changed_namespaces
-    cdef net_row_objects.TypeDef typedef
-    cdef unsigned int field_count
-    cdef unsigned int method_count
-    cdef bytes old_value
-    cdef bytes new_value
-    cdef unsigned int param_count
-    cdef net_row_objects.RowObject param
-    cdef unsigned int gparam_count
-    cdef unsigned int fcount
-    cdef net_row_objects.Field fitem
-    cdef net_row_objects.MemberRef memberref
-    cdef unsigned int num_prop
-    cdef net_table_objects.TableObject properties
-    cdef net_row_objects.RowObject prop
-    cdef net_row_objects.MethodDefOrRef getter_method
-    cdef net_row_objects.MethodDefOrRef setter_method
-    cdef net_row_objects.MethodDefOrRef fire_method
-    cdef list semantics
-    cdef net_row_objects.MethodSemantic semantic
-    cdef bytes setter_name
-    cdef bytes getter_name
-    cdef bytes property_name
-    cdef str property_name_str
-    cdef net_row_objects.MethodDef ep_method
-    cdef bytes ep_name
-    cdef unsigned long vmethod_id
-    cdef net_row_objects.MethodImpl method_impl
-    cdef net_table_objects.MethodImplTable method_impl_table
-    cdef bytes new_name
-    cdef net_row_objects.TypeDefOrRef interface
-    cdef net_row_objects.TypeDefOrRef iface_obj
-    cdef list checked_types
-    cdef net_row_objects.TypeDefOrRef parent_type
-    cdef long x
-    cdef long y
-    cdef long z
-    cdef list methods_list
-    cdef net_table_objects.TableObject param_table
-    cdef net_table_objects.TableObject table_obj1
-    cdef net_table_objects.TableObject table_obj2
-    cdef net_table_objects.MethodSemanticsTable semantics_table
-    cdef net_table_objects.TableObject event_table
-    cdef int new_offset = 0
-    cdef net_processing.StringHeapObject string_heap = None
-    cdef net_row_objects.ColumnValue col_val = None
-    cdef net_row_objects.ColumnValue col_val2 = None
-    cdef dict method_names = dict()
-    cdef bytes fire_name
-    cdef bytes inherited_name = b''
-    cdef int ecount = 0
-    if dotnetpe is None:
-        raise net_exceptions.InvalidArgumentsException()
-    string_heap = dotnetpe.get_heap('#Strings')
-    namespace_count = 0
-    class_count = 0
-    # Add more common method names here that should not be manipulated.
-    blacklisted_methods = [
-        b'.cctor',
-        b'Main',
-        b'.ctor',
-        b'Equals',
-        b'Finalize',
-        b'GetHashCode',
-        b'GetType',
-        b'MemberwiseClone',
-        b'ReferenceEquals',
-        b'ToString',
-        b'Invoke',
-        b'BeginInvoke',
-        b'EndInvoke',
-        b'Compare',
-        b'GetEnumerator',
-        b'TransformBlock',
-        b'TransformFinalBlock',
-        b'CreateEncryptor',
-        b'CreateDecryptor',
-        b'Flush',
-        b'Dispose',
-        b'ReleaseHandle',
-        b'GenerateKey',
-        b'GetBytes',
-        b'Reset',
-        b'Read',
-        b'MoveNext',
-        b'SetStateMachine'
-    ]
-
-    blacklisted_types = [
-        b'<Module>',
-        b'Program'
-    ]
-
-    blacklisted_method_rids = []
-    blacklisted_field_rids = []
-
-    # first change the module name
-    if change_module_name:
-        module_count = 0
-        for row_obj in dotnetpe.get_metadata_table('Module'):
-            name = make_string(b'Module', module_count)
-            row_obj.get_column('Name').change_value(name)
-            module_count += 1
-
-    # specifically rename the entrypoint to main.
-    # for now, assume COMIMAGE_FLAGS_NATIVE_ENTRYPOINT is not set.
-    ep_method = dotnetpe.get_entry_point()
-    if ep_method:
-        ep_name = ep_method.get_column('Name').get_value_as_bytes()
-        if ep_name != b'Main' and force_main_method:
-            ep_method.get_column('Name').change_value(b'Main')
-
-    # first deal with the implmap methods
-    string_heap.begin_append_tx()
-    if change_method_names or change_import_names:
-        implmap_table = dotnetpe.get_metadata_table('ImplMap')
-        if implmap_table is not None:
-            for x in range(1, len(implmap_table) + 1):
-                item = implmap_table.get(x)
-                method = <net_row_objects.MethodDefOrRef>item.get_column('MemberForwarded').get_value_as_rowobject()
-                col_val = item.get_column('ImportName')
-                if col_val.get_raw_value() not in method_names:
-                    name = item.get_column('ImportName').get_original_value()
-                else:
-                    name = method_names[col_val.get_raw_value()]
-                # apply the new index
-                table_name = method.get_table_name()
-                table_rid = method.get_rid()
-                new_index = string_heap.append_tx(name)
-                method_names[new_index] = name
-                if table_name == 'MethodDef':
-                    method.get_column('Name').set_raw_value(new_index)
-                    blacklisted_method_rids.append(
-                        table_rid)  # we don't want to rename methods that obviously have the correct name.
-                # other option is the field table - likely wont ever happen though.
-                else:
-                    method.get_column('Name').set_raw_value(new_index)
-                    blacklisted_field_rids.append(table_rid)  # we don't want to rename methods that obviously have the correct name.
-    string_heap.end_append_tx()
-    # first fix types
-    u_index = 0
-    typedefs = list(dotnetpe.get_metadata_table('TypeDef'))
-    changed_namespaces = dict()
-    string_heap.begin_append_tx()
-    while u_index < len(typedefs):
-        typedef = typedefs[u_index]
-        field_count = 0
-        method_count = 0
-        # check the namespace
-        col_val = typedef.get_column('TypeNamespace')
-        if col_val.get_raw_value() in method_names:
-            name = method_names[col_val.get_raw_value()]
-        else:
-            name = col_val.get_original_value()
-        if change_namespaces and col_val.get_raw_value() != 0 and not has_prefix(name):
-            if name not in changed_namespaces:
-                old_value = name
-                new_value = make_string(b'NameSpace', namespace_count)
-                new_index = string_heap.append_tx(new_value)
-                method_names[new_index] = new_value
-                col_val.set_raw_value(new_index)
-                namespace_count += 1
-                changed_namespaces[old_value] = new_index
-            else:
-                old_value = name
-                new_index = changed_namespaces[old_value]
-                col_val.set_raw_value(new_index)
-
-        # check the type name
-        col_val = typedef.get_column('TypeName')
-        name = col_val.get_original_value()
-        if change_type_names and not has_prefix(name) and name not in blacklisted_types:
-            new_name = make_string(b'Class', class_count)
-            new_index = string_heap.append_tx(new_name)
-            method_names[new_index] = new_name
-            col_val.set_raw_value(new_index)
-            class_count += 1
-
-        # check methods
-        if change_method_names:
-            methods_list = typedef.get_column('MethodList').get_formatted_value()
-            for x in range(len(methods_list)):
-                method = methods_list[x]
-                # a lot of these conditions have to do with avoiding renaming methods that will cause errors if the code is exported.
-                if method.get_rid() in blacklisted_method_rids:
-                    continue
-
-                if method.is_virtual():
-                    continue
-
-                if method.is_abstract():
-                    continue
-                col_val = method.get_column('Name')
-                if col_val.get_raw_value() not in method_names:
-                    name = col_val.get_original_value()
-                else:
-                    name = method_names[col_val.get_raw_value()]
-                inherited_name = check_for_inherited_name(method, typedef)
-                if name not in blacklisted_methods and not has_prefix(name):
-                    if inherited_name is not None:
-                        new_name = inherited_name
-                    else:
-                        new_name = make_string(b'Method', method_count)
-                    new_index = string_heap.append_tx(new_name)
-                    method_names[new_index] = new_name
-                    col_val.set_raw_value(new_index)
-                    method_count += 1
-        u_index += 1
-    string_heap.end_append_tx()
-
-    # next fix params
-    u_index = 0
-    param_count = 0
-    if change_param_names: #TODO: takes too long
-        if dotnetpe.has_metadata_table('Param'):
-            string_heap.begin_append_tx()
-            param_table = dotnetpe.get_metadata_table('Param')
-            for x in range(1, len(param_table) + 1):
-                param = param_table.get(x)
-                col_val = param.get_column('Name')
-                if col_val.get_raw_value() in method_names:
-                    new_name = method_names[col_val.get_raw_value()]
-                else:
-                    new_name = col_val.get_original_value()
-                if new_name is not None and has_prefix(new_name):
-                    continue
-                new_name = make_string(b'param', param_count)
-                new_index = string_heap.append_tx(new_name)
-                method_names[new_index] = new_name
-                col_val.set_raw_value(new_index)
-                param_count += 1
-            string_heap.end_append_tx()
-
-        if dotnetpe.has_metadata_table('GenericParam'):
-            gparam_count = 0
-            param_table = dotnetpe.get_metadata_table('GenericParam')
-            string_heap.begin_append_tx()
-            for x in range(1, len(param_table) + 1):
-                param = param_table[x]
-                new_name = make_string(b'gparam', gparam_count)
-                new_index = string_heap.append_tx(new_name)
-                method_names[new_index] = new_name
-                param.get_column('Name').set_raw_value(new_index)
-                gparam_count += 1
-            string_heap.end_append_tx()
-
-    if change_field_names and dotnetpe.has_metadata_table('Field'):
-        # get anything in the fields table that hasnt been changed.
-        fcount = 0
-        table_obj1 = dotnetpe.get_metadata_table('Field')
-        table_obj2 = dotnetpe.get_metadata_table('MemberRef')
-        string_heap.begin_append_tx()
-        for x in range(1, len(table_obj1) + 1):
-            fitem = table_obj1.get(x)
-            col_val = fitem.get_column('Name')
-            if col_val.get_raw_value() not in method_names:
-                name = col_val.get_original_value()
-            else:
-                name = method_names[col_val.get_raw_value()]
-            if not has_prefix(name) and fitem.get_rid() not in blacklisted_field_rids:
-                new_name = make_string(b'field', fcount)
-                new_index = string_heap.append_tx(new_name)
-                method_names[new_index] = new_name
-                col_val.set_raw_value(new_index)
-                fcount += 1
-                if table_obj2 is not None:
-                    for y in range(1, len(table_obj2) + 1):
-                        memberref = table_obj2.get(y)
-                        if memberref.is_field():
-                            if memberref.get_method_signature() == fitem.get_field_signature() and memberref.get_column('Name').get_original_value() == fitem.get_column('Name').get_original_value():
-                                col_val = memberref.get_column('Name')
-                                col_val.set_raw_value(new_index)
-                                break
-
-        string_heap.end_append_tx()
-    # property table
-    num_prop = 0
-    properties = dotnetpe.get_metadata_table('Property')
-    if change_property_names and properties is not None:
-        string_heap.begin_append_tx()
-        if not dotnetpe.has_metadata_table('MethodSemantics'):
-            for x in range(1, len(properties) + 1):
-                prop = properties.get(x)
-                col_val = prop.get_column('Name')
-                if not has_prefix(col_val.get_original_value()):
-                    new_name = make_string(b'Property', num_prop)
-                    new_index = string_heap.append_tx(new_name)
-                    method_names[new_index] = new_name
-                    col_val.set_raw_value(new_index)
-                    num_prop += 1
-        else:
-            semantics_table = dotnetpe.get_metadata_table('MethodSemantics')
-            for x in range(1, len(properties) + 1):
-                prop = properties.get(x)
-                semantics = semantics_table.get_semantics_for_item(prop)
-                getter_method = None
-                setter_method = None
-                if len(semantics) != 0:
-                    for y in range(len(semantics)):
-                        semantic = semantics[y]
-                        if semantic.is_setter():
-                            setter_method = semantic.get_method()
-                        elif semantic.is_getter():
-                            getter_method = semantic.get_method()
-
-                        if getter_method != None and setter_method != None:
-                            break
-                else:
-                    col_val = prop.get_column('Name')
-                    setter_name = b'set_' + col_val.get_original_value()
-                    getter_name = b'get_' + col_val.get_original_value()
-                    table_obj2 = dotnetpe.get_metadata_table('MemberRef')
-                    for y in range(1, len(table_obj2) + 1):
-                        memberref = table_obj2.get(y)
-                        col_val = memberref.get_column('Name')
-                        if col_val.get_raw_value() in method_names:
-                            name = method_names[col_val.get_raw_value()]
-                        else:
-                            name = col_val.get_original_value()
-                        if name == setter_name:
-                            setter_method = memberref
-                        elif name == getter_name:
-                            getter_method = memberref
-
-                        if setter_method != None and getter_method != None:
-                            break
-
-                # check if method exists in memberref
-                property_name = bytes()
-                if setter_method:
-                    # if the end of setter method matches name of property, set.
-                    col_val = setter_method.get_column('Name')
-                    if col_val.get_original_value().startswith(b'set_'):
-                        # name is probably correct, use it.
-                        property_name = col_val.get_original_value().replace(
-                            b'set_', b'')
-                        col_val = prop.get_column('Name')
-                        if col_val.get_raw_value() in method_names:
-                            name = method_names[col_val.get_raw_value()]
-                        else:
-                            name = col_val.get_original_value()
-                        if name != property_name:
-                            new_index = string_heap.append_tx(property_name)
-                            method_names[new_index] = property_name
-                            col_val.set_raw_value(new_index)
-
-                if getter_method:
-                    # if the end of setter method matches name of property, set.
-                    col_val = getter_method.get_column('Name')
-                    if col_val.get_original_value().startswith(b'get_'):
-                        # name is probably correct, use it.
-                        property_name = col_val.get_original_value().replace(
-                            b'get_', b'')
-                        col_val = prop.get_column('Name')
-                        if col_val.get_raw_value() in method_names:
-                            name = method_names[col_val.get_raw_value()]
-                        else:
-                            name = col_val.get_original_value()
-                        if name != property_name:
-                            new_index = string_heap.append_tx(property_name)
-                            method_names[new_index] = property_name
-                            col_val.set_raw_value(new_index)
-
-                # if the method names arent correct, rename the property.
-                if len(property_name) == 0: 
-                    property_name = make_string(b'Property', num_prop)
-                    num_prop += 1
-                    if getter_method:
-                        name = b'get_' + property_name
-                        new_index = string_heap.append_tx(name)
-                        method_names[new_index] = name
-
-                        getter_method.get_column('Name').set_raw_value(new_index)
-
-                    if setter_method:
-                        name = b'set_' + property_name
-                        new_index = string_heap.append_tx(name)
-                        method_names[new_index] = name
-                        setter_method.get_column('Name').set_raw_value(new_index)
-
-                    new_index = string_heap.append_tx(property_name)
-
-                    prop.get_column('Name').set_raw_value(new_index)
-        string_heap.end_append_tx()
-    event_table = dotnetpe.get_metadata_table('Event')
-    if change_events and event_table is not None:
-        string_heap.begin_append_tx()
-        if not dotnetpe.has_metadata_table('MethodSemantics'):
-            for x in range(1, len(event_table) + 1):
-                prop = event_table.get(x)
-                col_val = prop.get_column('Name')
-                if not has_prefix(col_val.get_original_value()):
-                    new_name = make_string(b'Event', ecount)
-                    new_index = string_heap.append_tx(new_name)
-                    method_names[new_index] = new_name
-                    col_val.set_raw_value(new_index)
-                    ecount += 1
-        else:
-            semantics_table = dotnetpe.get_metadata_table('MethodSemantics')
-            for x in range(1, len(event_table) + 1):
-                prop = event_table.get(x)
-                semantics = semantics_table.get_semantics_for_item(prop)
-                getter_method = None
-                setter_method = None
-                fire_method = None
-                if len(semantics) != 0:
-                    for y in range(len(semantics)):
-                        semantic = semantics[y]
-                        if semantic.is_fire():
-                            fire_method = semantic.get_method()
-                        elif semantic.is_add_on():
-                            setter_method = semantic.get_method()
-                        elif semantic.is_remove_on():
-                            getter_method = semantic.get_method()
-
-                        if getter_method != None and setter_method != None and fire_method != None:
-                            break
-                else:
-                    col_val = prop.get_column('Name')
-                    setter_name = b'add_' + col_val.get_original_value()
-                    getter_name = b'remove_' + col_val.get_original_value()
-                    fire_name = b'raise_'  + col_val.get_original_value()
-                    table_obj2 = dotnetpe.get_metadata_table('MemberRef')
-                    for y in range(1, len(table_obj2) + 1):
-                        memberref = table_obj2.get(y)
-                        col_val = memberref.get_column('Name')
-                        if col_val.get_raw_value() in method_names:
-                            name = method_names[col_val.get_raw_value()]
-                        else:
-                            name = col_val.get_original_value()
-                        if name == setter_name:
-                            setter_method = memberref
-                        elif name == getter_name:
-                            getter_method = memberref
-                        elif name == fire_name:
-                            fire_method = memberref
-                        
-
-                        if setter_method != None and getter_method != None and fire_method != None:
-                            break
-
-                # check if method exists in memberref
-                property_name = bytes()
-                if setter_method:
-                    # if the end of setter method matches name of property, set.
-                    col_val = setter_method.get_column('Name')
-                    if col_val.get_original_value().startswith(b'add_'):
-                        # name is probably correct, use it.
-                        property_name = col_val.get_original_value().replace(
-                            b'add_', b'')
-                        col_val = prop.get_column('Name')
-                        if col_val.get_raw_value() in method_names:
-                            name = method_names[col_val.get_raw_value()]
-                        else:
-                            name = col_val.get_original_value()
-                        if name != property_name:
-                            new_index = string_heap.append_tx(property_name)
-                            method_names[new_index] = property_name
-                            col_val.set_raw_value(new_index)
-
-                if getter_method:
-                    # if the end of setter method matches name of property, set.
-                    col_val = getter_method.get_column('Name')
-                    if col_val.get_original_value().startswith(b'remove_'):
-                        # name is probably correct, use it.
-                        property_name = col_val.get_original_value().replace(
-                            b'remove_', b'')
-                        col_val = prop.get_column('Name')
-                        if col_val.get_raw_value() in method_names:
-                            name = method_names[col_val.get_raw_value()]
-                        else:
-                            name = col_val.get_original_value()
-                        if name != property_name:
-                            new_index = string_heap.append_tx(property_name)
-                            method_names[new_index] = property_name
-                            col_val.set_raw_value(new_index)
-                if fire_method:
-                    # if the end of setter method matches name of property, set.
-                    col_val = fire_method.get_column('Name')
-                    if col_val.get_original_value().startswith(b'raise_'):
-                        # name is probably correct, use it.
-                        property_name = col_val.get_original_value().replace(
-                            b'raise_', b'')
-                        col_val = prop.get_column('Name')
-                        if col_val.get_raw_value() in method_names:
-                            name = method_names[col_val.get_raw_value()]
-                        else:
-                            name = col_val.get_original_value()
-                        if name != property_name:
-                            new_index = string_heap.append_tx(property_name)
-                            method_names[new_index] = property_name
-                            col_val.set_raw_value(new_index)
-
-
-                # if the method names arent correct, rename the property.
-                if len(property_name) == 0: 
-                    property_name = make_string(b'Event', ecount)
-                    ecount += 1
-                    if getter_method:
-                        name = b'remove_' + property_name
-                        new_index = string_heap.append_tx(name)
-                        method_names[new_index] = name
-
-                        getter_method.get_column('Name').set_raw_value(new_index)
-
-                    if setter_method:
-                        name = b'add_' + property_name
-                        new_index = string_heap.append_tx(name)
-                        method_names[new_index] = name
-                        setter_method.get_column('Name').set_raw_value(new_index)
-
-                    if fire_method:
-                        name = b'raise_' + property_name
-                        new_index = string_heap.append_tx(name)
-                        method_names[new_index] = name
-                        fire_method.get_column('Name').set_raw_value(new_index)
-
-                    new_index = string_heap.append_tx(property_name)
-
-                    prop.get_column('Name').set_raw_value(new_index)
-        string_heap.end_append_tx()
-
-    # first rename root methods
-    table_obj1 = dotnetpe.get_metadata_table('MethodDef')
-
-    if change_method_names:
-        # go through all the memberrefs, find the root method.
-        vmethod_id = 0
-        method_impl_table = dotnetpe.get_metadata_table(
-            'MethodImpl')
-        if method_impl_table is not None:
-            string_heap.begin_append_tx()
-            for x in range(1, len(method_impl_table) + 1):
-                method_impl = method_impl_table.get(x)
-                col_val = method_impl.get_declaration().get_column('Name')
-                if col_val.get_raw_value() in method_names:
-                    name = method_names[col_val.get_raw_value()]
-                else:
-                    name = col_val.get_original_value()
-                if name not in blacklisted_methods:
-                    new_name = make_string(b'VirtualMethod', vmethod_id)
-                    new_index = string_heap.append_tx(new_name)
-                    method_names[new_index] = new_name
-                    vmethod_id += 1
-                else:
-                    new_index = col_val.get_raw_value()
-                method_impl.get_body().get_column('Name').set_raw_value(new_index)
-                col_val.set_raw_value(new_index)
-                interfaces = method_impl.get_class().get_interfaces()
-                for y in range(len(interfaces)):
-                    interface = interfaces[y]
-                    iface_obj = interface
-                    if isinstance(interface, net_row_objects.TypeSpec):
-                        iface_obj = interface.get_type()
-                    if isinstance(iface_obj, net_row_objects.TypeDef):
-                        methods_list = iface_obj.get_methods()
-                        for z in range(len(methods_list)):
-                            method = methods_list[z]
-                            # Try not to go around renaming methods that shouldnt be renamed.
-                            if not method.is_virtual() or not method.is_abstract():
-                                continue
-                            # Let MethodImpl table take precedence.
-                            if method_impl_table.is_method_in_table(method):
-                                continue
-                            # NOTE: somewhere here there should probably be a name check.  TODO.
-                            col_val = method.get_column('Name')
-                            if col_val.get_raw_value() not in method_names:
-                                name = col_val.get_original_value()
-                            else:
-                                name = method_names[col_val.get_raw_value()]
-                            if not has_prefix(name) and method.get_method_signature() == method_impl.get_declaration().get_method_signature():
-                                method.get_column('Name').set_raw_value(new_index)
-                                break
-            string_heap.end_append_tx()
-        # clean off the rest of the methods
-        #first make sure all name columns are initialized
-        string_heap.begin_append_tx()
-        for x in range(1, len(table_obj1) + 1):
-            method = table_obj1.get(x)
-            col_val = method.get_column('Name')
-            if col_val.get_raw_value() not in method_names:
-                name = col_val.get_original_value()
-            else:
-                name = method_names[col_val.get_raw_value()]
-            if method.has_body() and name not in blacklisted_methods:
-                if (method.is_virtual() or method.is_abstract()):
-                    if method.get_rid() not in blacklisted_method_rids:
-                        inherited_name = check_for_inherited_name(method, method.get_parent_type())
-                        if not has_prefix(name):
-                            if inherited_name is None:
-                                name = make_string(b'VirtualMethod', vmethod_id)
-                            else:
-                                name = inherited_name
-                            new_index = string_heap.append_tx(name)
-                            method_names[new_index] = name
-                            vmethod_id += 1
-                        else:
-                            new_index = method.get_column('Name').get_raw_value()
-                        # check parent classes for same methods.
-                        checked_types = list()
-                        check_type(method, method.get_parent_type(), method.get_column('Name').get_original_value(), new_index, method.get_method_signature(), checked_types, method_names)
-        string_heap.end_append_tx()
-        string_heap.begin_append_tx() #Since we are potentially referencing the values we need to append the transaction data.
-        table_obj2 = dotnetpe.get_metadata_table('MemberRef')
-        for x in range(1, len(table_obj2) + 1):
-            memberref = table_obj2.get(x)
-            col_val = memberref.get_column('Name')
-            if col_val.get_raw_value() not in method_names:
-                name = col_val.get_original_value()
-            else:
-                name = method_names[col_val.get_raw_value()]
-            if col_val.get_original_value() == name and isinstance(
-                    memberref.get_parent_type(), net_row_objects.TypeSpec):
-                parent_type = memberref.get_parent_type().get_type()
-                if isinstance(parent_type, net_row_objects.TypeDef):
-                    methods_list = parent_type.get_column('MethodList').get_formatted_value()
-                    for y in range(len(methods_list)):
-                        method = methods_list[y]
-                        col_val2 = method.get_column('Name')
-                        if col_val2.get_raw_value() not in method_names:
-                            new_name = col_val2.get_original_value()
-                        else:
-                            new_name = method_names[col_val2.get_raw_value()]
-                        if new_name == name and memberref.get_method_signature() == method.get_method_signature():
-                            col_val.set_raw_value(col_val2.get_raw_value())
-                            break
-        string_heap.end_append_tx()
-    return dotnetpe.reconstruct_executable()
-
+    return dotnet.reconstruct_executable()
 
 def deobfuscate_method_control_flow(file_data: bytes):
     dpe = dotnetpefile.DotNetPeFile(pe_data=file_data)

@@ -1389,7 +1389,6 @@ cdef class MemberRef(MethodDefOrRef):
         cdef RowObject sig_type
         class_obj = self.get_column('Class').get_value()
         if class_obj:
-            class_obj._add_method(self) #This wont do anything for MethodDefs, only MemberRefs
             if class_obj.get_table_name() == 'TypeRef':
                 self._set_parent_type(class_obj)
                 class_obj._memberrefs.append(self)
@@ -1567,6 +1566,9 @@ cdef class MethodSpec(MethodDefOrRef):
                 pass
         return self.__parsed_sig
 
+    def __hash__(self):
+        return hash(self.get_table_name() + '_' + str(self.get_rid()))
+
 
 cdef class TypeSpec(TypeDefOrRef):
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, list raw_data, int rid, list sizes, dict col_types, str table_name):
@@ -1664,11 +1666,14 @@ cdef class TypeSpec(TypeDefOrRef):
             signature = self.get_column('Signature').get_value()
             try:
                 sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
-                self.__parsed_sig = sig_reader.handle_type_sig()
-            except net_exceptions.InvalidSignatureException:
+                self.__parsed_sig = sig_reader.handle_type_sig(False)
+            except net_exceptions.InvalidSignatureException as e:
                 self.__has_invalid_signature = True
                 return None
         return self.__parsed_sig
+
+    def __hash__(self):
+        return hash(self.get_table_name() + '_' + str(self.get_rid()))
     
 cdef class StandAloneSig(RowObject):
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, list raw_data, int rid, list sizes, dict col_types, str table_name):
@@ -1687,7 +1692,7 @@ cdef class StandAloneSig(RowObject):
             signature = self.get_column('Signature').get_value()
             try:
                 sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
-                self.__parsed_sig = sig_reader.handle_type_sig()
+                self.__parsed_sig = sig_reader.read_calling_convention_sig()
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True
         return self.__parsed_sig

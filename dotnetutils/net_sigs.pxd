@@ -3,6 +3,12 @@
 
 from dotnetutils cimport net_structs, net_row_objects, dotnetpefile
 
+cdef bint method_sig_compare(MethodBaseSig sig_one, MethodBaseSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig)
+
+cdef bint type_sig_compare(TypeSig sig_one, TypeSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig)
+
+cdef bint field_sig_compare(FieldSig sig_one, FieldSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig)
+
 cdef class TypeSig:
     cdef net_structs.CorElementType __element_type
 
@@ -68,7 +74,7 @@ cdef class GenericInstSig(LeafSig):
 cdef class NonLeafSig(TypeSig):
     cdef TypeSig __next_sig
 
-    cpdef TypeSig get_next_sig(self)
+    cpdef TypeSig get_next(self)
 
 cdef class PtrSig(NonLeafSig):
     pass
@@ -191,7 +197,7 @@ cdef class SignatureReader():
 
     cdef MethodSig handle_method_sig(self)
 
-    cdef TypeSig handle_type_sig(self)
+    cdef TypeSig handle_type_sig(self, bint read_first)
 
     cdef int read_integer_pointer(self)
 
