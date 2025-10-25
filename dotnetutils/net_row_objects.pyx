@@ -973,9 +973,9 @@ cdef class TypeRef(TypeDefOrRef):
 
     cpdef list get_methods_by_name(self, bytes method_name):
         cdef list result
-        cdef RowObject method
+        cdef MemberRef method
         result = list()
-        for method in self.__methods:
+        for method in self.get_member_refs():
             if method.get_column('Name').get_value() == method_name:
                 result.append(method)
         return result
@@ -1130,20 +1130,23 @@ cdef class MethodDef(MethodDefOrRef):
             if no_save:
                 return net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
             else:
-                if not self.__disasm_obj:
-                    self.__disasm_obj = net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
-                    md5 = hashlib.md5()
-                    md5.update(self.get_method_data())
-                    self.__current_method_hash = md5.digest()
-                else:
-                    #Check to make sure the method hasnt been modified.
-                    md5 = hashlib.md5()
-                    md5.update(self.get_method_data())
-                    hashval = md5.digest()
-                    if hashval != self.__current_method_hash:
+                try:
+                    if not self.__disasm_obj:
                         self.__disasm_obj = net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
-                        self.__current_method_hash = hashval
-                return self.__disasm_obj
+                        md5 = hashlib.md5()
+                        md5.update(self.get_method_data())
+                        self.__current_method_hash = md5.digest()
+                    else:
+                        #Check to make sure the method hasnt been modified.
+                        md5 = hashlib.md5()
+                        md5.update(self.get_method_data())
+                        hashval = md5.digest()
+                        if hashval != self.__current_method_hash:
+                            self.__disasm_obj = net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
+                            self.__current_method_hash = hashval
+                    return self.__disasm_obj
+                except:
+                    return None #Allows for encrypted methods and such.
         return None
 
     cpdef bytes get_original_method_data(self):

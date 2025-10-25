@@ -2901,6 +2901,8 @@ cdef class DotNetEmulator:
             raise net_exceptions.InvalidArgumentsException()
         self.strict_typing = strict_typing
         self.disasm_obj = self.method_obj.disassemble_method()
+        if self.disasm_obj is None:
+            raise net_exceptions.InvalidArgumentsException()
         self.end_offset = end_offset
         self.stack = DotNetStack(self, self.disasm_obj.max_stack)
         self.end_method_rid = end_method_rid

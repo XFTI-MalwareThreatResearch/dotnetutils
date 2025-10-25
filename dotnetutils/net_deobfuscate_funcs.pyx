@@ -102,6 +102,8 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
     for method_rid, xref_offset in datetime_method.get_xrefs():  # relying on instr_index gives some issues, maybe change this to an offset?
         method_obj = dotnet.get_method_by_rid(method_rid)
         disasm_obj = method_obj.disassemble_method()
+        if disasm_obj is None:
+            continue
         for instr_index in range(len(disasm_obj)):
             if disasm_obj[instr_index].get_name() == 'call' and disasm_obj[
                 instr_index].get_argument().get_full_name() == datetime_method_name:
@@ -189,7 +191,10 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
     delegate_mapping = dict()
     for method_obj in dotnet.get_metadata_table('MethodDef'):
         if method_obj.has_body() and method_obj.is_static_constructor():
-            for instr in method_obj.disassemble_method():
+            disasm_obj = method_obj.disassemble_method()
+            if disasm_obj is None:
+                continue
+            for instr in disasm_obj:
                 if instr.get_name() == 'ldftn':
                     arg_obj = instr.get_argument()
                     if isinstance(arg_obj, net_row_objects.MethodDef):
@@ -209,6 +214,9 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
     # now that we have our target cctor, we need to populate the delegate mapping.
     prev_method_obj = None
     disasm_obj = target_cctor_method.disassemble_method()
+    if disasm_obj is None:
+        print('Error getting disasm obj: Method may be encrypted')
+        return
     for x in range(len(disasm_obj)):
         instr = disasm_obj[x]
         if instr.get_name() == 'ldftn':
@@ -234,6 +242,8 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
     for method_obj in dotnet.get_metadata_table('MethodDef'):
         if method_obj.has_body() and method_obj not in delegate_mapping.values():
             disasm_obj = method_obj.disassemble_method()
+            if disasm_obj is None:
+                continue
             for x in range(len(disasm_obj)):
                 instr = disasm_obj[x]
                 if instr.get_name() == 'ldsfld' and instr.get_argument() in delegate_mapping.keys():
@@ -318,6 +328,8 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
     for method_rid, xref_offset in initialize_array.get_xrefs():
         method_obj = dotnet.get_method_by_rid(method_rid)
         disasm_obj = method_obj.disassemble_method()
+        if disasm_obj is None:
+            continue
         for x in range(len(disasm_obj)):
             instr = disasm_obj[x]
             if instr.get_name() == 'ldc.i4':
@@ -506,6 +518,8 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
 
         # make sure were creating a fresh copy every time.
         disas_obj = method_obj.disassemble_method()
+        if disas_obj is None:
+            continue
         for x in range(len(disas_obj)):
             instr = disas_obj.get_instr_at_index(x)
             if x == 0:
@@ -802,6 +816,8 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
     if method_obj.method_has_this():
         return bytes()  # skip thiscalls - CEX only uses static methods.
     disasm_obj = method_obj.disassemble_method()
+    if disasm_obj is None:
+        return bytes()
     method_args_grabbed = []
     allowed_instrs = ['call', 'callvirt', 'newobj', 'ret', 'ldarg', 'ldarg.0', 'ldarg.1', 'ldarg.2', 'ldarg.3',
                         'ldarg.s', 'nop']
@@ -906,6 +922,8 @@ cdef bint __is_modified_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
     cdef net_cil_disas.Instruction instr_two
     cdef net_cil_disas.Instruction instr_three
     disasm_obj = method_obj.disassemble_method()
+    if disasm_obj is None:
+        return True #Skip invalid methods
     if len(disasm_obj) > 2:
         instr_one = disasm_obj[0]
         instr_two = disasm_obj[1]
@@ -936,6 +954,8 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
         return 0
 
     disasm_obj = method_obj.disassemble_method()
+    if disasm_obj is None:
+        return 0
     field_id = None
     has_compare = False
     for instr in disasm_obj:
@@ -954,6 +974,8 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
         for method_rid, xref_offset in field_id.get_xrefs():
             method_obj2 = dpe.get_method_by_rid(method_rid)
             disasm_obj = method_obj2.disassemble_method()
+            if disasm_obj is None:
+                return 0
             instr = <net_cil_disas.Instruction>disasm_obj.get_instr_at_offset(xref_offset)
             if instr.get_name() == 'stsfld':
                 return 0
@@ -1021,6 +1043,8 @@ cpdef bytes remove_useless_functions(bytes data) except *:
             instr_offset = xref_info[1]
             method_obj = dotnet.get_method_by_rid(method_rid)
             method_disasm = method_obj.disassemble_method()
+            if method_disasm is None:
+                continue
             instr = method_disasm.get_instr_at_offset(instr_offset)
             instr_arg = instr.get_argument()
             dotnet.patch_instruction(method_obj, useless_methods[instr_arg.get_rid()], instr.get_instr_offset(), instr.get_instr_size())
@@ -1035,6 +1059,8 @@ cpdef bytes remove_useless_functions(bytes data) except *:
                 for method_rid, instr_offset in memberref.get_xrefs():
                     method_obj = dotnet.get_method_by_rid(method_rid)
                     method_disasm = method_obj.disassemble_method()
+                    if method_disasm is None:
+                        continue
                     instr = method_disasm.get_instr_at_offset(instr_offset)
                     dotnet.patch_instruction(method_obj, useless_methods[method_impl.get_rid()],
                                              instr.get_instr_offset(), instr.get_instr_size())
@@ -1044,6 +1070,8 @@ cpdef bytes remove_useless_functions(bytes data) except *:
         method = method_table.get(x)
         if method.has_body():
             disasm_obj = method.disassemble_method()
+            if disasm_obj is None:
+                continue
             for y in range(len(disasm_obj)):
                 instr = disasm_obj.get_instr_at_index(y)
                 if instr.get_name() == 'call' or instr.get_name() == 'callvirt':
@@ -1426,6 +1454,7 @@ cpdef bytes cleanup_names(bytes data,
     cdef net_sigs.CallingConventionSig csig = None
     cdef bint found = False
     cdef net_sigs.TypeSig tsig = None
+    cdef list ran_inheritence = list()
 
 
     if dotnet is None:
@@ -1468,7 +1497,7 @@ cpdef bytes cleanup_names(bytes data,
                 if row_obj2.get_column('Name').get_value_as_bytes() != name:
                     new_index = strings_heap.append_tx(name)
                     row_obj2.get_column('Name').set_raw_value(new_index)
-                    renamed_methods.append(row_obj2.get_token())
+                renamed_methods.append(row_obj2.get_token())
     strings_heap.end_append_tx()
 
     """
@@ -1573,9 +1602,13 @@ cpdef bytes cleanup_names(bytes data,
                     tdefref_ptr = tdefref_ptr.get_type()
                 if tdefref_ptr is None or isinstance(tdefref_ptr, net_row_objects.TypeRef):
                     if tdefref_ptr is None:
-                        find_method_chains(methodimpl, tdefref, tdefref, inst_sigs, method_chains, sealed_methods)
+                        if tdefref.get_token() not in ran_inheritence:
+                            find_method_chains(methodimpl, tdefref, tdefref, inst_sigs, method_chains, sealed_methods)
+                            ran_inheritence.append(tdefref.get_token())
                     else:
-                        find_method_chains(methodimpl, tdefref_ptr, tdefref_ptr, inst_sigs, method_chains, sealed_methods)
+                        if tdefref_ptr.get_token() not in ran_inheritence:
+                            find_method_chains(methodimpl, tdefref_ptr, tdefref_ptr, inst_sigs, method_chains, sealed_methods)
+                            ran_inheritence.append(tdefref_ptr.get_token())
         count = 0
         strings_heap.begin_append_tx()
         for tdefref_ptr, type_method_chain in method_chains.items(): #TODO swap to list to allow for ordering
