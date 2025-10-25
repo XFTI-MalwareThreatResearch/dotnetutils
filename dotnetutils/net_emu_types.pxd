@@ -15,7 +15,6 @@ cdef str remove_generics_from_name(str name)
 
 cdef void initialize_array_helper(DotNetArray arr, net_row_objects.RowObject runtime_handle) except *
 
-#TODO: Could maybe change this to a fused type with either dotnetobject or EmulatorAppDomain
 ctypedef StackCell (*emu_func_type)(DotNetObject, StackCell * params, int nparams)
 
 ctypedef StackCell (*static_func_type)(net_emulator.EmulatorAppDomain, StackCell * params, int nparams)
