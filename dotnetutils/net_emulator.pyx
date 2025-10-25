@@ -820,6 +820,8 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     cdef net_row_objects.MethodDef def_method
     cdef net_row_objects.MethodDefOrRef curr_method_obj
     cdef int x = 0
+    cdef net_sigs.GenericInstMethodSig genmethodsig = None
+    cdef net_sigs.GenericInstSig gentypesig = None
     if not force_virtcall:
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(),
                                                                             net_row_objects.TypeRef):
@@ -854,6 +856,12 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if not obj_type:
         raise net_exceptions.EmulatorTypeNotFoundException(
             'UNKNOWN PARENT TYPE')
+    if isinstance(method_obj, net_row_objects.MethodSpec):
+        genmethodsig = method_obj.get_sig_obj()
+
+    if isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec):
+        gentypesig = method_obj.get_parent_type().get_sig_obj()
+    
     actual_method_obj = None
     initial_method_sig = method_obj.get_method_signature()
     method_impl_table = method_obj.get_dotnetpe().get_metadata_table('MethodImpl')
@@ -870,7 +878,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
             for curr_method_obj in obj_type.get_methods():
                 if method_obj.is_hidebysig():
                     if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
-                        if curr_method_obj.get_method_signature() == method_obj.get_method_signature():
+                        if net_sigs.method_sig_compare(curr_method_obj.get_method_signature(), method_obj.get_method_signature(), genmethodsig, gentypesig):
                             if curr_method_obj.has_body():
                                 actual_method_obj = curr_method_obj
                                 break
@@ -883,7 +891,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
             for curr_method_obj in obj_type.get_methods():
                 if method_obj.is_hidebysig():
                     if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
-                        if curr_method_obj.get_method_signature() == method_obj.get_method_signature():
+                        if net_sigs.method_sig_compare(curr_method_obj.get_method_signature(), method_obj.get_method_signature(), genmethodsig, gentypesig):
                             if curr_method_obj.has_body() or curr_method_obj.get_table_name() == 'MemberRef':
                                 actual_method_obj = curr_method_obj
                                 break
@@ -2893,6 +2901,8 @@ cdef class DotNetEmulator:
             raise net_exceptions.InvalidArgumentsException()
         self.strict_typing = strict_typing
         self.disasm_obj = self.method_obj.disassemble_method()
+        if self.disasm_obj is None:
+            raise net_exceptions.InvalidArgumentsException()
         self.end_offset = end_offset
         self.stack = DotNetStack(self, self.disasm_obj.max_stack)
         self.end_method_rid = end_method_rid
@@ -5103,7 +5113,7 @@ cdef class DotNetEmulator:
         elif isinstance(type_sig, net_sigs.ClassSig):
             return self.pack_null()
         elif isinstance(type_sig, net_sigs.CModReqdSig):
-            return self._get_default_value((<net_sigs.CModReqdSig>type_sig).get_next_sig(), tref)
+            return self._get_default_value((<net_sigs.CModReqdSig>type_sig).get_next(), tref)
         elif isinstance(type_sig, net_sigs.GenericInstSig):
             return self._get_default_value((<net_sigs.GenericInstSig>type_sig).get_generic_type(), tref)
         elif isinstance(type_sig, net_sigs.GenericMVar):

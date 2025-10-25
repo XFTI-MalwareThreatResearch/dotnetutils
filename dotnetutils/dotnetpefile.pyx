@@ -1197,6 +1197,8 @@ cdef class DotNetPeFile:
             if method['RVA'].get_value() == 0:
                 continue
             disas = method.disassemble_method()
+            if disas is None:
+                continue
             for x in range(<int>len(disas)):
                 instr = disas.get_instr_at_index(x)
                 if instr.get_name() == 'ldstr':
@@ -1217,6 +1219,8 @@ cdef class DotNetPeFile:
 
         if method_obj['RVA'].get_raw_value() != 0:
             disas = method_obj.disassemble_method()
+            if disas is None:
+                raise net_exceptions.InvalidArgumentsException()
             rva = <uint64_t>method_obj['RVA'].get_raw_value()
             offset = self.get_pe().get_offset_from_rva(rva)
             patch_offset = offset + disas.get_header_size() + instr_offset  # needs to be zero based not 1 based.

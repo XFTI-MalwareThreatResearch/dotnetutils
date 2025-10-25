@@ -846,6 +846,8 @@ cdef class UserStringsHeapObject(HeapObject):
             method = <net_row_objects.MethodDef>self.methods.at(x)
             if method.has_body():
                 disasm = method.disassemble_method()
+                if disasm is None:
+                    continue
                 for y in range(len(disasm)):
                     instr = disasm.get_instr_at_index(<int>y)
                     if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
@@ -873,6 +875,8 @@ cdef class UserStringsHeapObject(HeapObject):
             method_obj = <net_row_objects.MethodDef>self.methods.at(index)
             if method_obj.has_body():
                 disasm_obj = method_obj.disassemble_method()
+                if disasm_obj is None:
+                    continue
                 for x in range(len(disasm_obj)):
                     instr = disasm_obj.get_instr_at_index(<int>x)
                     if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
@@ -972,6 +976,8 @@ cdef class UserStringsHeapObject(HeapObject):
             mdef = <net_row_objects.MethodDef>self.methods.at(x)
             if mdef.has_body():
                 disasm = mdef.disassemble_method()
+                if disasm is None:
+                    continue
                 for y in range(len(disasm)):
                     instr = disasm.get_instr_at_index(<int>y)
                     if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:

@@ -79,6 +79,8 @@ cdef class MethodImplTable(TableObject):
 
     cdef void post_process(self)
 
+    cpdef net_row_objects.MethodDefOrRef get_method_body(self, net_row_objects.MethodDefOrRef method_obj)
+
     cpdef bint is_method_in_table(self, net_row_objects.RowObject method_obj)
     
     cpdef net_row_objects.MethodDef get_method_definition(self, net_row_objects.RowObject method_obj, net_row_objects.TypeDef class_obj)

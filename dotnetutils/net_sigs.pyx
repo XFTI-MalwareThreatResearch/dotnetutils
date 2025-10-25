@@ -44,7 +44,10 @@ cdef class CorLibTypeSig(TypeDefOrRefSig):
 
 cdef class ClassOrValueTypeSig(TypeDefOrRefSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
-        TypeDefOrRefSig.__init__(self, element_type, _next, type_def_or_ref)
+        TypeDefOrRefSig.__init__(self, element_type, _next, type_def_or_ref)        
+
+    def __eq__(self, other):
+        return isinstance(other, ClassOrValueTypeSig) and self.get_type() == other.get_type()
 
 
 cdef class ValueTypeSig(ClassOrValueTypeSig):
@@ -54,13 +57,9 @@ cdef class ValueTypeSig(ClassOrValueTypeSig):
     def __eq__(self, other):
         return isinstance(other, ValueTypeSig) and other.get_type() == self.get_type()
 
-
 cdef class ClassSig(ClassOrValueTypeSig):
     def __init__(self, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
         ClassOrValueTypeSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_CLASS, _next, type_def_or_ref)
-
-    def __eq__(self, other):
-        return isinstance(other, ClassSig) and self.get_type() == other.get_type()
 
     def __str__(self):
         return 'ClassSig: next={}, type_def_or_ref={}'.format(self.get_next(), self.get_type())
@@ -68,6 +67,8 @@ cdef class ClassSig(ClassOrValueTypeSig):
     def __hash__(self):
         return hash(self.get_type())
 
+    def __eq__(self, other):
+        return isinstance(other, ClassSig) and other.get_type() == self.get_type()
 
 cdef class GenericSig(LeafSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next, bint is_type_var, int number):
@@ -114,6 +115,9 @@ cdef class FnPtrSig(LeafSig):
     cpdef NonLeafSig get_signature(self):
         return self.__signature
 
+    def __eq__(self, other):
+        return isinstance(other, FnPtrSig) and self.get_signature() == other.get_signature()
+
 cdef class GenericInstSig(LeafSig):
     def __init__(self, TypeSig _next, TypeSig generic_type, int gen_arg_count=0):
         LeafSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_GENERICINST, _next)
@@ -146,11 +150,11 @@ cdef class NonLeafSig(TypeSig):
         TypeSig.__init__(self, element_type)
         self.__next_sig = next_sig
 
-    cpdef TypeSig get_next_sig(self):
+    cpdef TypeSig get_next(self):
         return self.__next_sig
     
     def __eq__(self, other):
-        return isinstance(other, NonLeafSig) and self.get_next_sig() == other.get_next_sig() and self.get_element_type() == other.get_element_type()
+        return isinstance(other, NonLeafSig) and self.get_next() == other.get_next() and self.get_element_type() == other.get_element_type()
 
 
 cdef class PtrSig(NonLeafSig):
@@ -158,7 +162,7 @@ cdef class PtrSig(NonLeafSig):
         NonLeafSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_PTR, next_sig)
 
     def __eq__(self, other):
-        return isinstance(other, PtrSig) and self.get_next_sig() == other.get_next_sig()
+        return isinstance(other, PtrSig) and self.get_next() == other.get_next()
 
 
 cdef class ByRefSig(NonLeafSig):
@@ -166,7 +170,7 @@ cdef class ByRefSig(NonLeafSig):
         NonLeafSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_BYREF, next_sig)
 
     def __eq__(self, other):
-        return isinstance(other, ByRefSig) and self.get_next_sig() == other.get_next_sig()
+        return isinstance(other, ByRefSig) and self.get_next() == other.get_next()
 
 
 cdef class ArraySigBase(NonLeafSig):
@@ -191,7 +195,7 @@ cdef class ArraySig(ArraySigBase):
         return self.__lower_bounds
     
     def __eq__(self, other):
-        return isinstance(other, ArraySig) and other.get_rank() == self.get_rank() and other.get_sizes() == self.get_sizes() and other.get_lower_bounds() == self.get_lower_bounds() and other.get_next_sig() == self.get_next_sig()
+        return isinstance(other, ArraySig) and other.get_rank() == self.get_rank() and other.get_sizes() == self.get_sizes() and other.get_lower_bounds() == self.get_lower_bounds() and other.get_next() == self.get_next()
 
 
 cdef class SZArraySig(ArraySigBase):
@@ -211,10 +215,10 @@ cdef class SZArraySig(ArraySigBase):
         return self.__lower_bounds
 
     def __eq__(self, other):
-        return isinstance(other, SZArraySig) and self.get_next_sig() == other.get_next_sig() and self.get_sizes() == other.get_sizes() and self.get_rank() == other.get_rank() and self.get_lower_bounds() == other.get_lower_bounds()
+        return isinstance(other, SZArraySig) and self.get_next() == other.get_next() and self.get_sizes() == other.get_sizes() and self.get_rank() == other.get_rank() and self.get_lower_bounds() == other.get_lower_bounds()
     
     def __str__(self):
-        return 'SZArraySig: rank={}, sizes={}, lower_bounds={}, next={}'.format(self.get_rank(), self.get_sizes(), self.get_lower_bounds(), self.get_next_sig())
+        return 'SZArraySig: rank={}, sizes={}, lower_bounds={}, next={}'.format(self.get_rank(), self.get_sizes(), self.get_lower_bounds(), self.get_next())
 
 
 cdef class ModifierSig(NonLeafSig):
@@ -226,7 +230,7 @@ cdef class ModifierSig(NonLeafSig):
         return self.__modifier
     
     def __eq__(self, other):
-        return isinstance(other, ModifierSig) and self.get_element_type() == other.get_element_type() and self.get_modifier() == other.get_modifier() and self.get_next_sig() == other.get_next_sig()
+        return isinstance(other, ModifierSig) and self.get_element_type() == other.get_element_type() and self.get_modifier() == other.get_modifier() and self.get_next() == other.get_next()
 
 
 cdef class CModReqdSig(ModifierSig):
@@ -243,6 +247,9 @@ cdef class PinnedSig(NonLeafSig):
     def __init__(self, TypeSig next_sig):
         NonLeafSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_PINNED, next_sig)
 
+    def __eq__(self, other):
+        return isinstance(other, PinnedSig) and other.get_next() == self.get_next()
+
 
 cdef class ValueArraySig(NonLeafSig):
     def __init__(self, TypeSig next_sig, int size):
@@ -253,7 +260,7 @@ cdef class ValueArraySig(NonLeafSig):
         return self.__size
     
     def __eq__(self, other):
-        return isinstance(other, ValueArraySig) and other.get_size() == self.get_size() and other.get_next_sig() == self.get_next_sig()
+        return isinstance(other, ValueArraySig) and other.get_size() == self.get_size() and other.get_next() == self.get_next()
 
 
 cdef class ModuleSig(NonLeafSig):
@@ -265,7 +272,7 @@ cdef class ModuleSig(NonLeafSig):
         return self.__index
     
     def __eq__(self, other):
-        return isinstance(other, ModuleSig) and other.get_index() == self.get_index() and self.get_next_sig() == other.get_next_sig()
+        return isinstance(other, ModuleSig) and other.get_index() == self.get_index() and self.get_next() == other.get_next()
 
 cdef class CallingConventionSig():
     def __init__(self, int calling_conv, bytes extra_data):
@@ -431,11 +438,11 @@ cdef class SignatureReader():
             gen_param_count = self.read_compressed_integer()
         num_params = self.read_compressed_integer()
 
-        type_sig = self.handle_type_sig()
+        type_sig = self.handle_type_sig(True)
         if num_params > 250000:
             raise net_exceptions.TooManyMethodParameters(num_params)
         for i in range(num_params):
-            param_type_sig = self.handle_type_sig()
+            param_type_sig = self.handle_type_sig(True)
             if isinstance(param_type_sig, SentinelSig):
                 if params_after_sentinel == 0:
                     parameters = list()
@@ -445,10 +452,14 @@ cdef class SignatureReader():
                 parameters.append(param_type_sig)
         return MethodSig(calling_conv, None, None, parameters, gen_param_count, params_after_sentinel, 0, type_sig)
 
-    cdef TypeSig handle_type_sig(self):
+    cdef TypeSig handle_type_sig(self, bint read_first):
+
         cdef net_structs.CorElementType type_num
 
-        type_num = <net_structs.CorElementType>self.read_byte()
+        if read_first:
+            type_num = <net_structs.CorElementType>self.read_byte()
+        else:
+            type_num = <net_structs.CorElementType>self.sig_type
         if type_num == net_structs.CorElementType.INVALID:
             return None  # TODO: Why is this needed - ConfuserEx
         if type_num == net_structs.CorElementType.ELEMENT_TYPE_VOID:
@@ -489,13 +500,13 @@ cdef class SignatureReader():
             return get_CorSig_Object()
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_PTR:
             try:
-                inner_type = self.handle_type_sig()
+                inner_type = self.handle_type_sig(True)
                 return PtrSig(inner_type)
             except:
                 raise net_exceptions.InvalidSignatureException('PtrSig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_BYREF:
             try:
-                inner_type = self.handle_type_sig()
+                inner_type = self.handle_type_sig(True)
                 return ByRefSig(inner_type)
             except:
                 raise net_exceptions.InvalidSignatureException('ByRefSig')
@@ -519,21 +530,21 @@ cdef class SignatureReader():
                 raise net_exceptions.InvalidSignatureException('FnPtrSig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_SZARRAY:
             try:
-                inner_type = self.handle_type_sig()
+                inner_type = self.handle_type_sig(True)
                 return SZArraySig(inner_type)
             except:
                 raise net_exceptions.InvalidSignatureException('SZArraySig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_CMOD_REQD:
             try:
                 typedef = self.read_typedef_or_ref()
-                new_type = self.handle_type_sig()
+                new_type = self.handle_type_sig(True)
                 return CModReqdSig(new_type, typedef)
             except Exception as e:
                 raise net_exceptions.InvalidSignatureException('CModReqdSig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_CMOD_OPT:
             try:
                 typedef = self.read_typedef_or_ref()
-                new_type = self.handle_type_sig()
+                new_type = self.handle_type_sig(True)
                 return CmodOptSig(new_type, typedef)
             except:
                 raise net_exceptions.InvalidSignatureException('CmodOptSig')
@@ -541,7 +552,7 @@ cdef class SignatureReader():
             return SentinelSig(None)
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_PINNED:
             try:
-                inner_type = self.handle_type_sig()
+                inner_type = self.handle_type_sig(True)
                 return PinnedSig(inner_type)
             except:
                 raise net_exceptions.InvalidSignatureException("PinnedSig")
@@ -559,7 +570,7 @@ cdef class SignatureReader():
                 raise net_exceptions.InvalidSignatureException('GenericMVar')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_VALUEARRAY:
             try:
-                next_type = self.handle_type_sig()
+                next_type = self.handle_type_sig(True)
                 num = self.read_compressed_integer()
                 return ValueArraySig(next_type, num)
             except:
@@ -567,26 +578,26 @@ cdef class SignatureReader():
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_MODULE:
             try:
                 num = self.read_compressed_integer()
-                ctype = self.handle_type_sig()
+                ctype = self.handle_type_sig(True)
                 return ModuleSig(ctype, num)
             except:
                 raise net_exceptions.InvalidSignatureException('ModuleSig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_GENERICINST:
             try:
-                next_type = self.handle_type_sig()
+                next_type = self.handle_type_sig(True)
                 num = self.read_compressed_integer()
                 generic_inst_sig = GenericInstSig(None, next_type, num)
                 num_args = generic_inst_sig.get_generic_args_count()
 
                 for i in range(num_args):
-                    type_sig = self.handle_type_sig()
+                    type_sig = self.handle_type_sig(True)
                     generic_inst_sig.add_generic_type(type_sig)
                 return generic_inst_sig
             except:
                 raise net_exceptions.InvalidSignatureException('GenericInstSig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_ARRAY:
             try:
-                next_type = self.handle_type_sig()
+                next_type = self.handle_type_sig(True)
                 rank = self.read_compressed_integer()
                 if rank == 0:
                     return ArraySig(next_type, rank, None, None)
@@ -621,7 +632,7 @@ cdef class SignatureReader():
     cdef FieldSig handle_field_sig(self):
         try:
             calling_conv = net_structs.CorCallingConvention.Field
-            type_sig = self.handle_type_sig()
+            type_sig = self.handle_type_sig(True)
             return FieldSig(calling_conv, self.sig_io.read(), type_sig)
         except net_exceptions.TooManyMethodParameters as e:
             raise e
@@ -635,7 +646,7 @@ cdef class SignatureReader():
             amt_locals = self.read_compressed_integer()
             locals = list()
             for i in range(amt_locals):
-                l_type = self.handle_type_sig()
+                l_type = self.handle_type_sig(True)
                 locals.append(l_type)
             return LocalSig(calling_conv, None, locals)
         except net_exceptions.TooManyMethodParameters as e:
@@ -655,9 +666,9 @@ cdef class SignatureReader():
                 gen_param_count = self.read_compressed_integer()
             num_params = self.read_compressed_integer()
 
-            type_sig = self.handle_type_sig()
+            type_sig = self.handle_type_sig(True)
             for i in range(num_params):
-                param_type_sig = self.handle_type_sig()
+                param_type_sig = self.handle_type_sig(True)
                 if isinstance(param_type_sig, SentinelSig):
                     if params_after_sentinel == 0:
                         parameters = list()
@@ -675,7 +686,7 @@ cdef class SignatureReader():
             count = self.read_compressed_integer()
             generic_args = list()
             for i in range(count):
-                type_sig = self.handle_type_sig()
+                type_sig = self.handle_type_sig(True)
                 generic_args.append(type_sig)
             return GenericInstMethodSig(calling_conv, None, generic_args)
         except:
@@ -795,3 +806,173 @@ cpdef CorLibTypeSig get_CorSig_UIntPtr():
 cpdef CorLibTypeSig get_CorSig_Object():
     return CorLibTypeSig(net_structs.CorElementType.ELEMENT_TYPE_OBJECT, None, None)
 
+
+cdef TypeSig sub_sig(TypeSig sig, GenericInstMethodSig genmethodsig, GenericInstSig gentypesig):
+    cdef int counter = 0
+    cdef int number = 0
+    cdef TypeSig ret_one = sig
+    cdef TypeSig old_one = None
+    if ret_one is None:
+        return None
+    while isinstance(ret_one, GenericVar) or isinstance(ret_one, GenericMVar):
+        if isinstance(ret_one, GenericVar):
+            number = ret_one.get_number()
+            if gentypesig is None:
+                return ret_one
+            old_one = ret_one
+            ret_one = gentypesig.get_generic_args()[number]
+            if old_one == ret_one:
+                break
+
+        if isinstance(ret_one, GenericMVar):
+            number = ret_one.get_number()
+            if genmethodsig is None:
+                return ret_one
+            old_one = ret_one
+            ret_one = genmethodsig.get_generic_args()[number]
+            if old_one == ret_one:
+                break
+        counter += 1
+        if counter == 5:
+            raise net_exceptions.InvalidArgumentsException() #Prevent infinite loops due to bad params.
+    return ret_one
+
+
+cdef bint type_sig_compare(TypeSig sig_one, TypeSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig):
+    cdef TypeSig comp_one = sig_one
+    cdef TypeSig comp_two = sig_two
+    cdef bint has_var = False
+    cdef list generic_params = None
+    cdef GenericInstSig gsig_one = None
+    cdef GenericInstSig gsig_two = None
+    cdef Py_ssize_t x = 0
+    cdef TypeSig tsigone = None
+    cdef int number = 0
+    cdef TypeSig temp = None
+    cdef TypeSig temp2 = None
+    cdef SZArraySig sztemp = None
+
+    if isinstance(comp_one, GenericInstSig) or isinstance(comp_two, GenericInstSig):
+        if not isinstance(comp_one, GenericInstSig) or not isinstance(comp_two, GenericInstSig):
+            return False
+        gsig_one = <GenericInstSig>comp_one
+        gsig_two = <GenericInstSig>comp_two
+        generic_params = list()
+        for x in range(len(gsig_one.get_generic_args())):
+            tsigone = gsig_one.get_generic_args()[x]
+            if isinstance(tsigone, GenericVar):
+                if gentypesig is None:
+                    raise net_exceptions.InvalidArgumentsException()
+                number = tsigone.get_number()
+                tsigone = gentypesig.get_generic_args()[number]
+            elif isinstance(tsigone, GenericMVar):
+                if gensig is None:
+                    raise net_exceptions.InvalidArgumentsException()
+                number = tsigone.get_number()
+                tsigone = gensig.get_generic_args()[number]
+            generic_params.append(tsigone)
+        gsig_one = GenericInstSig(comp_one.get_next(), comp_one.get_generic_type(), comp_one.get_generic_args_count())
+        for tsigone in generic_params:
+            gsig_one.add_generic_type(tsigone)
+        comp_one = gsig_one
+
+        generic_params = list()
+        for x in range(len(gsig_two.get_generic_args())):
+            tsigone = gsig_two.get_generic_args()[x]
+            if isinstance(tsigone, GenericVar):
+                if gentypesig is None:
+                    raise net_exceptions.InvalidArgumentsException()
+                number = tsigone.get_number()
+                tsigone = gentypesig.get_generic_args()[number]
+            elif isinstance(tsigone, GenericMVar):
+                if gensig is None:
+                    raise net_exceptions.InvalidArgumentsException()
+                number = tsigone.get_number()
+                tsigone = gensig.get_generic_args()[number]
+            generic_params.append(tsigone)
+        gsig_two = GenericInstSig(comp_one.get_next(), comp_one.get_generic_type(), comp_one.get_generic_args_count())
+        for tsigone in generic_params:
+            gsig_two.add_generic_type(tsigone)
+        comp_two = gsig_two
+    elif isinstance(comp_one, SZArraySig) and isinstance(comp_two, SZArraySig):
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_one = SZArraySig(temp)
+        temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
+        comp_two = SZArraySig(temp)
+    elif isinstance(comp_one, ArraySig) and isinstance(comp_two, ArraySig):
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_one = ArraySig(temp, comp_one.get_rank(), comp_one.get_sizes(), comp_one.get_lower_bounds())
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_two = ArraySig(temp, comp_two.get_rank(), comp_two.get_sizes(), comp_two.get_lower_bounds())
+    elif isinstance(comp_one, ByRefSig) and isinstance(comp_two, ByRefSig):
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_one = ByRefSig(temp)
+        temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
+        comp_two = ByRefSig(temp)
+    elif isinstance(comp_one, PtrSig) and isinstance(comp_two, PtrSig):
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_one = PtrSig(temp)
+        temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
+        comp_two = PtrSig(temp)
+    elif isinstance(comp_one, CModReqdSig) and isinstance(comp_two, CModReqdSig):
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_one = CModReqdSig(temp, comp_one.get_modifier())
+        temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
+        comp_two = CModReqdSig(temp, comp_two.get_modifier())
+    elif isinstance(comp_one, CmodOptSig) and isinstance(comp_two, CmodOptSig):
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_one = CmodOptSig(temp, comp_one.get_modifier())
+        temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
+        comp_two = CmodOptSig(temp, comp_two.get_modifier())
+    elif isinstance(comp_one, PinnedSig) and isinstance(comp_two, PinnedSig):
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_one = PinnedSig(temp)
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        comp_two = PinnedSig(temp)
+    elif isinstance(comp_one, FnPtrSig) and isinstance(comp_two, FnPtrSig):
+        temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
+        temp2 = sub_sig(comp_one.get_signature(), gensig, gentypesig)
+        comp_one = FnPtrSig(temp, temp2)
+        temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
+        temp2 = sub_sig(comp_two.get_signature(), gensig, gentypesig)
+        comp_two = FnPtrSig(temp, temp2)
+
+    return comp_one == comp_two
+
+cdef bint field_sig_compare(FieldSig sig_one, FieldSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig):
+    return type_sig_compare(sig_one.get_type_sig(), sig_two.get_type_sig(), gensig, gentypesig)
+
+cdef bint method_sig_compare(MethodBaseSig sig_one, MethodBaseSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig):
+    cdef TypeSig ret_one = sig_one.get_return_type()
+    cdef TypeSig ret_two = sig_two.get_return_type()
+    cdef TypeSig old_one = None
+    cdef TypeSig old_two = None
+    cdef int number = 0
+    cdef Py_ssize_t x = 0
+    cdef int counter = 0
+
+    if sig_one.get_calling_conv() != sig_two.get_calling_conv():
+        return False
+
+    if not type_sig_compare(sig_one.get_type_sig(), sig_two.get_type_sig(), gensig, gentypesig):
+        return False
+
+    if len(sig_one.get_parameters()) != len(sig_two.get_parameters()):
+        return False
+
+    if sig_one.get_generic_params_count() != sig_two.get_generic_params_count():
+        return False
+    ret_one = sub_sig(ret_one, gensig, gentypesig)
+    ret_two = sub_sig(ret_two, gensig, gentypesig)
+    if not type_sig_compare(ret_one, ret_two, gensig, gentypesig):
+        return False
+
+    for x in range(len(sig_one.get_parameters())):
+        ret_one = sig_one.get_parameters()[x]
+        ret_two = sig_two.get_parameters()[x]
+        ret_one = sub_sig(ret_one, gensig, gentypesig)
+        ret_two = sub_sig(ret_two, gensig, gentypesig)
+        
+        if not type_sig_compare(ret_one, ret_two, gensig, gentypesig):
+            return False
+    return True

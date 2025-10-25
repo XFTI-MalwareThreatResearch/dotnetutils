@@ -590,8 +590,7 @@ cdef class TypeDef(TypeDefOrRef):
                 self.__superclass = self.get_column('Extends').get_value()
                 if isinstance(self.__superclass, TypeDefOrRef):
                     add_to = self.__superclass
-                    if hasattr(add_to, '_add_child_class'):
-                        add_to._add_child_class(self)
+                    add_to._add_child_class(self)
                 else:
                     self.__superclass = None
                     self.__has_superclass = False
@@ -613,7 +612,8 @@ cdef class TypeDef(TypeDefOrRef):
         return self.__child_classes
 
     cpdef void _add_child_class(self, TypeDefOrRef obj):
-        self.__child_classes.append(obj)
+        if obj not in self.__child_classes:
+            self.__child_classes.append(obj)
 
     cpdef list get_member_refs(self):
         """
@@ -746,6 +746,7 @@ cdef class TypeDef(TypeDefOrRef):
                             self.__interfaces.append(interface_obj)
             if len(self.__interfaces) == 0:
                 self.__has_interfaces = False
+        self.get_superclass()
 
     cpdef bytes get_full_name(self):
         """
@@ -952,7 +953,8 @@ cdef class TypeRef(TypeDefOrRef):
         return self.__interfaces
 
     cpdef void _add_child_class(self, TypeDefOrRef obj):
-        self.__child_classes.append(obj)
+        if obj not in self.__child_classes:
+            self.__child_classes.append(obj)
 
     cpdef list get_child_classes(self):
         """
@@ -971,9 +973,9 @@ cdef class TypeRef(TypeDefOrRef):
 
     cpdef list get_methods_by_name(self, bytes method_name):
         cdef list result
-        cdef RowObject method
+        cdef MemberRef method
         result = list()
-        for method in self.__methods:
+        for method in self.get_member_refs():
             if method.get_column('Name').get_value() == method_name:
                 result.append(method)
         return result
@@ -1056,6 +1058,12 @@ cdef class MethodDefOrRef(RowObject):
     cpdef bint is_hidebysig(self):
         return False
 
+    cpdef bint is_newslot(self):
+        return False
+
+    cpdef bint is_final(self):
+        return False
+
     cpdef bint is_static_method(self):
         return False
 
@@ -1122,20 +1130,23 @@ cdef class MethodDef(MethodDefOrRef):
             if no_save:
                 return net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
             else:
-                if not self.__disasm_obj:
-                    self.__disasm_obj = net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
-                    md5 = hashlib.md5()
-                    md5.update(self.get_method_data())
-                    self.__current_method_hash = md5.digest()
-                else:
-                    #Check to make sure the method hasnt been modified.
-                    md5 = hashlib.md5()
-                    md5.update(self.get_method_data())
-                    hashval = md5.digest()
-                    if hashval != self.__current_method_hash:
+                try:
+                    if not self.__disasm_obj:
                         self.__disasm_obj = net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
-                        self.__current_method_hash = hashval
-                return self.__disasm_obj
+                        md5 = hashlib.md5()
+                        md5.update(self.get_method_data())
+                        self.__current_method_hash = md5.digest()
+                    else:
+                        #Check to make sure the method hasnt been modified.
+                        md5 = hashlib.md5()
+                        md5.update(self.get_method_data())
+                        hashval = md5.digest()
+                        if hashval != self.__current_method_hash:
+                            self.__disasm_obj = net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
+                            self.__current_method_hash = hashval
+                    return self.__disasm_obj
+                except:
+                    return None #Allows for encrypted methods and such.
         return None
 
     cpdef bytes get_original_method_data(self):
@@ -1223,6 +1234,18 @@ cdef class MethodDef(MethodDefOrRef):
                 self.__full_name = self.__parent_type.get_full_name() + b'.' + self.get_column('Name').get_value()
         return self.__full_name
     
+    cpdef bint is_final(self):
+        """
+        Returns True if a method is final, false otherwise.
+        """
+        return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdFinal != 0
+
+    cpdef bint is_newslot(self):
+        """
+        Returns True if a method is newslot, false otherwise.
+        """
+        return self.get_column('Flags').get_raw_value() & net_structs.CorMethodAttr.mdNewSlot != 0
+
     cpdef bint is_virtual(self):
         """
         Returns True if a method is virtual, false otherwise.
@@ -1369,9 +1392,9 @@ cdef class MemberRef(MethodDefOrRef):
         cdef RowObject sig_type
         class_obj = self.get_column('Class').get_value()
         if class_obj:
-            class_obj._add_method(self) #This wont do anything for MethodDefs, only MemberRefs
             if class_obj.get_table_name() == 'TypeRef':
                 self._set_parent_type(class_obj)
+                class_obj._memberrefs.append(self)
             elif class_obj.get_table_name() == 'ModuleRef':
                 self._set_parent_type(class_obj)
             elif class_obj.get_table_name() == 'MethodDef':
@@ -1546,6 +1569,9 @@ cdef class MethodSpec(MethodDefOrRef):
                 pass
         return self.__parsed_sig
 
+    def __hash__(self):
+        return hash(self.get_table_name() + '_' + str(self.get_rid()))
+
 
 cdef class TypeSpec(TypeDefOrRef):
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, list raw_data, int rid, list sizes, dict col_types, str table_name):
@@ -1643,11 +1669,14 @@ cdef class TypeSpec(TypeDefOrRef):
             signature = self.get_column('Signature').get_value()
             try:
                 sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
-                self.__parsed_sig = sig_reader.handle_type_sig()
-            except net_exceptions.InvalidSignatureException:
+                self.__parsed_sig = sig_reader.handle_type_sig(False)
+            except net_exceptions.InvalidSignatureException as e:
                 self.__has_invalid_signature = True
                 return None
         return self.__parsed_sig
+
+    def __hash__(self):
+        return hash(self.get_table_name() + '_' + str(self.get_rid()))
     
 cdef class StandAloneSig(RowObject):
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, list raw_data, int rid, list sizes, dict col_types, str table_name):
@@ -1666,7 +1695,7 @@ cdef class StandAloneSig(RowObject):
             signature = self.get_column('Signature').get_value()
             try:
                 sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
-                self.__parsed_sig = sig_reader.handle_type_sig()
+                self.__parsed_sig = sig_reader.read_calling_convention_sig()
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True
         return self.__parsed_sig

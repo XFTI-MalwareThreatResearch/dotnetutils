@@ -596,12 +596,21 @@ cdef class MethodImplTable(TableObject):
         """
         Check if a Method exists somewhere within the MethodImpl table.
         """
+        cdef net_row_objects.MethodImpl item = None
         for item in self:
             if item.get_body() == method_obj:
                 return True
             if item.get_declaration() == method_obj:
                 return True
         return False
+
+    cpdef net_row_objects.MethodDefOrRef get_method_body(self, net_row_objects.MethodDefOrRef method_obj):
+        cdef net_row_objects.MethodImpl item = None
+        for item in self:
+            if item.get_declaration() == method_obj:
+                return item.get_body()
+        return None
+
     
     cpdef net_row_objects.MethodDef get_method_definition(self, net_row_objects.RowObject method_obj, net_row_objects.TypeDef class_obj):
         """
