@@ -56,8 +56,6 @@ cdef extern from * nogil:
     """
     uint64_t _perf_counter_ns()
 
-tlock = threading.Lock() #Not really used right now, probably going to be removed soon.
-
 cdef emu_instr_handler_type emu_func_handlers[0x10000] #an array of functions used to execute each .NET instruction.
 
 cdef bint __is_handlers_initialized = False #Boolean value to determine if handlers are initialized.  They only need to be initialized once.
@@ -3024,6 +3022,17 @@ cdef bint handle_stelem_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_stelem_i_instruction(DotNetEmulator emu):
+    """ Performs stelem.i instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+
+    Raises:
+        net_exceptions.OperationNotSupportedException: Popped an invalid item (not an object or not an array) off the stack.
+    """
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell index = emu.stack.pop()
     cdef StackCell arr = emu.stack.pop()
@@ -3045,6 +3054,17 @@ cdef bint handle_stelem_i_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_stelem_i1_instruction(DotNetEmulator emu):
+    """ Performs stelem.i1 instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+
+    Raises:
+        net_exceptions.OperationNotSupportedException: Popped an invalid item (not an object or not an array) off the stack.
+    """
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell index = emu.stack.pop()
     cdef StackCell arr = emu.stack.pop()
@@ -3066,6 +3086,17 @@ cdef bint handle_stelem_i1_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_stelem_i2_instruction(DotNetEmulator emu):
+    """ Performs stelem.i2 instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+
+    Raises:
+        net_exceptions.OperationNotSupportedException: Popped an invalid item (not an object or not an array) off the stack.
+    """
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell index = emu.stack.pop()
     cdef StackCell arr = emu.stack.pop()
@@ -3087,6 +3118,17 @@ cdef bint handle_stelem_i2_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_stelem_i4_instruction(DotNetEmulator emu):
+    """ Performs stelem.i4 instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+
+    Raises:
+        net_exceptions.OperationNotSupportedException: Popped an invalid item (not an object or not an array) off the stack.
+    """
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell index = emu.stack.pop()
     cdef StackCell arr = emu.stack.pop()
@@ -3108,6 +3150,17 @@ cdef bint handle_stelem_i4_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_stelem_i8_instruction(DotNetEmulator emu):
+    """ Performs stelem.i8 instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+
+    Raises:
+        net_exceptions.OperationNotSupportedException: Popped an invalid item (not an object or not an array) off the stack.
+    """
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell index = emu.stack.pop()
     cdef StackCell arr = emu.stack.pop()
@@ -3129,6 +3182,17 @@ cdef bint handle_stelem_i8_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_stelem_r4_instruction(DotNetEmulator emu):
+    """ Performs stelem.r4 instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+
+    Raises:
+        net_exceptions.OperationNotSupportedException: Popped an invalid item (not an object or not an array) off the stack.
+    """
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell index = emu.stack.pop()
     cdef StackCell arr = emu.stack.pop()
@@ -3150,6 +3214,17 @@ cdef bint handle_stelem_r4_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_stelem_r8_instruction(DotNetEmulator emu):
+    """ Performs stelem.r8 instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+
+    Raises:
+        net_exceptions.OperationNotSupportedException: Popped an invalid item (not an object or not an array) off the stack.
+    """
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell index = emu.stack.pop()
     cdef StackCell arr = emu.stack.pop()
@@ -3171,6 +3246,14 @@ cdef bint handle_stelem_r8_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_rem_instruction(DotNetEmulator emu):
+    """ Performs rem instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell result = emu.cell_rem(value1, value2)
@@ -3181,6 +3264,14 @@ cdef bint handle_rem_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_rem_un_instruction(DotNetEmulator emu):
+    """ Performs rem.un instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     cdef StackCell value2 = emu.stack.pop()
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell val2 = emu.convert_unsigned(value2)
@@ -3195,6 +3286,17 @@ cdef bint handle_rem_un_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_ldelema_instruction(DotNetEmulator emu):
+    """ Performs ldelema instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    
+    Raises:
+        net_exceptions.OperationNotSupportedException: an invalid itme was popped off the stack (not a object or array)
+    """
     cdef StackCell index = emu.stack.pop()
     cdef StackCell arr = emu.stack.pop()
     cdef uint64_t idx = index.item.u8
@@ -3213,10 +3315,13 @@ cdef bint handle_ldelema_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_box_instruction(DotNetEmulator emu):
-    """
-    https://learn.microsoft.com/en-us/dotnet/api/system.reflection.emit.net_opcodes.Opcodes.box?view=net-8.0
-    Honestly im not entirely sure how this should be handled.
-    I havent really figured out object references I guess, so for now just going to push the object itself.
+    """ Performs box instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
     """
     cdef net_row_objects.TypeDefOrRef arg_obj = emu.instr.get_argument()
     cdef StackCell value1 = emu.stack.pop()
@@ -3227,10 +3332,27 @@ cdef bint handle_box_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_castclass_instruction(DotNetEmulator emu):
-    #For the contexts which ive seen castclass used we dont really support that fully so I am going to leave it as NOP for now.
+    """ Performs castclass instruction.
+
+        In the contexts that ive seen it used so far I dont see the need to do anything, but that may change.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     return False
 
 cdef bint handle_initobj_instruction(DotNetEmulator emu):
+    """ Performs initobj instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     cdef net_row_objects.TypeDefOrRef type_obj = emu.instr.get_argument()
     cdef StackCell orig_cell = emu.stack.pop()
     cdef StackCell obj_ref = emu.get_ref(orig_cell)
@@ -3249,9 +3371,29 @@ cdef bint handle_initobj_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_isinst_instruction(DotNetEmulator emu):
+    """ Performs isinst instruction.
+        This function is currently not supported.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     raise net_exceptions.FeatureNotImplementedException()
 
 cdef bint handle_ldflda_instruction(DotNetEmulator emu):
+    """ Performs ldflda instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    
+    Raises:
+        net_exceptions.OperationNotSupportedException: Invalid item popped off the stack.
+    """
     cdef net_row_objects.Field field_obj = emu.instr.get_argument()
     cdef StackCell obj_ref = emu.stack.pop()
     cdef StackCell result
@@ -3266,6 +3408,17 @@ cdef bint handle_ldflda_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_ldlen_instruction(DotNetEmulator emu):
+    """ Performs ldlen instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    
+    Raises:
+        net_exceptions.OperationNotSupportedException: invalid item popped off the stack.
+    """
     cdef StackCell value_obj = emu.stack.pop()
     cdef StackCell result
     cdef net_emu_types.DotNetObject obj = None
@@ -3279,6 +3432,14 @@ cdef bint handle_ldlen_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_ldloca_instruction(DotNetEmulator emu):
+    """ Performs ldloca instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     cdef int index = emu.instr.get_argument()
     cdef StackCell result = emu.pack_ref(1, index, <void*><PyObject*>emu)
     emu.stack.append(result)
@@ -3286,6 +3447,17 @@ cdef bint handle_ldloca_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_ldsflda_instruction(DotNetEmulator emu):
+    """ Performs ldsflda instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    
+    Raises:
+        net_exceptions.FeatureNotImplementedException: Currently ldsflda on MemberRefs needs to be implemented.  Currently unsupported.
+    """
     cdef net_row_objects.RowObject arg_obj = emu.instr.get_argument()
     cdef net_row_objects.Field field_obj = <net_row_objects.Field>arg_obj
     cdef StackCell cell
@@ -3298,6 +3470,17 @@ cdef bint handle_ldsflda_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_ldobj_instruction(DotNetEmulator emu):
+    """ Performs ldobj instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    
+    Raises:
+        net_exceptions.OperationNotSupportedException: Item popped off the stack was not a ELEMENT_TYPE_BYREF
+    """
     cdef StackCell addr_obj = emu.stack.pop()
     cdef StackCell result
     if addr_obj.tag != CorElementType.ELEMENT_TYPE_BYREF:
@@ -3309,10 +3492,26 @@ cdef bint handle_ldobj_instruction(DotNetEmulator emu):
     return False 
 
 cdef bint handle_leave_instruction(DotNetEmulator emu):
+    """ Performs leave instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     emu.stack.clear()
     return handle_general_jump(emu)
 
 cdef bint handle_starg_instruction(DotNetEmulator emu):
+    """ Performs starg instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     cdef int number = emu.instr.get_argument()
     cdef StackCell value1 = emu.stack.pop()
     emu._add_param(number, value1)
@@ -3320,6 +3519,17 @@ cdef bint handle_starg_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_stobj_instruction(DotNetEmulator emu):
+    """ Performs stobj instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    
+    Raises:
+        net_exceptions.OperationNotSupportedException: Item popped off the stack was not a ELEMENT_TYPE_BYREF
+    """
     cdef StackCell value_obj = emu.stack.pop()
     cdef StackCell addr_obj = emu.stack.pop()
     if addr_obj.tag != CorElementType.ELEMENT_TYPE_BYREF:
@@ -3330,6 +3540,14 @@ cdef bint handle_stobj_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_unbox_any_instruction(DotNetEmulator emu):
+    """ Performs unbox.any instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     cdef StackCell boxed_obj = emu.stack.pop()
     cdef StackCell unboxed_obj = emu.unbox_value(boxed_obj)
     emu.stack.append(unboxed_obj)
@@ -3338,46 +3556,98 @@ cdef bint handle_unbox_any_instruction(DotNetEmulator emu):
     return False
 
 cdef bint handle_pop_instruction(DotNetEmulator emu):
+    """ Performs pop instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     cdef StackCell cell = emu.stack.pop()
     emu.dealloc_cell(cell)
     return False
 
 cdef bint handle_break_instruction(DotNetEmulator emu):
+    """ Performs break instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     emu.should_break = True
     return False
 
 cdef bint handle_unsupported_instruction(DotNetEmulator emu):
+    """ A general handler for instructions that are not currently supported.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     raise net_exceptions.InstructionNotSupportedException(emu.instr.get_name())
 
 cdef bint handle_nop_instruction(DotNetEmulator emu):
+    """ Performs nop instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     return False
 
 cdef bint handle_ldnull_instruction(DotNetEmulator emu):
+    """ Performs ldnull instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     cdef StackCell null = emu.pack_null()
     emu.stack.append(null)
     emu.dealloc_cell(null)
     return False
 
 cdef bint handle_newobj_instruction(DotNetEmulator emu):
+    """ Performs newobj instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+    """
     return do_call(emu, False, True, None, None, NULL, 0, emu.instr.get_argument())
 
 """
 A lot of the stuff below is for internal use mainly.
 """
 
-def print_string_threadfn(string: str, fd):
-    global tlock
-    tlock.acquire()
-    print(string)
-    tlock.release()
-
 cdef class CctorRegistry:
+    """ Used to keep track of the .cctor methods that have already been executed.
+        This class will be removed eventually as its sort of pointless and unneeded.
+
+    Attributes:
+        __executed_cctors (list[int]): A list of static constructor rids that have been executed.
+    """
     def __init__(self):
         self.__executed_cctors = list()
 
     cpdef bint can_execute(self, net_row_objects.MethodDef method_obj):
-        """
-        Determine if a cctor was already executed and if not mark it as such.
+        """ Will be removed eventually.  Returns True if a cctor should be executed.
+
+        Args:
+            method_obj (net_row_objects.MethodDef): the method to execute.
+        Returns:
+            bool: True if the cctor hasnt been executed, False otherwise.
         """
         if method_obj.get_rid() not in self.__executed_cctors:
             self.__executed_cctors.append(method_obj.get_rid())
@@ -3385,6 +3655,22 @@ cdef class CctorRegistry:
         return False
 
 cdef class EmulatorAppDomain:
+    """
+    Represents the AppDomain of an emulator.  Contains static variables, resolve handlers, loaded assemblies, globals and other important info.
+    
+    Attributes:
+        __assemblyresolve_handlers (list[net_row_objects.MethodDefOrRef]): The AssemblyResolve handlers.
+        __resourceresolve_handlers (list[net_row_objects.MethodDefOrRef]): The ResourceResolve handlers.
+        __loaded_assemblies (list[dotnetpefile.DotNetPeFile]): A list of currently loaded assemblies.
+        __current_thread_num (int): Not really used for anything yet but may eventually be used for System.Threading.Thread.get_ManagedThreadId.
+        __emu_obj (net_emulator.DotNetEmulator): the initial emulator object.
+        __starter_dpe (dotnetpefile.DotNetPeFile): the initial dotnetpefile object.
+        __calling_dotnetpe (dotnetpefile.DotNetPeFile): result of System.Reflection.Assembly.GetCallingAssembly()
+        __executing_dotnetpe (dotnetpefile.DotNetPeFile): result of System.Reflection.Assembly.GetExecutingAssembly()
+        __current_emulator (net_emulator.DotNetEmulator): The currently executing emulator.
+        __field_index_registrations (dict[int, dict[int, int]]): Contains a types to dict[field rids -> field counter] mapping.  Used to save memory when allocating spaces for fields by allocating as arrays.
+        __field_counter_registrations (dict[int, dict[int, int]]): Contains a types to dict[field counter -> field rids] mapping.  Same as above.
+    """
     def __init__(self, dotnetpefile.DotNetPeFile dpe, DotNetEmulator emu_obj):
         self.__assemblyresolve_handlers = list()
         self.__resourceresolve_handlers = list()
@@ -3399,12 +3685,17 @@ cdef class EmulatorAppDomain:
         self.__field_counter_registrations = dict()
 
     cdef void _initialize(self):
+        """ Initialize the AppDomain.  Must be called once only.
+        """
         self.load_dotnetpe_as_assembly(self.__starter_dpe)
         self.register_static_functions()
         self.__reserve_static_fields()
         self.__create_field_mappings()
 
     cdef void __create_field_mappings(self):
+        """ Create mappings that map types to field rids to counters and vice versa.
+        This is used so that we can malloc() an array of StackCells when storing TypeDef fields.  Saves a ton of space versus unordered_maps.
+        """
         cdef net_table_objects.TableObject tdeftable = self.__emu_obj.get_method_obj().get_dotnetpe().get_metadata_table('TypeDef')
         cdef net_row_objects.TypeDef tdef = None
         cdef net_row_objects.TypeDefOrRef ptr = None
@@ -3441,17 +3732,43 @@ cdef class EmulatorAppDomain:
                     ptr = ptr.get_superclass()
 
     cdef int get_field_rid(self, int field_index, int type_token):
+        """ Get the RID of a field by index and type token.
+
+        Args:
+            field_index (int): The field's index in the array of fields for the type.
+            type_token (int): the type token for the fields parent type.
+        
+        Returns:
+            int: The corresponding field's RID or an Exception.
+
+        Raises:
+            net_exceptions.InvalidArgumentsException: If type_token is 0
+            net_exceptions.EmulatorExecutionException: The type token isnt in the registrations, internal error?
+        """
         if type_token == 0:
             raise net_exceptions.InvalidArgumentsException()
         cdef dict mapping = None
         cdef int result = 0
         if type_token not in self.__field_counter_registrations:
-            raise Exception('Type token not in reg{}'.format(hex(type_token)))
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Type token not in reg {}'.format(hex(type_token)))
         mapping = self.__field_counter_registrations[type_token]
         result = mapping[field_index]
         return result
 
     cdef int get_field_index(self, int field_rid, int type_token):
+        """ Get the index of a field by RID and type token.
+
+        Args:
+            field_rid (int): The field's RID in the array of fields for the type.
+            type_token (int): the type token for the fields parent type.
+        
+        Returns:
+            int: The corresponding field's index or an Exception.
+
+        Raises:
+            net_exceptions.InvalidArgumentsException: If type_token is 0
+            net_exceptions.EmulatorExecutionException: The type token isnt in the registrations, internal error?
+        """
         if type_token == 0:
             raise net_exceptions.InvalidArgumentsException()
         cdef dict mapping = self.__field_index_registrations[type_token]
@@ -3459,15 +3776,28 @@ cdef class EmulatorAppDomain:
         return result
 
     cdef int get_amt_static_fields(self):
+        """ Obtain the amount of static fields present in the app domain.
+
+        Returns:
+            int: the amount of static fields present.
+        """
         return <int>self.__static_fields.size()
 
     cdef StackCell get_static_field_idx(self, int index):
+        """ Obtain the value for a static field by index.
+            Only used for printing, unsafe for general use.
+        
+        Returns:
+            net_emu_structs.StackCell: The stackcell corresponding to the field index.
+        """
         return self.__static_fields[index]
 
     def __dealloc__(self):
         self.clear_static_fields()
 
     cdef void clear_static_fields(self):
+        """ Clear and deallocate all static fields.
+        """
         cdef size_t x = 0
         cdef StackCell cell
         for x in range(self.__static_fields.size()):
@@ -3477,6 +3807,9 @@ cdef class EmulatorAppDomain:
         self.__static_fields.clear()
 
     cdef void __reserve_static_fields(self):
+        """ Pre reserve as many static fields as we can with their default arguments.
+            We cant pre reserve generics because we dont know what those will be.
+        """
         cdef int amt_fields = 0
         cdef int x = 0
         cdef size_t y = 0
@@ -3506,6 +3839,16 @@ cdef class EmulatorAppDomain:
                 amt_fields += 1
 
     cdef void set_static_field(self, int idno, StackCell cell):
+        """ Set a static field's value, for internal use.
+            Places a duplicate cell in the field.  because of that, cell must be freed by the caller using DotNetEmulator.dealloc_cell()
+        
+        Args:
+            idno (int): The RID of the static field.
+            cell (StackCell): The value to set the static field to
+
+        Raises:
+            net_exceptions.InvalidArgumentsException: There was an issue obtaining the index for the static field.  Internal error.
+        """
         cdef int actual_index = self.__static_field_mappings[idno]
         cdef StackCell old_value = self.__static_fields[actual_index]
         cdef net_row_objects.Field field = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(idno)
@@ -3520,6 +3863,19 @@ cdef class EmulatorAppDomain:
         self.__static_fields[actual_index] = duped
 
     cdef StackCell get_static_field(self, int idno):
+        """ get a static field's value, for internal use.
+            NOTE: because this returns a duplicate, it needs to be freed separately using DotNetEmulator.dealloc_cell()
+        
+        Args:
+            idno (int): The RID of the static field.
+
+        Returns:
+            net_emu_structs.StackCell: A duplicate of the stackcell in the static field.
+
+        Raises:
+            net_exceptions.InvalidArgumentsException: There was an issue obtaining the index for the static field.  Internal error.
+            net_exceptions.EmulatorExecutionException: Pulled an uninitialized field.
+        """
         cdef int actual_index = self.__static_field_mappings[idno]
         if actual_index >= <int>self.__static_fields.size():
             raise net_exceptions.InvalidArgumentsException()
@@ -3528,9 +3884,25 @@ cdef class EmulatorAppDomain:
         return self.get_emulator_obj().duplicate_cell(self.__static_fields[actual_index])
 
     cdef static_func_type get_static_func(self, int token):
+        """ Obtains the pointer to an emulated MemberRef (static functions only).
+
+        Args:
+            token (int): The MethodDef / MemberRef token to obtain
+
+        Returns:
+            static_func_type: the pointer to the emulated function.
+        """
         return self.__static_functions[token]
 
     cdef newobj_func_type get_ctor_func(self, int token):
+        """ Obtains the pointer to a function which simply creates an emulated type.
+
+        Args:
+            token (int): The MethodDef / MemberRef token to obtain
+
+        Returns:
+            newobj_func_type: the pointer to the emulated function.
+        """
         return self.__newobj_ctors[token]
 
     cdef bint has_ctor_func(self, int token):
@@ -6102,7 +6474,6 @@ cdef class DotNetEmulator:
         self.should_break = True
 
     cdef void print_string(self, str string, int print_debug_level):
-        #threading.Thread(target=print_string_threadfn, args=(string, self.dbg_output_fd)).start()
         if self.print_debug:
             if self.print_debug_level >= print_debug_level or True:
                 print(string)
