@@ -24,6 +24,8 @@ from cpython.bytes cimport PyBytes_FromStringAndSize
 logger = getLogger(__name__)
 
 def get_offset_sort_func(obj):
+    """ Quick helper function for reconstruct_executable()
+    """
     return obj.get_offset()
 
 cdef class PeFile:

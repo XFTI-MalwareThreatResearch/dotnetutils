@@ -106,5 +106,14 @@ DotNetUtils contains a emulator, DotNetEmulator.
     item = emulator.get_stack().pop_obj() #Pop the return value off the stack once finished.
 
 
+### net_deobfuscate.py
+
+net_deobfuscate.py contains some common utilities for removing the most common .NET obfuscation such as name obfuscation, useless conditionals and useless functions.  net_deobfuscate_funcs.pyx implements the functions on an api level, while net_deobfuscate.py contains a command line utility to use them.
+
+### Documentation
+
+All functions have docstrings which describe what they do and their parameters etc.  HTML documentation can be found in docs/html.
+
+
 
 
