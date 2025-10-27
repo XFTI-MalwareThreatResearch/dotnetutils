@@ -80,7 +80,7 @@ cpdef unsigned long get_total_method_size(bytes data):
 cdef class Instruction:
     """ Represents a .NET CIL instruction.
 
-    Attributes:
+    Notes:
         opcode_one (net_opcodes.OpCode): the instruction's first OpCode.
         instr_size (int): The calculated size in bytes of the instruction.
         arguments (bytes): A byte representation of the instruction's arguments.
@@ -345,7 +345,8 @@ cdef class Instruction:
 
 cdef class MethodDisassembler:
     """ Represents a disassembler for a specific method.
-    Attributes:
+    
+    Notes:
         dotnetpe (dotnetpefile.DotNetPeFile): The DotNetPeFile that produced the disassembler.
         method_obj (net_row_objects.MethodDef): The method object that is being disassembled.  Right now its a MethodDef, leaving the door open to changes for emulation of dynamic methods.
         max_stack (int): The method's maximum stack size.

@@ -6,7 +6,7 @@ from cpython.ref cimport PyObject
 
 """ Used to store ELEMENT_TYPE_BYREF objects.
 
-Attributes:
+Notes:
     kind (int): The type of ref.  1 is ldloca, 2 is ldsflda, 3 is ldelema, 4 is ldflda, 5 is ldarga
     idx (int64_t): the index or RID of the reference.
     owner (void*): For ldloca it will be a DotNetEmulator object, for ldsflda it will be a DotNetEmulator object, for ldsfld it will be a SlimObject*, for ldloca it will be a DotNetEmulator object.
@@ -19,7 +19,7 @@ cdef struct ByRefItem:
 """ Used to represent objects which dont require any additional methods (TypeDefs usually).
     Takes up a lot less memory than DotNetObject
 
-Attributes:
+Notes:
     type_token (int): The token of the type (TypeDefOrRef token)
     fields (StackCell *) An array which represents the fields that an object has.
     num_fields (int): The number of fields the object has.
@@ -65,7 +65,7 @@ cdef union StackCellItem:
 
 """ A slimmed down version of StackCell for storage where extra fields arent required.
 
-Attributes:
+Notes:
     tag (char): The CorElementType tag.
     is_slim_object (char): 1 if the cell is a slim object, 0 otherwise.
     item (StackCellItem): The item the slim stack cell represents.
@@ -77,7 +77,7 @@ cdef struct SlimStackCell:
 
 """ Used to represent all sorts of .NET CIL objects.
 
-Attributes:
+Notes:
     tag (char): The CorElementType tag.
     rid (int): Used to store the field's rid when stored in a field.  For internal use.
     item (StackCellItem): The item the slim stack cell represents.

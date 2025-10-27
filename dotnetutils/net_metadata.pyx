@@ -15,7 +15,7 @@ cdef class MetaDataHeader:
     """ Represents the header at the beginning of the section where .NET stores metadata.
         TODO: Swap to a data reader for this class.
 
-    Attributes:
+    Notes:
         start_offset (int): the file offset of the header.
         signature (int): the signature field.
         majorversion (int): the majorversion field.
@@ -143,7 +143,7 @@ cdef class MetaDataDirectory:
 
         not really recommended to use as this structure may be changed in the future.
 
-    Attributes:
+    Notes:
         dotnetpe (dotnetpefile.DotNetPeFile): the dotnetpe the directory is for.
         metadata_header (net_metadata.MetadataHeader): The metadata header object.
         metadata_table_header (net_table_objects.MetadataTableHeader): the #~ stream header.

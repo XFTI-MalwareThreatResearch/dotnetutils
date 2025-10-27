@@ -3635,7 +3635,7 @@ cdef class CctorRegistry:
     """ Used to keep track of the .cctor methods that have already been executed.
         This class will be removed eventually as its sort of pointless and unneeded.
 
-    Attributes:
+    Notes:
         __executed_cctors (list[int]): A list of static constructor rids that have been executed.
     """
     def __init__(self):
@@ -3658,7 +3658,7 @@ cdef class EmulatorAppDomain:
     """
     Represents the AppDomain of an emulator.  Contains static variables, resolve handlers, loaded assemblies, globals and other important info.
     
-    Attributes:
+    Notes:
         __assemblyresolve_handlers (list[net_row_objects.MethodDefOrRef]): The AssemblyResolve handlers.
         __resourceresolve_handlers (list[net_row_objects.MethodDefOrRef]): The ResourceResolve handlers.
         __loaded_assemblies (list[dotnetpefile.DotNetPeFile]): A list of currently loaded assemblies.
@@ -4181,7 +4181,7 @@ cdef class DotNetStack:
         The stack can only contain StackCell objects.  They must be duplicated upon append().  This means that after any append() call,
         the caller must call DotNetEmulator.dealloc_cell().  The stack will also hold a reference on StackCells within, being dereferenced on pop().
     
-    Attributes:
+    Notes:
         __emulator (net_emulator.DotNetEmulator): The emulator object which created the stack.
         __max_stack_size (int): the maximum stack size from the methods header.
         __internal_stack (vector[net_emu_structs.StackCell]): the internal vector for the stack.
@@ -4343,7 +4343,7 @@ cdef class DotNetEmulator:
 
     """ Reprsents a .NET emulator object for a specific method.
 
-    Attributes:
+    Notes:
         method_obj (net_row_objects.MethodDefOrRef): The currently executing method.
         spec_obj (net_row_objects.MethodSpec): The methods generic specification if it exists.
         disasm_obj (net_cil_disas.MethodDisassembler): A method disassembly object for the specified method.

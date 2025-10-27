@@ -302,7 +302,6 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
     """
     Something seen in possible DotNetReactor samples with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
 
-
     Example::
 
         if(new byte[]{<random constant data>}.Equals(new byte[]{<more constant data, always nonequal to the first}))

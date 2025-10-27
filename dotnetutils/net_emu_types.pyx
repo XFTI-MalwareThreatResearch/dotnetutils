@@ -154,7 +154,7 @@ cdef class DotNetObject:
 
         In general when adding imported types to the emulator, they must extend DotNetObject.  They must accept emulator_obj in the constructor.
 
-    Attributes:
+    Notes:
         __initialized (bool): has the object been completely initialized?
         __emulator_obj (net_emulator.DotNetEmulator): The emulator object used to create the object.
         __num_fields (int): The number of fields the object has.

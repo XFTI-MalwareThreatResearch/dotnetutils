@@ -30,7 +30,7 @@ cdef class PeFile:
     """Small custom PeFile implementation.
     Designed to ensure less python dependencies.
     
-    Attributes:
+    Notes:
         __file_data (bytearray): Byte representation of the PE file.
         __sections (list[dict]): A list of IMAGE_SECTION_HEADER items in python dict format.
     """
@@ -849,7 +849,7 @@ cdef class PeFile:
 cdef class DotNetPeFile:
     """Represents a DotNetPeFile.  Contains all methods used to access other parts of the .NET metadata structure.
 
-    Attributes:
+    Notes:
         file_path (str): The file path of the executable, if set.
         exe_data (bytes): A byte representation of the current exe data.
         pe (PeFile): A PeFile object representing the executable.

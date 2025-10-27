@@ -6,7 +6,7 @@ from dotnetutils import net_exceptions
 cdef class OpCode:
     """ Represents a .NET IL opcode.
     
-    Attributes:
+    Notes:
         name (str): the name of the opcode
         operand_count (int): how many operands the opcode has
         two_byte_opcode (bint): does the opcode require two bytes to be represented.
