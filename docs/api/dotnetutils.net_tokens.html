@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>dotnetutils.net_tokens module &#8212; dotnetutils  documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="dotnetutils.net_utils module" href="dotnetutils.net_utils.html" />
+    <link rel="prev" title="dotnetutils.net_table_objects module" href="dotnetutils.net_table_objects.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-dotnetutils.net_tokens">
+<span id="dotnetutils-net-tokens-module"></span><h1>dotnetutils.net_tokens module<a class="headerlink" href="#module-dotnetutils.net_tokens" title="Link to this heading">¶</a></h1>
+<p>A lot of values in the MetaData tables are represented as tokens
+Meaning they contain two values - a table and an RID.
+This class can be used for decoding those tokens into readable values.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.BaseToken">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">BaseToken</span></span><a class="headerlink" href="#dotnetutils.net_tokens.BaseToken" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.BaseToken.get_fixed_size">
+<span class="sig-name descname"><span class="pre">get_fixed_size</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.BaseToken.get_fixed_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.BaseToken.get_token_types">
+<span class="sig-name descname"><span class="pre">get_token_types</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.BaseToken.get_token_types" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.BaseToken.is_fixed_value">
+<span class="sig-name descname"><span class="pre">is_fixed_value</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.BaseToken.is_fixed_value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.BaseToken.is_stream">
+<span class="sig-name descname"><span class="pre">is_stream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.BaseToken.is_stream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">CodedToken</span></span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#dotnetutils.net_tokens.BaseToken" title="dotnetutils.net_tokens.BaseToken"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseToken</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.decode_token">
+<span class="sig-name descname"><span class="pre">decode_token</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">token</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.decode_token" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.encode_token">
+<span class="sig-name descname"><span class="pre">encode_token</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">row_obj</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.encode_token" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.get_bits">
+<span class="sig-name descname"><span class="pre">get_bits</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.get_bits" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.get_fixed_size">
+<span class="sig-name descname"><span class="pre">get_fixed_size</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.get_fixed_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.get_mask">
+<span class="sig-name descname"><span class="pre">get_mask</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.get_mask" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.get_token_table">
+<span class="sig-name descname"><span class="pre">get_token_table</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">token</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.get_token_table" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.get_token_types">
+<span class="sig-name descname"><span class="pre">get_token_types</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.get_token_types" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.is_fixed_value">
+<span class="sig-name descname"><span class="pre">is_fixed_value</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.is_fixed_value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.CodedToken.is_stream">
+<span class="sig-name descname"><span class="pre">is_stream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.CodedToken.is_stream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SignatureToken">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">SignatureToken</span></span><a class="headerlink" href="#dotnetutils.net_tokens.SignatureToken" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#dotnetutils.net_tokens.BaseToken" title="dotnetutils.net_tokens.BaseToken"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseToken</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SignatureToken.decode_token">
+<span class="sig-name descname"><span class="pre">decode_token</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">token</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SignatureToken.decode_token" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SignatureToken.encode_token">
+<span class="sig-name descname"><span class="pre">encode_token</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">table_name</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">table_rid</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SignatureToken.encode_token" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SignatureToken.get_fixed_size">
+<span class="sig-name descname"><span class="pre">get_fixed_size</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SignatureToken.get_fixed_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SignatureToken.get_token_types">
+<span class="sig-name descname"><span class="pre">get_token_types</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SignatureToken.get_token_types" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SignatureToken.is_fixed_value">
+<span class="sig-name descname"><span class="pre">is_fixed_value</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SignatureToken.is_fixed_value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SignatureToken.is_stream">
+<span class="sig-name descname"><span class="pre">is_stream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SignatureToken.is_stream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SingleTableCodedToken">
+<em class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">SingleTableCodedToken</span></span><a class="headerlink" href="#dotnetutils.net_tokens.SingleTableCodedToken" title="Link to this definition">¶</a></dt>
+<dd><p>Bases: <a class="reference internal" href="#dotnetutils.net_tokens.BaseToken" title="dotnetutils.net_tokens.BaseToken"><code class="xref py py-class docutils literal notranslate"><span class="pre">BaseToken</span></code></a></p>
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SingleTableCodedToken.decode_token">
+<span class="sig-name descname"><span class="pre">decode_token</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">token</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SingleTableCodedToken.decode_token" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SingleTableCodedToken.get_fixed_size">
+<span class="sig-name descname"><span class="pre">get_fixed_size</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SingleTableCodedToken.get_fixed_size" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SingleTableCodedToken.get_token_types">
+<span class="sig-name descname"><span class="pre">get_token_types</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SingleTableCodedToken.get_token_types" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SingleTableCodedToken.is_fixed_value">
+<span class="sig-name descname"><span class="pre">is_fixed_value</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SingleTableCodedToken.is_fixed_value" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.SingleTableCodedToken.is_stream">
+<span class="sig-name descname"><span class="pre">is_stream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.SingleTableCodedToken.is_stream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_BlobStream">
+<span class="sig-name descname"><span class="pre">get_BlobStream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_BlobStream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_CustomAttributeType">
+<span class="sig-name descname"><span class="pre">get_CustomAttributeType</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_CustomAttributeType" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_FourByteValue">
+<span class="sig-name descname"><span class="pre">get_FourByteValue</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_FourByteValue" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_GuidStream">
+<span class="sig-name descname"><span class="pre">get_GuidStream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_GuidStream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_HasConstant">
+<span class="sig-name descname"><span class="pre">get_HasConstant</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_HasConstant" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_HasCustomAttribute">
+<span class="sig-name descname"><span class="pre">get_HasCustomAttribute</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_HasCustomAttribute" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_HasCustomDebugInformation">
+<span class="sig-name descname"><span class="pre">get_HasCustomDebugInformation</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_HasCustomDebugInformation" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_HasDeclSecurity">
+<span class="sig-name descname"><span class="pre">get_HasDeclSecurity</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_HasDeclSecurity" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_HasFieldMarshal">
+<span class="sig-name descname"><span class="pre">get_HasFieldMarshal</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_HasFieldMarshal" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_HasSemantic">
+<span class="sig-name descname"><span class="pre">get_HasSemantic</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_HasSemantic" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_Implementation">
+<span class="sig-name descname"><span class="pre">get_Implementation</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_Implementation" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_MemberForwarded">
+<span class="sig-name descname"><span class="pre">get_MemberForwarded</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_MemberForwarded" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_MemberRefParent">
+<span class="sig-name descname"><span class="pre">get_MemberRefParent</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_MemberRefParent" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_MetadataStream">
+<span class="sig-name descname"><span class="pre">get_MetadataStream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_MetadataStream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_MethodDefOrRef">
+<span class="sig-name descname"><span class="pre">get_MethodDefOrRef</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_MethodDefOrRef" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_OneByteValue">
+<span class="sig-name descname"><span class="pre">get_OneByteValue</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_OneByteValue" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_ResolutionScope">
+<span class="sig-name descname"><span class="pre">get_ResolutionScope</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_ResolutionScope" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_Signature">
+<span class="sig-name descname"><span class="pre">get_Signature</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_Signature" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_SingleTableIndex">
+<span class="sig-name descname"><span class="pre">get_SingleTableIndex</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_SingleTableIndex" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_StringsStream">
+<span class="sig-name descname"><span class="pre">get_StringsStream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_StringsStream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_TwoByteValue">
+<span class="sig-name descname"><span class="pre">get_TwoByteValue</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_TwoByteValue" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_TypeDefOrRef">
+<span class="sig-name descname"><span class="pre">get_TypeDefOrRef</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_TypeDefOrRef" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_TypeOrMethodDef">
+<span class="sig-name descname"><span class="pre">get_TypeOrMethodDef</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_TypeOrMethodDef" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_tokens.get_UserStringsStream">
+<span class="sig-name descname"><span class="pre">get_UserStringsStream</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_tokens.get_UserStringsStream" title="Link to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">dotnetutils</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">dotnetutils</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="dotnetutils.html">dotnetutils package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="modules.html">dotnetutils</a><ul>
+  <li><a href="dotnetutils.html">dotnetutils package</a><ul>
+      <li>Previous: <a href="dotnetutils.net_table_objects.html" title="previous chapter">dotnetutils.net_table_objects module</a></li>
+      <li>Next: <a href="dotnetutils.net_utils.html" title="next chapter">dotnetutils.net_utils module</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, IBM.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/api/dotnetutils.net_tokens.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

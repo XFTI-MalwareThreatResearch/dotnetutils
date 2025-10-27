@@ -169,6 +169,5 @@ cython_debug/
 build/
 dnu_venv/
 
-*.html
 *.cpp
 *.c

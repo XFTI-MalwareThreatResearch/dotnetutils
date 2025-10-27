@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>dotnetutils package &#8212; dotnetutils  documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="dotnetutils.dotnetpefile module" href="dotnetutils.dotnetpefile.html" />
+    <link rel="prev" title="dotnetutils" href="modules.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-dotnetutils">
+<span id="dotnetutils-package"></span><h1>dotnetutils package<a class="headerlink" href="#module-dotnetutils" title="Link to this heading">¶</a></h1>
+<p>This package is a set of utilities for manipulating .NET bytecode</p>
+<section id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Link to this heading">¶</a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.dotnetpefile.html">dotnetutils.dotnetpefile module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.dotnetpefile.html#dotnetutils.dotnetpefile.DotNetPeFile"><code class="docutils literal notranslate"><span class="pre">DotNetPeFile</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.dotnetpefile.html#dotnetutils.dotnetpefile.PeFile"><code class="docutils literal notranslate"><span class="pre">PeFile</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.dotnetpefile.html#dotnetutils.dotnetpefile.get_offset_sort_func"><code class="docutils literal notranslate"><span class="pre">get_offset_sort_func()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.dotnetpefile.html#dotnetutils.dotnetpefile.try_get_dotnetpe"><code class="docutils literal notranslate"><span class="pre">try_get_dotnetpe()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_cil_disas.html">dotnetutils.net_cil_disas module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_cil_disas.html#dotnetutils.net_cil_disas.Instruction"><code class="docutils literal notranslate"><span class="pre">Instruction</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_cil_disas.html#dotnetutils.net_cil_disas.MethodDisassembler"><code class="docutils literal notranslate"><span class="pre">MethodDisassembler</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_cil_disas.html#dotnetutils.net_cil_disas.get_total_method_size"><code class="docutils literal notranslate"><span class="pre">get_total_method_size()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_deobfuscate.html">dotnetutils.net_deobfuscate module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_deobfuscate.html#dotnetutils.net_deobfuscate.main"><code class="docutils literal notranslate"><span class="pre">main()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_deobfuscate_funcs.html">dotnetutils.net_deobfuscate_funcs module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_deobfuscate_funcs.html#dotnetutils.net_deobfuscate_funcs.cleanup_names"><code class="docutils literal notranslate"><span class="pre">cleanup_names()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_deobfuscate_funcs.html#dotnetutils.net_deobfuscate_funcs.deobfuscate_method_control_flow"><code class="docutils literal notranslate"><span class="pre">deobfuscate_method_control_flow()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_deobfuscate_funcs.html#dotnetutils.net_deobfuscate_funcs.remove_unk_obf_1_obfuscation"><code class="docutils literal notranslate"><span class="pre">remove_unk_obf_1_obfuscation()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_deobfuscate_funcs.html#dotnetutils.net_deobfuscate_funcs.remove_useless_bytearray_conditionals"><code class="docutils literal notranslate"><span class="pre">remove_useless_bytearray_conditionals()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_deobfuscate_funcs.html#dotnetutils.net_deobfuscate_funcs.remove_useless_conditionals"><code class="docutils literal notranslate"><span class="pre">remove_useless_conditionals()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_deobfuscate_funcs.html#dotnetutils.net_deobfuscate_funcs.remove_useless_functions"><code class="docutils literal notranslate"><span class="pre">remove_useless_functions()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_emu_structs.html">dotnetutils.net_emu_structs module</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_emu_types.html">dotnetutils.net_emu_types module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNet3DESCryptoServiceProvider"><code class="docutils literal notranslate"><span class="pre">DotNet3DESCryptoServiceProvider</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNet3DESDecryptor"><code class="docutils literal notranslate"><span class="pre">DotNet3DESDecryptor</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetAppDomain"><code class="docutils literal notranslate"><span class="pre">DotNetAppDomain</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetApplication"><code class="docutils literal notranslate"><span class="pre">DotNetApplication</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetArray"><code class="docutils literal notranslate"><span class="pre">DotNetArray</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetAssembly"><code class="docutils literal notranslate"><span class="pre">DotNetAssembly</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetAssemblyName"><code class="docutils literal notranslate"><span class="pre">DotNetAssemblyName</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetBinaryReader"><code class="docutils literal notranslate"><span class="pre">DotNetBinaryReader</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetBitConverter"><code class="docutils literal notranslate"><span class="pre">DotNetBitConverter</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetBoolean"><code class="docutils literal notranslate"><span class="pre">DotNetBoolean</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetBuffer"><code class="docutils literal notranslate"><span class="pre">DotNetBuffer</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetChar"><code class="docutils literal notranslate"><span class="pre">DotNetChar</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetComparison"><code class="docutils literal notranslate"><span class="pre">DotNetComparison</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetConcurrentDictionary"><code class="docutils literal notranslate"><span class="pre">DotNetConcurrentDictionary</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetConditionalWeakTable"><code class="docutils literal notranslate"><span class="pre">DotNetConditionalWeakTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetConsole"><code class="docutils literal notranslate"><span class="pre">DotNetConsole</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetConvert"><code class="docutils literal notranslate"><span class="pre">DotNetConvert</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetDelegate"><code class="docutils literal notranslate"><span class="pre">DotNetDelegate</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetDictionary"><code class="docutils literal notranslate"><span class="pre">DotNetDictionary</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetDouble"><code class="docutils literal notranslate"><span class="pre">DotNetDouble</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetEncoding"><code class="docutils literal notranslate"><span class="pre">DotNetEncoding</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetEnvironment"><code class="docutils literal notranslate"><span class="pre">DotNetEnvironment</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetFieldInfo"><code class="docutils literal notranslate"><span class="pre">DotNetFieldInfo</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetFlowControl"><code class="docutils literal notranslate"><span class="pre">DotNetFlowControl</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetGC"><code class="docutils literal notranslate"><span class="pre">DotNetGC</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetGCHandle"><code class="docutils literal notranslate"><span class="pre">DotNetGCHandle</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetHashAlgorithm"><code class="docutils literal notranslate"><span class="pre">DotNetHashAlgorithm</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetICryptoTransform"><code class="docutils literal notranslate"><span class="pre">DotNetICryptoTransform</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetInt16"><code class="docutils literal notranslate"><span class="pre">DotNetInt16</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetInt32"><code class="docutils literal notranslate"><span class="pre">DotNetInt32</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetInt64"><code class="docutils literal notranslate"><span class="pre">DotNetInt64</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetInt8"><code class="docutils literal notranslate"><span class="pre">DotNetInt8</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetIntPtr"><code class="docutils literal notranslate"><span class="pre">DotNetIntPtr</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetList"><code class="docutils literal notranslate"><span class="pre">DotNetList</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetMD5CryptoServiceProvider"><code class="docutils literal notranslate"><span class="pre">DotNetMD5CryptoServiceProvider</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetManifestModule"><code class="docutils literal notranslate"><span class="pre">DotNetManifestModule</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetMath"><code class="docutils literal notranslate"><span class="pre">DotNetMath</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetMemberInfo"><code class="docutils literal notranslate"><span class="pre">DotNetMemberInfo</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetMemoryStream"><code class="docutils literal notranslate"><span class="pre">DotNetMemoryStream</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetMethodBase"><code class="docutils literal notranslate"><span class="pre">DotNetMethodBase</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetMethodInfo"><code class="docutils literal notranslate"><span class="pre">DotNetMethodInfo</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetModule"><code class="docutils literal notranslate"><span class="pre">DotNetModule</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetModuleHandle"><code class="docutils literal notranslate"><span class="pre">DotNetModuleHandle</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetMonitor"><code class="docutils literal notranslate"><span class="pre">DotNetMonitor</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetMulticastDelegate"><code class="docutils literal notranslate"><span class="pre">DotNetMulticastDelegate</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetNumber"><code class="docutils literal notranslate"><span class="pre">DotNetNumber</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetObject"><code class="docutils literal notranslate"><span class="pre">DotNetObject</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetOpCodeType"><code class="docutils literal notranslate"><span class="pre">DotNetOpCodeType</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetOperandType"><code class="docutils literal notranslate"><span class="pre">DotNetOperandType</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetParameterInfo"><code class="docutils literal notranslate"><span class="pre">DotNetParameterInfo</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetPath"><code class="docutils literal notranslate"><span class="pre">DotNetPath</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetRSACryptoServiceProvider"><code class="docutils literal notranslate"><span class="pre">DotNetRSACryptoServiceProvider</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetRandom"><code class="docutils literal notranslate"><span class="pre">DotNetRandom</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetResolveEventArgs"><code class="docutils literal notranslate"><span class="pre">DotNetResolveEventArgs</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetResolveEventHandler"><code class="docutils literal notranslate"><span class="pre">DotNetResolveEventHandler</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetRuntimeFieldHandle"><code class="docutils literal notranslate"><span class="pre">DotNetRuntimeFieldHandle</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetRuntimeHelpers"><code class="docutils literal notranslate"><span class="pre">DotNetRuntimeHelpers</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetRuntimeMethodHandle"><code class="docutils literal notranslate"><span class="pre">DotNetRuntimeMethodHandle</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetRuntimeTypeHandle"><code class="docutils literal notranslate"><span class="pre">DotNetRuntimeTypeHandle</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetSingle"><code class="docutils literal notranslate"><span class="pre">DotNetSingle</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetSortedList"><code class="docutils literal notranslate"><span class="pre">DotNetSortedList</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetStackBehaviour"><code class="docutils literal notranslate"><span class="pre">DotNetStackBehaviour</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetStackFrame"><code class="docutils literal notranslate"><span class="pre">DotNetStackFrame</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetStackTrace"><code class="docutils literal notranslate"><span class="pre">DotNetStackTrace</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetStream"><code class="docutils literal notranslate"><span class="pre">DotNetStream</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetString"><code class="docutils literal notranslate"><span class="pre">DotNetString</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetStringBuilder"><code class="docutils literal notranslate"><span class="pre">DotNetStringBuilder</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetSymmetricAlgorithm"><code class="docutils literal notranslate"><span class="pre">DotNetSymmetricAlgorithm</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetThread"><code class="docutils literal notranslate"><span class="pre">DotNetThread</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetThreadStart"><code class="docutils literal notranslate"><span class="pre">DotNetThreadStart</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetType"><code class="docutils literal notranslate"><span class="pre">DotNetType</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetUInt16"><code class="docutils literal notranslate"><span class="pre">DotNetUInt16</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetUInt32"><code class="docutils literal notranslate"><span class="pre">DotNetUInt32</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetUInt64"><code class="docutils literal notranslate"><span class="pre">DotNetUInt64</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetUInt8"><code class="docutils literal notranslate"><span class="pre">DotNetUInt8</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetUIntPtr"><code class="docutils literal notranslate"><span class="pre">DotNetUIntPtr</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetVersion"><code class="docutils literal notranslate"><span class="pre">DotNetVersion</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.DotNetVoid"><code class="docutils literal notranslate"><span class="pre">DotNetVoid</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emu_types.html#dotnetutils.net_emu_types.dne_thread_runner"><code class="docutils literal notranslate"><span class="pre">dne_thread_runner()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_emulator.html">dotnetutils.net_emulator module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emulator.html#dotnetutils.net_emulator.CctorRegistry"><code class="docutils literal notranslate"><span class="pre">CctorRegistry</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emulator.html#dotnetutils.net_emulator.DotNetEmulator"><code class="docutils literal notranslate"><span class="pre">DotNetEmulator</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emulator.html#dotnetutils.net_emulator.DotNetStack"><code class="docutils literal notranslate"><span class="pre">DotNetStack</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emulator.html#dotnetutils.net_emulator.EmulatorAppDomain"><code class="docutils literal notranslate"><span class="pre">EmulatorAppDomain</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_emulator.html#dotnetutils.net_emulator.StackCellWrapper"><code class="docutils literal notranslate"><span class="pre">StackCellWrapper</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_exceptions.html">dotnetutils.net_exceptions module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.CannotCompressSizeException"><code class="docutils literal notranslate"><span class="pre">CannotCompressSizeException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DeserializationException"><code class="docutils literal notranslate"><span class="pre">DeserializationException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DisassemblyFailedException"><code class="docutils literal notranslate"><span class="pre">DisassemblyFailedException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DotNetIOException"><code class="docutils literal notranslate"><span class="pre">DotNetIOException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DotNetOverflowException"><code class="docutils literal notranslate"><span class="pre">DotNetOverflowException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DotNetUtilsException"><code class="docutils literal notranslate"><span class="pre">DotNetUtilsException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmualatorMaxStackSizeViolated"><code class="docutils literal notranslate"><span class="pre">EmualatorMaxStackSizeViolated</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorEndExecutionException"><code class="docutils literal notranslate"><span class="pre">EmulatorEndExecutionException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorExecutionException"><code class="docutils literal notranslate"><span class="pre">EmulatorExecutionException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorFailureException"><code class="docutils literal notranslate"><span class="pre">EmulatorFailureException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorMethodBreakException"><code class="docutils literal notranslate"><span class="pre">EmulatorMethodBreakException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorMethodNotFoundException"><code class="docutils literal notranslate"><span class="pre">EmulatorMethodNotFoundException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorSecurityException"><code class="docutils literal notranslate"><span class="pre">EmulatorSecurityException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorStackTypeUnknown"><code class="docutils literal notranslate"><span class="pre">EmulatorStackTypeUnknown</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorTimeoutException"><code class="docutils literal notranslate"><span class="pre">EmulatorTimeoutException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorTypeNotFoundException"><code class="docutils literal notranslate"><span class="pre">EmulatorTypeNotFoundException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EncodingMismatchException"><code class="docutils literal notranslate"><span class="pre">EncodingMismatchException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.FeatureNotImplementedException"><code class="docutils literal notranslate"><span class="pre">FeatureNotImplementedException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InstructionNotSupportedException"><code class="docutils literal notranslate"><span class="pre">InstructionNotSupportedException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidArgumentsException"><code class="docutils literal notranslate"><span class="pre">InvalidArgumentsException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidAssemblyException"><code class="docutils literal notranslate"><span class="pre">InvalidAssemblyException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidBlockException"><code class="docutils literal notranslate"><span class="pre">InvalidBlockException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidHeaderException"><code class="docutils literal notranslate"><span class="pre">InvalidHeaderException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidHeapNameException"><code class="docutils literal notranslate"><span class="pre">InvalidHeapNameException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidMetadataException"><code class="docutils literal notranslate"><span class="pre">InvalidMetadataException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidPatchException"><code class="docutils literal notranslate"><span class="pre">InvalidPatchException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidSignatureException"><code class="docutils literal notranslate"><span class="pre">InvalidSignatureException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidTokenException"><code class="docutils literal notranslate"><span class="pre">InvalidTokenException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidVirtualAddressException"><code class="docutils literal notranslate"><span class="pre">InvalidVirtualAddressException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.MethodLookupException"><code class="docutils literal notranslate"><span class="pre">MethodLookupException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.MethodTooLargeException"><code class="docutils literal notranslate"><span class="pre">MethodTooLargeException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.NotADotNetFile"><code class="docutils literal notranslate"><span class="pre">NotADotNetFile</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.ObjectTypeException"><code class="docutils literal notranslate"><span class="pre">ObjectTypeException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.OpcodeLookupException"><code class="docutils literal notranslate"><span class="pre">OpcodeLookupException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.OpcodeNotInitializedException"><code class="docutils literal notranslate"><span class="pre">OpcodeNotInitializedException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.OperationNotSupportedException"><code class="docutils literal notranslate"><span class="pre">OperationNotSupportedException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.ReconstructionFailedException"><code class="docutils literal notranslate"><span class="pre">ReconstructionFailedException</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.TooManyMethodParameters"><code class="docutils literal notranslate"><span class="pre">TooManyMethodParameters</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_graphing.html">dotnetutils.net_graphing module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_graphing.html#dotnetutils.net_graphing.FunctionBlock"><code class="docutils literal notranslate"><span class="pre">FunctionBlock</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_graphing.html#dotnetutils.net_graphing.FunctionGraph"><code class="docutils literal notranslate"><span class="pre">FunctionGraph</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_graphing.html#dotnetutils.net_graphing.GraphRecompiler"><code class="docutils literal notranslate"><span class="pre">GraphRecompiler</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_metadata.html">dotnetutils.net_metadata module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_metadata.html#dotnetutils.net_metadata.MetaDataDirectory"><code class="docutils literal notranslate"><span class="pre">MetaDataDirectory</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_metadata.html#dotnetutils.net_metadata.MetaDataHeader"><code class="docutils literal notranslate"><span class="pre">MetaDataHeader</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_opcodes.html">dotnetutils.net_opcodes module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_opcodes.html#dotnetutils.net_opcodes.OpCode"><code class="docutils literal notranslate"><span class="pre">OpCode</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_opcodes.html#dotnetutils.net_opcodes.Opcodes"><code class="docutils literal notranslate"><span class="pre">Opcodes</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_patch.html">dotnetutils.net_patch module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_patch.html#dotnetutils.net_patch.insert_blank_userstrings"><code class="docutils literal notranslate"><span class="pre">insert_blank_userstrings()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_processing.html">dotnetutils.net_processing module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_processing.html#dotnetutils.net_processing.BlobHeapObject"><code class="docutils literal notranslate"><span class="pre">BlobHeapObject</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_processing.html#dotnetutils.net_processing.GuidHeapObject"><code class="docutils literal notranslate"><span class="pre">GuidHeapObject</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_processing.html#dotnetutils.net_processing.HeapObject"><code class="docutils literal notranslate"><span class="pre">HeapObject</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_processing.html#dotnetutils.net_processing.MetadataTableHeapObject"><code class="docutils literal notranslate"><span class="pre">MetadataTableHeapObject</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_processing.html#dotnetutils.net_processing.StringHeapObject"><code class="docutils literal notranslate"><span class="pre">StringHeapObject</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_processing.html#dotnetutils.net_processing.UserStringsHeapObject"><code class="docutils literal notranslate"><span class="pre">UserStringsHeapObject</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_row_objects.html">dotnetutils.net_row_objects module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.ColumnValue"><code class="docutils literal notranslate"><span class="pre">ColumnValue</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.Field"><code class="docutils literal notranslate"><span class="pre">Field</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.GenericParam"><code class="docutils literal notranslate"><span class="pre">GenericParam</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.MemberRef"><code class="docutils literal notranslate"><span class="pre">MemberRef</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.MethodDef"><code class="docutils literal notranslate"><span class="pre">MethodDef</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.MethodDefOrRef"><code class="docutils literal notranslate"><span class="pre">MethodDefOrRef</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.MethodImpl"><code class="docutils literal notranslate"><span class="pre">MethodImpl</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.MethodSemantic"><code class="docutils literal notranslate"><span class="pre">MethodSemantic</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.MethodSpec"><code class="docutils literal notranslate"><span class="pre">MethodSpec</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.PropertyMap"><code class="docutils literal notranslate"><span class="pre">PropertyMap</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.RowObject"><code class="docutils literal notranslate"><span class="pre">RowObject</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.StandAloneSig"><code class="docutils literal notranslate"><span class="pre">StandAloneSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.TypeDef"><code class="docutils literal notranslate"><span class="pre">TypeDef</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.TypeDefOrRef"><code class="docutils literal notranslate"><span class="pre">TypeDefOrRef</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.TypeRef"><code class="docutils literal notranslate"><span class="pre">TypeRef</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_row_objects.html#dotnetutils.net_row_objects.TypeSpec"><code class="docutils literal notranslate"><span class="pre">TypeSpec</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_sigs.html">dotnetutils.net_sigs module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ArraySig"><code class="docutils literal notranslate"><span class="pre">ArraySig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ArraySigBase"><code class="docutils literal notranslate"><span class="pre">ArraySigBase</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ByRefSig"><code class="docutils literal notranslate"><span class="pre">ByRefSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.CModReqdSig"><code class="docutils literal notranslate"><span class="pre">CModReqdSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.CallingConventionSig"><code class="docutils literal notranslate"><span class="pre">CallingConventionSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ClassOrValueTypeSig"><code class="docutils literal notranslate"><span class="pre">ClassOrValueTypeSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ClassSig"><code class="docutils literal notranslate"><span class="pre">ClassSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.CmodOptSig"><code class="docutils literal notranslate"><span class="pre">CmodOptSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.CorLibTypeSig"><code class="docutils literal notranslate"><span class="pre">CorLibTypeSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.FieldSig"><code class="docutils literal notranslate"><span class="pre">FieldSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.FnPtrSig"><code class="docutils literal notranslate"><span class="pre">FnPtrSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.GenericArgsSubstitutor"><code class="docutils literal notranslate"><span class="pre">GenericArgsSubstitutor</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.GenericInstMethodSig"><code class="docutils literal notranslate"><span class="pre">GenericInstMethodSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.GenericInstSig"><code class="docutils literal notranslate"><span class="pre">GenericInstSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.GenericMVar"><code class="docutils literal notranslate"><span class="pre">GenericMVar</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.GenericSig"><code class="docutils literal notranslate"><span class="pre">GenericSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.GenericVar"><code class="docutils literal notranslate"><span class="pre">GenericVar</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.LeafSig"><code class="docutils literal notranslate"><span class="pre">LeafSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.LocalSig"><code class="docutils literal notranslate"><span class="pre">LocalSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.MethodBaseSig"><code class="docutils literal notranslate"><span class="pre">MethodBaseSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.MethodSig"><code class="docutils literal notranslate"><span class="pre">MethodSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ModifierSig"><code class="docutils literal notranslate"><span class="pre">ModifierSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ModuleSig"><code class="docutils literal notranslate"><span class="pre">ModuleSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.NonLeafSig"><code class="docutils literal notranslate"><span class="pre">NonLeafSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.PinnedSig"><code class="docutils literal notranslate"><span class="pre">PinnedSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.PropertySig"><code class="docutils literal notranslate"><span class="pre">PropertySig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.PtrSig"><code class="docutils literal notranslate"><span class="pre">PtrSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.SZArraySig"><code class="docutils literal notranslate"><span class="pre">SZArraySig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.SentinelSig"><code class="docutils literal notranslate"><span class="pre">SentinelSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.SignatureReader"><code class="docutils literal notranslate"><span class="pre">SignatureReader</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.TypeDefOrRefSig"><code class="docutils literal notranslate"><span class="pre">TypeDefOrRefSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.TypeSig"><code class="docutils literal notranslate"><span class="pre">TypeSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ValueArraySig"><code class="docutils literal notranslate"><span class="pre">ValueArraySig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.ValueTypeSig"><code class="docutils literal notranslate"><span class="pre">ValueTypeSig</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Boolean"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Boolean()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Byte"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Byte()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Char"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Char()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Double"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Double()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Int16"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Int16()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Int32"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Int32()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Int64"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Int64()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_IntPtr"><code class="docutils literal notranslate"><span class="pre">get_CorSig_IntPtr()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Object"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Object()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_SByte"><code class="docutils literal notranslate"><span class="pre">get_CorSig_SByte()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Single"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Single()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_String"><code class="docutils literal notranslate"><span class="pre">get_CorSig_String()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_TypedReference"><code class="docutils literal notranslate"><span class="pre">get_CorSig_TypedReference()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_UInt16"><code class="docutils literal notranslate"><span class="pre">get_CorSig_UInt16()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_UInt32"><code class="docutils literal notranslate"><span class="pre">get_CorSig_UInt32()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_UInt64"><code class="docutils literal notranslate"><span class="pre">get_CorSig_UInt64()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_UIntPtr"><code class="docutils literal notranslate"><span class="pre">get_CorSig_UIntPtr()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_sigs.html#dotnetutils.net_sigs.get_CorSig_Void"><code class="docutils literal notranslate"><span class="pre">get_CorSig_Void()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_structs.html">dotnetutils.net_structs module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.ArrayInfoStructure"><code class="docutils literal notranslate"><span class="pre">ArrayInfoStructure</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.ArraySinglePrimitiveRecord"><code class="docutils literal notranslate"><span class="pre">ArraySinglePrimitiveRecord</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.BinaryLibraryRecord"><code class="docutils literal notranslate"><span class="pre">BinaryLibraryRecord</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.COMIMAGE_FLAGS"><code class="docutils literal notranslate"><span class="pre">COMIMAGE_FLAGS</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.ClassInfoStructure"><code class="docutils literal notranslate"><span class="pre">ClassInfoStructure</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.ClassTypeInfoStructure"><code class="docutils literal notranslate"><span class="pre">ClassTypeInfoStructure</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.ClassWithIdRecord"><code class="docutils literal notranslate"><span class="pre">ClassWithIdRecord</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.ClassWithMembersAndTypesRecord"><code class="docutils literal notranslate"><span class="pre">ClassWithMembersAndTypesRecord</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorCallingConvention"><code class="docutils literal notranslate"><span class="pre">CorCallingConvention</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorElementType"><code class="docutils literal notranslate"><span class="pre">CorElementType</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorFieldAttr"><code class="docutils literal notranslate"><span class="pre">CorFieldAttr</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorHeapBitmask"><code class="docutils literal notranslate"><span class="pre">CorHeapBitmask</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorILExceptionClause"><code class="docutils literal notranslate"><span class="pre">CorILExceptionClause</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorILMethod"><code class="docutils literal notranslate"><span class="pre">CorILMethod</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorMethodAttr"><code class="docutils literal notranslate"><span class="pre">CorMethodAttr</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorMethodSemanticsAttr"><code class="docutils literal notranslate"><span class="pre">CorMethodSemanticsAttr</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorRecordTypeEnumeration"><code class="docutils literal notranslate"><span class="pre">CorRecordTypeEnumeration</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorResourceTypeCode"><code class="docutils literal notranslate"><span class="pre">CorResourceTypeCode</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.CorTypeAttr"><code class="docutils literal notranslate"><span class="pre">CorTypeAttr</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.DotNetDataReader"><code class="docutils literal notranslate"><span class="pre">DotNetDataReader</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.DotNetResource"><code class="docutils literal notranslate"><span class="pre">DotNetResource</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.DotNetResourceInfo"><code class="docutils literal notranslate"><span class="pre">DotNetResourceInfo</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.DotNetResourceSerializedData"><code class="docutils literal notranslate"><span class="pre">DotNetResourceSerializedData</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.DotNetResourceSet"><code class="docutils literal notranslate"><span class="pre">DotNetResourceSet</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.IMAGE_OPTIONAL_MAGIC"><code class="docutils literal notranslate"><span class="pre">IMAGE_OPTIONAL_MAGIC</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.MemberReferenceRecord"><code class="docutils literal notranslate"><span class="pre">MemberReferenceRecord</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.MemberTypeInfoStructure"><code class="docutils literal notranslate"><span class="pre">MemberTypeInfoStructure</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_structs.html#dotnetutils.net_structs.SerializationHeaderRecord"><code class="docutils literal notranslate"><span class="pre">SerializationHeaderRecord</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_table_objects.html">dotnetutils.net_table_objects module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.ClassLayoutTable"><code class="docutils literal notranslate"><span class="pre">ClassLayoutTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.FieldRVATable"><code class="docutils literal notranslate"><span class="pre">FieldRVATable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.MemberRefTable"><code class="docutils literal notranslate"><span class="pre">MemberRefTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.MetadataTableHeader"><code class="docutils literal notranslate"><span class="pre">MetadataTableHeader</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.MethodDefTable"><code class="docutils literal notranslate"><span class="pre">MethodDefTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.MethodImplTable"><code class="docutils literal notranslate"><span class="pre">MethodImplTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.MethodSemanticsTable"><code class="docutils literal notranslate"><span class="pre">MethodSemanticsTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.PropertyMapTable"><code class="docutils literal notranslate"><span class="pre">PropertyMapTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.TableObject"><code class="docutils literal notranslate"><span class="pre">TableObject</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.TypeDefTable"><code class="docutils literal notranslate"><span class="pre">TypeDefTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.TypeRefTable"><code class="docutils literal notranslate"><span class="pre">TypeRefTable</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.get_table_id_from_name"><code class="docutils literal notranslate"><span class="pre">get_table_id_from_name()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_table_objects.html#dotnetutils.net_table_objects.get_table_name_from_id"><code class="docutils literal notranslate"><span class="pre">get_table_name_from_id()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_tokens.html">dotnetutils.net_tokens module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.BaseToken"><code class="docutils literal notranslate"><span class="pre">BaseToken</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.CodedToken"><code class="docutils literal notranslate"><span class="pre">CodedToken</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.SignatureToken"><code class="docutils literal notranslate"><span class="pre">SignatureToken</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.SingleTableCodedToken"><code class="docutils literal notranslate"><span class="pre">SingleTableCodedToken</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_BlobStream"><code class="docutils literal notranslate"><span class="pre">get_BlobStream()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_CustomAttributeType"><code class="docutils literal notranslate"><span class="pre">get_CustomAttributeType()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_FourByteValue"><code class="docutils literal notranslate"><span class="pre">get_FourByteValue()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_GuidStream"><code class="docutils literal notranslate"><span class="pre">get_GuidStream()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_HasConstant"><code class="docutils literal notranslate"><span class="pre">get_HasConstant()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_HasCustomAttribute"><code class="docutils literal notranslate"><span class="pre">get_HasCustomAttribute()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_HasCustomDebugInformation"><code class="docutils literal notranslate"><span class="pre">get_HasCustomDebugInformation()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_HasDeclSecurity"><code class="docutils literal notranslate"><span class="pre">get_HasDeclSecurity()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_HasFieldMarshal"><code class="docutils literal notranslate"><span class="pre">get_HasFieldMarshal()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_HasSemantic"><code class="docutils literal notranslate"><span class="pre">get_HasSemantic()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_Implementation"><code class="docutils literal notranslate"><span class="pre">get_Implementation()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_MemberForwarded"><code class="docutils literal notranslate"><span class="pre">get_MemberForwarded()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_MemberRefParent"><code class="docutils literal notranslate"><span class="pre">get_MemberRefParent()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_MetadataStream"><code class="docutils literal notranslate"><span class="pre">get_MetadataStream()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_MethodDefOrRef"><code class="docutils literal notranslate"><span class="pre">get_MethodDefOrRef()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_OneByteValue"><code class="docutils literal notranslate"><span class="pre">get_OneByteValue()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_ResolutionScope"><code class="docutils literal notranslate"><span class="pre">get_ResolutionScope()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_Signature"><code class="docutils literal notranslate"><span class="pre">get_Signature()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_SingleTableIndex"><code class="docutils literal notranslate"><span class="pre">get_SingleTableIndex()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_StringsStream"><code class="docutils literal notranslate"><span class="pre">get_StringsStream()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_TwoByteValue"><code class="docutils literal notranslate"><span class="pre">get_TwoByteValue()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_TypeDefOrRef"><code class="docutils literal notranslate"><span class="pre">get_TypeDefOrRef()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_TypeOrMethodDef"><code class="docutils literal notranslate"><span class="pre">get_TypeOrMethodDef()</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_tokens.html#dotnetutils.net_tokens.get_UserStringsStream"><code class="docutils literal notranslate"><span class="pre">get_UserStringsStream()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dotnetutils.net_utils.html">dotnetutils.net_utils module</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dotnetutils.net_utils.html#dotnetutils.net_utils.get_cor_type_from_name"><code class="docutils literal notranslate"><span class="pre">get_cor_type_from_name()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">dotnetutils</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">dotnetutils</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">dotnetutils package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="modules.html">dotnetutils</a><ul>
+      <li>Previous: <a href="modules.html" title="previous chapter">dotnetutils</a></li>
+      <li>Next: <a href="dotnetutils.dotnetpefile.html" title="next chapter">dotnetutils.dotnetpefile module</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, IBM.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/api/dotnetutils.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
