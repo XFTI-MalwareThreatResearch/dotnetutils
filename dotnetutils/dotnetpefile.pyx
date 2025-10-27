@@ -1474,16 +1474,16 @@ cdef class DotNetPeFile:
         return self.__versioninfo_str
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path='', bytes pe_data=bytes(), bint dont_process=False):
-        """ Obtains a DotNetPeFile from either a file_path or pe_data. 
+    """ Obtains a DotNetPeFile from either a file_path or pe_data. 
 
-        Args:
-            file_path (str): The filepath for the PE file.  Optional if pe_data is valid.
-            pe_data (bytes): the PE's byte representation.  Optional if file_path is valid.
+    Args:
+        file_path (str): The filepath for the PE file.  Optional if pe_data is valid.
+        pe_data (bytes): the PE's byte representation.  Optional if file_path is valid.
 
-        Returns:
-            dotnetpefile.DotNetPeFile: A DotNetPeFile representing the inputted executable, None if invalid.
-        """
-    cdef DotNetPeFile dotnetpe
+    Returns:
+        dotnetpefile.DotNetPeFile: A DotNetPeFile representing the inputted executable, None if invalid.
+    """
+    cdef DotNetPeFile dotnetpe = None
     try:
         dotnetpe = DotNetPeFile(file_path, pe_data, no_processing=dont_process)
         if not dotnetpe.metadata_dir.is_valid_directory:

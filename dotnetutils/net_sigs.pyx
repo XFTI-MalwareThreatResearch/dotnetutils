@@ -1,13 +1,17 @@
 from dotnetutils cimport net_structs, dotnetpefile, net_row_objects, net_tokens, net_utils
 from dotnetutils import net_exceptions
 
+
+"""
+This file contains various representations of .NET signature objects.
+"""
+
 cdef class TypeSig:
     def __init__(self, net_structs.CorElementType element_type):
         self.__element_type = element_type
 
     cpdef net_structs.CorElementType get_element_type(self):
         return self.__element_type
-
 
 cdef class LeafSig(TypeSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next):
@@ -16,7 +20,6 @@ cdef class LeafSig(TypeSig):
 
     cpdef TypeSig get_next(self):
         return self.__next
-
 
 cdef class TypeDefOrRefSig(LeafSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next, net_row_objects.TypeDefOrRef type_def_or_ref):
@@ -29,7 +32,6 @@ cdef class TypeDefOrRefSig(LeafSig):
     def __eq__(self, other):
         return isinstance(other, TypeDefOrRefSig) and self.get_type() == other.get_type()
 
-
 cdef class CorLibTypeSig(TypeDefOrRefSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
         TypeDefOrRefSig.__init__(self, element_type, _next, type_def_or_ref)
@@ -41,14 +43,12 @@ cdef class CorLibTypeSig(TypeDefOrRefSig):
         cdef str element_type_str = net_utils.get_cor_type_name(self.get_element_type()).decode()
         return 'CorLibTypeSig: {}'.format(element_type_str)
 
-
 cdef class ClassOrValueTypeSig(TypeDefOrRefSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
         TypeDefOrRefSig.__init__(self, element_type, _next, type_def_or_ref)        
 
     def __eq__(self, other):
         return isinstance(other, ClassOrValueTypeSig) and self.get_type() == other.get_type()
-
 
 cdef class ValueTypeSig(ClassOrValueTypeSig):
     def __init__(self, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
@@ -85,14 +85,12 @@ cdef class GenericSig(LeafSig):
     def __eq__(self, other):
         return isinstance(other, GenericSig) and self.get_element_type() == other.get_element_type() and self.is_type_var() == other.is_type_var() and other.get_number() == self.get_number()
 
-
 cdef class GenericVar(GenericSig):
     def __init__(self, TypeSig _next, int number):
         GenericSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_VAR, _next, True, number)
 
     def __str__(self):
         return 'GenericVar: next={}, is_type_var={}, number={}'.format(self.get_next(), self.is_type_var(), self.get_number())
-
 
 cdef class GenericMVar(GenericSig):
     def __init__(self, TypeSig _next, int number):
@@ -101,11 +99,9 @@ cdef class GenericMVar(GenericSig):
     def __str__(self):
         return 'GenericMVar: next={}, is_type_var={}, number={}'.format(self.get_next(), self.is_type_var(), self.get_number())
 
-
 cdef class SentinelSig(LeafSig):
     def __init__(self, TypeSig _next):
         LeafSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_SENTINEL, _next)
-
 
 cdef class FnPtrSig(LeafSig):
     def __init__(self, TypeSig _next, NonLeafSig signature):
@@ -144,7 +140,6 @@ cdef class GenericInstSig(LeafSig):
     def __str__(self):
         return 'GenericInstSig: {} {}'.format(self.get_generic_type(), self.get_generic_args())
 
-
 cdef class NonLeafSig(TypeSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig next_sig):
         TypeSig.__init__(self, element_type)
@@ -156,14 +151,12 @@ cdef class NonLeafSig(TypeSig):
     def __eq__(self, other):
         return isinstance(other, NonLeafSig) and self.get_next() == other.get_next() and self.get_element_type() == other.get_element_type()
 
-
 cdef class PtrSig(NonLeafSig):
     def __init__(self, TypeSig next_sig):
         NonLeafSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_PTR, next_sig)
 
     def __eq__(self, other):
         return isinstance(other, PtrSig) and self.get_next() == other.get_next()
-
 
 cdef class ByRefSig(NonLeafSig):
     def __init__(self, TypeSig next_sig):
@@ -172,11 +165,9 @@ cdef class ByRefSig(NonLeafSig):
     def __eq__(self, other):
         return isinstance(other, ByRefSig) and self.get_next() == other.get_next()
 
-
 cdef class ArraySigBase(NonLeafSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig next_sig):
         NonLeafSig.__init__(self, element_type, next_sig)
-
 
 cdef class ArraySig(ArraySigBase):
     def __init__(self, TypeSig next_sig, int rank, list sizes, list lower_bounds):
@@ -196,7 +187,6 @@ cdef class ArraySig(ArraySigBase):
     
     def __eq__(self, other):
         return isinstance(other, ArraySig) and other.get_rank() == self.get_rank() and other.get_sizes() == self.get_sizes() and other.get_lower_bounds() == self.get_lower_bounds() and other.get_next() == self.get_next()
-
 
 cdef class SZArraySig(ArraySigBase):
     def __init__(self, TypeSig next_sig):
@@ -220,7 +210,6 @@ cdef class SZArraySig(ArraySigBase):
     def __str__(self):
         return 'SZArraySig: rank={}, sizes={}, lower_bounds={}, next={}'.format(self.get_rank(), self.get_sizes(), self.get_lower_bounds(), self.get_next())
 
-
 cdef class ModifierSig(NonLeafSig):
     def __init__(self, TypeSig next_sig, net_row_objects.TypeDefOrRef modifier, net_structs.CorElementType element_type=net_structs.CorElementType.ELEMENT_TYPE_MODIFIER):
         NonLeafSig.__init__(self, element_type, next_sig)
@@ -232,16 +221,13 @@ cdef class ModifierSig(NonLeafSig):
     def __eq__(self, other):
         return isinstance(other, ModifierSig) and self.get_element_type() == other.get_element_type() and self.get_modifier() == other.get_modifier() and self.get_next() == other.get_next()
 
-
 cdef class CModReqdSig(ModifierSig):
     def __init__(self, TypeSig next_sig, net_row_objects.TypeDefOrRef modifier):
         ModifierSig.__init__(self, next_sig, modifier, element_type=net_structs.CorElementType.ELEMENT_TYPE_CMOD_REQD)
 
-
 cdef class CmodOptSig(ModifierSig):
     def __init__(self, TypeSig next_sig, net_row_objects.TypeDefOrRef modifier):
         ModifierSig.__init__(self, next_sig, modifier, element_type=net_structs.CorElementType.ELEMENT_TYPE_CMOD_OPT)
-
 
 cdef class PinnedSig(NonLeafSig):
     def __init__(self, TypeSig next_sig):
@@ -249,7 +235,6 @@ cdef class PinnedSig(NonLeafSig):
 
     def __eq__(self, other):
         return isinstance(other, PinnedSig) and other.get_next() == self.get_next()
-
 
 cdef class ValueArraySig(NonLeafSig):
     def __init__(self, TypeSig next_sig, int size):
@@ -261,7 +246,6 @@ cdef class ValueArraySig(NonLeafSig):
     
     def __eq__(self, other):
         return isinstance(other, ValueArraySig) and other.get_size() == self.get_size() and other.get_next() == self.get_next()
-
 
 cdef class ModuleSig(NonLeafSig):
     def __init__(self, TypeSig next_sig, int index):
@@ -285,7 +269,6 @@ cdef class CallingConventionSig():
     cpdef bytes get_extra_data(self):
         return self.__extra_data
 
-
 cdef class FieldSig(CallingConventionSig):
     def __init__(self, int calling_conv, bytes extra_data, TypeSig type_sig):
         CallingConventionSig.__init__(self, calling_conv, extra_data)
@@ -299,7 +282,6 @@ cdef class FieldSig(CallingConventionSig):
     
     def __eq__(self, other):
         return isinstance(other, FieldSig) and self.get_calling_conv() == other.get_calling_conv() and self.get_extra_data() == other.get_extra_data() and self.get_type_sig() == other.get_type_sig()
-
 
 cdef class MethodBaseSig(CallingConventionSig):
     def __init__(self, int calling_conv, bytes extra_data, TypeSig type_sig, list parameters, int gen_param_count, int params_after_sentinel,
@@ -352,13 +334,11 @@ cdef class MethodSig(MethodBaseSig):
     cpdef int get_orig_token(self):
         return self.__orig_token
 
-
 cdef class PropertySig(MethodBaseSig):
     def __init__(self, int calling_conv, bytes extra_data, TypeSig type_sig, list parameters, int gen_param_count, int params_after_sentinel,
                  TypeSig return_type):
         MethodBaseSig.__init__(self, calling_conv, extra_data, type_sig, parameters, gen_param_count,
                                params_after_sentinel, return_type)
-
 
 cdef class LocalSig(CallingConventionSig):
     def __init__(self, int calling_conv, bytes extra_data, list local_vars):
@@ -377,6 +357,8 @@ cdef class GenericInstMethodSig(CallingConventionSig):
         return self.__generic_args
 
 cdef class SignatureReader():
+    """ Contains utilities for parsing various .NET signatures.  Mostly used internally at this point.
+    """
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, bytes data, net_row_objects.RowObject reference=None):
         self.dotnetpe = dotnetpe
         self.sig_io = net_structs.DotNetDataReader(data)
@@ -719,6 +701,8 @@ cdef class SignatureReader():
             raise net_exceptions.InvalidSignatureException('TypeDefOrRef')
 
 class GenericArgsSubstitutor:
+    """ Unused and highly likely to be removed soon.
+    """
     def __init__(self):
         pass
 
@@ -806,7 +790,6 @@ cpdef CorLibTypeSig get_CorSig_UIntPtr():
 cpdef CorLibTypeSig get_CorSig_Object():
     return CorLibTypeSig(net_structs.CorElementType.ELEMENT_TYPE_OBJECT, None, None)
 
-
 cdef TypeSig sub_sig(TypeSig sig, GenericInstMethodSig genmethodsig, GenericInstSig gentypesig):
     cdef int counter = 0
     cdef int number = 0
@@ -839,6 +822,8 @@ cdef TypeSig sub_sig(TypeSig sig, GenericInstMethodSig genmethodsig, GenericInst
 
 
 cdef bint type_sig_compare(TypeSig sig_one, TypeSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig):
+    """ Compare two type signatures, accounting for generics.  Return True if equal, False otherwsie.
+    """
     cdef TypeSig comp_one = sig_one
     cdef TypeSig comp_two = sig_two
     cdef bint has_var = False
@@ -940,9 +925,13 @@ cdef bint type_sig_compare(TypeSig sig_one, TypeSig sig_two, GenericInstMethodSi
     return comp_one == comp_two
 
 cdef bint field_sig_compare(FieldSig sig_one, FieldSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig):
+    """ Compare two field signatures, accounting for generics.  Return True if equal, False otherwise
+    """
     return type_sig_compare(sig_one.get_type_sig(), sig_two.get_type_sig(), gensig, gentypesig)
 
 cdef bint method_sig_compare(MethodBaseSig sig_one, MethodBaseSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig):
+    """ Compare two method signatures, accounting for generics.  Return True if equal, False otherwise.
+    """
     cdef TypeSig ret_one = sig_one.get_return_type()
     cdef TypeSig ret_two = sig_two.get_return_type()
     cdef TypeSig old_one = None

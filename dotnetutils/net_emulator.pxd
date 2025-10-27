@@ -108,8 +108,6 @@ cdef class EmulatorAppDomain:
 
     cpdef void set_executing_dotnetpe(self, dotnetpefile.DotNetPeFile)
 
-    cpdef EmulatorAppDomain get_current_appdomain(self)
-
     cdef void set_static_field(self, int idno, StackCell cell)
     
     cdef StackCell get_static_field(self, int idno)

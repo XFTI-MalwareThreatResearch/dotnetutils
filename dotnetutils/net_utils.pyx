@@ -16,6 +16,14 @@ cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size):
     return PyBytes_FromStringAndSize(<char*>address, <Py_ssize_t>size)
 
 cdef int get_size_of_cortype(CorElementType cor_type, bint is_64bit):
+    """ Obtain the size of a CorElementType.
+
+    Returns:
+        int: the size in bytes of an instance of CorElementType.
+
+    Raises:
+        net_exceptions.InvalidArgumentsException: unsupported type.
+    """
     if cor_type == CorElementType.ELEMENT_TYPE_I or cor_type == CorElementType.ELEMENT_TYPE_U:
         if is_64bit:
             return 8
@@ -33,8 +41,13 @@ cdef int get_size_of_cortype(CorElementType cor_type, bint is_64bit):
     raise net_exceptions.InvalidArgumentsException()
 
 cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
-    """
-    obtain the name in bytes of a CorElementType
+    """ obtain the name in bytes of a CorElementType
+
+    Returns:
+        bytes: utf-8 encoded string representing the name.
+
+    Raises:
+        net_exceptions.InvalidArgumentsException: Unsupported type.
     """
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
         return b'System.Int8'
@@ -75,20 +88,28 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
     raise net_exceptions.InvalidArgumentsException(actual=element_type)
 
 cdef bint is_cortype_number(CorElementType etype):
+    """ Returns True if the cortype represents a number, False otherwise.
+    """
     return etype == CorElementType.ELEMENT_TYPE_I or etype == CorElementType.ELEMENT_TYPE_U or etype == CorElementType.ELEMENT_TYPE_BOOLEAN or \
     etype == CorElementType.ELEMENT_TYPE_CHAR or etype == CorElementType.ELEMENT_TYPE_I1 or etype == CorElementType.ELEMENT_TYPE_U1 or \
     etype == CorElementType.ELEMENT_TYPE_U2 or etype == CorElementType.ELEMENT_TYPE_I2 or etype == CorElementType.ELEMENT_TYPE_U4 or etype == CorElementType.ELEMENT_TYPE_I4 or \
     etype == CorElementType.ELEMENT_TYPE_I8 or etype == CorElementType.ELEMENT_TYPE_U8 or etype == CorElementType.ELEMENT_TYPE_R4 or etype == CorElementType.ELEMENT_TYPE_R8
 
 cdef bint is_cortype_signed(CorElementType etype):
+    """ Returns True if the cortype represents a signed number, False otherwise.
+    """
     return etype == CorElementType.ELEMENT_TYPE_I or etype == CorElementType.ELEMENT_TYPE_I1 or etype == CorElementType.ELEMENT_TYPE_I4 or etype == CorElementType.ELEMENT_TYPE_I8 or etype == CorElementType.ELEMENT_TYPE_I2
 
 cdef bint is_cortype_unsigned(CorElementType etype):
+    """ Returns True if a cortype represents an unsigned number, False otherwise.
+    """
     return etype == CorElementType.ELEMENT_TYPE_U or etype == CorElementType.ELEMENT_TYPE_U1 or etype == CorElementType.ELEMENT_TYPE_U4 or etype == CorElementType.ELEMENT_TYPE_U8 or etype == CorElementType.ELEMENT_TYPE_U2 or etype == CorElementType.ELEMENT_TYPE_CHAR
 
 cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name):
-    """
-    Obtain the CorLibTypeSig of a type from its name.
+    """ Obtain the CorLibTypeSig of a type from its name.
+
+    Returns:
+        net_sigs.CorLibTypeSig: The cortypesig corresponding to type_name or None if not supported.
     """
     if type_name == b'System.Void':
         return net_sigs.get_CorSig_Void()

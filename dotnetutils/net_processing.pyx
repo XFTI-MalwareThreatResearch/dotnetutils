@@ -51,6 +51,9 @@ cdef int read_compressed_int_size1(bytes data):
         return 4
 
 cdef class HeapObject:
+    """ Heap objects represent various heaps throughout the executable, including #Strings, #GUID, #US, #~.
+        General operations for heap objects include replacing items, appending items, deleting items and obtaining items.
+    """
     def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
         self.offset = offset
         self.size = size
@@ -68,56 +71,48 @@ cdef class HeapObject:
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef void begin_append_tx(self):
-        """
-        Append by transaction is a way to quickly add a bunch of things to a heap while only having to patch the binary once.
-        Start by calling begin_append_tx().  Then use append_tx() to append all the items, then call end_append_tx().
-        The stream itself will not be updated until end_append_tx() is called.
-        Attempts to call get_item() for an appended index will result in None until end_append_tx() is called.
+        """ Append by transaction is a way to quickly add a bunch of things to a heap while only having to patch the binary once.
+            Start by calling begin_append_tx().  Then use append_tx() to append all the items, then call end_append_tx().
+            The stream itself will not be updated until end_append_tx() is called.
+            Attempts to call get_item() for an appended index will result in None until end_append_tx() is called.
         """
         if self.in_append_tx:
             raise net_exceptions.OperationNotSupportedException()
         self.in_append_tx = True
 
     cpdef void end_append_tx(self):
-        """
-        End the append transaction, patch up the binary and any other structures required.
+        """ End the append transaction, patch up the binary and any other structures required.
         """
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef int append_tx(self, bytes item):
-        """
-        Append an item within a transaction.  begin_append_tx() must be called beforehand.
+        """ Append an item within a transaction.  begin_append_tx() must be called beforehand.
         """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef void update_offset(self, int offset):
-        """
-        Internal use.  Update the held offset of the heap.
+        """ Internal use.  Update the held offset of the heap.
         """
         self.offset = offset
     
     cdef void update_size(self, int size):
-        """
-        Internal use.  Update the size of the stream internally.
+        """ Internal use.  Update the size of the stream internally.
         """
         self.size = size
 
     cpdef int get_offset_of_item(self, object item):
-        """
-        Return an integer representing the offset of a item within the heap, -1 if it doesnt exist.
+        """ Return an integer representing the offset of a item within the heap, -1 if it doesnt exist.
         """
         cdef int offset = <int>self.raw_data.find(<bytes>item)
         return offset
 
     cpdef bint is_offset_referenced(self, int offset):
-        """
-        return True if an offset is referenced by the DotNetPeFile.
+        """ return True if an offset within a stream is refernced somewhere in the binary.
         """
         return False
 
     cdef bytes compress_integer(self, unsigned long number):
-        """
-        Utility function for compressing integers.
+        """ Utility function for compressing integers.
         """
         cdef int b0 = 0
         cdef int b1 = 0
@@ -138,8 +133,7 @@ cdef class HeapObject:
             return bytes([b0, b1, b2, b3])
 
     cdef void update(self, int old_value, int new_value, int difference):
-        """
-        Internal method used to update references to a stream when the stream has been modified in a way that requires it.
+        """ Internal method used to update references to a stream when the stream has been modified in a way that requires it.
         """
         raise net_exceptions.FeatureNotImplementedException()
 
@@ -150,78 +144,64 @@ cdef class HeapObject:
         return bytes(self.raw_data)
     
     cdef void read(self):
-        """
-        Responsible for reading and handling the heap data.
+        """ Responsible for reading and handling the heap data.
         """
         self.raw_data = bytearray(self.get_dotnetpe().get_exe_data()[self.offset:self.offset+self.size])
 
     cpdef list get_items(self):
-        """
-        Return a list of all items within the heap.
+        """ Return a list of all items within the heap.
         """
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef bytes get_name(self):
-        """
-        Obtain the name of the stream.
+        """ Obtain the name of the stream.
         """
         return self.name
 
     cpdef int get_offset(self):
-        """
-        Obtain the offset of the heap.
+        """ Obtain the offset of the heap.
         """
         return self.offset
 
     cpdef int get_size(self):
-        """
-        Obtain the size of the heap.
+        """ Obtain the size of the heap.
         """
         return self.size
 
     cpdef int replace_item(self, int offset, object item):
-        """
-        Replace heap item at offset with item.
-        Returns the difference between the size of the new heap and the old heap.
+        """ Replace heap item at offset with item. 
+            Returns the difference between the size of the new heap and the old heap.
         """
         raise net_exceptions.FeatureNotImplementedException()
     
     cpdef int append_item(self, object item):
-        """
-        Append an item onto the end of a heap.
-        Returns the offset of the appended item.
+        """ Append an item onto the end of a heap. Returns the offset of the appended item.
         """
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef object get_item(self, int offset):
-        """
-        Obtains an item within a heap at offset.
+        """ Obtains an item within a heap at offset.
         """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef bytes read_item(self, int offset):
-        """
-        Used to read heap items internally.
+        """ Used to read heap items internally.
         """
         raise net_exceptions.FeatureNotImplementedException()
 
     cpdef bint has_offset(self, int offset):
-        """
-        Does an offset exist within a heap?
+        """ Does an offset exist within a heap?
         """
         return 0 < offset < self.get_size()
 
     cpdef bint has_item(self, object item):
-        """
-        Does a heap have item?
+        """ Does a heap have item?
         """
         cdef Py_ssize_t offset = self.raw_data.find(<bytes>item)
         return offset != -1
 
     cpdef int del_item(self, int offset):
-        """
-        Removes the item at offset from a heap.
-        Returns the difference in size between the new and old heaps.
+        """ Removes the item at offset from a heap. Returns the difference in size between the new and old heaps.
         """
         raise net_exceptions.FeatureNotImplementedException()
 

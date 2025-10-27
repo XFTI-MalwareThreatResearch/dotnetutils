@@ -6315,6 +6315,8 @@ cdef class DotNetArray(DotNetObject):
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error for array')
 
     cpdef list as_python_obj(self):
+        """ Convert the array to a list of python objects.
+        """
         cdef list result = list()
         cdef StackCell unslim_cell
         cdef StackCell boxed
@@ -6334,6 +6336,8 @@ cdef class DotNetArray(DotNetObject):
         return result
 
     cpdef void from_python_obj(self, list obj):
+        """ Initialize an array from a list of DotNetObjects
+        """
         cdef StackCell cell
         cdef uint64_t x = 0
         if len(obj) != self.__size:
@@ -6404,6 +6408,8 @@ cdef class DotNetArray(DotNetObject):
         return tdef.get_full_name() == b'System.Array' or DotNetObject.isinst(self, tdef)
 
     cpdef bytes as_bytes(self):
+        """ If possible, convert the array to bytes.
+        """
         cdef bytearray result = bytearray()
         cdef bytes type_name = None
         cdef uint64_t x = 0

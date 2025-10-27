@@ -11,6 +11,8 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 cdef int get_single_table_index_size(int table_id, list row_amt_list):
+    """ Internal method to obtain the size of an index for a single table.
+    """
     row_amt = 0
     for tbl_id, count in row_amt_list:
         if tbl_id == table_id:
@@ -23,6 +25,8 @@ cdef int get_single_table_index_size(int table_id, list row_amt_list):
     return 2
 
 cdef int get_multiple_table_index_size(list potential_table_ids, list row_amt_list, int bits_used):
+    """ Internal method to obtain the size of an index which may reference multiple tables.
+    """
     max_value = 65536 >> bits_used
     for ident in potential_table_ids:
         row_amt = 0
@@ -349,8 +353,9 @@ cdef NET_METADATA_TABLE_HANDLERS = {
     44: ('GenericParamConstraint', genericparamconstraint_col_types)
 }
 
-
 cdef class TableObject:
+    """ TableObjects are used to represent the various tables inside the .NET metadata heap.
+    """
 
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
         self.name = name
@@ -366,10 +371,17 @@ cdef class TableObject:
         self.rows.clear()
 
     cdef void add_row(self, net_row_objects.RowObject row):
+        """ Internal method to add rows to a table.
+        """
         Py_INCREF(row)
         self.rows.push_back(<PyObject*>row)
 
     cdef list as_list(self):
+        """ Get a list of rows in the table.
+
+        Returns:
+            list[net_row_objects.RowObject]: A list of rows in the table.
+        """
         cdef list result = list()
         cdef PyObject * item = NULL
         cdef net_row_objects.RowObject row
@@ -379,9 +391,14 @@ cdef class TableObject:
         return result
 
     cpdef net_row_objects.RowObject get(self, int index):
-        """
-        Obtain an item by RID in this table.
-        RIDs are basically indexes but 1 based.
+        """ Obtain an item by RID in this table.
+            RIDs are basically indexes but 1 based.
+
+        Args:
+            index (int): The RID to obtain
+
+        Returns:
+            net_row_objects.RowObject: the row object at RID index or None if non existant.
         """
         cdef net_row_objects.RowObject result = None
         if index > 0 and <unsigned int>(index - 1) < self.rows.size():
@@ -391,8 +408,13 @@ cdef class TableObject:
             return None  # again prevent errors from corrupted tables.
 
     cpdef bint has_index(self, int index):
-        """
-        Check if the table has RID index
+        """ Check if the table has RID index
+
+        Args:
+            index (int): the RID to check for
+
+        Returns:
+            bool: True if the RID exists in the table, False otherwise.
         """
         cdef unsigned int actual_index = <unsigned int>index - 1
         if actual_index < 0:
@@ -433,8 +455,7 @@ cdef class TableObject:
         self.post_process()
 
     cdef void post_process(self):
-        """
-        Used in case any post processing on a table needs to be done.
+        """ Used in case any post processing on a table needs to be done.
         """
         pass
 
@@ -454,8 +475,13 @@ cdef class TypeDefTable(TableObject):
         TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.TypeDef get_type_by_full_name(self, bytes full_name):
-        """
-        Obtain a TypeDef by its full name.
+        """ Obtain a TypeDef by its full name.
+
+        Args:
+            full_name (bytes): The full name of the type to obtain.
+
+        Returns:
+            net_row_objects.TypeDef: The obtained type, or None if nonexistant.
         """
         cdef net_row_objects.TypeDef row
         cdef PyObject * item
@@ -466,8 +492,13 @@ cdef class TypeDefTable(TableObject):
         return None
 
     cpdef list get_types_by_name(self, bytes name):
-        """
-        Obtain a list of TypeDefs with name 'name'
+        """ Obtain a list of TypeDefs with name 'name'
+
+        Args:
+            name (bytes): The name to search for.
+
+        Returns:
+            list[net_row_objects.TypeDef]: A list of TypeDefs matching name.
         """
         cdef list results
         cdef net_row_objects.TypeDef row
@@ -485,8 +516,13 @@ cdef class ClassLayoutTable(TableObject):
         TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.RowObject get_layout_by_parent(self, int parent):
-        """
-        Obtain a classlayout object that has Parent 'parent'
+        """ Obtain a classlayout object that has Parent 'parent'
+
+        Args:
+            parent (int): A metadata token to find the classlayout for.
+        
+        Returns:
+            net_row_objects.RowObject: The resulting classlayout item or None if not found.
         """
         cdef net_row_objects.RowObject row
         cdef PyObject * item = NULL
@@ -502,8 +538,13 @@ cdef class MethodDefTable(TableObject):
         TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef list get_methods_by_name(self, bytes name):
-        """
-        Obtain a list of MethodDef objects with name 'name'
+        """ Obtain a list of MethodDef objects with name 'name'
+
+        Args:
+            name (bytes): the name to search for.
+
+        Returns:
+            list[net_row_objects.MethodDef]: A list of methods matching name.
         """
         cdef list result
         cdef net_row_objects.MethodDef row
@@ -550,8 +591,13 @@ cdef class FieldRVATable(TableObject):
         TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.RowObject get_by_field_rid(self, int field_rid):
-        """
-        Obtain a FieldRVA object that matches field 'field_rid'
+        """ Obtain a FieldRVA object that matches field 'field_rid'
+
+        Args:
+            field_rid (int): The rid of the field to search for RVA objects for.
+
+        Returns:
+            net_row_objects.RowObject: A matching FieldRVA object, or None if nonexistant.
         """
         cdef net_row_objects.RowObject row
         cdef PyObject * item
@@ -567,8 +613,13 @@ cdef class TypeRefTable(TableObject):
         TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.TypeRef get_type_by_full_name(self, bytes name):
-        """
-        Obtain a TypeRef by its full name.
+        """ Obtain a TypeRef by its full name.
+
+        Args:
+            name (bytes): the full name to search for.
+
+        Returns:
+            net_row_objects.TypeRef: The resulting typeref object or None if nonexistant.
         """
         cdef net_row_objects.TypeRef row
         cdef PyObject * item
@@ -593,8 +644,12 @@ cdef class MethodImplTable(TableObject):
             self.__method_dict[class_obj][item.get_declaration()] = item.get_body()
 
     cpdef bint is_method_in_table(self, net_row_objects.RowObject method_obj):
-        """
-        Check if a Method exists somewhere within the MethodImpl table.
+        """ Checks if the method object is referenced anywhere in the method impl table.
+        
+        Args:
+            method_obj (net_row_objects.MethodDefOrRef): the method object to check for.
+        Returns:
+            bool: True if the method object is referenced, false otherwise.
         """
         cdef net_row_objects.MethodImpl item = None
         for item in self:
@@ -605,6 +660,13 @@ cdef class MethodImplTable(TableObject):
         return False
 
     cpdef net_row_objects.MethodDefOrRef get_method_body(self, net_row_objects.MethodDefOrRef method_obj):
+        """  Obtains a method body based on the method alone - no checking for type.
+        
+        Args:
+            method_obj (net_row_objects.MethodDefOrRef): the method object to check for.
+        Returns:
+            net_row_objects.MethodDefOrRef: The body for the declaration or None if nonexistant.
+        """
         cdef net_row_objects.MethodImpl item = None
         for item in self:
             if item.get_declaration() == method_obj:
@@ -613,8 +675,13 @@ cdef class MethodImplTable(TableObject):
 
     
     cpdef net_row_objects.MethodDef get_method_definition(self, net_row_objects.RowObject method_obj, net_row_objects.TypeDef class_obj):
-        """
-        Obtain the definition of a method 'method_obj' if it exists in the table.
+        """  Obtains a method body based on the method and type
+        
+        Args:
+            method_obj (net_row_objects.MethodDefOrRef): the method object to check for.
+            class_obj (net_row_objects.TypeDef): The class to check for.
+        Returns:
+            net_row_objects.MethodDefOrRef: The body for the declaration or None if nonexistant.
         """
         cdef dict class_dict
         if class_obj not in self.__method_dict:
@@ -631,8 +698,12 @@ cdef class MethodSemanticsTable(TableObject):
         TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef list get_semantics_for_item(self, net_row_objects.RowObject item):
-        """
-        Obtain the semantics for a property or event 'item'.
+        """  Obtains a list of semantics related to an item
+        
+        Args:
+            item (net_row_objects.RowObject): the rowobject object to check for.
+        Returns:
+            list[net_row_objects.MethodSemantic]: A list of associated semantics objects.
         """
         cdef list result
         cdef net_row_objects.MethodSemantic elem
@@ -644,8 +715,12 @@ cdef class MethodSemanticsTable(TableObject):
         return result
     
     cpdef bint is_method_in_table(self, net_row_objects.RowObject method):
-        """
-        Check if a method exists within the MethodSemantics table.
+        """  Checks if a method object is referenced in the semantics table.
+        
+        Args:
+            method (net_row_objects.MethodDefOrRef): the method object to check for.
+        Returns:
+            bint: True if refernced, False otherwise.
         """
         cdef net_row_objects.MethodSemantic elem
         for elem in self:
@@ -658,8 +733,12 @@ cdef class PropertyMapTable(TableObject):
         TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef list get_properties_for_parent(self, net_row_objects.RowObject parent):
-        """
-        Obtain a list of properties associated with parent
+        """  Obtains a list of property map entries associated with parent.
+        
+        Args:
+            parent (net_row_objects.RowObject): the parent object to check for.
+        Returns:
+            list[net_row_objects.PropertyMap]: The property mappings associated with the parent.
         """
         cdef net_row_objects.PropertyMap item
         for item in self:
@@ -669,14 +748,18 @@ cdef class PropertyMapTable(TableObject):
         return list()
     
     cpdef net_row_objects.RowObject get_parent_for_property(self, net_row_objects.RowObject prop):
-        """
-        Obtain a parent from a property.
+        """ Obtain a parent from a property.
+
+        Args:
+            prop (net_row_objects.Property): The property object to get the parent for.
+
+        Returns:
+            net_row_objects.RowObject: the parent associated with the property or None.
         """
         cdef net_row_objects.PropertyMap item
         for item in self:
             if prop in item.get_properties():
                 return item.get_parent()
-            
         return None
 
 cdef class MemberRefTable(TableObject):
@@ -684,8 +767,13 @@ cdef class MemberRefTable(TableObject):
         TableObject.__init__(self, dotnetpe, name, tid)
 
     cpdef net_row_objects.MemberRef get_ref_by_name(self, bytes name):
-        """
-        Obtain a MemberRef by its name.
+        """ Obtain a MemberRef by its name.
+
+        Args:
+            name (bytes): The name to check for.
+
+        Returns:
+            net_row_objects.MemberRef: A single memberref associated with name.
         """
         cdef net_row_objects.MemberRef item
         for item in self:

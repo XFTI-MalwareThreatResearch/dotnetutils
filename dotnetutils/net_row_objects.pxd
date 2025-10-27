@@ -5,8 +5,6 @@
 from dotnetutils cimport dotnetpefile, net_sigs, net_cil_disas, net_tokens, net_table_objects, net_structs
 from libc.stdint cimport uint64_t
 
-cdef bytes get_cor_type_name(net_structs.CorElementType element_type)
-
 cdef class RowObject:
     cdef dotnetpefile.DotNetPeFile dotnetpe
     cdef int rid
@@ -21,7 +19,7 @@ cdef class RowObject:
 
     cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
 
-    cpdef int get_rid(self) except *
+    cpdef int get_rid(self)
 
     cpdef str get_table_name(self)
 
@@ -136,8 +134,6 @@ cdef class TypeDefOrRef(RowObject):
 
     cpdef bytes get_full_name(self)
 
-    cpdef bytes get_class_path(self)
-
     cpdef Field get_field(self, bytes name)
 
     cpdef list get_methods_by_name(self, bytes name)
@@ -190,8 +186,6 @@ cdef class TypeDef(TypeDefOrRef):
     cdef void post_process(self)
 
     cpdef bytes get_full_name(self)
-
-    cpdef bytes get_class_path(self)
 
     cpdef Field get_field(self, bytes name)
 
@@ -451,20 +445,20 @@ cdef class TypeSpec(TypeDefOrRef):
     cpdef net_sigs.TypeSig get_sig_obj(self)
     
 cdef class StandAloneSig(RowObject):
-    cdef net_sigs.TypeSig __parsed_sig
+    cdef net_sigs.CallingConventionSig __parsed_sig
     cdef bint __has_invalid_signature
-    cpdef net_sigs.TypeSig get_sig_obj(self)
+    cpdef net_sigs.CallingConventionSig get_sig_obj(self)
 
 cdef class MethodImpl(RowObject):
-    cdef RowObject __class
-    cdef RowObject __declaration
-    cdef MethodDef __body
+    cdef TypeDef __class
+    cdef MethodDefOrRef __declaration
+    cdef MethodDefOrRef __body
 
-    cpdef RowObject get_class(self)
+    cpdef TypeDef get_class(self)
     
-    cpdef RowObject get_declaration(self)
+    cpdef MethodDefOrRef get_declaration(self)
     
-    cpdef MethodDef get_body(self)
+    cpdef MethodDefOrRef get_body(self)
     
 cdef class MethodSemantic(RowObject):
     
@@ -489,7 +483,7 @@ cdef class PropertyMap(RowObject):
         
     cdef void process(self)
 
-    cpdef RowObject get_parent(self)
+    cpdef TypeDef get_parent(self)
     
     cpdef list get_properties(self)
 

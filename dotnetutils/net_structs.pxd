@@ -508,7 +508,6 @@ cpdef enum CorILMethod:
     Sect_FatFormat = 0x40
     Sect_MoreSects = 0x80
 
-
 cpdef enum CorResourceTypeCode:
     Null = 0
     String = 1

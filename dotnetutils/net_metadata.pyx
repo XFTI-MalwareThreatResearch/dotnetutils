@@ -12,11 +12,34 @@ from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONT
 
 
 cdef class MetaDataHeader:
-    """
-    Represents the header at the beginning of the section where .NET stores metadata.
-    TODO: Swap to a data reader for this class.
+    """ Represents the header at the beginning of the section where .NET stores metadata.
+        TODO: Swap to a data reader for this class.
+
+    Attributes:
+        start_offset (int): the file offset of the header.
+        signature (int): the signature field.
+        majorversion (int): the majorversion field.
+        minorversion (int): the minorversion field.
+        reserved (int): the reserved field.
+        versionstr_length (int): the length of the version string in the header.
+        versionstr (bytes): the version string from the header
+        flags (int): the flags from the header.
+        num_streams (int): Amount of streams contained in the directory.
+        streamheaders (list[list[int, int, bytes]]): A list of stream headers, containing offset, size and name.
+        end_offset (int): The end offset of the header.
+        dotnetpe (dotnetpefile.DotNetPeFile): the current dotnetpe.
     """
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, bytes file_data, long offset):
+        """ Construct a new MetadataHeader.
+
+        Args:
+            dotnetpe (dotnetpefile.DotNetPeFile): the pe file the header is for.
+            file_data (bytes): full file data for executable.
+            offset (long): The offset of the header.
+
+        Raises:
+            ValueError: if offset isnt provided.
+        """
         if offset == -1:
             raise ValueError('invalid metadataheader offset')
         self.start_offset = offset
@@ -34,6 +57,11 @@ cdef class MetaDataHeader:
         self.parse_metadata_header(file_data)
 
     cdef void parse_metadata_header(self, bytes file_data):
+        """ Parse the metadata header from file bytes.
+
+        Args:
+            file_data (bytes): the file's byte data.
+        """
         cdef int current_offset
         cdef int offset
         cdef int size
@@ -71,6 +99,11 @@ cdef class MetaDataHeader:
         self.end_offset = current_offset
 
     cpdef bytes to_bytes(self):
+        """ Convert the header to its bytes representation.
+
+        Returns:
+            bytes: a bytes representation of the header.
+        """
         cdef bytes result
         cdef int usable_len
         cdef tuple stream
@@ -101,12 +134,23 @@ cdef class MetaDataHeader:
         return result
 
     cdef list get_stream_headers(self):
+        """ Obtain the stream headers.
+        """
         return self.streamheaders
 
-
 cdef class MetaDataDirectory:
-    """
-    Represents the metadata directory.   
+    """ Represents the metadata directory.
+
+        not really recommended to use as this structure may be changed in the future.
+
+    Attributes:
+        dotnetpe (dotnetpefile.DotNetPeFile): the dotnetpe the directory is for.
+        metadata_header (net_metadata.MetadataHeader): The metadata header object.
+        metadata_table_header (net_table_objects.MetadataTableHeader): the #~ stream header.
+        heaps (dict[str, net_processing.HeapObject]): A dictionary of heaps from the metadata.
+        metadata_heap_size (int): the size of #~
+        metadata_file_offset (int): the offset of #~
+        metadata_file_size (int): the size of #~
     """
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe):
         self.dotnetpe = dotnetpe
@@ -119,24 +163,38 @@ cdef class MetaDataDirectory:
         self.is_valid_directory = self.process_directory(self.dotnetpe.get_exe_data())
 
     cpdef IMAGE_COR20_HEADER get_net_header(self):
+        """ Obtain the IMAGE_COR20_HEADER for this executable.
+        """
         return self.net_header
 
     cpdef net_processing.HeapObject get_heap(self, str name):
+        """ Obtain a heap from the metadata directory.
+        """
         return self.heaps[name]
 
     cpdef dict get_heaps(self):
+        """ Obtain the dictionary of heaps.
+        """
         return self.heaps
 
     cpdef int get_metadata_heap_size(self):
+        """ Obtain #~ size.
+        """
         return self.metadata_heap_size
 
     cpdef net_table_objects.MetadataTableHeader get_metadata_table_header(self):
+        """ Obtain the #~ heap header.
+        """
         return self.metadata_table_header
 
     cdef bint __validate_stream_not_there(self, str name):
+        """ Check that a stream hasnt already been added.
+        """
         return name not in self.heaps.keys()
 
     cdef bint process_directory(self, bytes file_data) except *:
+        """ Process the information in the metadata directory.
+        """
         cdef dotnetpefile.PeFile pe = dotnetpefile.PeFile(file_data)
         cdef IMAGE_DATA_DIRECTORY com_table_directory = pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
         cdef uint64_t com_offset = pe.get_physical_by_rva(com_table_directory.VirtualAddress)
@@ -182,6 +240,8 @@ cdef class MetaDataDirectory:
         return True
 
     cdef void process_metadata_heap(self, bint dont_process):
+        """ Process the metadata heaps
+        """
         cdef net_processing.MetadataTableHeapObject mheap = None
         cdef net_processing.UserStringsHeapObject usheap = None
         self.metadata_table_header = net_table_objects.MetadataTableHeader(self.dotnetpe, self.metadata_file_offset)
