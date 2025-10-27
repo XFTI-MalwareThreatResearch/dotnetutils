@@ -353,7 +353,6 @@ cdef class MethodDisassembler:
         flags (int): The method header's flags value.
         header_size (int): The size of the method's header.
         code_size (int): The size of the code in the method.
-        max_stack (int): The maximum stack size for the method.
         local_var_sig_tok (int): The token which represents the LocalSig for the method.
         exception_blocks: (list[uint16_t, uint16_t, uint16_t, uint16_t, uint16_t, int]): A list of tuples representing exception blocks for the method, containing the following values: (clause_flags, try_offset, try_length, handler_offset, handler_length, class_token)
     """

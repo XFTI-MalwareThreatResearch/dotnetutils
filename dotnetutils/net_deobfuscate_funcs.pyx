@@ -302,24 +302,25 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
     """
     Something seen in possible DotNetReactor samples with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
 
-    if(new byte[]{<random constant data>}.Equals(new byte[]{<more constant data, always nonequal to the first}))
-    Removes this type of obfuscation.
 
-    Example IL: 			
-            /* 0x00001815 20FF000000   */ IL_0021: ldc.i4    255
-			/* 0x0000181A 8D11000001   */ IL_0026: newarr    [mscorlib]System.Byte
-			/* 0x0000181F 25           */ IL_002B: dup
-			/* 0x00001820 D0C2030004   */ IL_002C: ldtoken   field valuetype Class16/Class18 Class16::field960
-			/* 0x00001825 280E00000A   */ IL_0031: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
-			/* 0x0000182A 20FF000000   */ IL_0036: ldc.i4    255
-			/* 0x0000182F 8D11000001   */ IL_003B: newarr    [mscorlib]System.Byte
-			/* 0x00001834 25           */ IL_0040: dup
-			/* 0x00001835 D0C3030004   */ IL_0041: ldtoken   field valuetype Class16/Class18 Class16::field961
-			/* 0x0000183A 280E00000A   */ IL_0046: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
-			/* 0x0000183F 6F1600000A   */ IL_004B: callvirt  instance bool [mscorlib]System.Object::Equals(object)
-			/* 0x00001844 0A           */ IL_0050: stloc.0
-			/* 0x00001845 06           */ IL_0051: ldloc.0
-			/* 0x00001846 2DAF         */ IL_0052: brtrue.s  IL_0003
+    Example::
+
+        if(new byte[]{<random constant data>}.Equals(new byte[]{<more constant data, always nonequal to the first}))
+        Removes this type of obfuscation.
+        /* 0x00001815 20FF000000   */ IL_0021: ldc.i4    255
+        /* 0x0000181A 8D11000001   */ IL_0026: newarr    [mscorlib]System.Byte
+        /* 0x0000181F 25           */ IL_002B: dup
+        /* 0x00001820 D0C2030004   */ IL_002C: ldtoken   field valuetype Class16/Class18 Class16::field960
+        /* 0x00001825 280E00000A   */ IL_0031: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
+        /* 0x0000182A 20FF000000   */ IL_0036: ldc.i4    255
+        /* 0x0000182F 8D11000001   */ IL_003B: newarr    [mscorlib]System.Byte
+        /* 0x00001834 25           */ IL_0040: dup
+        /* 0x00001835 D0C3030004   */ IL_0041: ldtoken   field valuetype Class16/Class18 Class16::field961
+        /* 0x0000183A 280E00000A   */ IL_0046: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
+        /* 0x0000183F 6F1600000A   */ IL_004B: callvirt  instance bool [mscorlib]System.Object::Equals(object)
+        /* 0x00001844 0A           */ IL_0050: stloc.0
+        /* 0x00001845 06           */ IL_0051: ldloc.0
+        /* 0x00001846 2DAF         */ IL_0052: brtrue.s  IL_0003
 
     Args:
         exe_data (bytes): The byte representation of exe to deobfuscate.

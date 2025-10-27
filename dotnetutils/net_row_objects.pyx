@@ -253,6 +253,7 @@ cdef class ColumnValue:
                 stream.del_item(orig_value)
         elif self.col_type.is_fixed_value():
             self.raw_value = new_value
+            self.dotnetpe.reconstruct_executable() # Ensure the raw change is updated in.
         else:
             #I dont think it would be safe to edit metadata columns that reference other metadata columns.
             #Nor can I really think of a good reason to do it right now.  May be something to implement later.
