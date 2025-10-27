@@ -41,9 +41,27 @@ All classes should extend DotNetObject with the exception of ArrayAddress
 """
 
 cdef inline bint check_object(StackCell cell):
-    return cell.tag != CorElementType.ELEMENT_TYPE_OBJECT or cell.item.ref == NULL
+    """ Quick check to see if a cell is a valid ELEMENT_TYPE_OBJECT with a ref, not a slim object.
+    
+    Args:
+        cell (StackCell): The StackCell to check.
+
+    Returns:
+        bool: True if valid DotNetObject, False otherwise.
+    """
+    return cell.tag != CorElementType.ELEMENT_TYPE_OBJECT or cell.is_slim_object or cell.item.ref == NULL
 
 cdef str remove_generics_from_name(str name):
+    """ Used to remove generics from a full type name.
+
+    Args:
+        name (str): The name to remove generics from.
+    
+    Returns:
+        str: The name without generics at the end.
+    """
+    cdef str actual_name = None
+    cdef str num = None
     if name.count('`') != 1:
         return name
     actual_name, num = name.split('`')
@@ -57,6 +75,18 @@ Used for the implementations of rem in relation to DotNetNumber.
 Ensures rem follows C# spec.
 """
 cdef int rem_i4(int one, int two):
+    """ Conducts a C# rem operation on two ELEMENT_TYPE_I4
+
+    Args:
+        one (int): the first argument.
+        two (int): the second argument.
+
+    Returns:
+        int: The result of the operation.
+
+    Raises:
+        net_exceptions.InvalidArgumentsException: divide by zero.
+    """
     if two == 0:
         raise net_exceptions.InvalidArgumentsException()
     if one == INT_MIN and two == -1:
@@ -65,11 +95,35 @@ cdef int rem_i4(int one, int two):
     return qr.rem
 
 cdef unsigned int rem_u4(unsigned int one, unsigned int two):
+    """ Conducts a C# rem operation on two ELEMENT_TYPE_U4
+
+    Args:
+        one (unsigned int): the first argument.
+        two (unsigned int): the second argument.
+
+    Returns:
+        int: The result of the operation.
+
+    Raises:
+        net_exceptions.InvalidArgumentsException: divide by zero.
+    """
     if two == 0:
         raise net_exceptions.InvalidArgumentsException()
     return one % two
 
 cdef int64_t rem_i8(int64_t one, int64_t two):
+    """ Conducts a C# rem operation on two ELEMENT_TYPE_I8
+
+    Args:
+        one (int64_t): the first argument.
+        two (int64_t): the second argument.
+
+    Returns:
+        int64_t: The result of the operation.
+
+    Raises:
+        net_exceptions.InvalidArgumentsException: divide by zero.
+    """
     if two == 0:
         raise net_exceptions.InvalidArgumentsException()
     if one == LLONG_MIN and two == -1:
@@ -78,12 +132,43 @@ cdef int64_t rem_i8(int64_t one, int64_t two):
     return qr.rem
 
 cdef uint64_t rem_u8(uint64_t one, uint64_t two):
+    """ Conducts a C# rem operation on two ELEMENT_TYPE_U8
+
+    Args:
+        one (uint64_t): the first argument.
+        two (uint64_t): the second argument.
+
+    Returns:
+        uint64_t: The result of the operation.
+
+    Raises:
+        net_exceptions.InvalidArgumentsException: divide by zero.
+    """
     if two == 0:
         raise net_exceptions.InvalidArgumentsException()
     return one % two
 
 cdef class DotNetObject:
+    """ Represents a imported C# System.Object usually.  Used to be used for both TypeDefs and TypeRefs, now mostly only for TypeRefs.
+        __fields and __num_fields are still in these but they arent really used in favor of net_emu_structs.SlimObject
+
+        In general when adding imported types to the emulator, they must extend DotNetObject.  They must accept emulator_obj in the constructor.
+
+    Notes:
+        __initialized (bool): has the object been completely initialized?
+        __emulator_obj (net_emulator.DotNetEmulator): The emulator object used to create the object.
+        __num_fields (int): The number of fields the object has.
+        type_obj (net_row_objects.TypeDefOrRef): the metadata row describing the type.
+        type_sig_obj (net_sigs.TypeSig): the signature object describing the type.  Not guaranteed to be filled.
+        orig_type_token (int): The original type token it was created under (TypeDefOrRef token)
+        __functions (unordered_map[str, emu_func_type]): Contains the objects imported functions (used to represent memberrefs).
+    """
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
+        """ Constructor for DotNetObject.
+
+        Args:
+            emulator_obj (net_emulator.DotNetEmulator): the emulator object that created the object.
+        """
         if emulator_obj is None:
             raise net_exceptions.EmulatorExecutionException(None, 'Invalid DotNetObject: NoneType emulator_obj')
         self.__initialized = False
@@ -93,9 +178,17 @@ cdef class DotNetObject:
         self.type_obj = None
         self.type_sig_obj = None
         self.orig_type_token = 0
+        """
+        When adding imported methods such as ToString() etc, put a line like below in the constructor for each function.
+        """
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
 
     cdef void __init_fields(self, net_row_objects.TypeDefOrRef ref):
+        """ Initialize fields based on the ref object.
+
+        Args:
+            ref (net_row_objects.TypeDefOrRef): The type object that this object represents.
+        """
         cdef int x = 0
         cdef net_table_objects.TableObject field_table = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field')
         cdef int field_index = 0
@@ -108,6 +201,14 @@ cdef class DotNetObject:
         memset(self.__fields, 0, sizeof(StackCell) * self.__num_fields)
 
     cdef int __get_num_fields(self, net_row_objects.TypeDefOrRef ref):
+        """ Calculate how many fields the type has.
+
+        Args:
+            ref (net_row_objects.TypeDefOrRef): the Metadata row that this object represents.
+        
+        Returns:
+            int: The amount of fields the type has.
+        """
         cdef net_row_objects.TypeDefOrRef ptr = ref
         cdef int result = 0
         cdef list fields = None
@@ -132,43 +233,88 @@ cdef class DotNetObject:
         return result
 
     cdef bint equals(self, DotNetNumber other):
+        """ These methods arent really used anymore.  Probably will be changed soon.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef bint notequals(self, DotNetNumber other):
+        """ These methods arent really used anymore.  Probably will be changed soon.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef bint lessthanequals(self, DotNetNumber other):
+        """ These methods arent really used anymore.  Probably will be changed soon.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef bint lessthan(self, DotNetNumber other):
+        """ These methods arent really used anymore.  Probably will be changed soon.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef bint greaterthan(self, DotNetNumber other):
+        """ These methods arent really used anymore.  Probably will be changed soon.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef bint greaterthanequals(self, DotNetNumber other):
+        """ These methods arent really used anymore.  Probably will be changed soon.
+        """
         raise net_exceptions.FeatureNotImplementedException()
 
     def __dealloc__(self):
         self.__clear_fields()
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
+        """ Used for isinst instruction.  Returns True if this object is an instance of the specified type.
+
+        Args:
+            tdef (net_row_objects.TypeDefOrRef): The type to check if we are an instance.
+
+        Returns:
+            bool: True if we are an instance, false otherwise.
+        """
         if tdef.get_full_name() == b'System.Object':
             return True
         return False
 
     cdef bint is_number(self):
+        """ Is this object a DotNetNumber
+
+        Returns:
+            bool: True if DotNetNumber, False otherwise.
+        """
         return False
 
-    #This is the Constructor method within the context of .NET emulator.
-    #The actual init method can be used for utility constructors i guess.
     cdef StackCell ctor(self, StackCell * params, int nparams):
+        """ ctor method for the object.  Used with newobj instructions.
+            All MemberRef methods take the same arguments: An array of StackCells that contain the parameters and the number of params.
+            All MemberRef methods must return a newly allocated StackCell.
+
+        Args:
+            params (net_emu_structs.StackCell *): The array of parameters.
+            nparams (int): The number of parameters provided.
+        
+        Returns:
+            net_emu_structs.StackCell: A newly allocated stackcell representing the current object.
+                Generally for ctor methods, it should always look like this: return self.get_emulator_obj().pack_object(self)
+        """
         return self.get_emulator_obj().pack_object(self)
 
     cdef bint is_null(self):
+        """ Is the object NULL (Not really used anymore, NULL is now represented by a ELEMENT_TYPE_OBJECT with a NULL ref.)
+
+        Returns:
+            bool: True if null, False otherwise.
+        """
         return self.__is_null
 
     cdef bint is_true(self):
+        """ Is the object true (generally, not NULL)
+
+        Returns:
+            bool: True if the objects truth value is True, false otherwise.
+        """
         cdef DotNetNumber num = None
         if self.is_number():
             num = <DotNetNumber>self
@@ -177,24 +323,56 @@ cdef class DotNetObject:
             return not self.is_null()
 
     cdef bint is_false(self):
+        """ Is the object false (generally, NULL)
+        
+        Returns:
+            bool: True if the objects truth value is False, False otherwise.
+        """
         return not self.is_true()
 
     cdef void flag_null(self):
+        """ Flag an object as null.  Generally not used anymore since StackCell can represent NULL as a NULL ref.
+        """
         self.__is_null = True
 
     cdef bint has_function(self, bytes name):
+        """ Informs the emulator if a MemberRef function exists for this type.
+
+        Returns:
+            bool: True if the function exists, False otherwise.
+        """
         return self.__functions.count(name) == 1
             
     cdef emu_func_type get_function(self, bytes name):
+        """ Obtain a MemberRef emulated function for this type.
+
+        Returns:
+            emu_func_type: A pointer to the emulated memberref function.
+        """
         return self.__functions[name]
 
     cdef void add_function(self, bytes name, emu_func_type func):
+        """ Register a function as a emulated memberref function for this object.
+            Generally, this should be called for every MemberRef function the type has (except static methods) in the __init__().
+
+        Args:
+            name (bytes): the name of the function.
+            func (emu_func_type): the address of the function.
+        """
         self.__functions[name] = func
 
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self):
+        """ Obtain the emulator object that created this object.
+        
+        Returns:
+            net_emulator.DotNetEmulator: the emulator object that created the object.
+        """
         return self.__emulator_obj
 
     cdef void set_field(self, int idno, StackCell val):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with SlimObject * representations.
+        """
         if self.orig_type_token == 0:
             raise net_exceptions.OperationNotSupportedException()
         if self.__fields == NULL or self.get_emulator_obj().get_appdomain().get_field_index(idno, self.orig_type_token) >= self.__num_fields:
@@ -211,6 +389,8 @@ cdef class DotNetObject:
         self.__fields[field_index] = new
 
     cdef void __clear_fields(self):
+        """ Deallocates all of the object's fields and allocated memory.
+        """
         cdef int x = 0
         for x in range(self.__num_fields):
             self.get_emulator_obj().deref_cell(self.__fields[x])
@@ -219,6 +399,9 @@ cdef class DotNetObject:
         self.__fields = NULL
 
     cdef StackCell get_field(self, int idno):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with SlimObject * representations.
+        """
         if self.orig_type_token == 0:
             raise net_exceptions.OperationNotSupportedException()
         cdef int instr_index = self.get_emulator_obj().get_appdomain().get_field_index(idno, self.orig_type_token)
@@ -234,15 +417,31 @@ cdef class DotNetObject:
         return self.get_emulator_obj().duplicate_cell(self.__fields[instr_index])
 
     cpdef net_row_objects.TypeDefOrRef get_type_obj(self):
+        """ Obtain the metadata type object associated with this object.
+
+        Returns:
+            net_row_objects.TypeDefOrRef: the type object used to create the object.
+        """
         return self.type_obj
 
     cpdef net_sigs.TypeSig get_type_sig_obj(self):
+        """ Obtains the type sig object associated with this object.
+
+        Returns:
+            net_sigs.TypeSig: The type sig object associated with this object, or None if it doesnt have one.
+        """
         return self.type_sig_obj
 
     cpdef void set_type_sig_obj(self, net_sigs.TypeSig type_sig_obj):
+        """ Internal helper used to set the type sig object.
+        """
         self.type_sig_obj = type_sig_obj
 
     cdef void _initialize_field(self, int field_rid):
+        """ Internal helper used to obtain default value for fields.
+            Generally not used anymore since TypeDef objects were replaced by SlimObjects.
+            Likely to be removed soon.
+        """
         cdef StackCell result
         cdef net_row_objects.Field field_obj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(field_rid)
         cdef net_sigs.FieldSig field_sig = field_obj.get_field_signature()
@@ -312,6 +511,11 @@ cdef class DotNetObject:
 
 
     cdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj):
+        """ Initialize the object as type type_obj.
+
+        Args:
+            type_obj (net_row_objets.TypeDefOrRef): The metadata type object this object represents.
+        """
         if self.orig_type_token == 0:
             self.orig_type_token = type_obj.get_token()
         if self.__fields == NULL and not isinstance(self, DotNetArray):
@@ -330,7 +534,7 @@ cdef class DotNetObject:
             return True
         return object.__eq__(self, other)
 
-    def __str__(self): #TODO: FIX this method
+    def __str__(self):
         cdef str str_val
         cdef int idno
         cdef DotNetObject dobj
@@ -360,6 +564,11 @@ cdef class DotNetObject:
             return object.__str__(self)
 
     cdef void duplicate_into(self, DotNetObject result):
+        """ Used for dup instructions sort of.  Shallow copies an self into result.
+
+        Args:
+            result (DotNetObject): The result variable to shallow copy into.
+        """
         result.__fields = self.__fields
         result.type_obj = self.type_obj
         result.type_sig_obj = self.type_sig_obj
@@ -367,6 +576,11 @@ cdef class DotNetObject:
         result.__is_null = self.__is_null
 
     cdef DotNetObject duplicate(self):
+        """ Used for dup instructions on imported objects.
+
+        Returns:
+            DotNetObject: A shallow copy of the object.
+        """
         cdef DotNetObject result = DotNetObject(self.get_emulator_obj())
         self.duplicate_into(result)
         return result
@@ -375,9 +589,21 @@ cdef class DotNetObject:
         raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Called ToString() where it wasnt implemented {}'.format(type(self)))
 
 cdef class DotNetNumber(DotNetObject):
+    """ As of now, DotNetNumber isnt really used anymore and is likely to have a significant amount of methods removed.
+
+        Represents any sort of .NET number - Chars, Ints, Longs, Floats, Booleans etc.
+
+        At this point its only used for boxed numbers.  Unboxed numbers have been replaced by StackCell and SlimStackCell.
+    """
     def __init__(self, net_emulator.DotNetEmulator emu_obj, CorElementType num_type, bytes num_data):
+        """ Constructor for DotNetNumber.
+        
+        Args:
+            emu_obj (net_emulator.DotNetEmulator): The emulator object that created the number.
+            num_type (net_structs.CorElementType): the CorElementType for the number.  This parameter isnt required when dealing with DotNetNumber's child classes.
+            num_data (bytes): A byte representation of the number.  Can be None if the number will be initialized with from_<type>() later.  These methods cant be used from python though.
+        """
         DotNetObject.__init__(self, emu_obj)
-        #At this moment for debugging purposes dont allow ELEMENT_TYPE_I or ELEMENT_TYPE_U
         self.__num_type = num_type
         self._ptr = NULL
         self.__amt_bytes = 0
@@ -429,6 +655,8 @@ cdef class DotNetNumber(DotNetObject):
         return tdef.get_full_name() == tname or DotNetObject.isinst(self, tdef)
 
     cdef DotNetNumber convert_unsigned(self):
+        """ This method is unused and likely to be removed.  Replaced by net_emulator.DotNetEmulator.convert_unsigned()
+        """
         cdef DotNetNumber num_obj = None
         if self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
             num_obj = DotNetUInt8(self.get_emulator_obj(), None)
@@ -457,36 +685,58 @@ cdef class DotNetNumber(DotNetObject):
         DotNetObject.duplicate_into(self, result)
 
     cdef void from_bool(self, bint num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_long(self, int64_t num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_int(self, int num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_uchar(self, unsigned char num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_uint(self, unsigned int num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
     
     cdef void from_ulong(self, uint64_t num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_char(self, char num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_float(self, float num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_double(self, double num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_short(self, short num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void from_ushort(self, unsigned short num):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
     cdef void reset(self):
@@ -496,13 +746,18 @@ cdef class DotNetNumber(DotNetObject):
             self.__amt_bytes = 0
     
     cpdef bytes as_bytes(self):
+        """ Returns the number in bytes format.
+
+        Returns:
+            bytes: a byte object representing the number.
+        """
         if self._ptr == NULL:
             return None
         return self._ptr[:self.__amt_bytes]
 
     cdef bint val_is_zero(self):
         if self._ptr == NULL:
-            raise Exception()
+            raise net_exceptions.OperationNotSupportedException()
         cdef int x
         for x in range(self.__amt_bytes):
             if self._ptr[x] != 0:
@@ -510,9 +765,11 @@ cdef class DotNetNumber(DotNetObject):
         return True
 
     cdef void init_zero(self):
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         cdef int type_size = self.__util_get_type_size(self.__num_type)
         if type_size == -1:
-            raise Exception
+            raise net_exceptions.OperationNotSupportedException()
         self.__amt_bytes = type_size
         self._ptr = <unsigned char*>malloc(sizeof(unsigned char) * self.__amt_bytes)
         if self._ptr == NULL:
@@ -520,6 +777,8 @@ cdef class DotNetNumber(DotNetObject):
         memset(self._ptr, 0x0, self.__amt_bytes)
 
     cdef void init_from_ptr(self, unsigned char * ptr, int ptr_size) except *:
+        """ Internal use for initializing DotNetNumbers from C types.
+        """
         if not self.__check_size(ptr_size, self.__num_type):
             raise Exception('invalid size')
         self.__amt_bytes = ptr_size
@@ -531,6 +790,14 @@ cdef class DotNetNumber(DotNetObject):
         memcpy(self._ptr, ptr, ptr_size)
 
     cdef int __util_get_type_size(self, CorElementType num_type):
+        """ Obtain the size of a DotNetNumber in bytes based on its cor type.
+
+        Args:
+            num_type (net_structs.CorElementType): The element type in question.
+
+        Returns:
+            int: the byte size of num_type.
+        """
         if num_type == CorElementType.ELEMENT_TYPE_I or num_type == CorElementType.ELEMENT_TYPE_U:
             if self.get_emulator_obj().is_64bit():
                 return 8
@@ -555,9 +822,17 @@ cdef class DotNetNumber(DotNetObject):
         raise Exception('Unknown type {}'.format(net_utils.get_cor_type_name(num_type)))
 
     cdef bint __check_size(self, int amt_bytes, CorElementType num_type):
+        """ Checks to see if the size of the number matches the expected size.
+
+        Returns:
+            bool: True if no error.
+
+        Raises:
+            net_exceptions.InvalidArgumentsException: If the number size does not equal expected values.
+        """
         cdef int calc_size = self.__util_get_type_size(num_type)
         if amt_bytes != calc_size:
-            raise Exception('About to throw invalid size for type {} {} {}'.format(net_utils.get_cor_type_name(num_type), calc_size, amt_bytes))
+            raise net_exceptions.InvalidArgumentsException()
         return calc_size == amt_bytes
 
     def __dealloc__(self):
@@ -570,6 +845,8 @@ cdef class DotNetNumber(DotNetObject):
         return hash(data + bytes([self.__num_type]))
 
     cpdef object as_python_obj(self):
+        """ Obtain the number as a python object (float, int etc)
+        """
         cdef float float_one = 0
         cdef double double_one = 0
         if self._ptr == NULL:
@@ -590,10 +867,14 @@ cdef class DotNetNumber(DotNetObject):
             return int.from_bytes(self._ptr[:self.__amt_bytes], 'little', signed=False)
 
     cdef bint is_float(self):
+        """ Returns true if the number represents a single or double, False otherwise.
+        """
         return self.__num_type == CorElementType.ELEMENT_TYPE_R4 or \
             self.__num_type == CorElementType.ELEMENT_TYPE_R8
         
     cdef bint is_signed(self):
+        """ Returns true if the number represents a signed integer, False otherwise.
+        """
         return self.__num_type == CorElementType.ELEMENT_TYPE_I or \
             self.__num_type == CorElementType.ELEMENT_TYPE_I1 or \
             self.__num_type == CorElementType.ELEMENT_TYPE_I2 or \
@@ -604,42 +885,81 @@ cdef class DotNetNumber(DotNetObject):
         return self.__num_type
 
     cdef DotNetNumber cast(self, CorElementType new_type):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception()
 
     cdef DotNetNumber add(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception()
 
     cdef DotNetNumber subtract(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception()
 
     cdef DotNetNumber multiply(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception()
     
     cdef DotNetNumber divide(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception('DotNetnUmber.Divide {} {}'.format(net_utils.get_cor_type_name(self.get_num_type()), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber xor(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception('called DotNetNumber.xor for type {} {}'.format(net_utils.get_cor_type_name(self.__num_type), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber andop(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception('DotNetNumber.andop for type {} {}'.format(net_utils.get_cor_type_name(self.get_num_type()), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber orop(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception('orop DotNetNumber {} {}'.format(net_utils.get_cor_type_name(self.get_num_type()), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber neg(self):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception()
 
     cdef DotNetNumber notop(self):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception()
 
     cdef DotNetNumber rem(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception('Called DotNetNumber.rem {} {}'.format(net_utils.get_cor_type_name(self.__num_type), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber shl(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception('shl called by {} {}'.format(net_utils.get_cor_type_name(self.get_num_type()), net_utils.get_cor_type_name(number.get_num_type())))
 
     cdef DotNetNumber shr(self, DotNetNumber number):
+        """ Generally this method isnt used anymore and will probably be removed soon.
+            Replaced with StackCell representations.
+        """
         raise Exception('shr called by {}'.format(net_utils.get_cor_type_name(self.get_num_type())))
 
     #For debugging purposes temporarily dont allow these.
@@ -666,36 +986,58 @@ cdef class DotNetNumber(DotNetObject):
         return self.greaterthanequals(other)
 
     cdef unsigned char as_uchar(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<unsigned char*>self._ptr)[0]
 
     cdef unsigned short as_ushort(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<unsigned short*>self._ptr)[0]
 
     cdef unsigned int as_uint(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<unsigned int*>self._ptr)[0]
 
     cdef uint64_t as_ulong(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<uint64_t*>self._ptr)[0]
 
     cdef bint as_bool(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<bint*>self._ptr)[0]
 
     cdef char as_char(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<char*>self._ptr)[0]
 
     cdef short as_short(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<short*>self._ptr)[0]
 
     cdef int as_int(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<int*>self._ptr)[0]
 
     cdef int64_t as_long(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<int64_t*>self._ptr)[0]
 
     cdef float as_float(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<float*>self._ptr)[0]
 
     cdef double as_double(self):
+        """ Helper method to convert the object to a C number.
+        """
         return (<double*>self._ptr)[0]
 
     cdef StackCell ToString(self, StackCell * params, int nparams):
@@ -719,21 +1061,33 @@ cdef class DotNetNumber(DotNetObject):
         return hex(self.as_python_obj())
 
     cdef bint equals(self, DotNetNumber other):
+        """ Not really used anymore, likely to be removed.
+        """
         raise Exception()
 
     cdef bint notequals(self, DotNetNumber other):
+        """ Not really used anymore, likely to be removed.
+        """
         raise Exception()
 
     cdef bint lessthanequals(self, DotNetNumber other):
+        """ Not really used anymore, likely to be removed.
+        """
         raise Exception()
 
     cdef bint lessthan(self, DotNetNumber other):
+        """ Not really used anymore, likely to be removed.
+        """
         raise Exception()
 
     cdef bint greaterthan(self, DotNetNumber other):
+        """ Not really used anymore, likely to be removed.
+        """
         raise Exception()
 
     cdef bint greaterthanequals(self, DotNetNumber other):
+        """ Not really used anymore, likely to be removed.
+        """
         raise Exception()
 
 cdef class DotNetIntPtr(DotNetNumber):
@@ -5961,6 +6315,8 @@ cdef class DotNetArray(DotNetObject):
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error for array')
 
     cpdef list as_python_obj(self):
+        """ Convert the array to a list of python objects.
+        """
         cdef list result = list()
         cdef StackCell unslim_cell
         cdef StackCell boxed
@@ -5980,6 +6336,8 @@ cdef class DotNetArray(DotNetObject):
         return result
 
     cpdef void from_python_obj(self, list obj):
+        """ Initialize an array from a list of DotNetObjects
+        """
         cdef StackCell cell
         cdef uint64_t x = 0
         if len(obj) != self.__size:
@@ -6050,6 +6408,8 @@ cdef class DotNetArray(DotNetObject):
         return tdef.get_full_name() == b'System.Array' or DotNetObject.isinst(self, tdef)
 
     cpdef bytes as_bytes(self):
+        """ If possible, convert the array to bytes.
+        """
         cdef bytearray result = bytearray()
         cdef bytes type_name = None
         cdef uint64_t x = 0

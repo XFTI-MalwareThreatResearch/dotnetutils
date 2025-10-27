@@ -4,17 +4,18 @@
 from dotnetutils import net_exceptions
 
 cdef class OpCode:
+    """ Represents a .NET IL opcode.
+    
+    Notes:
+        name (str): the name of the opcode
+        operand_count (int): how many operands the opcode has
+        two_byte_opcode (bint): does the opcode require two bytes to be represented.
+        has_arg_list (bint): Does the opcode have a list as an argument?
+        is_branch (bint): does the opcode branch
+        has_token_argument (bint): is the argument a metadata token?
+    """
     def __init__(self, str name, int operand_count=0, bint is_two_byte_opcode=False, bint has_arg_list=False, bint is_branch=False,
                  bint has_token_argument=False):
-        """
-        Represents a single .NET IL opcode.
-        :param name: Name of the opcode
-        :param operand_count: Amount of operands the opcode has
-        :param is_two_byte_opcode: True if the opcode is comprised of two bytes.
-        :param has_arg_list: Does it have an argument list?
-        :param is_branch: Is it a branch opcode
-        :param has_token_argument: True if it has a token as an argument
-        """
         self.name = name
         self.operand_count = operand_count
         self.two_byte_opcode = is_two_byte_opcode
@@ -41,17 +42,12 @@ cdef class OpCode:
         return self.two_byte_opcode
 
     cdef void set_opcode(self, int opcode_):
-        """
-        Internal method for setting up the opcode value.
-        :param opcode_: the byte opcode for the opcode object
-        :return: None
+        """ Internal method for setting up the opcode value.
         """
         self.opcode = opcode_
 
     cpdef Opcodes obtain_opcode(self):
-        """
-        Returns the byte value of an opcode
-        :return: The opcode byte value, or OpcodeNotInitializedException
+        """Returns the byte value of an opcode
         """
         return <Opcodes> self.opcode
     
@@ -72,6 +68,7 @@ cdef class OpCode:
             Opcodes.Stloc_S
         ]
         return Opcodes(self.obtain_opcode()) not in unsigned_args
+
 cdef NET_OPCODE_DB = {
     0x0: OpCode(name='nop'),
     0x1: OpCode(name='break'),

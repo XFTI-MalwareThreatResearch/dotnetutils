@@ -11,11 +11,14 @@ from cython.operator cimport dereference
 from libcpp.utility cimport pair
 
 
-cpdef get_total_method_size(data):
-    """
-    Parse the .NET method header
-    :param data: The data of the method
-    :return: total size of the method (header + code)
+cpdef unsigned long get_total_method_size(bytes data):
+    """ Calculates the total size, including headers of a .NET managed method.
+
+    Args:
+        data (bytes): The method's data.  The data may strech beyond the length of the method itself.
+
+    Returns:
+        unsigned long: The calculated size of the method, including headers.
     """
     cdef net_structs.DotNetDataReader reader
     cdef int start
@@ -75,13 +78,32 @@ cpdef get_total_method_size(data):
 
 
 cdef class Instruction:
+    """ Represents a .NET CIL instruction.
 
-    def __init__(self, net_opcodes.OpCode opcode_one, MethodDisassembler disasm_obj, unsigned int offset=0, unsigned int instr_index=<unsigned int>-1):
-        """
-        Represents a full instruction, including the arguments.
-        :param opcode_one: The first opcode in the instruction
-        :param opcode_two: The second opcode in the instruction
-        :param offset: The 0 index offset of the instruction in the method.
+    Notes:
+        opcode_one (net_opcodes.OpCode): the instruction's first OpCode.
+        instr_size (int): The calculated size in bytes of the instruction.
+        arguments (bytes): A byte representation of the instruction's arguments.
+        offset (unsigned int): The code offset of the instruction.
+        __saved_argument (object): A saved representation of the Instruction's argument.
+        __disasm_obj (net_cil_disas.MethodDisassembler): A reference to the MethodDisassembler that produced the instruction.
+        instr_index (unsigned int): The instruction index within the code of the instruction.
+
+    Returns:
+        list[net_row_objects.TypeDef]: A list containing all TypeDef objects that match name.
+    """
+
+    def __init__(self, net_opcodes.OpCode opcode_one, MethodDisassembler disasm_obj, unsigned int offset, unsigned int instr_index):
+        """ Create a new Instruction object.
+
+        Args:
+            opcode_one (net_opcodes.OpCode): the instruction's first OpCode.
+            disasm_obj (net_cil_disas.MethodDisassembler): The disassembler object that produced the instruction.
+            offset (unsigned int): The code offset of the instruction.
+            instr_index (unsigned int): The instruction index within the code of the instruction.
+
+        Returns:
+            net_cil_disas.Instruction: An Instruction object.
         """
         self.opcode_one = opcode_one
         self.instr_size = -1
@@ -92,59 +114,85 @@ cdef class Instruction:
         self.instr_index = instr_index
 
     cpdef int get_instr_size(self):
-        """
-        Obtain the size in bytes of a instruction (same as len())
+        """ Obtain the size of the instruction.
+
+        Returns:
+            int: The size in bytes of the instruction.
+
+        Raises:
+            net_exceptions.InvalidArgumentsException: If instruction size has not been initialized.  An internal error indicating an issue with DotNetUtils.
         """
         if self.instr_size == -1:
-            raise Exception('instruction size not initialized')
+            raise net_exceptions.InvalidArgumentsException()
         return self.instr_size
 
     cpdef unsigned int get_instr_index(self):
-        """
-        Obtain the index of an instruction within a method body.
+        """ Obtains the index of an instruction.
+
+        Returns:
+            unsigned int: The index of the instruction.
         """
         return self.instr_index
 
     cpdef unsigned int get_instr_offset(self):
-        """
-        Obtain the byte offset from the start of the method's code of an instruction.
+        """ Obtains the code offset of an instruction.
+
+        Returns:
+            unsigned int: The code offset of the instruction.
         """
         return self.offset
 
     cdef void add_argument(self, int argument):
-        """
-        Add an argument to an instruction
-        :param argument: The byte argument to add
-        :return: None
+        """ Adds an argument to the instruction.  Mostly for internal use.
+
+        Args:
+            argument (int): The byte representation of the instruction argument to add.
         """
         self.arguments += bytes([argument])
         self.__saved_argument = None #Reset saved argument for this.
 
     cdef void __set_arguments(self, bytes arguments):
+        """ Internal method for setting the Instruction's argument data.
+
+        Args:
+            arguments (bytes): The bytes representation of the instruction's arguments
+        """
         self.arguments = arguments
 
     cpdef str get_name(self):
-        """
-        Get the name of an instruction's opcode.
-        :return: the name representing the instruction.
+        """ Obtains the name of an instruction's OpCode.
+
+        Returns:
+            str: The name of an instruction (e.x ldstr)
         """
         return self.opcode_one.get_name()
 
     cpdef bint is_twobyte_opcode(self):
-        """
-        Returns True if the opcode is represented by two bytes instead of one.
+        """ informs the caller whether the instruction uses two bytes for an opcode. 
+
+        Returns:
+            bool: True if the instruction uses two bytes for an opcode, False otherwise.
         """
         return self.opcode_one.is_two_byte_opcode()
 
     cpdef net_opcodes.Opcodes get_opcode(self):
-        """
-        Obtains the OpCode representing the instruction.
+        """ Obtains the Opcodes enum representing the opcode for the instruction.
+
+        Returns:
+            net_opcodes.Opcodes: The opcode for the instruction.
         """
         return self.opcode_one.obtain_opcode()
 
     cpdef object get_argument(self):
-        """
-        Obtain a DotNetUtils representation of an instruction's argument.
+        """ Obtains a python object representing the instruction's argument
+        For instructions which have a token argument, the return value will be a python representation of the token.
+        For example, ldtoken instructions will return a net_row_object.RowObject.
+        ldstr will return bytes.
+        switch will return a list of offsets for each branch, relative to the start of the method.
+        Most other instructions will return an integer value, or None if the instruction does not have an argument.
+
+        Returns:
+            object: The instruction's argument.
         """
         cdef bytes instr_args
         cdef str name
@@ -197,17 +245,18 @@ cdef class Instruction:
             raise e
 
     cpdef bytes get_arguments(self):
-        """
-        Obtain the array of raw bytes that represents an instruction's arguments.
+        """ Obtains the bytes representation of the Instruction's arguments.
+
+        Returns:
+            bytes: A byte representation of the instruction's arguments.
         """
         return self.arguments
 
     cdef void setup_instr_size(self, int instr_size):
-        """
-        Internal method for setting an instructions size.
-        Likely to be removed.
-        :param instr_size: The size of an instruction
-        :return:
+        """ Internal method for setting up an instruction's size.  Must be called before len() and Instruction.get_instr_size().
+
+        Args:
+            instr_size (int): The calculated size of the instruction.
         """
         self.instr_size = instr_size
 
@@ -215,15 +264,13 @@ cdef class Instruction:
         """
         :return: A string representing the instruction
         """
-        result = self.get_name()
-        for argument in self.get_arguments():
-            result += ' '
-            result += hex(argument)
-        return result
+        return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), str(self.get_argument()))
 
     def __len__(self):
-        """
-        :return: The full length of the instruction
+        """ Obtains the length in bytes of the instruction
+
+        Returns:
+            Py_ssize_t: The length in bytes of the instruction.
         """
         cdef int args_len
         if self.instr_size != -1:
@@ -236,8 +283,10 @@ cdef class Instruction:
         return 1 + args_len + self.opcode_one.get_operand_count()
 
     cpdef bytes get_bytes(self):
-        """
-        :return: The bytes representing the instruction.
+        """ Obtains the a byte representation of the instruction.
+
+        Returns:
+            bytes: A byte representation of the instruction
         """
         cdef bytes result
         result = None
@@ -249,26 +298,36 @@ cdef class Instruction:
         return result
     
     cpdef bytes to_bytes(self): # For compatibility reasons.
+        """ Obtains the a byte representation of the instruction.
+
+        Returns:
+            bytes: A byte representation of the instruction
+        """
         return self.get_bytes()
 
     cpdef bint has_token_argument(self):
-        """
-        Does the instruction have a token as an argument?
-        :return: True if the instruction has a token as an argument, false otherwise.
+        """ Does the instruction have an argument which represents a token?
+
+        Returns:
+            bool: True if the instruction's argument represents a metadata token, False otherwise.
         """
         return self.opcode_one.is_token_argument_opcode()
 
     cpdef bint is_branch(self):
-        """
-        Does the instruction represent a branch?
+        """ Is the instruction a branch instruction (e.x switch, br.s, brfalse)
+
+        Returns:
+            bool: True if the instruction branches, False otherwise.
         """
         if self.get_opcode() == net_opcodes.Opcodes.Switch:
             return True
         return self.opcode_one.is_branch_opcode()
 
     cpdef bint is_argument_signed(self):
-        """
-        Returns true if the operand for the instruction is expected to be signed.
+        """ Does the instruction have a signed integer for an argument?
+
+        Returns:
+            bool: True if the instruction contains a signed integer in the arguments, false otherwise.
         """
         if self.has_token_argument():
             return True
@@ -276,19 +335,41 @@ cdef class Instruction:
         return self.opcode_one.opcode_argument_signed()
 
     cpdef bint is_absolute_jmp(self):
-        """
-        Does the instruction represent an absolute jump (br or br.s)
+        """ Is the instruction a br or br.s instruction?
+
+        Returns:
+            bool: True if the instruction is br or br.s, False otherwise (absolute jumps)
         """
         return self.get_name() == 'br' or self.get_name() == 'br.s'
 
 
 cdef class MethodDisassembler:
-
+    """ Represents a disassembler for a specific method.
+    
+    Notes:
+        dotnetpe (dotnetpefile.DotNetPeFile): The DotNetPeFile that produced the disassembler.
+        method_obj (net_row_objects.MethodDef): The method object that is being disassembled.  Right now its a MethodDef, leaving the door open to changes for emulation of dynamic methods.
+        max_stack (int): The method's maximum stack size.
+        __reader (net_structs.DotNetDataReader): a data reader object for the method.
+        flags (int): The method header's flags value.
+        header_size (int): The size of the method's header.
+        code_size (int): The size of the code in the method.
+        local_var_sig_tok (int): The token which represents the LocalSig for the method.
+        exception_blocks: (list[uint16_t, uint16_t, uint16_t, uint16_t, uint16_t, int]): A list of tuples representing exception blocks for the method, containing the following values: (clause_flags, try_offset, try_length, handler_offset, handler_length, class_token)
+    """
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, object method, bytes force_data=None):
-        """
-        Represents a method
-        :param streams: The .NET streams object corresponding to the binary
-        :param data: The data from the start of the method to the end of the binary
+        """ Constructor for MethodDisassembler - creates a new object.
+        
+        Args:
+            dotnetpe (dotnetpefile.DotNetPeFile): the DotNetPeFile that created the disassembler.
+            method (object): An object representing the method to disassemble.  Currently only can be MethodDef, but leaving the door open to others.
+            force_data (bytes): To force the disassembler to disassemble specific bytes instead of reading it from the method object.
+
+        Returns:
+            MethodDisassembler: A new disassembler for the specified method.
+
+        Raises:
+            net_exceptions.InvalidAssemblyException: Whenever there is an issue that prevents disassembly of the method.
         """
         self.dotnetpe = dotnetpe
         self.method_obj = method
@@ -301,23 +382,34 @@ cdef class MethodDisassembler:
             self.disassemble_loop()
 
     cpdef int get_max_stack_size(self):
+        """ Obtain the maximum stack size for the method.
+
+        Returns:
+            int: The maximum stack size for the method.
+        """
         return self.max_stack
 
     cpdef object get_method(self):
-        """
-        Obtain the method object being disassembled.
+        """ Obtain the method object being disassembled.
+
+        Returns:
+            object: The method object being disassembled.
         """
         return self.method_obj
 
     cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self):
-        """
-        Obtain the Assembly's DotNetPeFile object.
+        """ Obtain the DotNetPeFile that created the disassembler.
+
+        Returns:
+            dotnetpefile.DotNetPeFile: The PE file which created the disassembler.
         """
         return self.dotnetpe
 
     cpdef list get_list_of_instrs(self):
-        """
-        Obtains a list of instructions.  The instructions will be in order of instruction index.
+        """ Obtain a python list of net_cil_disas.Instruction objects.
+
+        Returns:
+            list[net_cil_disas.Instruction]: A python list of instruction objects that were disassembled.
         """
         cdef list result = list()
         cdef unsigned int i = 0
@@ -326,8 +418,11 @@ cdef class MethodDisassembler:
         return result
 
     cpdef tuple get_arg_token_properties(self, Instruction instr):
-        """
-        Obtains a instruction argument token's rid and table name.
+        """ Obtain the table and rid for a instruction's argument.
+        Mostly for internal use, possibly going to be removed eventually.
+
+        Returns:
+            tuple[str, int]: The table and index of a instruction's token argument.  None if invalid.
         """
         cdef bytes instr_args
         cdef int token
@@ -343,22 +438,23 @@ cdef class MethodDisassembler:
         return None, None
 
     cpdef int get_header_size(self):
-        """
-        Obtain the size of the beginning header in the method.
+        """ Obtain the size of the method's header.
+
+        Returns:
+            int: The size of the method's header.
         """
         return self.header_size
 
     cpdef int get_code_size(self):
-        """
-        Obtain the size of the code in bytes for a method.
+        """ Obtain the size of the method's code.
+
+        Returns:
+            int: The size of the method's code.
         """
         return self.code_size
 
     cdef void parse_header(self):
-        """
-        Parse the .NET method header
-        :param data: The data of the method
-        :return: None
+        """ Internal method to parse the method's header.
         """
         cdef int start
         cdef int val
@@ -482,10 +578,7 @@ cdef class MethodDisassembler:
                         break
 
     cdef void disassemble_loop(self):
-        """
-        Disassemble the instructions in the method
-        :param data: the method's data
-        :return: A list of instructions, otherwise InvalidAssemblyException
+        """ Internal method to parse the method's code.
         """
         cdef int index = 0
         cdef int instr_index = 0
@@ -557,37 +650,82 @@ cdef class MethodDisassembler:
         return self.instrs.size()
 
     def __getitem__(self, Py_ssize_t item):
+        """ Obtain an instruction by INDEX
+
+        Args:
+            item (Py_ssize_t): The index to obtain the instruction for.
+
+        Returns:
+            net_cil_disas.Instruction: The instruction corresponding to the provided index.
+        
+        Raises:
+            IndexError: If there is no instruction at item
         """
-        Obtain an instruction in the method by its INDEX.
-        """
+        if item < 0 or item >= len(self):
+            raise IndexError
         cdef Instruction result = <Instruction>self.instrs.at(item)
         return result
 
     cpdef Instruction get_instr_at_offset(self, int offset):
+        """ Obtain an Instruction at offset.
+
+        Args:
+            offset (int): The instruction offset to obtain
+
+        Returns:
+            net_cil_disas.Instruction: The obtained instruction, None if it doesnt exist.
         """
-        Obtain an instruction in the method by its offset within the method's code.
-        """
-        cdef pair[int, int] res = dereference(self.offsets.find(offset))
-        cdef Instruction result = <Instruction>self.instrs.at(res.second)
-        return <Instruction>result
+        cdef unordered_map[int, int].iterator it = self.offsets.find(offset)
+        cdef pair[int, int] res
+        cdef Instruction result = None
+        if it == self.offsets.end():
+            return None
+        res = dereference(it)
+        if res.second >= len(self):
+            return None
+        result = <Instruction>self.instrs.at(res.second)
+        return result
 
     cpdef int get_instr_offset(self, int instr_index):
+        """ Obtain an Instruction's offset at instr_index.
+
+        Args:
+            instr_index (int): The instruction index to obtain the offset for.
+
+        Returns:
+            int: The obtained instruction's offset, -1 if it doesnt exist.
         """
-        Obtain the offset of instruction at index instr_index.
-        """
+        if instr_index < 0 or instr_index >= len(self):
+            return -1
         cdef Instruction instr = <Instruction>self.instrs.at(instr_index)
         return instr.get_instr_offset()
 
-    cpdef unsigned int get_instr_index_by_offset(self, unsigned int instr_offset):
+    cpdef int get_instr_index_by_offset(self, unsigned int instr_offset):
+        """ Obtain an Instruction's index at instr_offset.
+
+        Args:
+            instr_index (int): The instruction offset to obtain the index for.
+
+        Returns:
+            int: The obtained instruction's index, -1 if it doesnt exist.
         """
-        Obtain the index of the instruction at offset instr_offset.
-        """
-        cdef pair[int, int] res = dereference(self.offsets.find(instr_offset))
+        cdef unordered_map[int, int].iterator it = self.offsets.find(instr_offset)
+        cdef pair[int, int] res
+        if it == self.offsets.end():
+            return -1
+        res = dereference(it)
         return res.second
 
     cpdef Instruction get_instr_at_index(self, int index):
+        """ Obtain an Instruction at index.
+
+        Args:
+            index (int): The instruction index to obtain
+
+        Returns:
+            net_cil_disas.Instruction: The obtained instruction, None if it doesnt exist.
         """
-        Obtains an Instruction at a specified index.
-        """
+        if index < 0 or index >= len(self):
+            return None
         cdef Instruction result = <Instruction>self.instrs.at(index)
         return result

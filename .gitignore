@@ -1,5 +1,5 @@
 *.c
-*.html
+dotnetutils/*.html
 *.h
 *.dep
 *.pdb
@@ -169,6 +169,5 @@ cython_debug/
 build/
 dnu_venv/
 
-*.html
 *.cpp
 *.c

@@ -10,6 +10,10 @@ from dotnetutils import net_exceptions
 import binascii
 
 cdef class DotNetDataReader:
+    """ A specialized reader with utilities to read popular .NET formats.
+
+        Mostly for internal use, functions very similar to a IO Stream with seek(), read() etc.
+    """
     def __init__(self, bytes data):
         self.__data = data
         self.__current_pos = 0
@@ -197,14 +201,12 @@ class DotNetResource:
         self.__name = name
 
     def get_name(self):
-        """
-        Get the resources name.
+        """ Get the resources name.
         """
         return self.__name
 
     def get_data(self):
-        """
-        Get the resource's data.
+        """ Get the resource's data.
         """
         return self.__data
 
@@ -358,8 +360,8 @@ class DotNetResourceSerializedData:
         return self.__data
 
 class DotNetResourceSet:
-    """
-    Represents a set of DotNetResources.
+    """ Represents a set of DotNetResources.
+        Utilities for parsing and representing various types of ManifestResources that dotnet may use.
     """
     def __init__(self, data, dotnetpe, force_name=None, debug=False):
         self.__reader = DotNetDataReader(data)

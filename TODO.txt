@@ -1,0 +1,8 @@
+TODO:
+- remove all raise Exception()
+- Change method names to use '::' notation instead of periods when splitting the class and method name.
+- Rework how instruction arguments are handled a bit.
+- Before to_bytes(), add something that cleans off any extra strings or other items from the heaps in order to keep binary size down.
+- double check that cctors arent being called twice.
+- Function graphing and control flow cleaning.
+- Fix various warnings related to sphinx docs.

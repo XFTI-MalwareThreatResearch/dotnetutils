@@ -14,9 +14,14 @@ from cpython.bytes cimport PyBytes_FromStringAndSize
 from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_SCN_CNT_CODE, IMAGE_OPTIONAL_HEADER32, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_ORDINAL_FLAG64, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_OPTIONAL_HEADER64, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_DATA_DIRECTORY, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_COR20_HEADER, IMAGE_BASE_RELOCATION, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64, IMAGE_DEBUG_DIRECTORY
 
 cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
-    """
-    NOTE: After running this method, dotnetpe will be stale.  Theres ways to fix this but they have downsides.
-    In general, you should reinitialize the dotnetpe with the newly returned data.
+    """ Inserts a blank user strings stream (#US) into the dotnetpe.
+        After running this method, you should discard the old DotNetPeFile object.
+
+    Args:
+        dotnetpe (dotnetpefile.DotNetPeFile): the dotnetpe to add to.
+    
+    Returns:
+        bytes: a bytes representation of the new dotnetpe, with a blank #US stream appended.
     """
     cdef bytearray new_exe_data
     cdef uint64_t metadata_offset
@@ -91,11 +96,7 @@ cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     return bytes(new_exe_data)
 
 cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, int sec_index):
-    """
-    Finds and fixes structures related to an image's resource directory.
-    :param rs_offset: the offset to the directory
-    :param rs_rva: the rva of the resource dir
-    :param orig_rs_offset: the original resource offset
+    """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.
     """
     cdef IMAGE_RESOURCE_DIRECTORY * rsrc_dir = NULL
     cdef uint64_t usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
@@ -120,14 +121,7 @@ cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t
         usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
 
 cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view, uint64_t addr, uint64_t old_userstrings_va, int userstrings_difference, int sec_index):
-    """
-    Fix an RVA accounting for new data
-    :param old_pe: the old pefile.PE object
-    :param new_data: the current new data
-    :param addr: The RVA to fix
-    :param old_userstrings_va: The RVA where the new data was inserted
-    :param userstrings_difference: The amount of data added
-    :return: A new RVA that accounts for new data.
+    """ Take an RVA, and obtain its "fixed" value.  The fixed value of an RVA is the RVA after accounting for the amount of bytes that will be added or subtracted by an operation.
     """
     cdef IMAGE_SECTION_HEADER old_section
     cdef bint passed_text = False

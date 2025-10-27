@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>dotnetutils.net_exceptions &#8212; dotnetutils  documentation</title>
+    <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../../_static/alabaster.css?v=27fed22d" />
+    <script src="../../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" />
+   
+  <link rel="stylesheet" href="../../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <h1>Source code for dotnetutils.net_exceptions</h1><div class="highlight"><pre>
+<div class="viewcode-block" id="DotNetUtilsException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DotNetUtilsException">[docs]</a>
+<span></span><span class="k">class</span><span class="w"> </span><span class="nc">DotNetUtilsException</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Generic Dotnetutils Exception&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EmulatorExecutionException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorExecutionException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorExecutionException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">emu_obj</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__emu_obj</span> <span class="o">=</span> <span class="n">emu_obj</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+    
+<div class="viewcode-block" id="EmulatorExecutionException.get_emu_obj">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorExecutionException.get_emu_obj">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_emu_obj</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__emu_obj</span></div>
+</div>
+
+    
+<div class="viewcode-block" id="EmulatorTimeoutException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorTimeoutException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorTimeoutException</span><span class="p">(</span><span class="n">EmulatorExecutionException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">emu_obj</span><span class="p">):</span>
+        <span class="n">EmulatorExecutionException</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">emu_obj</span><span class="p">,</span> <span class="s1">&#39;Emulator execution timed out.&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EmulatorEndExecutionException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorEndExecutionException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorEndExecutionException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">emu_obj</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Emulator end&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__emu_obj</span> <span class="o">=</span> <span class="n">emu_obj</span>
+    
+<div class="viewcode-block" id="EmulatorEndExecutionException.get_emu_obj">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorEndExecutionException.get_emu_obj">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_emu_obj</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__emu_obj</span></div>
+</div>
+
+
+<div class="viewcode-block" id="InvalidAssemblyException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidAssemblyException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidAssemblyException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Invalid IL assembly detected on method </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">hex</span><span class="p">(</span><span class="n">token</span><span class="p">)))</span></div>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidTokenException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Invalid token&quot;</span><span class="p">)</span>
+
+<div class="viewcode-block" id="InvalidPatchException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidPatchException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidPatchException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;attempted to patch a binary with an invalid value.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="InvalidVirtualAddressException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidVirtualAddressException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidVirtualAddressException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Attempted to supply an invalid virtual address&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="FeatureNotImplementedException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.FeatureNotImplementedException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">FeatureNotImplementedException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Attempted to use a functionality that is not yet implemented.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="CannotCompressSizeException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.CannotCompressSizeException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CannotCompressSizeException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Attempted to compress an invalid size&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="InvalidHeapNameException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidHeapNameException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidHeapNameException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;attempted to parse a heap that cannot be parsed by this library&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="InvalidArgumentsException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidArgumentsException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidArgumentsException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">expected</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">actual</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">expected</span> <span class="o">==</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">actual</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;invalid arguments&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;Invalid arguments: expected=</span><span class="si">{}</span><span class="s1">, actual=</span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">expected</span><span class="p">,</span> <span class="n">actual</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="DeserializationException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DeserializationException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DeserializationException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Failed to parse serialized object.&quot;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="InvalidHeaderException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidHeaderException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidHeaderException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Failed to process header. Method Token </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">hex</span><span class="p">(</span><span class="n">token</span><span class="p">)))</span></div>
+
+
+<div class="viewcode-block" id="InvalidMetadataException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidMetadataException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidMetadataException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Failed to process metadata.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ReconstructionFailedException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.ReconstructionFailedException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ReconstructionFailedException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Failed to reconstruct executable.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DisassemblyFailedException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DisassemblyFailedException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DisassemblyFailedException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Failed to disassemble method.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="ObjectTypeException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.ObjectTypeException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ObjectTypeException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Object does not have the expected type.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EncodingMismatchException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EncodingMismatchException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EncodingMismatchException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Object&#39;s encoding does not match what is expected.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="MethodTooLargeException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.MethodTooLargeException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MethodTooLargeException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Method too large to process.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DotNetIOException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DotNetIOException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DotNetIOException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Error during IO operation.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="OpcodeLookupException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.OpcodeLookupException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OpcodeLookupException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Could not find usable opcode in NET_OPCODE_DB.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="MethodLookupException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.MethodLookupException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MethodLookupException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">full_name</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;The method </span><span class="si">{}</span><span class="s1"> could not be found.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">full_name</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="InvalidBlockException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidBlockException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidBlockException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span> 
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;The .NET block is invalid (or has an unexpected structure).&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="OpcodeNotInitializedException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.OpcodeNotInitializedException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OpcodeNotInitializedException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;Attempted to call obtain_opcode on an unititialized opcode object.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NotADotNetFile">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.NotADotNetFile">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NotADotNetFile</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;The provided file is either corrupted or not a dotnet file.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="OperationNotSupportedException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.OperationNotSupportedException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OperationNotSupportedException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;The operation attempted is not currently supported.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="DotNetOverflowException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.DotNetOverflowException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DotNetOverflowException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;An .NET CIL instruction generated an overflow exception.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="InstructionNotSupportedException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InstructionNotSupportedException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InstructionNotSupportedException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">instr_name</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;An .NET CIL instruction is not supported by the emulator: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">instr_name</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="EmulatorSecurityException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorSecurityException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorSecurityException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">instr_string</span><span class="o">=</span><span class="s1">&#39;unknown&#39;</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;A .NET instruction could not be emulated for security purposes: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">instr_string</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="EmulatorTypeNotFoundException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorTypeNotFoundException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorTypeNotFoundException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">type_name</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;The type </span><span class="si">{}</span><span class="s1"> does not exist in the external types registry.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">type_name</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="EmulatorMethodNotFoundException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorMethodNotFoundException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorMethodNotFoundException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">full_name</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;The method </span><span class="si">{}</span><span class="s1"> could not be found.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">full_name</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="EmualatorMaxStackSizeViolated">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmualatorMaxStackSizeViolated">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmualatorMaxStackSizeViolated</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;The max stack size has been violated.&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EmulatorFailureException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorFailureException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorFailureException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;The emulator encountered an unexpected scenario and failed to emulate the targeted code.&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="EmulatorStackTypeUnknown">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorStackTypeUnknown">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorStackTypeUnknown</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj_type</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;An object with a unknown type (</span><span class="si">{}</span><span class="s1">) has been added to the stack.&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">obj_type</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="InvalidTokenException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidTokenException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidTokenException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">token_type</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;A token with value </span><span class="si">{}</span><span class="s1"> is invalid for type </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">hex</span><span class="p">(</span><span class="n">value</span><span class="p">),</span> <span class="n">token_type</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="InvalidSignatureException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidSignatureException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvalidSignatureException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sig_type</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;Attempted to parse an invalid signature of type </span><span class="si">{}</span><span class="s1">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">sig_type</span><span class="p">))</span></div>
+
+
+<div class="viewcode-block" id="EmulatorMethodBreakException">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.EmulatorMethodBreakException">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EmulatorMethodBreakException</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s1">&#39;This exception is for internal use only.  Method execution has been stopped before ret instruction.&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="TooManyMethodParameters">
+<a class="viewcode-back" href="../../api/dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.TooManyMethodParameters">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">TooManyMethodParameters</span><span class="p">(</span><span class="n">DotNetUtilsException</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method_param_count</span><span class="p">):</span>
+        <span class="ne">Exception</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="sa">f</span><span class="s2">&quot;Attempted to parse a DotNet file with </span><span class="si">{</span><span class="n">method_param_count</span><span class="si">}</span><span class="s2"> method params&quot;</span><span class="p">)</span></div>
+
+</pre></div>
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../../index.html">dotnetutils</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../api/modules.html">dotnetutils</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../../index.html">Documentation overview</a><ul>
+  <li><a href="../index.html">Module code</a><ul>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, IBM.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+    </div>
+
+    
+
+    
+  </body>
+</html>

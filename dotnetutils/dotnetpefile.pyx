@@ -24,14 +24,27 @@ from cpython.bytes cimport PyBytes_FromStringAndSize
 logger = getLogger(__name__)
 
 def get_offset_sort_func(obj):
+    """ Quick helper function for reconstruct_executable()
+    """
     return obj.get_offset()
 
 cdef class PeFile:
-    """
-    Small custom PeFile implementation.
+    """Small custom PeFile implementation.
     Designed to ensure less python dependencies.
+    
+    Notes:
+        __file_data (bytearray): Byte representation of the PE file.
+        __sections (list[dict]): A list of IMAGE_SECTION_HEADER items in python dict format.
     """
     def __cinit__(self, bytes file_data):
+        """Constructor method for PeFile.  Takes the PE file's byte data as an argument.
+        
+        Args:
+            file_data (bytes): Byte data of the PE file.
+        
+        Returns:
+            PeFile: A PeFile object created from file_data.
+        """
         self.__file_data = bytearray(file_data)
         self.__sections = list()
         PyObject_GetBuffer(self.__file_data, &self.__file_view, PyBUF_ANY_CONTIGUOUS)
@@ -40,7 +53,12 @@ cdef class PeFile:
     def __dealloc__(self):
         PyBuffer_Release(&self.__file_view)
 
-    cdef __add_section(self, IMAGE_SECTION_HEADER * sec_hdr):
+    cdef void __add_section(self, IMAGE_SECTION_HEADER * sec_hdr):
+        """Internal method used to add an IMAGE_SECTION_HEADER to the internal python list of sections.
+        
+        Args:
+            sec_hdr (IMAGE_SECTION_HEADER*): A pointer to the section header object to add.
+        """
         cdef dict actually_added = sec_hdr[0]
         if 'PhysicalAddress' in actually_added['Misc']:
             #Strip out PhysicalAddress since we arent dealing with object files here.
@@ -53,6 +71,8 @@ cdef class PeFile:
         self.__sections.append(actually_added)
 
     cdef void __parse(self) except *:
+        """Internal method to parse the PE File.
+        """
         cdef IMAGE_DOS_HEADER * dos_header = <IMAGE_DOS_HEADER*>self.get_data_view()
         cdef IMAGE_NT_HEADERS32 * nt_headers = NULL
         if dos_header.e_magic != 0x5A4D:
@@ -68,6 +88,8 @@ cdef class PeFile:
             self.__parse_32()
 
     cdef void __parse_64(self):
+        """Internal method to parse a 64 bit PE file.
+        """
         cdef IMAGE_NT_HEADERS64 *nt_headers = <IMAGE_NT_HEADERS64*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
         cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
         cdef unsigned int sechdr_offset
@@ -80,6 +102,8 @@ cdef class PeFile:
             sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
 
     cdef void __parse_32(self):
+        """Internal method to parse a 32 bit PE file.
+        """
         cdef IMAGE_NT_HEADERS32 *nt_headers = <IMAGE_NT_HEADERS32*> (<uintptr_t>self.get_data_view() + self.__nt_headers_offset)
         cdef IMAGE_SECTION_HEADER * sec_hdr = NULL
         cdef unsigned int sechdr_offset
@@ -92,8 +116,13 @@ cdef class PeFile:
             sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
 
     cpdef uint64_t get_offset_from_rva(self, uint64_t rva):
-        """
-        Obtain the file offset from a RVA.
+        """Obtain a PE file offset from a RVA.
+        
+        Args:
+            rva (uint64_t): The RVA to obtain the offset for.
+        
+        Returns:
+            uint64_t: <uint64_t>-1 if not found, the file offset for the RVA otherwise.
         """
         cdef IMAGE_SECTION_HEADER sec_hdr
         cdef int sec_size
@@ -107,8 +136,13 @@ cdef class PeFile:
         return <uint64_t>-1
 
     cpdef uint64_t get_rva_from_offset(self, uint64_t offset):
-        """
-        Obtain the RVA from a file offset.
+        """Obtain a PE RVA from a file offset.
+        
+        Args:
+            rva (uint64_t): The file offset to obtain the RVA for.
+        
+        Returns:
+            uint64_t: <uint64_t>-1 if not found, the file RVA for the file offset otherwise.
         """
         cdef IMAGE_SECTION_HEADER sec_hdr
         cdef dict sec_hdr_dict
@@ -120,8 +154,13 @@ cdef class PeFile:
         return <uint64_t>-1
 
     cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, unsigned int idx):
-        """
-        Obtain a data directory by index within the IMAGE_DATA_DIRECTORY array.
+        """Obtain an IMAGE_DATA_DIRECTORY by its index within the PE file's optional header.
+        
+        Args:
+            idx (unsigned int): The index of the data directory within the PE Optional header.
+        
+        Returns:
+            IMAGE_DATA_DIRECTORY: A blank data directory if not found, otherwise the data directory at idx.
         """
         cdef IMAGE_NT_HEADERS32 * nt_headers32 = NULL
         cdef IMAGE_NT_HEADERS64 * nt_headers64 = NULL
@@ -140,45 +179,63 @@ cdef class PeFile:
             return nt_headers32.OptionalHeader.DataDirectory[idx]
 
     cpdef bint is_64bit(self):
-        """
-        Returns True if the file is 64 bit, False otherwise.
+        """Is the PE File 64 bit?
+
+        Returns:
+            bool: True if the PE file is 64-bit, False otherwise.
         """
         return self.__is_64bit
 
     cpdef list get_sections(self):
-        """
-        Return a list of section headers.
+        """Obtain a list of python objects (dicts) representing the sections.
+
+        Returns:
+            list: A list of sections represented by python objects.
         """
         return self.__sections
 
     cpdef int get_elfanew(self):
-        """
-        Obtain the value of MS_DOS_HEADER.e_lfanew.
+        """Obtain the value of IMAGE_DOS_HEADER.e_lfanew.
+
+        Returns:
+            int: The value of IMAGE_DOS_HEADER.e_lfanew
         """
         return self.__nt_headers_offset
 
     cdef uintptr_t get_data_view(self):
-        """
-        Obtain a pointer to the underlying file data.
-        Mostly for internal use.
+        """Obtain a uintptr_t representing the data view for the PE file's data.
+
+        Returns:
+            uintptr_t: A READ ONLY poitner to the file's data.
         """
         return <uintptr_t>self.__file_view.buf
 
     cpdef bytes get_file_data(self):
-        """
-        Obtain a byte copy of the exe data.
+        """Obtain a byte representation of the PE file's data.
+        Returns:
+            bytes: A Byte representation of the PE file's data.
         """
         return bytes(self.__file_data)
 
     cpdef uint64_t get_physical_by_rva(self, uint64_t rva):
-        """
-        Same as PeFile.get_offset_from_rva()
+        """See PeFile.get_offset_from_rva()
+
+        Args:
+            rva (uint64_t): See PeFile.get_offset_from_rva()
+    
+        Returns:
+            uint64_t: See PeFile.get_offset_from_rva()
         """
         return self.get_offset_from_rva(rva)
 
     cdef int get_sec_index_va(self, uint64_t va_addr):
-        """
-        Obtain the index of the section corresponding to va_addr
+        """OObtain the section header index that corresponds to a RVA.
+
+        Args:
+            va_addr (uint64_t): The VA to obtain the section header index for.
+
+        Returns:
+            int: -1 if not found, the index of the section header corresponding to va_addr otherwise.
         """
         cdef dict sec_hdr = None
         cdef int x = 0
@@ -189,8 +246,13 @@ cdef class PeFile:
         return -1
 
     cdef int get_sec_index_phys(self, uint64_t offset):
-        """
-        Obtain the index of a IMAGE_SECTION_HEADER based on a physical offset that corresponds to it.
+        """OObtain the section header index that corresponds to a offset.
+
+        Args:
+            offset (uint64_t): The VA to obtain the section header index for.
+
+        Returns:
+            int: -1 if not found, the index of the section header corresponding to offset otherwise.
         """
         cdef dict sec_hdr = None
         cdef int x = 0
@@ -201,17 +263,18 @@ cdef class PeFile:
         return -1
 
     cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index):
-        """
-        Anytime you make any changes to the binary that results in the size of the binary being changed, you should call this function before doing so.
+        """Anytime you make any changes to the binary that results in the size of the binary being changed, you should call this function before doing so.
         It will go through and modify all the VAs in the binary to account for the changes.
         At the end of this function, get_exe_data() on the dotnetpe should have the fixed RVAs.
-        :param va_addr:  The va_addr where the changes occur.
-        :param difference: The difference in the binary once the changes are complete.
-        :param dpe: The dotnetpe instance to modify
-        :param in_streams: Whether the changes happen before or within the .NET metadata sections.  This is important because it instructs update_va() to update .NET metadata related sections as well.
-        :param do_reconstruction:  Should the executable be reconstructed after VA updating is finished?  This usually should be true when editing streams or code, however if you are adding the data yourself to the binary you will want this to be False.
-        :param stream_name: stream name that youre editing, if applicable.  can be None
-        :param sec_index: index of the section where the data resides.
+
+        Args:
+            va_addr (uint64_t):  The va_addr where the changes occur.
+            difference (int): The difference in the binary once the changes are complete.
+            dpe (DotNetPeFile): The dotnetpe instance to modify
+            in_streams (bool): Whether the changes happen before or within the .NET metadata sections.  This is important because it instructs update_va() to update .NET metadata related sections as well.
+            do_reconstruction (bytes):  Should the executable be reconstructed after VA updating is finished?  This usually should be true when editing streams or code, however if you are adding the data yourself to the binary you will want this to be False.
+            stream_name (bool): stream name that youre editing, if applicable.  can be None
+            sec_index (int): index of the section where the data resides.
         """
         if difference == 0:
             return
@@ -225,8 +288,13 @@ cdef class PeFile:
             dpe.reconstruct_executable()
 
     cdef void __update_metadata_rvas(self, uint64_t va_addr, int difference, DotNetPeFile dpe):
-        """
-        Updates the RVAs within the metadata table in a similar fashion to update_va()
+        """Updates the RVAs within the metadata table in a similar fashion to update_va()
+        Internal use for the most part.
+
+        Args:
+            va_addr (uint64_t): The RVA to check
+            difference (int): the difference in file sizen after the change.
+            dpe (DotNetPeFile): The current DotNetPeFile object.
         """
         cdef net_row_objects.MethodDef mdef_obj = None
         cdef net_row_objects.RowObject rva_obj = None
@@ -248,7 +316,6 @@ cdef class PeFile:
                 if cobj.get_raw_value() > va_addr: #TODO: should this be >=?
                     cobj.set_raw_value(cobj.get_raw_value() + difference)
 
-    #TODO: add support for exports
     cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index):
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
         cdef Py_buffer new_exe_view
@@ -782,11 +849,28 @@ cdef class PeFile:
         #TODO: make sure this can properly handle EXE files that have multiple fake heaps
 
 cdef class DotNetPeFile:
+    """Represents a DotNetPeFile.  Contains all methods used to access other parts of the .NET metadata structure.
+
+    Notes:
+        file_path (str): The file path of the executable, if set.
+        exe_data (bytes): A byte representation of the current exe data.
+        pe (PeFile): A PeFile object representing the executable.
+        __cor_header_offset (uint64_t): The offset of the IMAGE_COR20_HEADER
+        metadata_dir (MetadataDirectory): A metadata directory object representing the executable's Metadata.
+        original_exe_data (bytes): A holder for the unmodified exe data.
+        __versioninfo_str (str): Used to hold the version info string obtained by DotNetPeFile.get_product_version().
+    """
     def __init__(self, str file_path='', bytes pe_data=bytes(), bint no_processing=False):
-        """
-        Represents a .NET pe file.
-        :param file_path: The file path to the file
-        :param pe_data: The raw bytes of the PE file
+        """ Create a new DotNetPeFile
+
+        Args:
+            file_path (str): The file path of the PE file.  Optional if pe_data is provided.
+            pe_data (bytes): Bytes representing the PE file.  Optional if file_path is provided.
+            no_processing (bool): Should DotNetUtils run processing on the metadata or just read it?  If processing is disabled, some functions may not return correct values.
+        
+        Returns:
+            DotNetPeFile: A DotNetPeFile, raises net_exceptions.NotADotNetFile if there is an error parsing.
+
         """
         cdef IMAGE_DATA_DIRECTORY com_table_directory
         if  len(file_path) == 0 and len(pe_data) == 0:
@@ -811,70 +895,84 @@ cdef class DotNetPeFile:
         except IndexError:
             raise net_exceptions.NotADotNetFile
         self.__cor_header_offset = self.pe.get_offset_from_rva(com_table_directory.VirtualAddress)
-        self.added_strings = list()
         self.original_exe_data = bytes(self.exe_data)
         self.metadata_dir = net_metadata.MetaDataDirectory(self)
         self.__versioninfo_str = None
-        self.debug_counter = 0
         if not self.metadata_dir.is_valid_directory:
             return
         self.metadata_dir.process_metadata_heap(no_processing)
 
     cpdef uint64_t get_cor_header_offset(self):
-        """
-        obtain the offset of the IMAGE_COR20_HEADER
+        """ Obtain the file offset of the IMAGE_COR20_HEADER structure.
+
+        Returns:
+            uint64_t: The offset of the IMAGE_COR20_HEADER structure.
         """
         return self.__cor_header_offset
 
     cpdef bytes get_original_exe_data(self):
-        """
-        Obtain the original exe data, before any manipulation.
+        """ Obtain the original exe's data before any patching etc.
+
+        Returns:
+            bytes: The original data representing the PE file.
         """
         return self.original_exe_data
 
     cpdef bytes get_exe_data(self):
-        """
-        Obtain the current exe data dotnetutils is parsing / manipulating
-        NOTE: This can return an invalid PE if reconstruct_executable() wasnt called after change_value() or patching was done.
+        """ Obtain the current exe's data.  You should call DotNetPeFile.reconstruct_executable() in most cases before calling this.
+
+        Returns:
+            bytes: The current exe's data, including any patched bytes strings etc.
         """
         return self.exe_data
 
     cpdef net_metadata.MetaDataDirectory get_metadata_dir(self):
-        """
-        Obtain the metadata directory.
+        """ Obtain the metadata directory.
+
+        Returns:
+            net_metadata.MetadataDirectory: The metadata directory object for the executable.
         """
         return self.metadata_dir
 
     cpdef void add_string(self, str string) except *:
-        """
-        Marks a string to be added into the #Strings heap.  The string is not added at any specific location.
-        Intended to be used for adding markers that a deobfuscator has proccessed a file.
+        """ Appends a string onto the executable's Strings heap.
+
+        Args:
+            string (str): The string to add.  Must be able to be encoded in UTF-8.
         """
         self.get_heap('#Strings').append_item(string.encode('utf-8'))
 
     cdef void set_exe_data(self, bytes exe_data):
-        """
-        Internal use only.  Sets exe_data property and reinitializes pe property.
+        """ Used internally to update the exe_data attribute as well as the PeFile.
+
+        Args:
+            exe_data (bytes): The new exe's bytes.
         """
         self.exe_data = bytes(exe_data)
         self.pe = PeFile(exe_data)
 
     cpdef PeFile get_pe(self):
-        """
-        Obtains a PeFile object representing the current executable.
+        """ Obtain an object representing the current exe's PeFile structure.
+
+        Returns:
+            PeFile: A PeFile object representing the current executable.
         """
         return self.pe
 
     cpdef IMAGE_COR20_HEADER get_cor20_header(self):
-        """
-        Obtains the COR20 header.
+        """ Obtain the IMAGE_COR20_HEADER structure.
+
+        Returns:
+            IMAGE_COR20_HEADER: The IMAGE_COR20_HEADER structure for the executable.
         """
         return self.metadata_dir.get_net_header()
 
     cpdef int get_processor_bits(self):
-        """
-        Determines what procesor bits (32 or 64) the .NET Assembly actually runs as.
+        """Determines what procesor bits (32 or 64) the .NET Assembly actually runs as.
         see dnSpy's dnSpy.Decompiler.TargetFrameworkUtils.GetArchString
+        
+        Returns:
+            int: 0 if an error occurred, otherwise 32 if the file runs on 32-bit and 64 if it runs on 64-bit.
         """
         cdef int c
         c = 0
@@ -896,10 +994,13 @@ cdef class DotNetPeFile:
         return 0
 
     cpdef list get_methods_by_name(self, bytes name):
-        """
-        Get methods matching name
-        :param name: the name of the methods you would like to obtain
-        :return: A list of methods matching name
+        """ Obtains a list of MethodDef objects matching a provided name.
+
+        Args:
+            name (bytes): The name of the method(s) to search for.
+        
+        Returns:
+            list[MethodDef]: a list of MethodDef objects corresponding to name
         """
         cdef net_table_objects.MethodDefTable mtable
         mtable = <net_table_objects.MethodDefTable>self.get_metadata_table('MethodDef')
@@ -908,18 +1009,24 @@ cdef class DotNetPeFile:
         return list()
 
     cpdef net_row_objects.MethodDef get_method_by_rid(self, int rid):
-        """
-        Obtains a method by RID
-        :param rid: the RID of the method
-        :return: the method matching RID
+        """ Obtains a MethodDef matching a particular RID.
+
+        Args:
+            rid (int): The Method RID to obtain.
+        
+        Returns:
+            MethodDef: the MethodDef object representing the Method at table RID rid.
         """
         return self.get_metadata_table('MethodDef').get(rid)
 
     cpdef list get_methods_by_full_name(self, bytes full_name):
-        """
-        Obtains a list of methods by matching its full name
-        :param full_name: the full name of the method
-        :return: A list of methods matching the full_name
+        """ Obtains a list of MethodDef objects matching a provided full name. The full name must include the namespace.
+
+        Args:
+            full_name (bytes): The full name, including namespace, of the method(s) to search for.
+        
+        Returns:
+            list[MethodDefOrRef]: a list of MethodDefOrRef objects corresponding to full_name.
         """
         cdef bytes full_type_name
         cdef bytes method_name
@@ -941,6 +1048,7 @@ cdef class DotNetPeFile:
             if method_type:
                 return method_type.get_methods_by_name(method_name)
         # check through memberrefs to be safe
+        #TODO: update this to use get_member_refs().
         results = list()
         if self.has_metadata_table('MemberRef'):
             for member in self.get_metadata_table('MemberRef'):
@@ -949,16 +1057,24 @@ cdef class DotNetPeFile:
         return results
 
     cpdef net_row_objects.TypeRef get_typeref_by_full_name(self, bytes full_name):
-        """
-        Obtains a net_row_objects.TypeRef value matching the full name "full_name"
+        """ Obtains a TypeRef by its full name, including namespace.
+
+        Args:
+            full_name (bytes): The full name, including namespace, of the TypeRef to search for.
+        
+        Returns:
+            net_row_objects.TypeRef: A TypeRef corresponding to full_name, None if not found.
         """
         return self.get_metadata_table('TypeRef').get_type_by_full_name(full_name)
 
     cpdef net_table_objects.TableObject get_metadata_table(self, str name):
-        """
-        Obtain a table from the .NET metadata tables.
-        :param name: the name of the table
-        :return: A TableObject that represents the table, or None if it doesn't exist.
+        """ Obtains a TableObject corresponding to name which represents a single metadata Table.
+
+        Args:
+            name (str): The name of the table to obtain.
+        
+        Returns:
+            net_table_objects.TableObject: The metadata table object corresponding to name, None if it doesnt exist.
         """
         cdef net_processing.MetadataTableHeapObject mheap = <net_processing.MetadataTableHeapObject>self.get_heap('#~')
         if mheap is not None:
@@ -966,8 +1082,13 @@ cdef class DotNetPeFile:
         return None
     
     cpdef bint has_metadata_table(self, str name):
-        """
-        Check if the binary has a metadata table denoted by Name.
+        """ Informs the user whether or not a metadata table name exists in the executable
+
+        Args:
+            name (bytes): The name of the metadata table to check for.
+        
+        Returns:
+            bool: True if the table exists, False otherwise.
         """
         cdef net_processing.MetadataTableHeapObject mheap = <net_processing.MetadataTableHeapObject>self.get_heap('#~')
         if mheap is not None:
@@ -975,31 +1096,44 @@ cdef class DotNetPeFile:
         return False
 
     cpdef net_processing.HeapObject get_heap(self, str name):
-        """
-        Obtain a heap by name
-        :param name: name of the heap
-        :return: A Stream object
+        """ Obtains a HeapObject representing a parsed heap within the .NET metadata directory.
+
+        Args:
+            name (str): The name of the heap to obtain.
+        
+        Returns:
+            net_processing.HeapObject: a HeapObject corresponding to name, None if it doesnt exist.
         """
         if name == '#-':
             return self.get_metadata_dir().get_heap('#~')
         return self.get_metadata_dir().get_heap(name)
     
     cpdef dict get_heaps(self):
-        """
-        Obtains a dictionary Dict[heap name, heap object] representing all known heaps in the assembly.
+        """ Obtains a dictionary representing all heaps in the executable.
+
+        Returns:
+            dict[str, net_processing.HeapObject]: A dict containing all the heaps in the executable, keyed by name.
         """
         return self.get_metadata_dir().get_heaps()
 
     cpdef bint has_heap(self, str name):
+        """ Informs the user whether or not a heap exists within an executable.
+
+        Args:
+            name (str): The name of the heap to check.
+        
+        Returns:
+            bool: True if the heap exists, False otherwise.
         """
-        Return True if a heap 'name' exists in the Assembly.
-        """
+        if name == '#-':
+            return '#~' in self.get_metadata_dir().get_heaps()
         return name in self.get_metadata_dir().get_heaps()
 
     cpdef list get_user_strings(self):
-        """
-        Obtains all user strings.  User strings are strings used within the program.
-        :return: A list of user strings
+        """ Obtains a list of referenced user strings.  If methods are encrypted, this may return no strings.
+
+        Returns:
+            list[bytes]: A list containing all the items of the #US heap that are referenced by code.
         """
         cdef net_processing.UserStringsHeapObject stream = <net_processing.UserStringsHeapObject>self.get_heap('#US')
         if stream is not None:
@@ -1007,9 +1141,10 @@ cdef class DotNetPeFile:
         return list()
 
     cpdef list get_strings(self):
-        """
-        Obtains all normal strings.  strings are used in the metadata tables.
-        :return: A list of strings
+        """ Obtains a list of metadata table strings.
+
+        Returns:
+            list[bytes]: A list containing all strings in the #Strings heap.
         """
         cdef net_processing.StringHeapObject stream = <net_processing.StringHeapObject> self.get_heap('#Strings')
         if stream is not None:
@@ -1017,16 +1152,25 @@ cdef class DotNetPeFile:
         return list()
 
     cpdef bint has_user_string(self, bytes string):
-        """
-        Returns True if 'string' exists within the #US stream.
-        If string is bytes, it should be utf-16le encoded.
+        """ Informs the user whether a user string string exists in the binary.
+        See DotNetPeFile.get_user_strings() for caveats.
+
+        Args:
+            string (bytes): A UTF-16LE encoded string to check for.
+
+        Returns:
+            bool: True if the string exists within #US, False otherwise.
         """
         return string in self.get_user_strings()
 
     cpdef bint has_string(self, bytes string):
-        """
-        Returns True if 'string' exists within the #Strings stream.
-        If string is bytes, it should be utf-8 encoded.
+        """ Informs the user whether a string exists in the binary.
+
+        Args:
+            string (bytes): A UTF-8 encoded string to check for.
+
+        Returns:
+            bool: True if the string exists within #Strings, False otherwise.
         """
         cdef net_processing.StringHeapObject string_heap = self.get_heap('#Strings')
         cdef bytes item = string
@@ -1035,9 +1179,10 @@ cdef class DotNetPeFile:
         return string_heap.has_item(item)
 
     cpdef list get_resources(self):
-        """
-        Obtains a list of resources
-        :return: a list of DotNetResourceSet objects
+        """ Obtains a list of resources referenced by ManifestResources.
+
+        Returns:
+            list[net_structs.DotNetResourceSet]: A list containing python representations of all resources in the .NET metadata.
         """
         cdef list results
         cdef net_table_objects.TableObject resources
@@ -1068,8 +1213,10 @@ cdef class DotNetPeFile:
         return results
 
     cpdef bytes get_resource_by_name(self, bytes name):
-        """
-        Obtain a ManifestResource by its name.
+        """ Obtain a ManifestResource's data by name.
+
+        Returns:
+            bytes: The resource data corresponding to name, None if it doesnt exist.
         """
         cdef list resources = self.get_resources()
         for rsrc_obj in resources:
@@ -1079,8 +1226,10 @@ cdef class DotNetPeFile:
         return None
 
     cpdef list get_exported_types(self):
-        """
-        Obtains a list of all types that are exported for access outside the binary.
+        """ Obtains a list of all exported TypeDefs in the assembly.
+
+        Returns:
+            list[net_row_objects.TypeDef]: A list containing python representations of all exported TypeDefs in the assembly.
         """
         cdef net_row_objects.TypeDef tdef
         cdef int flags
@@ -1094,10 +1243,13 @@ cdef class DotNetPeFile:
         return result
 
     def find_methods_by_regex(self, regex: re.Pattern):
-        """
-        Obtains methods by regex
-        :param regex: the regex to use (re.Compile only)
-        :return: A list of methods matching regex.
+        """ Obtains a list of methods matching a provided regex pattern.
+
+        Args:
+            regex (re.Pattern): The regex pattern to match
+
+        Returns:
+            list[net_row_objects.MethodDef]: A list containing all MethodDef objects that match regex.
         """
         cdef list results
         cdef net_row_objects.MethodDef method
@@ -1113,10 +1265,13 @@ cdef class DotNetPeFile:
         return results
 
     cpdef list get_types_by_name(self, bytes type_name):
-        """
-        Obtains a list of types by name
-        :param type_name: the name of the type
-        :return: a list of TypeDef objects matching type_name
+        """ Obtains a list of TypeDefs matching type_name
+
+        Args:
+            type_name (bytes): The type name to search for.
+
+        Returns:
+            list[net_row_objects.TypeDef]: A list containing all TypeDef objects that match name.
         """
         cdef net_table_objects.TypeDefTable table
         table = <net_table_objects.TypeDefTable>self.get_metadata_table('TypeDef')
@@ -1125,10 +1280,14 @@ cdef class DotNetPeFile:
         return list()
 
     cpdef net_row_objects.TypeDefOrRef get_type_by_full_name(self, bytes type_full_name):
-        """
-        Obtains a type by full name
-        :param type_full_name: the full name of the type
-        :return: a TypeDef object matching type_full_name
+        """ Obtains a TypeDef or TypeRef (TypeDefOrRef) object that corresponds to type_full_name.
+        The type_full_name must include the namespace.
+
+        Args:
+            type_full_name (bytes): The full type name, including namespace, to search for.
+
+        Returns:
+            list[net_row_objects.TypeDefOrRef]: A list containing all TypeDefOrRef objects that match type_full_name.
         """
         cdef net_row_objects.TypeDef test
         cdef net_table_objects.TypeDefTable tdeftable
@@ -1144,9 +1303,11 @@ cdef class DotNetPeFile:
         return None
 
     cpdef bytes reconstruct_executable(self) except *:
-        """
-        Patches in any changes to the metadaata heaps into the executable that can be obtained using get_exe_data().
-        Usually called automatically by update_va(), but there are some cases where it may be needed to call it.
+        """ Reconstructs the executable, accounting for any changes to the .NET metadata directory.
+            Heap object changes will call this automatically.  It should be called after any change to the metadata directory.
+
+        Returns:
+            bytes: The fixed up bytes representation of the PE file.  Also obtainable through DotNetPeFile.get_exe_data() once this method is called.
         """
         cdef bytearray new_exe_data = bytearray(self.get_exe_data())
         cdef list heaps_by_offset = list()
@@ -1175,16 +1336,24 @@ cdef class DotNetPeFile:
         return result
 
     cpdef int delete_user_string(self, unsigned int us_index):
+        """ Deletes a user string at us_index
+
+        Args:
+            us_index (unsigned int): The #US index to delete.
+
+        Returns:
+            int: The difference in size of the #US heap once us_index is deleted.
         """
-        Handles deletion of a user string.  Caller needs to handle instances where the string itself is used, everything else should be handled.
-        Returns the difference in bytes between the new size of the #US heap and the previous size.  This allows the caller to patch up the binary using net_patch.
-        """
-        self.get_heap('#US').del_item(<int>us_index)
+        return self.get_heap('#US').del_item(<int>us_index)
 
     cpdef list get_user_string_usages(self, unsigned long us_index):
-        """
-        Useful for deleting strings that are used multiple times throughout the binary.
-        Returns references of the strings in the form of (method_name, instr offset)
+        """ Obtains a list of XREFS for #US at us_index.
+
+        Args:
+            us_index (unsigned long): The #US index to obtain references for.
+
+        Returns:
+            list[int, int]: A list of tuples containing the metadata token and the instruction offset for string references.
         """
         cdef list usages
         cdef net_row_objects.MethodDef method
@@ -1204,12 +1373,17 @@ cdef class DotNetPeFile:
                 if instr.get_name() == 'ldstr':
                     token = int.from_bytes(instr.get_arguments()[:3], 'little')
                     if token == us_index:
-                        usages.append((method.get_full_name(), instr.get_instr_offset()))
+                        usages.append((method.get_token(), instr.get_instr_offset()))
         return usages
 
     cpdef void patch_instruction(self, net_row_objects.MethodDef method_obj, bytes patch_bytes, unsigned long instr_offset, unsigned long orig_size) except *:
-        """
-        Patch an instruction using byte manipulation.
+        """ Patch a method's code.
+
+        Args:
+            method_obj (net_row_objects.MethodDef): The method to patch.
+            patch_bytes (bytes): The bytes to patch in.
+            instr_offset (unsigned long): The instruction method to start patching at.
+            orig_size (unsigned long): The original code's size.
         """
         cdef net_cil_disas.MethodDisassembler disas = None
         cdef uint64_t rva = 0
@@ -1228,17 +1402,21 @@ cdef class DotNetPeFile:
             self.set_exe_data(exe_data[:patch_offset] + patch_bytes + exe_data[patch_offset + orig_size:])
 
     cpdef net_row_objects.MethodDef get_entry_point(self):
-        """
-        Obtains an object representing the file's entry point.
+        """ Obtains a MethodDef representing the managed entrypoint of the executable.
+
+        Returns:
+            net_row_objects.MethodDef: A MethodDef object representing the executable's entry point, or None if it doesnt exist.
         """
         try:
             return self.get_token_value(self.metadata_dir.get_net_header().EntryPoint.EntryPointToken)
         except net_exceptions.InvalidTokenException:
             return None
 
-    cpdef set_entry_point(self, unsigned int ep_token):
-        """
-        Sets metadata token "ep_token" as the entry point.
+    cpdef void set_entry_point(self, unsigned int ep_token):
+        """ Patches the executable to change the entry point to ep_token
+
+        Args:
+            ep_token (unsigned int): The new entrypoint's metadata token.
         """
         cdef IMAGE_COR20_HEADER new_net_header = self.metadata_dir.get_net_header()
         cdef bytes new_cor_bytes
@@ -1251,10 +1429,13 @@ cdef class DotNetPeFile:
         self.set_exe_data(new_exe_data)
 
     cpdef object get_token_value(self, unsigned long token):
-        """
-        Obtain a token's DotNetUtils representation.
-        :param token: The token to process
-        :return: The token's corresponding object.
+        """ Obtains a python representation of a metadata token.
+
+        Args:
+            token (unsigned long): The metadata token to obtain.
+
+        Returns:
+            object: Can either be a RowObject or a bytes object.  A bytes object is only returned if the token maps to the #US heap.  None if not found.
         """
         cdef str tbl_name
         cdef int table_rid
@@ -1274,9 +1455,11 @@ cdef class DotNetPeFile:
             return None
 
     cpdef str get_product_version(self):
-        """
-        Obtains ProductVersion from the StringTable.
-        This is used by some obfuscators to decrypt strings.
+        """ Obtains ProductVersion from the PE's string table.  Used in some obfuscators for string decryption.
+        TODO: Remove pefile.PE dependency.
+
+        Returns:
+            str: The PE's ProductVersion string.
         """
         #this is used so little times that we may as well just use PeFile for it.
         #TODO: Eventually remove this dependency for pefile.
@@ -1293,11 +1476,16 @@ cdef class DotNetPeFile:
         return self.__versioninfo_str
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path='', bytes pe_data=bytes(), bint dont_process=False):
+    """ Obtains a DotNetPeFile from either a file_path or pe_data. 
+
+    Args:
+        file_path (str): The filepath for the PE file.  Optional if pe_data is valid.
+        pe_data (bytes): the PE's byte representation.  Optional if file_path is valid.
+
+    Returns:
+        dotnetpefile.DotNetPeFile: A DotNetPeFile representing the inputted executable, None if invalid.
     """
-    Helper function - creates and returns a dotnetpefile object
-    Handles certain errors by returning None.
-    """
-    cdef DotNetPeFile dotnetpe
+    cdef DotNetPeFile dotnetpe = None
     try:
         dotnetpe = DotNetPeFile(file_path, pe_data, no_processing=dont_process)
         if not dotnetpe.metadata_dir.is_valid_directory:

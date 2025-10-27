@@ -92,7 +92,7 @@ cdef class MethodDisassembler:
 
     cpdef int get_instr_offset(self, int instr_index)
 
-    cpdef unsigned int get_instr_index_by_offset(self, unsigned int instr_offset)
+    cpdef int get_instr_index_by_offset(self, unsigned int instr_offset)
 
 
-cpdef get_total_method_size(data)
+cpdef unsigned long get_total_method_size(bytes data)

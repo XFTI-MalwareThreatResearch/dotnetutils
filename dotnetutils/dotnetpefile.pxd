@@ -23,7 +23,7 @@ cdef class PeFile:
 
     cdef void __parse_64(self)
 
-    cdef __add_section(self, IMAGE_SECTION_HEADER * sec_hdr)
+    cdef void __add_section(self, IMAGE_SECTION_HEADER * sec_hdr)
 
     cdef void __parse_32(self)
     
@@ -59,11 +59,9 @@ cdef class DotNetPeFile:
     cdef str file_path
     cdef bytes exe_data
     cdef net_metadata.MetaDataDirectory metadata_dir
-    cdef list added_strings
     cdef bytes original_exe_data
     cdef PeFile pe
     cdef uint64_t __cor_header_offset
-    cdef int debug_counter
 
     cpdef uint64_t get_cor_header_offset(self)
 
@@ -133,6 +131,6 @@ cdef class DotNetPeFile:
 
     cpdef str get_product_version(self)
 
-    cpdef set_entry_point(self, unsigned int ep_token)
+    cpdef void set_entry_point(self, unsigned int ep_token)
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path=*, bytes pe_data=*, bint dont_process=*)

@@ -12,6 +12,19 @@ from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING, PyBytes
 from cpython.ref cimport PyObject
 
 cdef bytes make_string(bytes prefix, unsigned int i):
+    """ Quick method to create byte string with the following format: <prefix><i>
+
+    Args:
+        prefix (bytes): the byte prefix, in UTF-8 encoding.
+        i <unsigned int>: The number to append onto the prefix as a byte string.
+    
+    Returns:
+        bytes: a string, with the format b'<prefix><i>'
+
+    Raises:
+        net_exceptions.DotNetUtilsException: on internal error.
+        
+    """
     cdef Py_ssize_t plen = PyBytes_GET_SIZE(prefix)
     cdef char* pp = PyBytes_AS_STRING(prefix)
 
@@ -31,8 +44,7 @@ This file contains various functions for removing different types of obfuscation
 Commonly seen in obfuscated .Net samples.
 """
 cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
-    """
-    Intended to remove stuff like this:
+    """Intended to remove stuff like this:
         /* 0x0001B542 280900000A   */ IL_06BE: call      valuetype [mscorlib]System.DateTime [mscorlib]System.DateTime::get_Now()
         /* 0x0001B547 136F         */ IL_06C3: stloc.s   V_111
         /* 0x0001B549 126F         */ IL_06C5: ldloca.s  V_111
@@ -74,6 +86,9 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
         }
 
         Makes sure conditionals like this dont fool decompilers by setting them to be clearly false or just nop em out.
+
+        Args:
+            dotnet (dotnetpefile.DotNetPeFile): the DotNetPeFile to deobfuscate.
     """
 
     cdef list datetime_methods
@@ -168,6 +183,11 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet):
                                                                                     disasm_obj[instr_index + 11].get_instr_size())
 
 cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
+    """ Removes a special type of string obfuscation from a specific dotnet sample.
+
+    Args:
+        dotnet (dotnetpefile.DotNetPeFile): the DotNetPeFile to deobfuscate.
+    """
     cdef net_row_objects.MethodDef method_obj
     cdef net_row_objects.MethodDef target_cctor_method
     cdef dict delegate_mapping
@@ -262,9 +282,14 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
 
 
 cpdef bytes remove_unk_obf_1_obfuscation(bytes exe_data):
-    """
-    Temporary method to remove more obfuscation in a sample with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
+    """Temporary method to remove more obfuscation in a sample with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
     Once its determined if the sample is actually .NET Reactor or something else it should be moved to a parser.
+
+    Args:
+        exe_data (bytes): A byte representation of the exe to deobfuscate.
+    
+    Returns:
+        bytes: The new exe data.
     """
     cdef dotnetpefile.DotNetPeFile dotnet
     dotnet = dotnetpefile.try_get_dotnetpe(pe_data=exe_data)
@@ -275,26 +300,40 @@ cpdef bytes remove_unk_obf_1_obfuscation(bytes exe_data):
 
 cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
     """
-    Something seen in possible DotNetReactor samples with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
+    Something seen in possible DotNetReactor samples with hash
+    e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
 
-    if(new byte[]{<random constant data>}.Equals(new byte[]{<more constant data, always nonequal to the first}))
-    Removes this type of obfuscation.
+    This removes the following kind of obfuscation:
+    if a method does:
 
-    Example IL: 			
-            /* 0x00001815 20FF000000   */ IL_0021: ldc.i4    255
-			/* 0x0000181A 8D11000001   */ IL_0026: newarr    [mscorlib]System.Byte
-			/* 0x0000181F 25           */ IL_002B: dup
-			/* 0x00001820 D0C2030004   */ IL_002C: ldtoken   field valuetype Class16/Class18 Class16::field960
-			/* 0x00001825 280E00000A   */ IL_0031: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
-			/* 0x0000182A 20FF000000   */ IL_0036: ldc.i4    255
-			/* 0x0000182F 8D11000001   */ IL_003B: newarr    [mscorlib]System.Byte
-			/* 0x00001834 25           */ IL_0040: dup
-			/* 0x00001835 D0C3030004   */ IL_0041: ldtoken   field valuetype Class16/Class18 Class16::field961
-			/* 0x0000183A 280E00000A   */ IL_0046: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
-			/* 0x0000183F 6F1600000A   */ IL_004B: callvirt  instance bool [mscorlib]System.Object::Equals(object)
-			/* 0x00001844 0A           */ IL_0050: stloc.0
-			/* 0x00001845 06           */ IL_0051: ldloc.0
-			/* 0x00001846 2DAF         */ IL_0052: brtrue.s  IL_0003
+    ::
+
+        if (new byte[]{<random constant data>}.Equals(new byte[]{<more constant data, always nonequal to the first}))
+
+    the conditional is always false; this function removes that pattern.
+
+    Example IL::
+
+        /* 0x00001815 20FF000000   */ IL_0021: ldc.i4    255
+        /* 0x0000181A 8D11000001   */ IL_0026: newarr    [mscorlib]System.Byte
+        /* 0x0000181F 25           */ IL_002B: dup
+        /* 0x00001820 D0C2030004   */ IL_002C: ldtoken   field valuetype Class16/Class18 Class16::field960
+        /* 0x00001825 280E00000A   */ IL_0031: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
+        /* 0x0000182A 20FF000000   */ IL_0036: ldc.i4    255
+        /* 0x0000182F 8D11000001   */ IL_003B: newarr    [mscorlib]System.Byte
+        /* 0x00001834 25           */ IL_0040: dup
+        /* 0x00001835 D0C3030004   */ IL_0041: ldtoken   field valuetype Class16/Class18 Class16::field961
+        /* 0x0000183A 280E00000A   */ IL_0046: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
+        /* 0x0000183F 6F1600000A   */ IL_004B: callvirt  instance bool [mscorlib]System.Object::Equals(object)
+        /* 0x00001844 0A           */ IL_0050: stloc.0
+        /* 0x00001845 06           */ IL_0051: ldloc.0
+        /* 0x00001846 2DAF         */ IL_0052: brtrue.s  IL_0003
+
+    Args:
+        exe_data (bytes): The byte representation of exe to deobfuscate.
+
+    Returns:
+        bytes: The new exe data.
     """
     cdef dotnetpefile.DotNetPeFile dotnet
     cdef list initialize_arrays
@@ -490,10 +529,16 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
 
 
 cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=[]):
-    """
-    Removes conditionals that will either always be true or always false
+    """Removes conditionals that will either always be true or always false
     currently handles the following cases:
-    brtrue.s, brfalse.s, brtrue, brfalse: conditionals like if (6 != 0) then
+    brtrue.s, brfalse.s, brtrue, brfalse: conditionals like if (6 != 0)
+    
+    Args:
+        exe_data (bytes): The exe data to deobfuscate.
+        target_method_rids (list[int]): The target rids to deobfuscate.  If empty, it will deobfuscate the whole executable.
+
+    Returns:
+        bytes: A byte representation of the deobfuscated executable.
     """
     cdef dotnetpefile.DotNetPeFile dotnet
     cdef net_row_objects.MethodDef method_obj
@@ -790,8 +835,14 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
     return dotnet.reconstruct_executable()
 
 cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj):
-    """
-    A useless method is defined as a method that for instance just pulls all arguments off the stack then does either newobj, callvirt or call then returns
+    """ A useless method is defined as a method that for instance just pulls all arguments off the stack then does either newobj, callvirt or call then returns
+    
+    Args:
+        dpe (dotnetpefile.DotNetPeFile): The target DotNetPeFile
+        method_obj (net_row_objects.Methoddef): The target method
+    
+    Returns:
+        bytes: The bytes that should be patched in for all the method xrefs, bytes() if its not useless.
     """
     cdef net_cil_disas.MethodDisassembler disasm_obj
     cdef list method_args_grabbed
@@ -914,8 +965,15 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
     return potential_data
 
 cdef bint __is_modified_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj):
-    """
-    Used to skip methods that have the following signature: ldnull, ret, nop * x
+    """ Used to skip methods that have the following signature: ldnull, ret, nop * x
+        This is how i usually patch out old methods with DotNetUtils.
+    
+    Args:
+        dpe (dotnetpefile.DotNetPeFile): the target DotNetPeFile
+        method_obj (dotnetpefile.MethodDef): the target method
+
+    Returns:
+        bool: True if the method follows the scheme above or cant be parsed, False otherwise.
     """
     cdef net_cil_disas.MethodDisassembler disasm_obj
     cdef net_cil_disas.Instruction instr_one
@@ -938,6 +996,13 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
     """
     Junk methods are methods that simply check if a field is null that will always be null.
     Junk methods can also be returning a field that will always be null
+
+    Args:
+        dpe (dotnetpefile.DotNetPeFile): target DotNetPeFile
+        method_obj (net_row_objects.MethodDef): target method
+
+    Returns:
+        int: 0 if the method shouldnt be touched, 1 if it should be replaced by an ldc.i4.1, 2 if it should be replaced by ldnull.
     """
     cdef list allowed_instrs
     cdef net_cil_disas.MethodDisassembler disasm_obj
@@ -986,10 +1051,13 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
     return 2
 
 cpdef bytes remove_useless_functions(bytes data) except *:
-    """
-    Removes functions that simply call another function with the same arguments.
-    TODO: This method needs a rewrite.  For example, on sample 0320 for cex parser, it takes around 5 minutes to decode strings
-    A significant portion of the runtime appears to be this method.
+    """ Removes functions that simply call another function with the same arguments.  Used heavily in confuserex.
+
+    Args:
+        data (bytes): The executable data to deobfuscate.
+
+    Returns:
+        bytes: the deobfuscated executable.
     """
     cdef dict useless_methods
     cdef dotnetpefile.DotNetPeFile dotnet
@@ -1014,10 +1082,7 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     cdef long y
     cdef list useless_rids
     cdef list useless_xrefs
-    cdef tuple xref_info
-
-    import binascii
-    
+    cdef tuple xref_info    
     useless_methods = dict()  # dictionary of useless method rids and the instructions to replace them with
     dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     method_table = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
@@ -1100,6 +1165,15 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     return dotnet.reconstruct_executable()
 
 cdef bint has_prefix(bytes type_name):
+    """ Does the provided name include a prefix that we set?
+
+    Args:
+        type_name (bytes): The name to check.
+
+    Returns:
+        bool: True if the name has a prefix, False otherwise.
+
+    """
     cdef list prefixes
     cdef bytes nums
     cdef bytes prefix
@@ -1126,6 +1200,16 @@ cdef bint has_prefix(bytes type_name):
     return False
 
 cdef bint is_in_chain(dict method_chains, net_row_objects.MethodDefOrRef mdef, net_row_objects.TypeDefOrRef base_type):
+    """ Helper method for method inheritence.  Determines if a method is already in the chain dict.
+
+    Args:
+        method_chains (dict[net_row_objects.TypeDefOrRef, dict[net_row_objects.MethodDefOrRef, list[net_row_objects.MethodDefOrRef]]]): The current method_chains dict.
+        mdef (net_row_objects.MethodDefOrRef): The method object to check.
+        base_type (net_row_objects.TypeDefOrRef): the base type.
+
+    Returns:
+        bool: True if the method is within the chains dictionary already.  False otherwise.
+    """
     if base_type not in method_chains:
         return False
     cdef dict chain = method_chains[base_type]
@@ -1138,6 +1222,16 @@ cdef bint is_in_chain(dict method_chains, net_row_objects.MethodDefOrRef mdef, n
     return False
 
 cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_row_objects.TypeDefOrRef base_type, net_row_objects.TypeDefOrRef tdef, dict inst_sigs, dict override_chains, list sealed_slots):
+    """ Fills method_chains with a chain representing the inheritence / hiding / overriding of each method.  Used to ensure certain methods match names.
+
+    Args:
+        methodimpl (net_row_objects.MethodImplTable): the MethodImpl table, if it exists.  Can be None.
+        base_type: (net_row_objects.TypeDefOrRef): the base type to obtain inheritence for.
+        tdef (net_row_objects.TypeDefOrRef): The TypeDef we are currently checking for method chains.
+        inst_sigs (dict[net_row_objects.RowObject, Union[net_sigs.GenericInstSig, net_sigs.GenericINstMethodSig]]): a dictionary of all GenericInst sigs from MethodSpecs and TypeSpecs.
+        override_chains (dict[net_row_objects.TypeDefOrRef, dict[net_row_objects.MethodDefOrRef, list[net_row_objects.MethodDefOrRef]]]): The output dictionary.
+        sealed_slots (list[int]): Tokens of methods which can be considered sealed.
+    """
     cdef net_row_objects.TypeDefOrRef ptr = tdef
     cdef net_row_objects.MethodDefOrRef mptr = None
     cdef net_row_objects.MethodDefOrRef mptr2 = None
@@ -1154,7 +1248,6 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
         for mptr in ptr.get_methods():
             if methodimpl is not None:
                 mptr2 = methodimpl.get_method_body(mptr)
-
                 if mptr2 is not None:
                     if is_in_chain(override_chains, mptr2, base_type):
                         continue
@@ -1371,16 +1464,25 @@ cpdef bytes cleanup_names(bytes data,
     Intended for instances when the names have been obfuscated.
     This function will recover what it can, but for the most part only imported functions can be changed to original names.
     Additionally this function now supports inheritence and can be used on more complex binaries.
-    :param data: the original binary data
-    All other parameters are to control what is changed.  By default everything is changed.
-    :param change_namespaces: Should namespace names be changed?
-    :param change_method_names: Should method names be changed?
-    :param change_param_names: Should parameter names be changed?
-    :param change_module_name: Should the module name be changed?
-    :param change_type_names: Should type names be changed?
-    :param change_field_names: Should field names be changed?
-    :param change_property_names: Should property names be changed?
-    :param force_main_method:  Should the entrypoint be forced to have a name of "Main"?
+    Args:
+        data (bytes): The byte executable to deobfuscate.
+        change_namespaces (bool): Change namespace names, defaults to true.
+        change_method_names (bool): Change method names, defaults to true.
+        change_param_names (bool): Change GenericParam and Param names, defaults to true.
+        change_module_names (bool): Change Module names, defaults to true.
+        change_type_names (bool): Change TypeDef names, defaults to true.
+        change_field_names (bool): Change FieldDef names, defaults to true.
+        change_property_names (bool): Change PropertyDef names, defaults to true.
+        force_main_method (bool): Force the name of the entrypoint to be Main, defaults to true.
+        change_import_names (bool): Change names of imported methods from C dlls to proper names.  Defaults to true.
+        change_events (bool): Change Event names, defaults to true.
+
+    Returns:
+        bytes: the deobfuscated executable data.
+
+    Raises:
+        net_exceptions.InvalidArgumentsException: If the data is None or invalid, or doesnt have a #Strings heap.
+
     """
     cdef dotnetpefile.DotNetPeFile dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     cdef net_processing.StringHeapObject strings_heap = None
@@ -1809,6 +1911,14 @@ cpdef bytes cleanup_names(bytes data,
     return dotnet.reconstruct_executable()
 
 def deobfuscate_method_control_flow(file_data: bytes):
+    """ WIP for control flow deobfuscation once I can finish that.
+
+    Args:
+        file_data (bytes): Exe data to deobfuscate.
+    
+    Returns:
+        bytes: The deobfuscated exe data.
+    """
     dpe = dotnetpefile.DotNetPeFile(pe_data=file_data)
     method: net_row_objects.MethodDef
     for method in dpe.get_metadata_table('MethodDef'):

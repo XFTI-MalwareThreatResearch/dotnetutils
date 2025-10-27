@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="../">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>dotnetutils.net_deobfuscate_funcs module &#8212; dotnetutils  documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="../_static/basic.css?v=b08954a9" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css?v=27fed22d" />
+    <script src="../_static/documentation_options.js?v=5929fcd5"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
+    <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="dotnetutils.net_emu_structs module" href="dotnetutils.net_emu_structs.html" />
+    <link rel="prev" title="dotnetutils.net_deobfuscate module" href="dotnetutils.net_deobfuscate.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-dotnetutils.net_deobfuscate_funcs">
+<span id="dotnetutils-net-deobfuscate-funcs-module"></span><h1>dotnetutils.net_deobfuscate_funcs module<a class="headerlink" href="#module-dotnetutils.net_deobfuscate_funcs" title="Link to this heading">¶</a></h1>
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_deobfuscate_funcs.cleanup_names">
+<span class="sig-name descname"><span class="pre">cleanup_names</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_namespaces</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_method_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_param_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_module_name</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_type_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_field_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_property_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">force_main_method</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_import_names</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">change_events</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_deobfuscate_funcs.cleanup_names" title="Link to this definition">¶</a></dt>
+<dd><p>Changes various names throughout the binary to more readable values
+Intended for instances when the names have been obfuscated.
+This function will recover what it can, but for the most part only imported functions can be changed to original names.
+Additionally this function now supports inheritence and can be used on more complex binaries.
+:type data: bytes
+:param data: The byte executable to deobfuscate.
+:type data: bytes
+:type change_namespaces: bool
+:param change_namespaces: Change namespace names, defaults to true.
+:type change_namespaces: bool
+:type change_method_names: bool
+:param change_method_names: Change method names, defaults to true.
+:type change_method_names: bool
+:type change_param_names: bool
+:param change_param_names: Change GenericParam and Param names, defaults to true.
+:type change_param_names: bool
+:param change_module_names: Change Module names, defaults to true.
+:type change_module_names: bool
+:type change_type_names: bool
+:param change_type_names: Change TypeDef names, defaults to true.
+:type change_type_names: bool
+:type change_field_names: bool
+:param change_field_names: Change FieldDef names, defaults to true.
+:type change_field_names: bool
+:type change_property_names: bool
+:param change_property_names: Change PropertyDef names, defaults to true.
+:type change_property_names: bool
+:type force_main_method: bool
+:param force_main_method: Force the name of the entrypoint to be Main, defaults to true.
+:type force_main_method: bool
+:type change_import_names: bool
+:param change_import_names: Change names of imported methods from C dlls to proper names.  Defaults to true.
+:type change_import_names: bool
+:type change_events: bool
+:param change_events: Change Event names, defaults to true.
+:type change_events: bool</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>the deobfuscated executable data.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>bytes</p>
+</dd>
+<dt class="field-odd">Raises<span class="colon">:</span></dt>
+<dd class="field-odd"><p><a class="reference internal" href="dotnetutils.net_exceptions.html#dotnetutils.net_exceptions.InvalidArgumentsException" title="dotnetutils.net_exceptions.InvalidArgumentsException"><strong>net_exceptions.InvalidArgumentsException</strong></a> – If the data is None or invalid, or doesnt have a #Strings heap.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_deobfuscate_funcs.deobfuscate_method_control_flow">
+<span class="sig-name descname"><span class="pre">deobfuscate_method_control_flow</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">file_data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_deobfuscate_funcs.deobfuscate_method_control_flow" title="Link to this definition">¶</a></dt>
+<dd><p>WIP for control flow deobfuscation once I can finish that.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>file_data</strong> (<em>bytes</em>) – Exe data to deobfuscate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The deobfuscated exe data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bytes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_deobfuscate_funcs.remove_unk_obf_1_obfuscation">
+<span class="sig-name descname"><span class="pre">remove_unk_obf_1_obfuscation</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">exe_data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_deobfuscate_funcs.remove_unk_obf_1_obfuscation" title="Link to this definition">¶</a></dt>
+<dd><p>Temporary method to remove more obfuscation in a sample with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
+Once its determined if the sample is actually .NET Reactor or something else it should be moved to a parser.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>exe_data</strong> (<em>bytes</em>) – A byte representation of the exe to deobfuscate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The new exe data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bytes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_deobfuscate_funcs.remove_useless_bytearray_conditionals">
+<span class="sig-name descname"><span class="pre">remove_useless_bytearray_conditionals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">exe_data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_deobfuscate_funcs.remove_useless_bytearray_conditionals" title="Link to this definition">¶</a></dt>
+<dd><p>Something seen in possible DotNetReactor samples with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb</p>
+<p>if(new byte[]{&lt;random constant data&gt;}.Equals(new byte[]{&lt;more constant data, always nonequal to the first}))
+Removes this type of obfuscation.</p>
+<dl class="simple">
+<dt>Example IL:</dt><dd><dl class="simple">
+<dt>/* 0x00001815 20FF000000   <a href="#id1"><span class="problematic" id="id2">*</span></a>/ IL_0021: ldc.i4    255</dt><dd><p>/* 0x0000181A 8D11000001   <em>/ IL_0026: newarr    [mscorlib]System.Byte
+/</em> 0x0000181F 25           <em>/ IL_002B: dup
+/</em> 0x00001820 D0C2030004   <em>/ IL_002C: ldtoken   field valuetype Class16/Class18 Class16::field960
+/</em> 0x00001825 280E00000A   <em>/ IL_0031: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
+/</em> 0x0000182A 20FF000000   <em>/ IL_0036: ldc.i4    255
+/</em> 0x0000182F 8D11000001   <em>/ IL_003B: newarr    [mscorlib]System.Byte
+/</em> 0x00001834 25           <em>/ IL_0040: dup
+/</em> 0x00001835 D0C3030004   <em>/ IL_0041: ldtoken   field valuetype Class16/Class18 Class16::field961
+/</em> 0x0000183A 280E00000A   <em>/ IL_0046: call      void [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::InitializeArray(class [mscorlib]System.Array, valuetype [mscorlib]System.RuntimeFieldHandle)
+/</em> 0x0000183F 6F1600000A   <em>/ IL_004B: callvirt  instance bool [mscorlib]System.Object::Equals(object)
+/</em> 0x00001844 0A           <em>/ IL_0050: stloc.0
+/</em> 0x00001845 06           <em>/ IL_0051: ldloc.0
+/</em> 0x00001846 2DAF         <a href="#id3"><span class="problematic" id="id4">*</span></a>/ IL_0052: brtrue.s  IL_0003</p>
+</dd>
+</dl>
+</dd>
+</dl>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>exe_data</strong> (<em>bytes</em>) – The byte representation of exe to deobfuscate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>the new exe data.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bytes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_deobfuscate_funcs.remove_useless_conditionals">
+<span class="sig-name descname"><span class="pre">remove_useless_conditionals</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">exe_data</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">target_method_rids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_deobfuscate_funcs.remove_useless_conditionals" title="Link to this definition">¶</a></dt>
+<dd><p>Removes conditionals that will either always be true or always false
+currently handles the following cases:
+brtrue.s, brfalse.s, brtrue, brfalse: conditionals like if (6 != 0)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>exe_data</strong> (<em>bytes</em>) – The exe data to deobfuscate.</p></li>
+<li><p><strong>target_method_rids</strong> (<em>list</em><em>[</em><em>int</em><em>]</em>) – The target rids to deobfuscate.  If empty, it will deobfuscate the whole executable.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>A byte representation of the deobfuscated executable.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bytes</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="dotnetutils.net_deobfuscate_funcs.remove_useless_functions">
+<span class="sig-name descname"><span class="pre">remove_useless_functions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">data</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#dotnetutils.net_deobfuscate_funcs.remove_useless_functions" title="Link to this definition">¶</a></dt>
+<dd><p>Removes functions that simply call another function with the same arguments.  Used heavily in confuserex.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>data</strong> (<em>bytes</em>) – The executable data to deobfuscate.</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>the deobfuscated executable.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>bytes</p>
+</dd>
+</dl>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">dotnetutils</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">dotnetutils</a><ul class="current">
+<li class="toctree-l2 current"><a class="reference internal" href="dotnetutils.html">dotnetutils package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+  <li><a href="modules.html">dotnetutils</a><ul>
+  <li><a href="dotnetutils.html">dotnetutils package</a><ul>
+      <li>Previous: <a href="dotnetutils.net_deobfuscate.html" title="previous chapter">dotnetutils.net_deobfuscate module</a></li>
+      <li>Next: <a href="dotnetutils.net_emu_structs.html" title="next chapter">dotnetutils.net_emu_structs module</a></li>
+  </ul></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2025, IBM.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.2.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="../_sources/api/dotnetutils.net_deobfuscate_funcs.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
