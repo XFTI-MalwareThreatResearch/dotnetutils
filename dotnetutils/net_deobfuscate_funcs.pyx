@@ -300,12 +300,20 @@ cpdef bytes remove_unk_obf_1_obfuscation(bytes exe_data):
 
 cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
     """
-    Something seen in possible DotNetReactor samples with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
+    Something seen in possible DotNetReactor samples with hash
+    e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
 
-    Example::
+    This removes the following kind of obfuscation:
+    if a method does:
 
-        if(new byte[]{<random constant data>}.Equals(new byte[]{<more constant data, always nonequal to the first}))
-        Removes this type of obfuscation.
+    ::
+
+        if (new byte[]{<random constant data>}.Equals(new byte[]{<more constant data, always nonequal to the first}))
+
+    the conditional is always false; this function removes that pattern.
+
+    Example IL::
+
         /* 0x00001815 20FF000000   */ IL_0021: ldc.i4    255
         /* 0x0000181A 8D11000001   */ IL_0026: newarr    [mscorlib]System.Byte
         /* 0x0000181F 25           */ IL_002B: dup
@@ -323,9 +331,9 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
 
     Args:
         exe_data (bytes): The byte representation of exe to deobfuscate.
-    
+
     Returns:
-        bytes: the new exe data.
+        bytes: The new exe data.
     """
     cdef dotnetpefile.DotNetPeFile dotnet
     cdef list initialize_arrays
