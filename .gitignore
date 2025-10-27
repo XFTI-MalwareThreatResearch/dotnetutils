@@ -1,6 +1,5 @@
 *.c
-*.html
-!docs/*.html
+dotnetutils/*.html
 *.h
 *.dep
 *.pdb
