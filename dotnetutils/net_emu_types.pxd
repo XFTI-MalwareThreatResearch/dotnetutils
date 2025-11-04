@@ -681,6 +681,8 @@ cdef class DotNetType(DotNetObject):
 
     cdef StackCell get_IsValueType(self, StackCell * params, int nparams)
 
+    cdef StackCell GetGenericArguments(self, StackCell * params, int nparams)
+
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
@@ -727,6 +729,8 @@ cdef class DotNetDictionary(DotNetObject):
     cdef dict __internal_dict
 
     cdef DotNetObject duplicate(self)
+
+    cdef StackCell get_Item(self, StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -1220,6 +1224,8 @@ cdef class DotNetFieldInfo(DotNetObject):
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
+
+    cdef StackCell get_MetadataToken(self, StackCell * params, int nparams)
 
 cdef class DotNetMethodBase(DotNetMemberInfo):
 
@@ -2142,6 +2148,8 @@ cdef class DotNetBinaryReader(DotNetObject):
 
     cdef StackCell Close(self, StackCell * params, int nparams)
 
+    cdef StackCell ReadInt32(self, StackCell * params, int nparams)
+
 """
 
 cdef class DotNetMarshal(DotNetObject):
@@ -2186,16 +2194,11 @@ cdef class DotNetThreadStart(DotNetObject):
 
     cpdef net_row_objects.MethodDef get_method_object(self)
 
-"""
-
 cdef class DotNetDebugger(DotNetObject):
     
     @staticmethod
     cdef StackCell get_IsAttached(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
-
-
-"""
 cdef class DotNetGC(DotNetObject):
     
     @staticmethod
@@ -2371,11 +2374,11 @@ cdef struct EmuFuncMapping:
     static_func_type func_ptr
 
 
-cdef const int AMT_OF_STATIC_FUNCTIONS = 40
+cdef const int AMT_OF_STATIC_FUNCTIONS = 42
 cdef const int AMT_OF_TYPES = 21
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[21]
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[42]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 

@@ -5418,9 +5418,47 @@ cdef class DotNetType(DotNetObject):
         self.add_function(b'get_MetadataToken', <emu_func_type>self.get_MetadataToken)
         self.add_function(b'get_Assembly', <emu_func_type>self.get_Assembly)
         self.add_function(b'get_IsValueType', <emu_func_type>self.get_IsValueType)
+        self.add_function(b'GetGenericArguments', <emu_func_type>self.GetGenericArguments)
 
     def __str__(self):
         return 'TypeObject {} {}'.format(hex(self.type_handle.get_token()), self.type_handle.get_full_name())
+
+    #TODO: implement MakeByRefType
+
+    cdef StackCell GetGenericArguments(self, StackCell * params, int nparams):
+        cdef DotNetArray result = None
+        cdef int result_len = 0
+        cdef list gen_types = None
+        cdef net_sigs.TypeSig sig = None
+        cdef Py_ssize_t x = 0
+        cdef DotNetType arg = None
+        cdef StackCell cell
+        cdef net_row_objects.TypeDefOrRef ref = None
+        if not isinstance(result, net_sigs.GenericInstSig):
+            result = DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Type'))
+            return self.get_emulator_obj().pack_object(result)
+
+        gen_types = (<net_sigs.GenericInstSig>result).get_generic_args()
+        result_len = <int>len(gen_types)
+        result = DotNetArray(self.get_emulator_obj(), result_len, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Type'))
+        for x in range(len(result)):
+            sig = gen_types[x]
+            if isinstance(sig, net_sigs.CorLibTypeSig):
+                ref = self.get_emulator_obj().get_dotnetpe().get_typeref_by_full_name(net_utils.get_cor_type_name(sig.get_element_type()))
+            elif isinstance(sig, net_sigs.TypeDefOrRefSig):
+                ref = sig.get_type()
+            elif isinstance(sig, net_sigs.GenericInstSig):
+                ref = sig.get_generic_type()
+            
+            if ref is None:
+                raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'typesig error {}'.format(sig))
+
+            arg = DotNetType(self.get_emulator_obj(), ref, sig)
+            cell = self.get_emulator_obj().pack_object(arg)
+            result._set_item(<int64_t>x, cell)
+            self.get_emulator_obj().dealloc_cell(cell)
+
+        return self.get_emulator_obj().pack_object(result)
 
     cdef StackCell get_IsValueType(self, StackCell * params, int nparams):
         return self.get_emulator_obj().pack_bool(self.type_handle.is_valuetype())
@@ -5470,7 +5508,7 @@ cdef class DotNetType(DotNetObject):
             raise net_exceptions.InvalidArgumentsException()
         cdef DotNetRuntimeTypeHandle runtime_handle = <DotNetRuntimeTypeHandle>params[0].item.ref
         cdef DotNetType obj2 = DotNetType(app_domain.get_emulator_obj(), runtime_handle.get_internal_typedef())
-        obj2.initialize_type(app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Type'))
+        obj2.initialize_type(app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Type'))
         return app_domain.get_emulator_obj().pack_object(obj2)
 
     cdef StackCell get_Module(self, StackCell * params, int nparams):
@@ -5501,7 +5539,7 @@ cdef class DotNetType(DotNetObject):
                     field_info = DotNetFieldInfo(self.get_emulator_obj(), item)
                     field_objs.append(field_info)
 
-            result_array = DotNetArray(self.get_emulator_obj(), len(field_objs), type_obj.get_dotnetpe().get_type_by_full_name(
+            result_array = DotNetArray(self.get_emulator_obj(), len(field_objs), type_obj.get_dotnetpe().get_typeref_by_full_name(
                 b'System.Reflection.FieldInfo'), initialize=False)
             for x in range(len(field_objs)):
                 cell = self.get_emulator_obj().pack_object(field_objs[x])
@@ -5559,6 +5597,7 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         self.add_function(b'Add', <emu_func_type>self.Add)
         self.add_function(b'ContainsKey', <emu_func_type>self.ContainsKey)
         self.add_function(b'get_Count', <emu_func_type>self.get_Count)
+        self.add_function(b'get_Item', <emu_func_type>self.get_Item)
 
     cdef DotNetObject duplicate(self):
         cdef DotNetDictionary result = DotNetDictionary(self.get_emulator_obj())
@@ -5614,6 +5653,19 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
             self.get_emulator_obj().ref_cell(param1)
             self.__internal_dict[param1_wrapped] = param2_wrapped
         return self.get_emulator_obj().pack_blanktag()
+
+    cdef StackCell get_Item(self, StackCell * params, int nparams):
+        if nparams != 1:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell param1 = params[0]
+        cdef net_emulator.StackCellWrapper param1_wrapped = self.get_emulator_obj().wrap_cell(param1)
+        cdef net_emulator.StackCellWrapper result_wrapped = None
+        cdef StackCell result
+        if param1_wrapped not in self.__internal_dict:
+            raise net_exceptions.InvalidArgumentsException()
+        result_wrapped = self.__internal_dict[param1_wrapped]
+        result = self.get_emulator_obj().duplicate_cell(result_wrapped.get_wrapped())
+        return result
 
     cdef StackCell Add(self, StackCell * params, int nparams):
         return self.set_Item(params, nparams)
@@ -5793,10 +5845,12 @@ cdef class DotNetStream(DotNetObject):
         cdef int64_t x = 0
         cdef StackCell cell
         cdef DotNetArray arr_obj = DotNetArray(self.get_emulator_obj(), count, self._internal.get_type_obj())
+        cdef int64_t y = 0
         for x in range(self._position, self._position + count):
             cell = self._internal._get_item(<uint64_t>x)
-            arr_obj._set_item(x, cell)
+            arr_obj._set_item(y, cell)
             self.get_emulator_obj().dealloc_cell(cell)
+            y += 1
 
         self._position += count
         return self.get_emulator_obj().pack_object(arr_obj)
@@ -5845,7 +5899,7 @@ cdef class DotNetMemoryStream(DotNetStream):
             emu.dealloc_cell(cell)
             
 
-        return result + ' Object: ' + DotNetObject.__str__(self) + ' position: {}'.format(self._position)
+        return 'DotNetMemoryStream: ' + result + ' Object: ' + DotNetObject.__str__(self) + ' position: {}, length={}'.format(self._position, len(self._internal))
 
 #TODO: No ctor needed internal use?
 cdef class DotNetAssemblyName(DotNetObject):
@@ -5884,14 +5938,14 @@ cdef class DotNetAssemblyName(DotNetObject):
 
         if module_obj['PublicKey'].get_raw_value() == 0:
             #If raw value is 0, return a empty array.
-            return self.get_emulator_obj().pack_object(DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte')))
+            return self.get_emulator_obj().pack_object(DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Byte')))
         public_key = module_obj['PublicKey'].get_value()
 
         sha_hash = hashlib.sha1()
         sha_hash.update(public_key)
         hashed_key = sha_hash.digest()
         public_key_token = list(hashed_key[-8:][::-1])
-        array = DotNetArray(self.get_emulator_obj(), 8, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), 8, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Byte'),
                             initialize=False)
         for x in range(8):
             c = public_key_token[x]
@@ -5960,7 +6014,10 @@ cdef class DotNetAssembly(DotNetObject):
         return self.get_emulator_obj().pack_object(DotNetManifestModule(self.get_emulator_obj(), self))
 
     cdef StackCell get_EntryPoint(self, StackCell * params, int nparams):
-        return self.get_emulator_obj().pack_object(DotNetMemberInfo(self.get_emulator_obj(), self.get_module().get_dotnetpe().get_entry_point()))
+        cdef net_row_objects.MethodDef ep_method = self.get_module().get_dotnetpe().get_entry_point()
+        if ep_method is None:
+            return self.get_emulator_obj().pack_null()
+        return self.get_emulator_obj().pack_object(DotNetMemberInfo(self.get_emulator_obj(), ep_method))
 
     cdef StackCell get_FullName(self, StackCell * params, int nparams):
         cdef dotnetpefile.DotNetPeFile dpe
@@ -6002,14 +6059,14 @@ cdef class DotNetAssembly(DotNetObject):
         cdef DotNetAssembly dotnetassembly
         dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(),
             app_domain.get_executing_dotnetpe().get_metadata_table('Assembly').get(1))
-        dotnetassembly.initialize_type(app_domain.get_executing_dotnetpe().get_type_by_full_name(
+        dotnetassembly.initialize_type(app_domain.get_executing_dotnetpe().get_typeref_by_full_name(
             b'System.Reflection.Assembly'))
         return app_domain.get_emulator_obj().pack_object(dotnetassembly)
 
     @staticmethod
     cdef StackCell GetCallingAssembly(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
         cdef DotNetAssembly dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(), app_domain.get_calling_dotnetpe().get_metadata_table('Assembly').get(1))
-        dotnetassembly.initialize_type(app_domain.get_calling_dotnetpe().get_type_by_full_name(b'System.Reflection.Assembly'))
+        dotnetassembly.initialize_type(app_domain.get_calling_dotnetpe().get_typeref_by_full_name(b'System.Reflection.Assembly'))
         return app_domain.get_emulator_obj().pack_object(dotnetassembly)
 
     cdef StackCell GetManifestResourceStream(self, StackCell * params, int nparams):
@@ -6026,7 +6083,7 @@ cdef class DotNetAssembly(DotNetObject):
         if not resource_data:
             return self.get_emulator_obj().pack_null()
 
-        array_obj = DotNetArray(self.get_emulator_obj(), len(resource_data), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'), False)
+        array_obj = DotNetArray(self.get_emulator_obj(), len(resource_data), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Byte'), False)
         for x in range(len(resource_data)):
             num = self.get_emulator_obj().pack_u1(resource_data[x])
             array_obj._set_item(x, num)
@@ -6036,7 +6093,7 @@ cdef class DotNetAssembly(DotNetObject):
         obj.ctor(&num, 1)
         self.get_emulator_obj().dealloc_cell(num)
         
-        obj.initialize_type(self.get_module().get_dotnetpe().get_type_by_full_name(
+        obj.initialize_type(self.get_module().get_dotnetpe().get_typeref_by_full_name(
             b'System.IO.Stream'))
         return self.get_emulator_obj().pack_object(obj)
 
@@ -6053,7 +6110,7 @@ cdef class DotNetAssembly(DotNetObject):
                 dns = DotNetString(self.get_emulator_obj(), item['Name'].get_value(), 'utf-8')
                 result.append(dns)
         
-        results = DotNetArray(self.get_emulator_obj(), len(result), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.String'),
+        results = DotNetArray(self.get_emulator_obj(), len(result), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.String'),
                     initialize=False)
         for x in range(len(result)):
             cell = self.get_emulator_obj().pack_string(result[x])
@@ -6063,18 +6120,18 @@ cdef class DotNetAssembly(DotNetObject):
 
     cdef StackCell GetName(self, StackCell * params, int nparams):
         cdef DotNetAssemblyName obj = DotNetAssemblyName(self.get_emulator_obj(), self.get_module()['Name'].get_value(), self)
-        obj.initialize_type(self.get_module().get_dotnetpe().get_type_by_full_name(
+        obj.initialize_type(self.get_module().get_dotnetpe().get_typeref_by_full_name(
             b'System.Reflection.AssemblyName'))
         return self.get_emulator_obj().pack_object(obj)
 
     cdef StackCell GetModules(self, StackCell * params, int nparams):
         cdef net_table_objects.TableObject modules = self.get_module().get_dotnetpe().get_metadata_table('Module')
-        cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), len(modules), self.get_module().get_dotnetpe().get_type_by_full_name(b'System.Reflection.Module'))
+        cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), len(modules), self.get_module().get_dotnetpe().get_typeref_by_full_name(b'System.Reflection.Module'))
         cdef int x = 0
         cdef StackCell cell
-        for x in range(len(modules)):
+        for x in range(1, len(modules) + 1):
             cell = self.get_emulator_obj().pack_object(DotNetModule(self.get_emulator_obj(), modules.get(x)))
-            result._set_item(x, cell)
+            result._set_item(x - 1, cell)
             self.get_emulator_obj().dealloc_cell(cell)
         return self.get_emulator_obj().pack_object(result)
 
@@ -6642,7 +6699,7 @@ cdef class DotNetStackTrace(DotNetObject):
             emulator_ptr = emulator_ptr.get_caller()
         sf_obj = DotNetStackFrame(self.get_emulator_obj())
         sf_obj.skip_frames = self.skipFrames
-        sf_obj.initialize_type(self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(
+        sf_obj.initialize_type(self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(
             b'System.Diagnostics.StackFrame'))
         sf_obj.current_emulator = emulator_list[number]
         return self.get_emulator_obj().pack_object(sf_obj)
@@ -6686,7 +6743,7 @@ cdef class DotNetStackFrame(DotNetObject):
         if emulator_obj is None:
             return self.get_emulator_obj().pack_null()
         obj = DotNetMemberInfo(self.get_emulator_obj(), emulator_obj.get_method_obj())
-        obj.initialize_type(emulator_obj.get_method_obj().get_dotnetpe().get_type_by_full_name(
+        obj.initialize_type(emulator_obj.get_method_obj().get_dotnetpe().get_typeref_by_full_name(
             b'System.Reflection.MemberInfo'))
         return self.get_emulator_obj().pack_object(obj)
 
@@ -6799,7 +6856,7 @@ cdef class DotNetThread(DotNetObject):
         cdef DotNetThread tobj
         # Emulator doesnt support threads so just return a fake object.
         tobj = DotNetThread(app_domain.get_emulator_obj())
-        tobj.initialize_type(app_domain.get_executing_dotnetpe().get_type_by_full_name(
+        tobj.initialize_type(app_domain.get_executing_dotnetpe().get_typeref_by_full_name(
             b'System.Threading.Thread'))
         return app_domain.get_emulator_obj().pack_object(tobj)
 
@@ -7006,7 +7063,7 @@ cdef class DotNetBitConverter(DotNetObject):
         cdef bytes b_data = app_domain.get_emulator_obj().cell_to_bytes(params[0])
         cdef int x = 0
         cdef DotNetArray dnr = DotNetArray(app_domain.get_emulator_obj(), <int>len(b_data),
-                          app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'),
+                          app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Byte'),
                           initialize=False)
         cdef StackCell cell
         for x in range(len(b_data)):
@@ -7162,7 +7219,7 @@ cdef class DotNetEncoding(DotNetObject):
         cdef StackCell num
         raw_bytes = str_obj.get_str_data_as_bytes().decode(str_obj.get_str_encoding()).encode(self.name)
         result = DotNetArray(self.get_emulator_obj(), len(raw_bytes),
-                             self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'))
+                             self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Byte'))
         for x in range(len(raw_bytes)):
             uc = raw_bytes[x]
             num = self.get_emulator_obj().pack_u1(uc)
@@ -7415,7 +7472,7 @@ cdef class DotNetString(DotNetObject):
         emu_obj = self.get_emulator_obj()
         method_obj = emu_obj.get_method_obj()
         dpe = method_obj.get_dotnetpe()
-        type_obj = dpe.get_type_by_full_name(b'System.String')
+        type_obj = dpe.get_typeref_by_full_name(b'System.String')
         result = DotNetArray(self.get_emulator_obj(), len(python_result), type_obj=type_obj)
         for x in range(len(python_result)):
             item = DotNetString(self.get_emulator_obj(), python_result[x])
@@ -7474,10 +7531,11 @@ cdef class DotNetModule(DotNetObject):
         return self.get_emulator_obj().pack_object(DotNetModuleHandle(self.get_emulator_obj(), self.internal_module))
 
     cdef StackCell ResolveMethod(self, StackCell * params, int nparams):
-        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
+        if nparams < 1 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
             raise net_exceptions.InvalidArgumentsException()
         cdef int method_token = params[0].item.i4
         cdef net_row_objects.RowObject robj = self.internal_module.get_dotnetpe().get_token_value(method_token)
+        #TODO: I dont think anything needs to be done here for multiple parameters but its certainly possible.
         if robj is None:
             raise net_exceptions.InvalidArgumentsException()
         return self.get_emulator_obj().pack_object(DotNetMethodInfo(self.get_emulator_obj(), robj))
@@ -7511,6 +7569,9 @@ cdef class DotNetModuleHandle(DotNetObject):
 
     def __str__(self):
         return 'ModuleObject {}'.format(self.internal_module)
+
+    def __repr__(self):
+        return str(self)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.ModuleHandle' or DotNetObject.isinst(self, tdef)
@@ -7609,6 +7670,7 @@ cdef class DotNetFieldInfo(DotNetObject):
         self.add_function(b'get_FieldType', <emu_func_type>self.get_FieldType)
         self.add_function(b'SetValue', <emu_func_type>self.SetValue)
         self.add_function(b'get_Name', <emu_func_type>self.get_Name)
+        self.add_function(b'get_MetadataToken', <emu_func_type>self.get_MetadataToken)
 
     def __str__(self):
         return 'FieldObject {} {}'.format(hex(self.internal_field.get_token()), self.internal_field.get_full_name())
@@ -7624,9 +7686,23 @@ cdef class DotNetFieldInfo(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
+    cdef StackCell get_MetadataToken(self, StackCell * params, int nparams):
+        cdef int token = self.internal_field.get_token()
+        return self.get_emulator_obj().pack_i4(token)
+
     cdef StackCell get_FieldType(self, StackCell * params, int nparams):
-        cdef DotNetType type_obj = DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(
-            self.internal_field.get_parent_type()))
+        cdef net_sigs.TypeSig sig = self.internal_field.get_field_signature().get_type_sig()
+        cdef net_row_objects.TypeDefOrRef ref = None
+        cdef DotNetType type_obj = None
+        if isinstance(sig, net_sigs.TypeDefOrRefSig):
+            ref = sig.get_type()
+        elif isinstance(sig, net_sigs.CorLibTypeSig):
+            ref = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(net_utils.get_cor_type_name(sig.get_element_type()))
+        elif isinstance(sig, net_sigs.GenericInstSig):
+            ref = sig.get_generic_type()
+        else:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'couldnt handle sig {}'.format(sig))
+        type_obj = DotNetType(self.get_emulator_obj(), ref, self.internal_field.get_field_signature().get_type_sig())
         return self.get_emulator_obj().pack_object(type_obj)
 
     cdef StackCell SetValue(self, StackCell * params, int nparams):
@@ -7671,11 +7747,13 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
         cdef net_row_objects.TypeDefOrRef type_obj
         if isinstance(return_sig, net_sigs.CorLibTypeSig):
             type_name = net_utils.get_cor_type_name(return_sig.get_element_type())
-            type_obj = self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name)
+            type_obj = self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(type_name)
             return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), type_obj, return_sig))
         else:
             if isinstance(return_sig, net_sigs.TypeDefOrRefSig) and return_sig.get_type() is not None:
                 return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), return_sig.get_type(), return_sig))
+            elif isinstance(return_sig, net_sigs.SZArraySig):
+                return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Array'), return_sig))
         raise net_exceptions.OperationNotSupportedException()
 
     def __str__(self):
@@ -7709,14 +7787,14 @@ cdef class DotNetMethodBase(DotNetMemberInfo):
         return app_domain.get_emulator_obj().pack_object(DotNetMethodInfo(app_domain.get_emulator_obj(), method_handle.internal_method))
 
     cdef StackCell get_IsStatic(self, StackCell * params, int nparams):
-        cdef bint res = self.internal_method.method_has_this()
+        cdef bint res = self.internal_method.is_static_method()
         return self.get_emulator_obj().pack_bool(res)
 
     cdef StackCell GetParameters(self, StackCell * params, int nparams):
         cdef list param_list = self.internal_method.get_param_types()
         cdef int x
         cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), len(param_list),
-                             self.internal_method.get_dotnetpe().get_type_by_full_name(b'System.Reflection.ParameterInfo'))
+                             self.internal_method.get_dotnetpe().get_typeref_by_full_name(b'System.Reflection.ParameterInfo'))
         cdef StackCell cell
         for x in range(len(param_list)):
             cell = self.get_emulator_obj().pack_object(DotNetParameterInfo(self.get_emulator_obj(), param_list[x]))
@@ -7760,9 +7838,9 @@ cdef class DotNetParameterInfo(DotNetObject):
         cdef bytes type_name 
         if isinstance(self.internal_param, net_sigs.CorLibTypeSig):
             type_name = net_utils.get_cor_type_name(self.internal_param.get_element_type())
-            return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name), self.internal_param))
+            return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(type_name), self.internal_param))
         elif isinstance(self.internal_param, net_sigs.SZArraySig):
-            return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Array'), self.internal_param)) #NOTE: this might not account for generics.
+            return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Array'), self.internal_param)) #NOTE: this might not account for generics.
         elif isinstance(self.internal_param, net_sigs.ClassSig):
             return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.internal_param.get_type(), self.internal_param))
         raise net_exceptions.OperationNotSupportedException()
@@ -7806,8 +7884,30 @@ cdef class DotNetDelegate(DotNetObject):
 
     @staticmethod
     cdef StackCell CreateDelegate(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        raise Exception()
-    
+        if nparams != 2 or check_object(params[0]) or check_object(params[1]):
+            raise net_exceptions.InvalidArgumentsException()
+
+        if not isinstance(<DotNetObject>params[0].item.ref, DotNetType) or not isinstance(<DotNetObject>params[1].item.ref, DotNetMethodInfo):
+            raise net_exceptions.InvalidArgumentsException()
+
+        cdef DotNetType tp = <DotNetType>params[0].item.ref
+        cdef DotNetMethodInfo md = <DotNetMethodInfo>params[1].item.ref
+
+        cdef DotNetRuntimeMethodHandle handle = DotNetRuntimeMethodHandle(app_domain.get_emulator_obj(), md.internal_method)
+        cdef StackCell handle_cell = app_domain.get_emulator_obj().pack_object(handle)
+        cdef StackCell null_cell = app_domain.get_emulator_obj().pack_null()
+        cdef StackCell args[2]
+
+        cdef DotNetDelegate result_obj = DotNetDelegate(app_domain.get_emulator_obj())
+        result_obj.initialize_type(tp.get_type_handle())
+        args[0] = null_cell
+        args[1] = handle_cell
+        result_obj.ctor(args, 2)
+        app_domain.get_emulator_obj().dealloc_cell(null_cell)
+        app_domain.get_emulator_obj().dealloc_cell(handle_cell)
+        handle_cell = app_domain.get_emulator_obj().pack_object(result_obj)
+        return handle_cell
+
     cdef StackCell Invoke(self, StackCell * params, int nparams):
         cdef int amt_args = nparams
         cdef StackCell * args = NULL
@@ -7875,7 +7975,7 @@ cdef class DotNetConvert(DotNetObject):
         cdef StackCell cell
         str_data = string.get_str_data_as_bytes()
         new_str_data = base64.b64decode(bytes(str_data))
-        dnarray = DotNetArray(app_domain.get_emulator_obj(), len(new_str_data), app_domain.get_executing_dotnetpe().get_type_by_full_name(
+        dnarray = DotNetArray(app_domain.get_emulator_obj(), len(new_str_data), app_domain.get_executing_dotnetpe().get_typeref_by_full_name(
             b'System.Byte'), initialize=False)
         for x in range(len(new_str_data)):
             cell = app_domain.get_emulator_obj().pack_u1(new_str_data[x])
@@ -9278,6 +9378,13 @@ cdef class DotNetBinaryReader(DotNetObject):
         self.add_function(b'ReadByte', <emu_func_type>self.ReadByte)
         self.add_function(b'Close', <emu_func_type>self.Close)
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
+        self.add_function(b'ReadInt32', <emu_func_type>self.ReadInt32)
+
+    def __str__(self):
+        return 'DotNetBinaryReader: InternalStream={}'.format(str(self.stream))
+
+    def __repr__(self):
+        return str(self)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.IO.BinaryReader' or DotNetObject.isinst(self, tdef)
@@ -9305,6 +9412,20 @@ cdef class DotNetBinaryReader(DotNetObject):
 
     cdef StackCell ReadByte(self, StackCell * params, int nparams):
         return self.stream.ReadByte(params, nparams)
+
+    cdef StackCell ReadInt32(self, StackCell * params, int nparams):
+        cdef StackCell amt = self.get_emulator_obj().pack_i4(4)
+        cdef StackCell result_array = self.stream.ReadBytes(&amt, 1)
+        cdef int result = 0
+        cdef DotNetArray result_obj = None
+        if self.get_emulator_obj().cell_is_null(result_array):
+            self.get_emulator_obj().dealloc_cell(result_array)
+            raise net_exceptions.InvalidArgumentsException()
+        result_obj = <DotNetArray>result_array.item.ref
+        self.get_emulator_obj().dealloc_cell(amt)
+        self.get_emulator_obj().dealloc_cell(result_array)
+        result = int.from_bytes(result_obj.as_bytes(), 'little', signed=True)
+        return self.get_emulator_obj().pack_i4(result)
 
     cdef StackCell Close(self, StackCell * params, int nparams):
         self.stream.Close(params, nparams)
@@ -9419,7 +9540,6 @@ cdef class DotNetThreadStart(DotNetObject):
     cpdef net_row_objects.MethodDef get_method_object(self):
         return self.__method_object.internal_method
 
-"""
 cdef class DotNetDebugger(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
@@ -9427,9 +9547,6 @@ cdef class DotNetDebugger(DotNetObject):
     @staticmethod
     cdef StackCell get_IsAttached(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
         return app_domain.get_emulator_obj().pack_bool(False)
-
-
-"""
 
 cdef class DotNetComparison(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -9700,7 +9817,7 @@ cdef class DotNetDESDecryptor(DotNetICryptoTransform):
             self.get_emulator_obj().dealloc_cell(cell)
 
         output_data = self.des_object.decrypt(input_data)
-        array = DotNetArray(self.get_emulator_obj(), len(output_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), len(output_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Byte'),
                     initialize=False)
 
         
@@ -9756,7 +9873,7 @@ cdef class DotNetMD5CryptoServiceProvider(DotNetHashAlgorithm):
         resulting_data = md5_obj.digest()
         count = <int>len(resulting_data)
 
-        arr_obj = DotNetArray(self.get_emulator_obj(), count, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(
+        arr_obj = DotNetArray(self.get_emulator_obj(), count, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(
             b'System.Byte'), initialize=False)
         
         for x in range(count):
@@ -9869,7 +9986,7 @@ cdef class DotNet3DESDecryptor(DotNetICryptoTransform):
         if padding_val.item.i4 == 2:
             output_data = unpad(output_data, DES3.block_size)
         self.get_emulator_obj().dealloc_cell(padding_val)
-        array = DotNetArray(self.get_emulator_obj(), len(output_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), len(output_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Byte'),
                     initialize=False)
         for x in range(<int>len(output_data)):
             num = self.get_emulator_obj().pack_u1(output_data[x])
@@ -10050,7 +10167,7 @@ NET_EMULATE_TYPE_REGISTRATIONS[19].func_ptr = <newobj_func_type>&New_Conditional
 NET_EMULATE_TYPE_REGISTRATIONS[20].name = 'System.Random'
 NET_EMULATE_TYPE_REGISTRATIONS[20].func_ptr = <newobj_func_type>&New_Random
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[42]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -10131,3 +10248,7 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38].name = 'System.Reflection.Assembly.Loa
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38].func_ptr = <static_func_type>&DotNetAssembly.Load
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[39].name = 'System.Environment.get_Version'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[39].func_ptr = <static_func_type>&DotNetEnvironment.get_Version
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40].name = 'System.Diagnostics.Debugger.get_IsAttached'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40].func_ptr = <static_func_type>&DotNetDebugger.get_IsAttached
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[41].name = 'System.Delegate.CreateDelegate'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[41].func_ptr = <static_func_type>&DotNetDelegate.CreateDelegate

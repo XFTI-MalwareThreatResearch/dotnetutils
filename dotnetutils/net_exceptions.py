@@ -15,8 +15,8 @@ class EmulatorTimeoutException(EmulatorExecutionException):
         EmulatorExecutionException.__init__(self, emu_obj, 'Emulator execution timed out.')
 
 class EmulatorEndExecutionException(DotNetUtilsException):
-    def __init__(self, emu_obj):
-        Exception.__init__(self, "Emulator end")
+    def __init__(self, emu_obj, method_rid, end_method_rid, end_offset, current_offset):
+        Exception.__init__(self, "Emulator ending at method RID {}, end method RID {}, end offset {}, current offset {}".format(method_rid, end_method_rid, hex(end_offset), hex(current_offset)))
         self.__emu_obj = emu_obj
     
     def get_emu_obj(self):
