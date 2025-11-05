@@ -254,6 +254,8 @@ cdef class TypeRef(TypeDefOrRef):
 
 cdef class MethodDefOrRef(RowObject):
 
+    cpdef bytes get_name(self)
+
     cpdef net_cil_disas.MethodDisassembler disassemble_method(self, bint no_save=*, bint original=*)
 
     cpdef bytes get_original_method_data(self)

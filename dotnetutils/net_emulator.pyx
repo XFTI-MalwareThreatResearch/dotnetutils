@@ -275,7 +275,7 @@ cdef void __init_handlers():
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Endfilter] = handle_unsupported_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Unaligned] = handle_unsupported_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Volatile] = handle_unsupported_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Tail] = handle_unsupported_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Tail] = handle_nop_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Initobj] = handle_initobj_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Constrained] = handle_unsupported_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Cpblk] = handle_unsupported_instruction
@@ -841,7 +841,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef StackCell casted_cell
     cdef net_sigs.MethodSig method_signature = initial_method_obj.get_method_signature()
     memset(&obj_ref_initial, 0, sizeof(StackCell))
-    if force_method_obj:
+    if force_method_obj is not None:
         method_obj = force_method_obj
     else:
         method_obj = <net_row_objects.MethodDefOrRef>emu.instr.get_argument()
@@ -850,8 +850,9 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
                     return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0, initial_method_obj)
+
     if method_obj.get_table_name() == 'MethodDef' and not force_extern_type:
-        method_name = method_obj.get_column('Name').get_value_as_bytes()
+        method_name = method_obj.get_name()
         amt_args = <int>len(method_obj.get_param_types())
         if not isinstance(initial_method_obj, net_row_objects.MethodSpec):
             new_emu = emu.spawn_new_emulator(method_obj, caller=emu)
@@ -892,7 +893,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         if force_extern_type is None and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec): #generics etc.
             if isinstance(method_obj.get_parent_type().get_type(), net_row_objects.TypeDef): #TODO: Look over this logic in terms of DotNetDelegate.Invoke() calls.
                 return do_virtcall(emu, force_virtcall=True, force_virt_type=method_obj.get_parent_type().get_type())
-        method_name = method_obj.get_column('Name').get_value_as_bytes()
+        method_name = method_obj.get_name()
         amt_args = <int>len(method_obj.get_param_types())
         push_obj_reference = False
         if not is_newobj and method_obj.method_has_this():
@@ -1117,26 +1118,26 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
             #now check every method based on whether or not its hidebyname or hidebyname + sig
             for curr_method_obj in obj_type.get_methods():
                 if method_obj.is_hidebysig():
-                    if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
+                    if curr_method_obj.get_name() == method_obj.get_name():
                         if net_sigs.method_sig_compare(curr_method_obj.get_method_signature(), method_obj.get_method_signature(), genmethodsig, gentypesig):
                             if curr_method_obj.has_body():
                                 actual_method_obj = curr_method_obj
                                 break
                 else:
-                    if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
+                    if curr_method_obj.get_name() == method_obj.get_name():
                         if curr_method_obj.has_body():
                             actual_method_obj = curr_method_obj
                             break
         else:
             for curr_method_obj in obj_type.get_methods():
                 if method_obj.is_hidebysig():
-                    if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
+                    if curr_method_obj.get_name() == method_obj.get_name():
                         if net_sigs.method_sig_compare(curr_method_obj.get_method_signature(), method_obj.get_method_signature(), genmethodsig, gentypesig):
                             if curr_method_obj.has_body() or curr_method_obj.get_table_name() == 'MemberRef':
                                 actual_method_obj = curr_method_obj
                                 break
                 else:
-                    if curr_method_obj.get_column('Name').get_value_as_bytes() == method_obj.get_column('Name').get_value_as_bytes():
+                    if curr_method_obj.get_name() == method_obj.get_name():
                         if curr_method_obj.has_body() or curr_method_obj.get_table_name() == 'MemberRef':
                             actual_method_obj = curr_method_obj
                             break
@@ -2507,7 +2508,7 @@ cdef net_row_objects.MethodDef resolve_ref(net_row_objects.MemberRef ref_obj):
     if not isinstance(parent_type, net_row_objects.TypeDef):
         return None
     for mdef in parent_type.get_methods():
-        if mdef.get_column('Name').get_value_as_bytes() == ref_obj.get_column('Name').get_value_as_bytes():
+        if mdef.get_name().get_value_as_bytes() == ref_obj.get_name():
             if mdef.get_method_signature() == ref_sig:
                 return mdef
     return None
@@ -2785,7 +2786,7 @@ cdef bint handle_ret_instruction(DotNetEmulator emu):
             value1 = emu.stack.pop()
             emu.caller.stack.append(value1)
     else:
-        if emu.method_obj.get_column('Name').get_value_as_bytes() == b'.ctor':
+        if emu.method_obj.get_name() == b'.ctor':
             if emu.caller:
                 value1 = emu.get_method_param(0)
                 emu.caller.stack.append(value1)
@@ -2942,7 +2943,7 @@ cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
         if col_val is None:
             return emu.pack_blanktag()
         for field_obj in col_val.get_formatted_value():
-            if field_obj.get_column('Name').get_value_as_bytes() == ref_obj.get_column('Name').get_value_as_bytes():
+            if field_obj.get_column('Name').get_value_as_bytes() == ref_obj.get_name():
                 field_sig = field_obj.get_field_signature()
                 if field_sig == ref_obj.get_method_signature():
                     cctor_method = parent_type.get_static_constructor()
@@ -4004,10 +4005,9 @@ cdef class EmulatorAppDomain:
         for x in range(net_emu_types.AMT_OF_STATIC_FUNCTIONS):
             func_mapping = net_emu_types.NET_EMULATE_STATIC_FUNC_REGISTRATIONS[x]
             mapping_name = func_mapping.name[:strlen(func_mapping.name)]
-            methods = self.__starter_dpe.get_methods_by_full_name(mapping_name)
+            methods = self.__starter_dpe.get_methods_by_full_name(mapping_name) #given the current way this method works it should do well for fields as well.
             for mref_obj in methods:
                 self.__static_functions[mref_obj.get_token()] = func_mapping.func_ptr
-        #TODO: Handle the possibility that the static functions represent a field.
 
     cpdef dotnetpefile.DotNetPeFile get_calling_dotnetpe(self):
         """ Obtains the current calling dotnetpe, used for Assembly.GetCallingAssembly()
@@ -7183,8 +7183,6 @@ cdef class DotNetEmulator:
             net_exceptions.FeatureNotImplementedException: Ability to unbox this item has not been implemented.
         """
         if cell.tag == CorElementType.ELEMENT_TYPE_BYREF or cell.is_slim_object:
-            print(cell.tag)
-            print(cell.is_slim_object)
             raise net_exceptions.OperationNotSupportedException()
         if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT:
             return self.duplicate_cell(cell)
@@ -7426,7 +7424,7 @@ cdef class DotNetEmulator:
         self.running_thread = thread_obj
 
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=0, int end_offset=-1, DotNetEmulator caller=None,
-                           int end_method_rid=-1, int end_eip=-1, net_row_objects.MethodSpec spec_obj=None, int timeout_seconds=-1, bint strict_typing=False):
+                           int end_method_rid=-1, int end_eip=-1, net_row_objects.MethodSpec spec_obj=None, int timeout_seconds=-1, bint strict_typing=False, bint dont_execute_first_cctor=False):
         """ Use this method to create a new emulator off an existing one.
             For instance, if you are trying to deobfuscate strings, the usual way to do it would be to emulate some cctor method
             and then use spawn_new_emulator() to create emulator objects each time the string decryption method is emulated.
@@ -7442,11 +7440,13 @@ cdef class DotNetEmulator:
             spec_obj (net_row_objects.MethodSpec): If the method has a methodspec, provide it here.
             timeout_seconds (int): The timeout in seconds -1 for infinite.
             strict_typing (bool): see net_emulator.DotNetEmulator docs.
+            dont_execute_first_cctor (bool): Block execution of only the first cctor (the one for the parent type of method_obj)
         
         Returns:
             net_emulator.DotNetEmulator: The newly allocated emulator object for the method.
         """
         cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset, end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj, strict_typing=strict_typing)
+        cdef net_row_objects.MethodDef cctor_method = None
         new_emu.executed_cctors = self.executed_cctors
         if end_method_rid == -1:
             new_emu.end_method_rid = self.end_method_rid
@@ -7475,6 +7475,12 @@ cdef class DotNetEmulator:
         new_emu.print_debug_methods = self.print_debug_methods
         new_emu.print_debug_level = self.print_debug_level
         new_emu.running_thread = self.running_thread
+        if dont_execute_first_cctor:
+            if new_emu.method_obj.get_parent_type() is not None:
+                cctor_method = new_emu.method_obj.get_parent_type().get_static_constructor()
+                if cctor_method is not None:
+                    new_emu.executed_cctors.can_execute(cctor_method)
+
         return new_emu
 
     cdef void set_slimobj_field(self, StackCell slim_obj, int idno, StackCell val):
@@ -7671,7 +7677,7 @@ cdef class DotNetEmulator:
     cdef void print_instr(self, net_cil_disas.Instruction instr):
         """ Prints the current instruction the emulator is executing for print debugging.
         """          
-        if False: #isinstance(self.method_obj, net_emu_types.DotNetDynamicMethod):
+        if isinstance(self.method_obj, net_emu_types.DynamicMethodObject):
             self.print_string('DynamicMethod: Offset={}, Instr={} {}'.format(hex(self.current_offset), instr.get_name(),
                                                                              instr.get_argument()), 1)
         else:
@@ -7711,7 +7717,7 @@ cdef class DotNetEmulator:
             if isinstance(self.method_obj, net_row_objects.MethodDef) and self.method_obj.get_rid() == self.end_method_rid:
                 should_check_offset = True
                 self.end_method_rid = -1 #Clear end_method_rid to prevent issues with children emulators.
-
+    
         if self.caller is None and has_timeout:
             self.start_time = _perf_counter_ns()
         self.get_appdomain().set_current_emulator(self)
