@@ -139,4 +139,6 @@ cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name):
         return net_sigs.get_CorSig_Boolean()
     elif type_name == b'System.Byte':
         return net_sigs.get_CorSig_Byte()
+    elif type_name == b'System.Object':
+        return net_sigs.get_CorSig_Object()
     return None

@@ -21,7 +21,10 @@ cdef class RowObject:
         """
         self.dotnetpe = dotnetpe
         self.rid = rid
-        self.file_offset = raw_data[-1]
+        if len(raw_data) == 0: #For DynamicMethodObjects
+            self.file_offset = 0
+        else:
+            self.file_offset = raw_data[-1]
         self.values = dict()
         self.table_name = table_name
         self.sizes = sizes
@@ -1087,6 +1090,9 @@ cdef class MethodDefOrRef(RowObject):
         RowObject.__init__(self, dotnetpe, raw_data, rid,
                            sizes, col_types, table_name)
 
+    cpdef bytes get_name(self):
+        return b''
+
     cpdef net_cil_disas.MethodDisassembler disassemble_method(self, bint no_save=False, bint original=False):
         return None
 
@@ -1177,6 +1183,15 @@ cdef class MethodDef(MethodDefOrRef):
         self.__current_method_hash = None
         self.__has_invalid_signature = False
         self.__xrefs = list()
+
+    cpdef bytes get_name(self):
+        """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().
+            Mostly used for dotnetemulator purposes but can be used to replace the above.
+
+        Returns:
+            bytes: The value of the Name column for the object.
+        """
+        return self.get_column('Name').get_value_as_bytes()
 
     cpdef net_cil_disas.MethodDisassembler disassemble_method(self, bint no_save=False, bint original=False):
         """
@@ -1367,7 +1382,7 @@ cdef class MethodDef(MethodDefOrRef):
         """
         cdef bytes signature_data
         cdef net_sigs.SignatureReader sig_reader
-        if self.__sig_obj == None and not self.__has_invalid_signature:
+        if self.__sig_obj is None and not self.__has_invalid_signature:
             signature_data = self.get_column('Signature').get_value()
             try:
                 sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature_data, self)
@@ -1483,6 +1498,9 @@ cdef class MemberRef(MethodDefOrRef):
         self.__method_has_return_called = False
         self.__method_has_this_called = False
         self.__xrefs = list()
+
+    cpdef bytes get_name(self):
+        return self.get_column('Name').get_value_as_bytes()
 
     cpdef list get_xrefs(self):
         """ Obtain a list of xrefs for a MemberRef (a list of tuples with values (method_rid, instr_offset))
@@ -1683,6 +1701,9 @@ cdef class MethodSpec(MethodDefOrRef):
                            sizes, col_types, table_name)
         self.__parsed_sig = None
         self.__xrefs = list()
+
+    cpdef bytes get_name(self):
+        return self.get_method().get_name()
 
     cpdef list get_xrefs(self):
         """ Obtain a list of xrefs (tuples with (method_rid, instr_offset)) for the MethodSpec

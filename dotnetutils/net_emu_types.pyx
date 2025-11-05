@@ -17,7 +17,7 @@ from Crypto.Util.Padding import unpad
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, net_table_objects
 from dotnetutils cimport net_sigs, net_opcodes, net_cil_disas
-from dotnetutils cimport net_structs, net_utils
+from dotnetutils cimport net_structs, net_utils, net_tokens
 
 from dotnetutils cimport dotnetpefile
 
@@ -5418,9 +5418,47 @@ cdef class DotNetType(DotNetObject):
         self.add_function(b'get_MetadataToken', <emu_func_type>self.get_MetadataToken)
         self.add_function(b'get_Assembly', <emu_func_type>self.get_Assembly)
         self.add_function(b'get_IsValueType', <emu_func_type>self.get_IsValueType)
+        self.add_function(b'GetGenericArguments', <emu_func_type>self.GetGenericArguments)
 
     def __str__(self):
         return 'TypeObject {} {}'.format(hex(self.type_handle.get_token()), self.type_handle.get_full_name())
+
+    #TODO: implement MakeByRefType
+
+    cdef StackCell GetGenericArguments(self, StackCell * params, int nparams):
+        cdef DotNetArray result = None
+        cdef int result_len = 0
+        cdef list gen_types = None
+        cdef net_sigs.TypeSig sig = None
+        cdef Py_ssize_t x = 0
+        cdef DotNetType arg = None
+        cdef StackCell cell
+        cdef net_row_objects.TypeDefOrRef ref = None
+        if not isinstance(result, net_sigs.GenericInstSig):
+            result = DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Type'))
+            return self.get_emulator_obj().pack_object(result)
+
+        gen_types = (<net_sigs.GenericInstSig>result).get_generic_args()
+        result_len = <int>len(gen_types)
+        result = DotNetArray(self.get_emulator_obj(), result_len, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Type'))
+        for x in range(len(result)):
+            sig = gen_types[x]
+            if isinstance(sig, net_sigs.CorLibTypeSig):
+                ref = self.get_emulator_obj().get_dotnetpe().get_typeref_by_full_name(net_utils.get_cor_type_name(sig.get_element_type()))
+            elif isinstance(sig, net_sigs.TypeDefOrRefSig):
+                ref = sig.get_type()
+            elif isinstance(sig, net_sigs.GenericInstSig):
+                ref = sig.get_generic_type()
+            
+            if ref is None:
+                raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'typesig error {}'.format(sig))
+
+            arg = DotNetType(self.get_emulator_obj(), ref, sig)
+            cell = self.get_emulator_obj().pack_object(arg)
+            result._set_item(<int64_t>x, cell)
+            self.get_emulator_obj().dealloc_cell(cell)
+
+        return self.get_emulator_obj().pack_object(result)
 
     cdef StackCell get_IsValueType(self, StackCell * params, int nparams):
         return self.get_emulator_obj().pack_bool(self.type_handle.is_valuetype())
@@ -5469,8 +5507,10 @@ cdef class DotNetType(DotNetObject):
         if nparams <= 0 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
             raise net_exceptions.InvalidArgumentsException()
         cdef DotNetRuntimeTypeHandle runtime_handle = <DotNetRuntimeTypeHandle>params[0].item.ref
-        cdef DotNetType obj2 = DotNetType(app_domain.get_emulator_obj(), runtime_handle.get_internal_typedef())
-        obj2.initialize_type(app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Type'))
+        cdef net_sigs.TypeSig sig_obj = net_utils.get_cor_type_from_name(runtime_handle.get_internal_typedef().get_full_name())
+        cdef DotNetType obj2 = DotNetType(app_domain.get_emulator_obj(), runtime_handle.get_internal_typedef(), sig_obj)
+        #TODO: we need better support here for different types of sigs.  Probably wont cause issues for now but still.
+        obj2.initialize_type(app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Type'))
         return app_domain.get_emulator_obj().pack_object(obj2)
 
     cdef StackCell get_Module(self, StackCell * params, int nparams):
@@ -5501,7 +5541,7 @@ cdef class DotNetType(DotNetObject):
                     field_info = DotNetFieldInfo(self.get_emulator_obj(), item)
                     field_objs.append(field_info)
 
-            result_array = DotNetArray(self.get_emulator_obj(), len(field_objs), type_obj.get_dotnetpe().get_type_by_full_name(
+            result_array = DotNetArray(self.get_emulator_obj(), len(field_objs), type_obj.get_dotnetpe().get_typeref_by_full_name(
                 b'System.Reflection.FieldInfo'), initialize=False)
             for x in range(len(field_objs)):
                 cell = self.get_emulator_obj().pack_object(field_objs[x])
@@ -5559,6 +5599,7 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         self.add_function(b'Add', <emu_func_type>self.Add)
         self.add_function(b'ContainsKey', <emu_func_type>self.ContainsKey)
         self.add_function(b'get_Count', <emu_func_type>self.get_Count)
+        self.add_function(b'get_Item', <emu_func_type>self.get_Item)
 
     cdef DotNetObject duplicate(self):
         cdef DotNetDictionary result = DotNetDictionary(self.get_emulator_obj())
@@ -5614,6 +5655,19 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
             self.get_emulator_obj().ref_cell(param1)
             self.__internal_dict[param1_wrapped] = param2_wrapped
         return self.get_emulator_obj().pack_blanktag()
+
+    cdef StackCell get_Item(self, StackCell * params, int nparams):
+        if nparams != 1:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell param1 = params[0]
+        cdef net_emulator.StackCellWrapper param1_wrapped = self.get_emulator_obj().wrap_cell(param1)
+        cdef net_emulator.StackCellWrapper result_wrapped = None
+        cdef StackCell result
+        if param1_wrapped not in self.__internal_dict:
+            raise net_exceptions.InvalidArgumentsException()
+        result_wrapped = self.__internal_dict[param1_wrapped]
+        result = self.get_emulator_obj().duplicate_cell(result_wrapped.get_wrapped())
+        return result
 
     cdef StackCell Add(self, StackCell * params, int nparams):
         return self.set_Item(params, nparams)
@@ -5793,10 +5847,12 @@ cdef class DotNetStream(DotNetObject):
         cdef int64_t x = 0
         cdef StackCell cell
         cdef DotNetArray arr_obj = DotNetArray(self.get_emulator_obj(), count, self._internal.get_type_obj())
+        cdef int64_t y = 0
         for x in range(self._position, self._position + count):
             cell = self._internal._get_item(<uint64_t>x)
-            arr_obj._set_item(x, cell)
+            arr_obj._set_item(y, cell)
             self.get_emulator_obj().dealloc_cell(cell)
+            y += 1
 
         self._position += count
         return self.get_emulator_obj().pack_object(arr_obj)
@@ -5845,7 +5901,7 @@ cdef class DotNetMemoryStream(DotNetStream):
             emu.dealloc_cell(cell)
             
 
-        return result + ' Object: ' + DotNetObject.__str__(self) + ' position: {}'.format(self._position)
+        return 'DotNetMemoryStream: ' + result + ' Object: ' + DotNetObject.__str__(self) + ' position: {}, length={}'.format(self._position, len(self._internal))
 
 #TODO: No ctor needed internal use?
 cdef class DotNetAssemblyName(DotNetObject):
@@ -5884,14 +5940,14 @@ cdef class DotNetAssemblyName(DotNetObject):
 
         if module_obj['PublicKey'].get_raw_value() == 0:
             #If raw value is 0, return a empty array.
-            return self.get_emulator_obj().pack_object(DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte')))
+            return self.get_emulator_obj().pack_object(DotNetArray(self.get_emulator_obj(), 0, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Byte')))
         public_key = module_obj['PublicKey'].get_value()
 
         sha_hash = hashlib.sha1()
         sha_hash.update(public_key)
         hashed_key = sha_hash.digest()
         public_key_token = list(hashed_key[-8:][::-1])
-        array = DotNetArray(self.get_emulator_obj(), 8, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), 8, self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Byte'),
                             initialize=False)
         for x in range(8):
             c = public_key_token[x]
@@ -5960,7 +6016,10 @@ cdef class DotNetAssembly(DotNetObject):
         return self.get_emulator_obj().pack_object(DotNetManifestModule(self.get_emulator_obj(), self))
 
     cdef StackCell get_EntryPoint(self, StackCell * params, int nparams):
-        return self.get_emulator_obj().pack_object(DotNetMemberInfo(self.get_emulator_obj(), self.get_module().get_dotnetpe().get_entry_point()))
+        cdef net_row_objects.MethodDef ep_method = self.get_module().get_dotnetpe().get_entry_point()
+        if ep_method is None:
+            return self.get_emulator_obj().pack_null()
+        return self.get_emulator_obj().pack_object(DotNetMemberInfo(self.get_emulator_obj(), ep_method))
 
     cdef StackCell get_FullName(self, StackCell * params, int nparams):
         cdef dotnetpefile.DotNetPeFile dpe
@@ -6002,14 +6061,14 @@ cdef class DotNetAssembly(DotNetObject):
         cdef DotNetAssembly dotnetassembly
         dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(),
             app_domain.get_executing_dotnetpe().get_metadata_table('Assembly').get(1))
-        dotnetassembly.initialize_type(app_domain.get_executing_dotnetpe().get_type_by_full_name(
+        dotnetassembly.initialize_type(app_domain.get_executing_dotnetpe().get_typeref_by_full_name(
             b'System.Reflection.Assembly'))
         return app_domain.get_emulator_obj().pack_object(dotnetassembly)
 
     @staticmethod
     cdef StackCell GetCallingAssembly(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
         cdef DotNetAssembly dotnetassembly = DotNetAssembly(app_domain.get_emulator_obj(), app_domain.get_calling_dotnetpe().get_metadata_table('Assembly').get(1))
-        dotnetassembly.initialize_type(app_domain.get_calling_dotnetpe().get_type_by_full_name(b'System.Reflection.Assembly'))
+        dotnetassembly.initialize_type(app_domain.get_calling_dotnetpe().get_typeref_by_full_name(b'System.Reflection.Assembly'))
         return app_domain.get_emulator_obj().pack_object(dotnetassembly)
 
     cdef StackCell GetManifestResourceStream(self, StackCell * params, int nparams):
@@ -6026,7 +6085,7 @@ cdef class DotNetAssembly(DotNetObject):
         if not resource_data:
             return self.get_emulator_obj().pack_null()
 
-        array_obj = DotNetArray(self.get_emulator_obj(), len(resource_data), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'), False)
+        array_obj = DotNetArray(self.get_emulator_obj(), len(resource_data), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Byte'), False)
         for x in range(len(resource_data)):
             num = self.get_emulator_obj().pack_u1(resource_data[x])
             array_obj._set_item(x, num)
@@ -6036,7 +6095,7 @@ cdef class DotNetAssembly(DotNetObject):
         obj.ctor(&num, 1)
         self.get_emulator_obj().dealloc_cell(num)
         
-        obj.initialize_type(self.get_module().get_dotnetpe().get_type_by_full_name(
+        obj.initialize_type(self.get_module().get_dotnetpe().get_typeref_by_full_name(
             b'System.IO.Stream'))
         return self.get_emulator_obj().pack_object(obj)
 
@@ -6053,7 +6112,7 @@ cdef class DotNetAssembly(DotNetObject):
                 dns = DotNetString(self.get_emulator_obj(), item['Name'].get_value(), 'utf-8')
                 result.append(dns)
         
-        results = DotNetArray(self.get_emulator_obj(), len(result), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.String'),
+        results = DotNetArray(self.get_emulator_obj(), len(result), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.String'),
                     initialize=False)
         for x in range(len(result)):
             cell = self.get_emulator_obj().pack_string(result[x])
@@ -6063,18 +6122,18 @@ cdef class DotNetAssembly(DotNetObject):
 
     cdef StackCell GetName(self, StackCell * params, int nparams):
         cdef DotNetAssemblyName obj = DotNetAssemblyName(self.get_emulator_obj(), self.get_module()['Name'].get_value(), self)
-        obj.initialize_type(self.get_module().get_dotnetpe().get_type_by_full_name(
+        obj.initialize_type(self.get_module().get_dotnetpe().get_typeref_by_full_name(
             b'System.Reflection.AssemblyName'))
         return self.get_emulator_obj().pack_object(obj)
 
     cdef StackCell GetModules(self, StackCell * params, int nparams):
         cdef net_table_objects.TableObject modules = self.get_module().get_dotnetpe().get_metadata_table('Module')
-        cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), len(modules), self.get_module().get_dotnetpe().get_type_by_full_name(b'System.Reflection.Module'))
+        cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), len(modules), self.get_module().get_dotnetpe().get_typeref_by_full_name(b'System.Reflection.Module'))
         cdef int x = 0
         cdef StackCell cell
-        for x in range(len(modules)):
+        for x in range(1, len(modules) + 1):
             cell = self.get_emulator_obj().pack_object(DotNetModule(self.get_emulator_obj(), modules.get(x)))
-            result._set_item(x, cell)
+            result._set_item(x - 1, cell)
             self.get_emulator_obj().dealloc_cell(cell)
         return self.get_emulator_obj().pack_object(result)
 
@@ -6642,7 +6701,7 @@ cdef class DotNetStackTrace(DotNetObject):
             emulator_ptr = emulator_ptr.get_caller()
         sf_obj = DotNetStackFrame(self.get_emulator_obj())
         sf_obj.skip_frames = self.skipFrames
-        sf_obj.initialize_type(self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(
+        sf_obj.initialize_type(self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(
             b'System.Diagnostics.StackFrame'))
         sf_obj.current_emulator = emulator_list[number]
         return self.get_emulator_obj().pack_object(sf_obj)
@@ -6686,7 +6745,7 @@ cdef class DotNetStackFrame(DotNetObject):
         if emulator_obj is None:
             return self.get_emulator_obj().pack_null()
         obj = DotNetMemberInfo(self.get_emulator_obj(), emulator_obj.get_method_obj())
-        obj.initialize_type(emulator_obj.get_method_obj().get_dotnetpe().get_type_by_full_name(
+        obj.initialize_type(emulator_obj.get_method_obj().get_dotnetpe().get_typeref_by_full_name(
             b'System.Reflection.MemberInfo'))
         return self.get_emulator_obj().pack_object(obj)
 
@@ -6799,7 +6858,7 @@ cdef class DotNetThread(DotNetObject):
         cdef DotNetThread tobj
         # Emulator doesnt support threads so just return a fake object.
         tobj = DotNetThread(app_domain.get_emulator_obj())
-        tobj.initialize_type(app_domain.get_executing_dotnetpe().get_type_by_full_name(
+        tobj.initialize_type(app_domain.get_executing_dotnetpe().get_typeref_by_full_name(
             b'System.Threading.Thread'))
         return app_domain.get_emulator_obj().pack_object(tobj)
 
@@ -7006,7 +7065,7 @@ cdef class DotNetBitConverter(DotNetObject):
         cdef bytes b_data = app_domain.get_emulator_obj().cell_to_bytes(params[0])
         cdef int x = 0
         cdef DotNetArray dnr = DotNetArray(app_domain.get_emulator_obj(), <int>len(b_data),
-                          app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'),
+                          app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Byte'),
                           initialize=False)
         cdef StackCell cell
         for x in range(len(b_data)):
@@ -7162,7 +7221,7 @@ cdef class DotNetEncoding(DotNetObject):
         cdef StackCell num
         raw_bytes = str_obj.get_str_data_as_bytes().decode(str_obj.get_str_encoding()).encode(self.name)
         result = DotNetArray(self.get_emulator_obj(), len(raw_bytes),
-                             self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(b'System.Byte'))
+                             self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Byte'))
         for x in range(len(raw_bytes)):
             uc = raw_bytes[x]
             num = self.get_emulator_obj().pack_u1(uc)
@@ -7187,6 +7246,7 @@ cdef class DotNetString(DotNetObject):
         self.add_function(b'Split', <emu_func_type>self.Split)
         self.add_function(b'ToString', <emu_func_type>self.ToString)
         self.add_function(b'ctor', <emu_func_type>self.ctor)
+        self.add_function(b'ToCharArray', <emu_func_type>self.ToCharArray)
 
     cdef StackCell ctor(self, StackCell * params, int nparams):
         if nparams != 1 or check_object(params[0]):
@@ -7199,6 +7259,16 @@ cdef class DotNetString(DotNetObject):
             self.str_data.push_back(<unsigned short>cell.item.u4)
             self.get_emulator_obj().dealloc_cell(cell)
         return self.get_emulator_obj().pack_string(self)
+
+    cdef StackCell ToCharArray(self, StackCell * params, int nparams):
+        cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), self.str_data.size(), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Char'))
+        cdef int64_t x = 0
+        cdef StackCell cell
+        for x in range(<int64_t>self.str_data.size()):
+            cell = self.get_emulator_obj().pack_char(self.str_data[x])
+            result._set_item(x, cell)
+            self.get_emulator_obj().dealloc_cell(cell)
+        return self.get_emulator_obj().pack_object(result)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.String' or DotNetObject.isinst(self, tdef)
@@ -7415,7 +7485,7 @@ cdef class DotNetString(DotNetObject):
         emu_obj = self.get_emulator_obj()
         method_obj = emu_obj.get_method_obj()
         dpe = method_obj.get_dotnetpe()
-        type_obj = dpe.get_type_by_full_name(b'System.String')
+        type_obj = dpe.get_typeref_by_full_name(b'System.String')
         result = DotNetArray(self.get_emulator_obj(), len(python_result), type_obj=type_obj)
         for x in range(len(python_result)):
             item = DotNetString(self.get_emulator_obj(), python_result[x])
@@ -7474,10 +7544,11 @@ cdef class DotNetModule(DotNetObject):
         return self.get_emulator_obj().pack_object(DotNetModuleHandle(self.get_emulator_obj(), self.internal_module))
 
     cdef StackCell ResolveMethod(self, StackCell * params, int nparams):
-        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
+        if nparams < 1 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
             raise net_exceptions.InvalidArgumentsException()
         cdef int method_token = params[0].item.i4
         cdef net_row_objects.RowObject robj = self.internal_module.get_dotnetpe().get_token_value(method_token)
+        #TODO: I dont think anything needs to be done here for multiple parameters but its certainly possible.
         if robj is None:
             raise net_exceptions.InvalidArgumentsException()
         return self.get_emulator_obj().pack_object(DotNetMethodInfo(self.get_emulator_obj(), robj))
@@ -7511,6 +7582,9 @@ cdef class DotNetModuleHandle(DotNetObject):
 
     def __str__(self):
         return 'ModuleObject {}'.format(self.internal_module)
+
+    def __repr__(self):
+        return str(self)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.ModuleHandle' or DotNetObject.isinst(self, tdef)
@@ -7609,6 +7683,7 @@ cdef class DotNetFieldInfo(DotNetObject):
         self.add_function(b'get_FieldType', <emu_func_type>self.get_FieldType)
         self.add_function(b'SetValue', <emu_func_type>self.SetValue)
         self.add_function(b'get_Name', <emu_func_type>self.get_Name)
+        self.add_function(b'get_MetadataToken', <emu_func_type>self.get_MetadataToken)
 
     def __str__(self):
         return 'FieldObject {} {}'.format(hex(self.internal_field.get_token()), self.internal_field.get_full_name())
@@ -7624,9 +7699,23 @@ cdef class DotNetFieldInfo(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
+    cdef StackCell get_MetadataToken(self, StackCell * params, int nparams):
+        cdef int token = self.internal_field.get_token()
+        return self.get_emulator_obj().pack_i4(token)
+
     cdef StackCell get_FieldType(self, StackCell * params, int nparams):
-        cdef DotNetType type_obj = DotNetType(self.get_emulator_obj(), DotNetRuntimeTypeHandle(
-            self.internal_field.get_parent_type()))
+        cdef net_sigs.TypeSig sig = self.internal_field.get_field_signature().get_type_sig()
+        cdef net_row_objects.TypeDefOrRef ref = None
+        cdef DotNetType type_obj = None
+        if isinstance(sig, net_sigs.TypeDefOrRefSig):
+            ref = sig.get_type()
+        elif isinstance(sig, net_sigs.CorLibTypeSig):
+            ref = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(net_utils.get_cor_type_name(sig.get_element_type()))
+        elif isinstance(sig, net_sigs.GenericInstSig):
+            ref = sig.get_generic_type()
+        else:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'couldnt handle sig {}'.format(sig))
+        type_obj = DotNetType(self.get_emulator_obj(), ref, self.internal_field.get_field_signature().get_type_sig())
         return self.get_emulator_obj().pack_object(type_obj)
 
     cdef StackCell SetValue(self, StackCell * params, int nparams):
@@ -7671,11 +7760,13 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
         cdef net_row_objects.TypeDefOrRef type_obj
         if isinstance(return_sig, net_sigs.CorLibTypeSig):
             type_name = net_utils.get_cor_type_name(return_sig.get_element_type())
-            type_obj = self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name)
+            type_obj = self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(type_name)
             return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), type_obj, return_sig))
         else:
             if isinstance(return_sig, net_sigs.TypeDefOrRefSig) and return_sig.get_type() is not None:
                 return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), return_sig.get_type(), return_sig))
+            elif isinstance(return_sig, net_sigs.SZArraySig):
+                return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Array'), return_sig))
         raise net_exceptions.OperationNotSupportedException()
 
     def __str__(self):
@@ -7709,14 +7800,14 @@ cdef class DotNetMethodBase(DotNetMemberInfo):
         return app_domain.get_emulator_obj().pack_object(DotNetMethodInfo(app_domain.get_emulator_obj(), method_handle.internal_method))
 
     cdef StackCell get_IsStatic(self, StackCell * params, int nparams):
-        cdef bint res = self.internal_method.method_has_this()
+        cdef bint res = self.internal_method.is_static_method()
         return self.get_emulator_obj().pack_bool(res)
 
     cdef StackCell GetParameters(self, StackCell * params, int nparams):
         cdef list param_list = self.internal_method.get_param_types()
         cdef int x
         cdef DotNetArray result = DotNetArray(self.get_emulator_obj(), len(param_list),
-                             self.internal_method.get_dotnetpe().get_type_by_full_name(b'System.Reflection.ParameterInfo'))
+                             self.internal_method.get_dotnetpe().get_typeref_by_full_name(b'System.Reflection.ParameterInfo'))
         cdef StackCell cell
         for x in range(len(param_list)):
             cell = self.get_emulator_obj().pack_object(DotNetParameterInfo(self.get_emulator_obj(), param_list[x]))
@@ -7760,15 +7851,123 @@ cdef class DotNetParameterInfo(DotNetObject):
         cdef bytes type_name 
         if isinstance(self.internal_param, net_sigs.CorLibTypeSig):
             type_name = net_utils.get_cor_type_name(self.internal_param.get_element_type())
-            return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(type_name), self.internal_param))
+            return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(type_name), self.internal_param))
         elif isinstance(self.internal_param, net_sigs.SZArraySig):
-            return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Array'), self.internal_param)) #NOTE: this might not account for generics.
+            return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Array'), self.internal_param)) #NOTE: this might not account for generics.
         elif isinstance(self.internal_param, net_sigs.ClassSig):
             return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.internal_param.get_type(), self.internal_param))
         raise net_exceptions.OperationNotSupportedException()
 
     def __str__(self):
         return 'ParameterObject: {} {}'.format(hex(self.internal_param.get_token()), self.internal_param.get_column('Name').get_value())
+
+cdef class DynamicMethodObject(net_row_objects.MethodDef):
+
+    """ This method object is a fake method object with minimum functionality meant to simply
+        allow DotNetEmulator to handle dynamic methods without errors.
+    """
+    
+    def __init__(self, net_emulator.DotNetEmulator emu, str name, bytes method_data, net_sigs.MethodSig sig):
+        net_row_objects.MethodDef.__init__(self, emu.get_method_obj().get_dotnetpe(), list(), 0, list(), dict(), 'MethodDef') #has to be methoddef for call logic to work
+        self.__name = name
+        self.__sig_obj = sig
+        self.__method_data = method_data
+
+    cpdef bint has_return_value(self):
+        return not isinstance(self.__sig_obj.get_return_type(), net_sigs.CorLibTypeSig) or self.__sig_obj.get_return_type() != net_sigs.get_CorSig_Void()
+
+    cpdef bint method_has_this(self):
+        return self.__sig_obj.get_calling_conv() & net_structs.CorCallingConvention.HasThis != 0
+
+    cpdef net_cil_disas.MethodDisassembler disassemble_method(self, bint no_save=False, bint original=False):
+        return net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
+
+    cpdef net_sigs.CallingConventionSig get_method_signature(self):
+        return self.__sig_obj
+
+    cpdef bytes get_name(self):
+        return self.__name.encode('utf-8')
+    
+    cpdef bytes get_full_name(self):
+        return b'DynamicMethod:' + self.get_name()
+
+    cpdef bytes get_original_method_data(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef list get_xrefs(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef bint is_abstract(self):
+        return False
+
+    cpdef bint is_final(self):
+        return False
+
+    cpdef bint is_newslot(self):
+        return False
+
+    cpdef bint is_virtual(self):
+        return False
+
+    cpdef bint is_hidebysig(self):
+        return False
+
+    cpdef bint is_static_method(self):
+        return True # dynamic methods are static by default
+    
+    cpdef bint is_entrypoint(self):
+        return False
+
+    cpdef bint is_static_constructor(self):
+        return False
+
+    cpdef bint is_constructor(self):
+        return False
+
+    cpdef bytes get_method_data(self):
+        return self.__method_data
+
+    cpdef bint has_body(self):
+        return True
+
+    cpdef net_row_objects.ColumnValue get_column(self, str col_name):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef list get_sizes(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef int get_token(self):
+        return 0 #Return a fake token.
+
+    cpdef int get_file_offset(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __len__(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __hash__(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __eq__(self, other):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __iter__(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __getitem__(self, item):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __str__(self):
+        return 'DynamicMethod: name={}, rid={}'.format(self.__name, self.get_rid())
+    
+    cpdef bint has_value(self, str val_name):
+        return False
+
+    cpdef int get_offset_to_col(self, str col_name):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef bytes to_bytes(self):
+        raise net_exceptions.OperationNotSupportedException()
 
 cdef class DotNetDelegate(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -7806,8 +8005,30 @@ cdef class DotNetDelegate(DotNetObject):
 
     @staticmethod
     cdef StackCell CreateDelegate(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        raise Exception()
-    
+        if nparams != 2 or check_object(params[0]) or check_object(params[1]):
+            raise net_exceptions.InvalidArgumentsException()
+
+        if not isinstance(<DotNetObject>params[0].item.ref, DotNetType) or not isinstance(<DotNetObject>params[1].item.ref, DotNetMethodInfo):
+            raise net_exceptions.InvalidArgumentsException()
+
+        cdef DotNetType tp = <DotNetType>params[0].item.ref
+        cdef DotNetMethodInfo md = <DotNetMethodInfo>params[1].item.ref
+
+        cdef DotNetRuntimeMethodHandle handle = DotNetRuntimeMethodHandle(app_domain.get_emulator_obj(), md.internal_method)
+        cdef StackCell handle_cell = app_domain.get_emulator_obj().pack_object(handle)
+        cdef StackCell null_cell = app_domain.get_emulator_obj().pack_null()
+        cdef StackCell args[2]
+
+        cdef DotNetDelegate result_obj = DotNetDelegate(app_domain.get_emulator_obj())
+        result_obj.initialize_type(tp.get_type_handle())
+        args[0] = null_cell
+        args[1] = handle_cell
+        result_obj.ctor(args, 2)
+        app_domain.get_emulator_obj().dealloc_cell(null_cell)
+        app_domain.get_emulator_obj().dealloc_cell(handle_cell)
+        handle_cell = app_domain.get_emulator_obj().pack_object(result_obj)
+        return handle_cell
+
     cdef StackCell Invoke(self, StackCell * params, int nparams):
         cdef int amt_args = nparams
         cdef StackCell * args = NULL
@@ -7822,8 +8043,8 @@ cdef class DotNetDelegate(DotNetObject):
             memcpy(&args[1], params, sizeof(StackCell) * nparams)
         else:
             memcpy(args, params, sizeof(StackCell) * nparams)
-        net_emulator.do_call(self.get_emulator_obj(), False, self.dn_methodinfo.internal_method.get_column('Name') == b'.ctor', self.dn_methodinfo.internal_method, None, args, amt_args, self.dn_methodinfo.internal_method)
-        if self.dn_type.tag != CorElementType.ELEMENT_TYPE_END: #TODO: make sure for force_method_args we dont clean up the args ourselves in do_call(), let the do_call from invoke do it.
+        net_emulator.do_call(self.get_emulator_obj(), False, self.dn_methodinfo.internal_method.get_name() == b'.ctor', self.dn_methodinfo.internal_method, None, args, amt_args, self.dn_methodinfo.internal_method)
+        if self.dn_type.tag != CorElementType.ELEMENT_TYPE_END:
             self.get_emulator_obj().dealloc_cell(args[0])
         free(args)
         if self.dn_methodinfo.internal_method.has_return_value():
@@ -7831,9 +8052,6 @@ cdef class DotNetDelegate(DotNetObject):
         return self.get_emulator_obj().pack_blanktag()
 
     def __str__(self):
-        """if isinstance(self.dn_methodinfo, DotNetDynamicMethod):
-            return 'Delegate: DynamicMethod'
-        else:"""
         return 'Delegate: {}'.format(self.dn_methodinfo.internal_method.get_full_name())
 
 cdef class DotNetMulticastDelegate(DotNetDelegate):
@@ -7875,7 +8093,7 @@ cdef class DotNetConvert(DotNetObject):
         cdef StackCell cell
         str_data = string.get_str_data_as_bytes()
         new_str_data = base64.b64decode(bytes(str_data))
-        dnarray = DotNetArray(app_domain.get_emulator_obj(), len(new_str_data), app_domain.get_executing_dotnetpe().get_type_by_full_name(
+        dnarray = DotNetArray(app_domain.get_emulator_obj(), len(new_str_data), app_domain.get_executing_dotnetpe().get_typeref_by_full_name(
             b'System.Byte'), initialize=False)
         for x in range(len(new_str_data)):
             cell = app_domain.get_emulator_obj().pack_u1(new_str_data[x])
@@ -7899,36 +8117,21 @@ cdef class DotNetConvert(DotNetObject):
         app_domain.get_emulator_obj().dealloc_cell(boxed_value)
         return result
 
-"""
 cdef class DotNetOpCode(DotNetObject):
-    def __init__(self, emulator_obj):
+    def __init__(self, emulator_obj, str stringname, DotNetStackBehaviour pop, DotNetStackBehaviour push, DotNetOperandType operand, DotNetOpCodeType op_type, int size, int s1, int s2, DotNetFlowControl ctrl, bint endsjmpblk, int stack):
         DotNetObject.__init__(self, emulator_obj)
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
-
-    #TODO fix ctor This has to be an internal ctor
-    cdef StackCell ctor(self, StackCell * params, int nparams):
-        self.stringname = args[0]
-        self.pop = args[1]
-        self.push = args[2]
-        self.operand = args[3]
-        self.op_type = args[4]
-        self.size = args[5]
-        self.s1 = args[6]
-        self.s2 = args[7]
-        self.ctrl = args[8]
-        self.endsjmpblk = args[9]
-        self.stack = args[10]
-        return self
-
-    cpdef get_net_cil_equiv(self):
-        return net_opcodes.OpcodeCollection.get_opcode_by_name(self.stringname)
-
-    cpdef _get_opcode(self):
-        if self.s1 == 255:
-            return self.s2
-        else:
-            # TODO: add two byte opcode support
-            raise net_exceptions.OperationNotSupportedException()
+        self.stringname = stringname
+        self.pop = pop
+        self.push = push
+        self.operand = operand
+        self.op_type = op_type
+        self.size = size
+        self.s1 = s1
+        self.s2 = s2
+        self.ctrl = ctrl
+        self.endsjmpblk = endsjmpblk
+        self.stack = stack
 
     def __str__(self):
         return self.stringname
@@ -7938,1153 +8141,1396 @@ cdef class DotNetOpCodes(DotNetObject):
 
     def __init__(self, emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
-    #TODO Fix method instantiation
-    @staticmethod
-    cdef DotNetObject Nop(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "nop", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
-                        DotNetOpCodeType.Primitive, 1, 255, 0, DotNetFlowControl.Next, False, 0)
 
     @staticmethod
-    cdef DotNetObject Break(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "break", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
-                         DotNetOpCodeType.Primitive, 1, 255, 1, DotNetFlowControl.Break, False, 0)
+    cdef StackCell Nop(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "nop", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+                        DotNetOpCodeType.Primitive, 1, 255, 0, DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldarg_0(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Break(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "break", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+                         DotNetOpCodeType.Primitive, 1, 255, 1, DotNetFlowControl.Break, False, 0))
+
+    @staticmethod
+    cdef StackCell Ldarg_0(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 2, DotNetFlowControl.Next,
-                           False, 1)
+                           False, 1))
 
     @staticmethod
-    cdef DotNetObject Ldarg_1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldarg_1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 3, DotNetFlowControl.Next,
-                           False, 1)
+                           False, 1))
 
     @staticmethod
-    cdef DotNetObject Ldarg_2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldarg_2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 4, DotNetFlowControl.Next,
-                           False, 1)
+                           False, 1))
 
     @staticmethod
-    cdef DotNetObject Ldarg_3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldarg_3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 5, DotNetFlowControl.Next,
-                           False, 1)
+                           False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldloc_0(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldloc_0(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 6, DotNetFlowControl.Next,
-                           False, 1)
+                           False, 1))
 
     @staticmethod
-    cdef DotNetObject Ldloc_1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldloc_1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 7, DotNetFlowControl.Next,
-                           False, 1)
+                           False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldloc_2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldloc_2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 8, DotNetFlowControl.Next,
-                           False, 1)
+                           False, 1))
 
     @staticmethod
-    cdef DotNetObject Ldloc_3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldloc_3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 9, DotNetFlowControl.Next,
-                           False, 1)
+                           False, 1))
 
     @staticmethod
-    cdef DotNetObject Stloc_0(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.0", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Stloc_0(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stloc.0", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0xA, DotNetFlowControl.Next,
-                           False, -1)
+                           False, -1))
+
     @staticmethod
-    cdef DotNetObject Stloc_1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Stloc_1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stloc.1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0xB, DotNetFlowControl.Next,
-                           False, -1)
+                           False, -1))
+
     @staticmethod
-    cdef DotNetObject Stloc_2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Stloc_2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stloc.2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0xC, DotNetFlowControl.Next,
-                           False, -1)
+                           False, -1))
+
     @staticmethod
-    cdef DotNetObject Stloc_3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.3", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Stloc_3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stloc.3", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0xD, DotNetFlowControl.Next,
-                           False, -1)
+                           False, -1))
+
     @staticmethod
-    cdef DotNetObject Ldarg_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldarg_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldarg.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0xE,
-                           DotNetFlowControl.Next, False, 1)
+                           DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldarga_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarga.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldarga_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldarga.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0xF,
-                            DotNetFlowControl.Next, False, 1)
+                            DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Starg_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "starg.s", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Starg_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "starg.s", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0x10,
-                           DotNetFlowControl.Next, False, -1)
+                           DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Ldloc_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldloc_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldloc.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                            DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0x11,
-                           DotNetFlowControl.Next, False, 1)
+                           DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldloca_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloca.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldloca_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldloca.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0x12,
-                            DotNetFlowControl.Next, False, 1)
+                            DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Stloc_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc.s", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Stloc_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stloc.s", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                            DotNetOperandType.ShortInlineVar, DotNetOpCodeType.Macro, 1, 255, 0x13,
-                           DotNetFlowControl.Next, False, -1)
+                           DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Ldnull(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldnull", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushref,
+    cdef StackCell Ldnull(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldnull", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushref,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x14,
-                          DotNetFlowControl.Next, False, 1)
+                          DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_M1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.m1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_M1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.m1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x15, DotNetFlowControl.Next,
-                             False, 1)
+                             False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_0(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_0(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.0", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x16, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x17, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x18, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x19, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1A, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_5(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.5", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_5(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.5", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1B, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_6(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.6", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_6(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.6", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1C, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_7(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.7", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_7(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.7", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1D, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Macro, 1, 255, 0x1E, DotNetFlowControl.Next,
-                            False, 1)
+                            False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldc_I4_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.ShortInlineI, DotNetOpCodeType.Macro, 1, 255, 0x1F,
-                            DotNetFlowControl.Next, False, 1)
+                            DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineI,
-                          DotNetOpCodeType.Primitive, 1, 255, 0x20, DotNetFlowControl.Next, False, 1)
+    cdef StackCell Ldc_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineI,
+                          DotNetOpCodeType.Primitive, 1, 255, 0x20, DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi8, DotNetOperandType.InlineI8,
-                          DotNetOpCodeType.Primitive, 1, 255, 0x21, DotNetFlowControl.Next, False, 1)
+    cdef StackCell Ldc_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.i8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi8, DotNetOperandType.InlineI8,
+                          DotNetOpCodeType.Primitive, 1, 255, 0x21, DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.r4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushr4,
+    cdef StackCell Ldc_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.r4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushr4,
                           DotNetOperandType.ShortInlineR, DotNetOpCodeType.Primitive, 1, 255, 0x22,
-                          DotNetFlowControl.Next, False, 1)
+                          DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldc_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldc.r8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushr8, DotNetOperandType.InlineR,
-                          DotNetOpCodeType.Primitive, 1, 255, 0x23, DotNetFlowControl.Next, False, 1)
+    cdef StackCell Ldc_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldc.r8", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushr8, DotNetOperandType.InlineR,
+                          DotNetOpCodeType.Primitive, 1, 255, 0x23, DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Dup(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "dup", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1_push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x25, DotNetFlowControl.Next, False, 1)
+    cdef StackCell Dup(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "dup", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1_push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x25, DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Pop(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "pop", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x26, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Pop(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "pop", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x26, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Jmp(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "jmp", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineMethod,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x27, DotNetFlowControl.Call, True, 0)
+    cdef StackCell Jmp(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "jmp", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineMethod,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x27, DotNetFlowControl.Call, True, 0))
+
     @staticmethod
-    cdef DotNetObject Call(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "call", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
+    cdef StackCell Call(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "call", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
                         DotNetOperandType.InlineMethod, DotNetOpCodeType.Primitive, 1, 255, 0x28,
-                        DotNetFlowControl.Call, False, 0)
+                        DotNetFlowControl.Call, False, 0))
+
     @staticmethod
-    cdef DotNetObject Calli(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "calli", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
+    cdef StackCell Calli(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "calli", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
                          DotNetOperandType.InlineSig, DotNetOpCodeType.Primitive, 1, 255, 0x29, DotNetFlowControl.Call,
-                         False, 0)
+                         False, 0))
+
     @staticmethod
-    cdef DotNetObject Ret(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ret", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x2A, DotNetFlowControl.Return, True, 0)
+    cdef StackCell Ret(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ret", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x2A, DotNetFlowControl.Return, True, 0))
+
     @staticmethod
-    cdef DotNetObject Br_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "br.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+    cdef StackCell Br_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "br.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
                         DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2B,
-                        DotNetFlowControl.Branch, True, 0)
+                        DotNetFlowControl.Branch, True, 0))
+
     @staticmethod
-    cdef DotNetObject BrFalse_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "brFalse.s", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    cdef StackCell BrFalse_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "brFalse.s", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                              DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2C,
-                             DotNetFlowControl.Cond_Branch, False, -1)
+                             DotNetFlowControl.Cond_Branch, False, -1))
+
     @staticmethod
-    cdef DotNetObject BrTrue_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "brTrue.s", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    cdef StackCell BrTrue_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "brTrue.s", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2D,
-                            DotNetFlowControl.Cond_Branch, False, -1)
+                            DotNetFlowControl.Cond_Branch, False, -1))
 
     @staticmethod
-    cdef DotNetObject Beq_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "beq.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Beq_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "beq.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2E,
-                         DotNetFlowControl.Cond_Branch, False, -2)
+                         DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bge_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bge.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bge_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bge.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x2F,
-                         DotNetFlowControl.Cond_Branch, False, -2)
+                         DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bgt_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bgt.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bgt_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bgt.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x30,
-                         DotNetFlowControl.Cond_Branch, False, -2)
+                         DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Ble_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ble.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Ble_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ble.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x31,
-                         DotNetFlowControl.Cond_Branch, False, -2)
+                         DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Blt_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "blt.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Blt_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "blt.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x32,
-                         DotNetFlowControl.Cond_Branch, False, -2)
+                         DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bne_Un_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bne.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bne_Un_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bne.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x33,
-                            DotNetFlowControl.Cond_Branch, False, -2)
+                            DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bge_Un_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bge.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bge_Un_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bge.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x34,
-                            DotNetFlowControl.Cond_Branch, False, -2)
+                            DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bgt_Un_s(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bgt.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bgt_Un_s(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bgt.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x35,
-                            DotNetFlowControl.Cond_Branch, False, -2)
+                            DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Ble_Un_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ble.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Ble_Un_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ble.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x36,
-                            DotNetFlowControl.Cond_Branch, False, -2)
+                            DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Blt_Un_s(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "blt.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Blt_Un_s(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "blt.un.s", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                             DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x37,
-                            DotNetFlowControl.Cond_Branch, False, -2)
+                            DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Br(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "br", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineBrTarget,
-                      DotNetOpCodeType.Primitive, 1, 255, 0x38, DotNetFlowControl.Branch, True, 0)
+    cdef StackCell Br(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "br", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0, DotNetOperandType.InlineBrTarget,
+                      DotNetOpCodeType.Primitive, 1, 255, 0x38, DotNetFlowControl.Branch, True, 0))
+
     @staticmethod
-    cdef DotNetObject BrFalse(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "brFalse", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    cdef StackCell BrFalse(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "brFalse", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                            DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0x39,
-                           DotNetFlowControl.Cond_Branch, False, -1)
+                           DotNetFlowControl.Cond_Branch, False, -1))
+
     @staticmethod
-    cdef DotNetObject BrTrue(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "brTrue", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    cdef StackCell BrTrue(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "brTrue", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0x3A,
-                          DotNetFlowControl.Cond_Branch, False, -1)
+                          DotNetFlowControl.Cond_Branch, False, -1))
+
     @staticmethod
-    cdef DotNetObject Beq(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "beq", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Beq(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "beq", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3B,
-                       DotNetFlowControl.Cond_Branch, False, -2)
+                       DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bge(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bge", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bge(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bge", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3C,
-                       DotNetFlowControl.Cond_Branch, False, -2)
+                       DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bgt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bgt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bgt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bgt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3D,
-                       DotNetFlowControl.Cond_Branch, False, -2)
+                       DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Ble(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ble", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Ble(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ble", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3E,
-                       DotNetFlowControl.Cond_Branch, False, -2)
+                       DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Blt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "blt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Blt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "blt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                        DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x3F,
-                       DotNetFlowControl.Cond_Branch, False, -2)
+                       DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bne_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bne.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bne_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bne.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x40,
-                          DotNetFlowControl.Cond_Branch, False, -2)
+                          DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bge_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bge.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bge_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bge.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x41,
-                          DotNetFlowControl.Cond_Branch, False, -2)
+                          DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Bgt_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "bgt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Bgt_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "bgt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x42,
-                          DotNetFlowControl.Cond_Branch, False, -2)
+                          DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Ble_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ble.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Ble_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ble.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x43,
-                          DotNetFlowControl.Cond_Branch, False, -2)
+                          DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Blt_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "blt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Blt_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "blt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Macro, 1, 255, 0x44,
-                          DotNetFlowControl.Cond_Branch, False, -2)
+                          DotNetFlowControl.Cond_Branch, False, -2))
+
     @staticmethod
-    cdef DotNetObject Switch(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "switch", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+    cdef StackCell Switch(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "switch", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineSwitch, DotNetOpCodeType.Primitive, 1, 255, 0x45,
-                          DotNetFlowControl.Cond_Branch, False, -1)
+                          DotNetFlowControl.Cond_Branch, False, -1))
+
     @staticmethod
-    cdef DotNetObject Ldind_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i1", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldind_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i1", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x46,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_U1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u1", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldind_U1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u1", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x47,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i2", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldind_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i2", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x48,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_U2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u2", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldind_U2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u2", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x49,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldind_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4A,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_U4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldind_U4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.u4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4B,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i8", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi8,
+    cdef StackCell Ldind_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i8", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi8,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4C,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldind_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.i", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4D,
-                        DotNetFlowControl.Next, False, 0)
+                        DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.r4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushr4,
+    cdef StackCell Ldind_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.r4", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushr4,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4E,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.r8", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushr8,
+    cdef StackCell Ldind_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.r8", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushr8,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x4F,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldind_Ref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldind.ref", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushref,
+    cdef StackCell Ldind_Ref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldind.ref", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushref,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x50,
-                            DotNetFlowControl.Next, False, 0)
+                            DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Stind_Ref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.ref", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    cdef StackCell Stind_Ref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stind.ref", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x51,
-                            DotNetFlowControl.Next, False, -2)
+                            DotNetFlowControl.Next, False, -2))
 
     @staticmethod
-    cdef DotNetObject Stind_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i1", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    cdef StackCell Stind_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stind.i1", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x52,
-                            DotNetFlowControl.Next, False, -2)
+                            DotNetFlowControl.Next, False, -2))
 
     @staticmethod
-    cdef DotNetObject Stind_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i2", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    cdef StackCell Stind_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stind.i2", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x53,
-                            DotNetFlowControl.Next, False, -2)
+                            DotNetFlowControl.Next, False, -2))
 
     @staticmethod
-    cdef DotNetObject Stind_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i4", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    cdef StackCell Stind_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stind.i4", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x54,
-                            DotNetFlowControl.Next, False, -2)
+                            DotNetFlowControl.Next, False, -2))
 
     @staticmethod
-    cdef DotNetObject Stind_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i8", DotNetStackBehaviour.Popi_popi8, DotNetStackBehaviour.Push0,
+    cdef StackCell Stind_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stind.i8", DotNetStackBehaviour.Popi_popi8, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x55,
-                            DotNetFlowControl.Next, False, -2)
+                            DotNetFlowControl.Next, False, -2))
 
     @staticmethod
-    cdef DotNetObject Stind_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.r4", DotNetStackBehaviour.Popi_popr4, DotNetStackBehaviour.Push0,
+    cdef StackCell Stind_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stind.r4", DotNetStackBehaviour.Popi_popr4, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x56,
-                            DotNetFlowControl.Next, False, -2)
+                            DotNetFlowControl.Next, False, -2))
 
     @staticmethod
-    cdef DotNetObject Add(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.r8", DotNetStackBehaviour.Popi_popr8, DotNetStackBehaviour.Push0,
+    cdef StackCell Add(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "add", DotNetStackBehaviour.Popi_popr8, DotNetStackBehaviour.Push0,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x57,
-                            DotNetFlowControl.Next, False, -2)
+                            DotNetFlowControl.Next, False, -2))
 
     @staticmethod
-    cdef DotNetObject Stind_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "add", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x58, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Stind_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stind.r8", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x58, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Sub(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "sub", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x59, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Sub(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "sub", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x59, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Mul(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "mul", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x5A, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Mul(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "mul", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x5A, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Div(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "div", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x5B, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Div(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "div", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x5B, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Div_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "div.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    cdef StackCell Div_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "div.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x5C,
-                          DotNetFlowControl.Next, False, -1)
+                          DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Rem(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "rem", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x5D, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Rem(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "rem", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x5D, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Rem_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "rem.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    cdef StackCell Rem_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "rem.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x5E,
-                          DotNetFlowControl.Next, False, -1)
+                          DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject And(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "and", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x5F, DotNetFlowControl.Next, False, -1)
+    cdef StackCell And(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "and", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x5F, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Or(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "or", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                      DotNetOpCodeType.Primitive, 1, 255, 0x60, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Or(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "or", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                      DotNetOpCodeType.Primitive, 1, 255, 0x60, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Xor(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "xor", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x61, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Xor(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "xor", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x61, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Shl(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "shl", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x62, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Shl(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "shl", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x62, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Shr(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "shr", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x63, DotNetFlowControl.Next, False, -1)
+    cdef StackCell Shr(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "shr", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x63, DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Shr_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "shr.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+    cdef StackCell Shr_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "shr.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x64,
-                          DotNetFlowControl.Next, False, -1)
+                          DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Neg(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "neg", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x65, DotNetFlowControl.Next, False, 0)
+    cdef StackCell Neg(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "neg", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x65, DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Not(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "not", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x66, DotNetFlowControl.Next, False, 0)
+    cdef StackCell Not(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "not", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push1, DotNetOperandType.InlineNone,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x66, DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.i1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x67,
-                           DotNetFlowControl.Next, False, 0)
+                           DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.i2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x68,
-                           DotNetFlowControl.Next, False, 0)
+                           DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.i4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x69,
-                           DotNetFlowControl.Next, False, 0)
+                           DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    cdef StackCell Conv_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.i8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6A,
-                           DotNetFlowControl.Next, False, 0)
+                           DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.r4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr4,
+    cdef StackCell Conv_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.r4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr4,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6B,
-                           DotNetFlowControl.Next, False, 0)
+                           DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.r8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
+    cdef StackCell Conv_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.r8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6C,
-                           DotNetFlowControl.Next, False, 0)
+                           DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_U4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_U4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.u4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6D,
-                           DotNetFlowControl.Next, False, 0)
+                           DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_U8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    cdef StackCell Conv_U8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.u8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x6E,
-                           DotNetFlowControl.Next, False, 0)
+                           DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Callvirt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "callvirt", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
+    cdef StackCell Callvirt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "callvirt", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Varpush,
                             DotNetOperandType.InlineMethod, DotNetOpCodeType.Objmodel, 1, 255, 0x6F,
-                            DotNetFlowControl.Call, False, 0)
+                            DotNetFlowControl.Call, False, 0))
+
     @staticmethod
-    cdef DotNetObject Cpobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "cpobj", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+    cdef StackCell Cpobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "cpobj", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
                          DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x70, DotNetFlowControl.Next,
-                         False, -2)
+                         False, -2))
+
     @staticmethod
-    cdef DotNetObject Ldobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldobj", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push1, DotNetOperandType.InlineType,
-                         DotNetOpCodeType.Objmodel, 1, 255, 0x71, DotNetFlowControl.Next, False, 0)
+    cdef StackCell Ldobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldobj", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push1, DotNetOperandType.InlineType,
+                         DotNetOpCodeType.Objmodel, 1, 255, 0x71, DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Ldstr(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldstr", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushref,
+    cdef StackCell Ldstr(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldstr", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushref,
                          DotNetOperandType.InlineString, DotNetOpCodeType.Objmodel, 1, 255, 0x72,
-                         DotNetFlowControl.Next, False, 1)
+                         DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Newobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "newobj", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Pushref,
+    cdef StackCell Newobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "newobj", DotNetStackBehaviour.Varpop, DotNetStackBehaviour.Pushref,
                           DotNetOperandType.InlineMethod, DotNetOpCodeType.Objmodel, 1, 255, 0x73,
-                          DotNetFlowControl.Call, False, 1)
+                          DotNetFlowControl.Call, False, 1))
+
     @staticmethod
-    cdef DotNetObject Castclass(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "castclass", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushref,
+    cdef StackCell Castclass(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "castclass", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushref,
                              DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x74,
-                             DotNetFlowControl.Next, False, 0)
+                             DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject IsInst(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "isinst", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
+    cdef StackCell IsInst(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "isinst", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
                           DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x75, DotNetFlowControl.Next,
-                          False, 0)
+                          False, 0))
+
     @staticmethod
-    cdef DotNetObject Conv_R_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.r.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
+    cdef StackCell Conv_R_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.r.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x76,
-                             DotNetFlowControl.Next, False, 0)
+                             DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Unbox(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "unbox", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineType,
-                         DotNetOpCodeType.Primitive, 1, 255, 0x79, DotNetFlowControl.Next, False, 0)
+    cdef StackCell Unbox(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "unbox", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineType,
+                         DotNetOpCodeType.Primitive, 1, 255, 0x79, DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Throw(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "throw", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
-                         DotNetOpCodeType.Objmodel, 1, 255, 0x7A, DotNetFlowControl.Throw, True, -1)
+    cdef StackCell Throw(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "throw", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push0, DotNetOperandType.InlineNone,
+                         DotNetOpCodeType.Objmodel, 1, 255, 0x7A, DotNetFlowControl.Throw, True, -1))
+
     @staticmethod
-    cdef DotNetObject Ldfld(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldfld", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldfld(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldfld", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push1,
                          DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7B, DotNetFlowControl.Next,
-                         False, 0)
+                         False, 0))
+
     @staticmethod
-    cdef DotNetObject Ldflda(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldflda", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldflda(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldflda", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
                           DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7C,
-                          DotNetFlowControl.Next, False, 0)
+                          DotNetFlowControl.Next, False, 0))
+
     @staticmethod
-    cdef DotNetObject Stfld(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stfld", DotNetStackBehaviour.Popref_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Stfld(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stfld", DotNetStackBehaviour.Popref_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7D, DotNetFlowControl.Next,
-                         False, -2)
+                         False, -2))
+
     @staticmethod
-    cdef DotNetObject Ldsfld(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldsfld", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+    cdef StackCell Ldsfld(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldsfld", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
                           DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7E,
-                          DotNetFlowControl.Next, False, 1)
+                          DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Ldsflda(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldsflda", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldsflda(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldsflda", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x7F,
-                           DotNetFlowControl.Next, False, 1)
+                           DotNetFlowControl.Next, False, 1))
+
     @staticmethod
-    cdef DotNetObject Stsfld(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stsfld", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Stsfld(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stsfld", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
                           DotNetOperandType.InlineField, DotNetOpCodeType.Objmodel, 1, 255, 0x80,
-                          DotNetFlowControl.Next, False, -1)
+                          DotNetFlowControl.Next, False, -1))
+
     @staticmethod
-    cdef DotNetObject Stobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stobj", DotNetStackBehaviour.Popi_pop1, DotNetStackBehaviour.Push0,
+    cdef StackCell Stobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stobj", DotNetStackBehaviour.Popi_pop1, DotNetStackBehaviour.Push0,
                          DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 1, 255, 0x81, DotNetFlowControl.Next,
-                         False, -2)
+                         False, -2))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_I1_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i1.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_Ovf_I1_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i1.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x82,
-                                  DotNetFlowControl.Next, False, 0)
+                                  DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_I2_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i2.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_Ovf_I2_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i2.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x83,
-                                  DotNetFlowControl.Next, False, 0)
+                                  DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_I4_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i4.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_Ovf_I4_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i4.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x84,
-                                  DotNetFlowControl.Next, False, 0)
+                                  DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_I8_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i8.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    cdef StackCell Conv_Ovf_I8_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i8.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x85,
-                                  DotNetFlowControl.Next, False, 0)
+                                  DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_U1_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u1.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_Ovf_U1_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u1.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x86,
-                                  DotNetFlowControl.Next, False, 0)
+                                  DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_U2_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u2.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_Ovf_U2_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u2.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x87,
-                                  DotNetFlowControl.Next, False, 0)
+                                  DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_U4_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u4.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_Ovf_U4_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u4.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x88,
-                                  DotNetFlowControl.Next, False, 0)
+                                  DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_U8_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u8.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+    cdef StackCell Conv_Ovf_U8_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u8.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
                                   DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x89,
-                                  DotNetFlowControl.Next, False, 0)
+                                  DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_I_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_Ovf_I_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                  DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x8A,
-                                 DotNetFlowControl.Next, False, 0)
+                                 DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Conv_Ovf_U_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+    cdef StackCell Conv_Ovf_U_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u.un", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
                                  DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0x8B,
-                                 DotNetFlowControl.Next, False, 0)
+                                 DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Box(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "box", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushref, DotNetOperandType.InlineType,
-                       DotNetOpCodeType.Primitive, 1, 255, 0x8C, DotNetFlowControl.Next, False, 0)
+    cdef StackCell Box(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "box", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushref, DotNetOperandType.InlineType,
+                       DotNetOpCodeType.Primitive, 1, 255, 0x8C, DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Newarr(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "newarr", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushref,
+    cdef StackCell Newarr(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "newarr", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushref,
                           DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x8D, DotNetFlowControl.Next,
-                          False, 0)
+                          False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldlen(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldlen", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
-                         DotNetOpCodeType.Objmodel, 1, 255, 0x8E, DotNetFlowControl.Next, False, 0)
+    cdef StackCell Ldlen(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldlen", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
+                         DotNetOpCodeType.Objmodel, 1, 255, 0x8E, DotNetFlowControl.Next, False, 0))
 
     @staticmethod
-    cdef DotNetObject Ldelema(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelema", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldelema(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelema", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                            DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0x8F,
-                           DotNetFlowControl.Next, False, -1)
+                           DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i1", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldelem_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i1", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x90,
-                             DotNetFlowControl.Next, False, -1)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_U1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u1", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldelem_U1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u1", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x91,
-                             DotNetFlowControl.Next, False, -1)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i2", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldelem_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i2", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x92,
-                             DotNetFlowControl.Next, False, -1)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_U2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u2", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldelem_U2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u2", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x93,
-                             DotNetFlowControl.Next, False, -1)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldelem_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x94,
-                             DotNetFlowControl.Next, False, -1)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_U4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldelem_U4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.u4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x95,
-                             DotNetFlowControl.Next, False, -1)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i8", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi8,
+    cdef StackCell Ldelem_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i8", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi8,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x96,
-                             DotNetFlowControl.Next, False, -1)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
+    cdef StackCell Ldelem_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.i", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushi,
                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x97,
-                            DotNetFlowControl.Next, False, -1)
+                            DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.r4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushr4,
+    cdef StackCell Ldelem_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.r4", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushr4,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x98,
-                             DotNetFlowControl.Next, False, -1)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject Ldelem_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.r8", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushr8,
+    cdef StackCell Ldelem_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.r8", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushr8,
                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x99,
-                             DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Ldelem_Ref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.ref", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushref,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9A,
-                              DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Stelem_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
-                            DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9B,
-                            DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Stelem_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i1", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9C,
-                             DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Stelem_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i2", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9D,
-                             DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Stelem_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i4", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9E,
-                             DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Stelem_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i8", DotNetStackBehaviour.Popref_popi_popi8, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9F,
-                             DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Stelem_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.r4", DotNetStackBehaviour.Popref_popi_popr4, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA0,
-                             DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Stelem_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.r8", DotNetStackBehaviour.Popref_popi_popr8, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA1,
-                             DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Stelem_Ref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem.ref", DotNetStackBehaviour.Popref_popi_popref, DotNetStackBehaviour.Push0,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA2,
-                              DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Ldelem(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldelem", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Push1,
-                          DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA3, DotNetFlowControl.Next,
-                          False, -1)
-    @staticmethod
-    cdef DotNetObject Stelem(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stelem", DotNetStackBehaviour.Popref_popi_pop1, DotNetStackBehaviour.Push0,
-                          DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA4, DotNetFlowControl.Next,
-                          False, 0)
-    @staticmethod
-    cdef DotNetObject Unbox_Any(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "unbox.any", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push1,
-                             DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA5,
-                             DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB3,
-                               DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_U1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB4,
-                               DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB5,
-                               DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_U2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB6,
-                               DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB7,
-                               DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_U4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB8,
-                               DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
-                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB9,
-                               DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_U8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
-                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xBA,
-                               DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Refanyval(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "refanyval", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                             DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 1, 255, 0xC2,
-                             DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Ckfinite(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ckfinite", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
-                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xC3,
-                            DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Mkrefany(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "mkrefany", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push1,
-                            DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 1, 255, 0xC6,
-                            DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Ldtoken(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldtoken", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
-                           DotNetOperandType.InlineTok, DotNetOpCodeType.Primitive, 1, 255, 0xD0,
-                           DotNetFlowControl.Next, False, 1)
-    @staticmethod
-    cdef DotNetObject Conv_U2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD1,
-                           DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_U1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD2,
-                           DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.i", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
-                          DotNetOpCodeType.Primitive, 1, 255, 0xD3, DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD4,
-                              DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Conv_Ovf_U(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD5,
-                              DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Add_Ovf(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "add.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD6,
-                           DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Add_Ovf_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "add.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD7,
-                              DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Mul_Ovf(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "mul.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD8,
-                           DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Mul_Ovf_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "mul.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD9,
-                              DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Sub_Ovf(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "sub.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDA,
-                           DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Sub_Ovf_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "sub.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDB,
-                              DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Endfinally(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "endfinally", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDC,
-                              DotNetFlowControl.Return, True, 0)
-    @staticmethod
-    cdef DotNetObject Leave(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "leave", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                         DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0xDD,
-                         DotNetFlowControl.Branch, True, 0)
-    @staticmethod
-    cdef DotNetObject Leave_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "leave.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0xDE,
-                           DotNetFlowControl.Branch, True, 0)
-    @staticmethod
-    cdef DotNetObject Stind_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stind.i", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDF,
-                           DotNetFlowControl.Next, False, -2)
-    @staticmethod
-    cdef DotNetObject Conv_U(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "conv.u", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
-                          DotNetOpCodeType.Primitive, 1, 255, 0xE0, DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Prefix7(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix7", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xF8, DotNetFlowControl.Meta,
-                           False, 0)
-    @staticmethod
-    cdef DotNetObject Prefix6(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix6", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xF9, DotNetFlowControl.Meta,
-                           False, 0)
-    @staticmethod
-    cdef DotNetObject Prefix5(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix5", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFA, DotNetFlowControl.Meta,
-                           False, 0)
-    @staticmethod
-    cdef DotNetObject Prefix4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFB, DotNetFlowControl.Meta,
-                           False, 0)
-    @staticmethod
-    cdef DotNetObject Prefix3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFC, DotNetFlowControl.Meta,
-                           False, 0)
-    @staticmethod
-    cdef DotNetObject Prefix2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFD, DotNetFlowControl.Meta,
-                           False, 0)
-    @staticmethod
-    cdef DotNetObject Prefix1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "prefix1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFE, DotNetFlowControl.Meta,
-                           False, 0)
-    @staticmethod
-    cdef DotNetObject Prefixref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "prefixref", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 255,
-                             DotNetFlowControl.Meta, False, 0)
-    @staticmethod
-    cdef DotNetObject Arglist(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "arglist", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0, DotNetFlowControl.Next,
-                           False, 1)
-    @staticmethod
-    cdef DotNetObject Ceq(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ceq", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 2, 0xFE, 1, DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Cgt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "cgt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 2, 0xFE, 2, DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Cgt_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "cgt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
-                          DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 3, DotNetFlowControl.Next,
-                          False, -1)
-    @staticmethod
-    cdef DotNetObject Clt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "clt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineNone,
-                       DotNetOpCodeType.Primitive, 2, 0xFE, 4, DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Clt_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "clt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
-                          DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 5, DotNetFlowControl.Next,
-                          False, -1)
-    @staticmethod
-    cdef DotNetObject Ldftn(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldftn", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineMethod,
-                         DotNetOpCodeType.Primitive, 2, 0xFE, 6, DotNetFlowControl.Next, False, 1)
-    @staticmethod
-    cdef DotNetObject Ldvirtftn(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldvirtftn", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
-                             DotNetOperandType.InlineMethod, DotNetOpCodeType.Primitive, 2, 0xFE, 7,
-                             DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Ldarg(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarg", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1, DotNetOperandType.InlineVar,
-                         DotNetOpCodeType.Primitive, 2, 0xFE, 9, DotNetFlowControl.Next, False, 1)
-    @staticmethod
-    cdef DotNetObject Ldarga(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldarga", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineVar,
-                          DotNetOpCodeType.Primitive, 2, 0xFE, 0xA, DotNetFlowControl.Next, False, 1)
-    @staticmethod
-    cdef DotNetObject Starg(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "starg", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineVar,
-                         DotNetOpCodeType.Primitive, 2, 0xFE, 0xB, DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Ldloc(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloc", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1, DotNetOperandType.InlineVar,
-                         DotNetOpCodeType.Primitive, 2, 0xFE, 0xC, DotNetFlowControl.Next, False, 1)
-    @staticmethod
-    cdef DotNetObject Ldloca(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "ldloca", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineVar,
-                          DotNetOpCodeType.Primitive, 2, 0xFE, 0xD, DotNetFlowControl.Next, False, 1)
-    @staticmethod
-    cdef DotNetObject Stloc(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "stloc", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0, DotNetOperandType.InlineVar,
-                         DotNetOpCodeType.Primitive, 2, 0xFE, 0xE, DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Localloc(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "localloc", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
-                            DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0xF,
-                            DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Endfilter(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "endfilter", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x11,
-                             DotNetFlowControl.Return, True, -1)
-    @staticmethod
-    cdef DotNetObject Unaligned(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "unaligned.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                             DotNetOperandType.ShortInlineI, DotNetOpCodeType.Prefix, 2, 0xFE, 0x12,
-                             DotNetFlowControl.Meta, False, 0)
-    @staticmethod
-    cdef DotNetObject Volatile(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "volatile.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                            DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x13,
-                            DotNetFlowControl.Meta, False, 0)
-    @staticmethod
-    cdef DotNetObject Tailcall(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "tail.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                            DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x14,
-                            DotNetFlowControl.Meta, False, 0)
-    @staticmethod
-    cdef DotNetObject Initobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "initobj", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 2, 0xFE, 0x15,
-                           DotNetFlowControl.Next, False, -1)
-    @staticmethod
-    cdef DotNetObject Constrained(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "constrained.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                               DotNetOperandType.InlineType, DotNetOpCodeType.Prefix, 2, 0xFE, 0x16,
-                               DotNetFlowControl.Meta, False, 0)
-    @staticmethod
-    cdef DotNetObject Cpblk(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "cpblk", DotNetStackBehaviour.Popi_popi_popi, DotNetStackBehaviour.Push0,
-                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x17,
-                         DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Initblk(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "initblk", DotNetStackBehaviour.Popi_popi_popi, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x18,
-                           DotNetFlowControl.Next, False, -3)
-    @staticmethod
-    cdef DotNetObject Rethrow(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "rethrow", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                           DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 2, 0xFE, 0x1A,
-                           DotNetFlowControl.Throw, True, 0)
-    @staticmethod
-    cdef DotNetObject Sizeof(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "sizeof", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi, DotNetOperandType.InlineType,
-                          DotNetOpCodeType.Primitive, 2, 0xFE, 0x1C, DotNetFlowControl.Next, False, 1)
-    @staticmethod
-    cdef DotNetObject Refanytype(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "refanytype", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
-                              DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x1D,
-                              DotNetFlowControl.Next, False, 0)
-    @staticmethod
-    cdef DotNetObject Readonly(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        return DotNetOpCode(app_domain.get_emulator_obj(), "readonly.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
-                            DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x1E,
-                            DotNetFlowControl.Meta, False, 0)
+                             DotNetFlowControl.Next, False, -1))
 
     @staticmethod
-    cdef DotNetObject TakesSingleByteArgument(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
-        cdef DotNetOpCode opcode = <DotNetOpCode>args[1]
-        cdef DotNetBoolean bool_obj = DotNetBoolean(app_domain.get_emulator_obj(), None)
+    cdef StackCell Ldelem_Ref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem.ref", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Pushref,
+                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9A,
+                              DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Stelem_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
+                            DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9B,
+                            DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Stelem_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i1", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
+                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9C,
+                             DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Stelem_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i2", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
+                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9D,
+                             DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Stelem_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i4", DotNetStackBehaviour.Popref_popi_popi, DotNetStackBehaviour.Push0,
+                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9E,
+                             DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Stelem_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem.i8", DotNetStackBehaviour.Popref_popi_popi8, DotNetStackBehaviour.Push0,
+                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0x9F,
+                             DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Stelem_R4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem.r4", DotNetStackBehaviour.Popref_popi_popr4, DotNetStackBehaviour.Push0,
+                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA0,
+                             DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Stelem_R8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem.r8", DotNetStackBehaviour.Popref_popi_popr8, DotNetStackBehaviour.Push0,
+                             DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA1,
+                             DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Stelem_Ref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem.ref", DotNetStackBehaviour.Popref_popi_popref, DotNetStackBehaviour.Push0,
+                              DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 1, 255, 0xA2,
+                              DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Ldelem(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "ldelem", DotNetStackBehaviour.Popref_popi, DotNetStackBehaviour.Push1,
+                          DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA3, DotNetFlowControl.Next,
+                          False, -1))
+
+    @staticmethod
+    cdef StackCell Stelem(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "stelem", DotNetStackBehaviour.Popref_popi_pop1, DotNetStackBehaviour.Push0,
+                          DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA4, DotNetFlowControl.Next,
+                          False, 0))
+
+    @staticmethod
+    cdef StackCell Unbox_Any(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "unbox.any", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Push1,
+                             DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 1, 255, 0xA5,
+                             DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_I1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB3,
+                               DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_U1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB4,
+                               DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_I2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB5,
+                               DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_U2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB6,
+                               DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_I4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB7,
+                               DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_U4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u4", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB8,
+                               DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_I8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xB9,
+                               DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_U8(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u8", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi8,
+                               DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xBA,
+                               DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Refanyval(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "refanyval", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 1, 255, 0xC2,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Ckfinite(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ckfinite", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushr8,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xC3,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Mkrefany(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "mkrefany", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 1, 255, 0xC6,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Ldtoken(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ldtoken", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineTok, DotNetOpCodeType.Primitive, 1, 255, 0xD0,
+                         DotNetFlowControl.Next, False, 1))
+
+    @staticmethod
+    cdef StackCell Conv_U2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "conv.u2", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD1,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_U1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "conv.u1", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD2,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "conv.i", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD3,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.i", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD4,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Conv_Ovf_U(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "conv.ovf.u", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD5,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Add_Ovf(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "add.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD6,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Add_Ovf_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "add.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD7,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Mul_Ovf(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "mul.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD8,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Mul_Ovf_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "mul.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xD9,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Sub_Ovf(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "sub.ovf", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDA,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Sub_Ovf_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "sub.ovf.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDB,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Endfinally(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "endfinally", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDC,
+                         DotNetFlowControl.Return, True, 0))
+
+    @staticmethod
+    cdef StackCell Leave(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "leave", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0xDD,
+                         DotNetFlowControl.Branch, True, 0))
+
+    @staticmethod
+    cdef StackCell Leave_S(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "leave.s", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.ShortInlineBrTarget, DotNetOpCodeType.Primitive, 1, 255, 0xDE,
+                         DotNetFlowControl.Branch, True, 0))
+
+    @staticmethod
+    cdef StackCell Stind_I(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "stind.i", DotNetStackBehaviour.Popi_popi, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xDF,
+                         DotNetFlowControl.Next, False, -2))
+
+    @staticmethod
+    cdef StackCell Conv_U(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "conv.u", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 1, 255, 0xE0,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Prefix7(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "prefix7", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xF8,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Prefix6(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "prefix6", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xF9,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Prefix5(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "prefix5", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFA,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Prefix4(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "prefix4", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFB,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Prefix3(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "prefix3", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFC,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Prefix2(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "prefix2", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFD,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Prefix1(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "prefix1", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 0xFE,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Prefixref(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "prefixref", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Nternal, 1, 255, 255,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Arglist(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "arglist", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0,
+                         DotNetFlowControl.Next, False, 1))
+
+    @staticmethod
+    cdef StackCell Ceq(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ceq", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 1,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Cgt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "cgt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 2,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Cgt_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "cgt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 3,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Clt(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "clt", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 4,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Clt_Un(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "clt.un", DotNetStackBehaviour.Pop1_pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 5,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Ldftn(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ldftn", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineMethod, DotNetOpCodeType.Primitive, 2, 0xFE, 6,
+                         DotNetFlowControl.Next, False, 1))
+
+    @staticmethod
+    cdef StackCell Ldvirtftn(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ldvirtftn", DotNetStackBehaviour.Popref, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineMethod, DotNetOpCodeType.Primitive, 2, 0xFE, 7,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Ldarg(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ldarg", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineVar, DotNetOpCodeType.Primitive, 2, 0xFE, 9,
+                         DotNetFlowControl.Next, False, 1))
+
+    @staticmethod
+    cdef StackCell Ldarga(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ldarga", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineVar, DotNetOpCodeType.Primitive, 2, 0xFE, 0xA,
+                         DotNetFlowControl.Next, False, 1))
+
+    @staticmethod
+    cdef StackCell Starg(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "starg", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineVar, DotNetOpCodeType.Primitive, 2, 0xFE, 0xB,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Ldloc(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ldloc", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push1,
+                         DotNetOperandType.InlineVar, DotNetOpCodeType.Primitive, 2, 0xFE, 0xC,
+                         DotNetFlowControl.Next, False, 1))
+
+    @staticmethod
+    cdef StackCell Ldloca(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "ldloca", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineVar, DotNetOpCodeType.Primitive, 2, 0xFE, 0xD,
+                         DotNetFlowControl.Next, False, 1))
+
+    @staticmethod
+    cdef StackCell Stloc(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "stloc", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineVar, DotNetOpCodeType.Primitive, 2, 0xFE, 0xE,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Localloc(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "localloc", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0xF,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Endfilter(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "endfilter", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x11,
+                         DotNetFlowControl.Return, True, -1))
+
+    @staticmethod
+    cdef StackCell Unaligned(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "unaligned.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.ShortInlineI, DotNetOpCodeType.Prefix, 2, 0xFE, 0x12,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Volatile(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "volatile.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x13,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Tailcall(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "tail.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x14,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Initobj(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "initobj", DotNetStackBehaviour.Popi, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineType, DotNetOpCodeType.Objmodel, 2, 0xFE, 0x15,
+                         DotNetFlowControl.Next, False, -1))
+
+    @staticmethod
+    cdef StackCell Constrained(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "constrained.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineType, DotNetOpCodeType.Prefix, 2, 0xFE, 0x16,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell Cpblk(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "cpblk", DotNetStackBehaviour.Popi_popi_popi, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x17,
+                         DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Initblk(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "initblk", DotNetStackBehaviour.Popi_popi_popi, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x18,
+                         DotNetFlowControl.Next, False, -3))
+
+    @staticmethod
+    cdef StackCell Rethrow(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "rethrow", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Objmodel, 2, 0xFE, 0x1A,
+                         DotNetFlowControl.Throw, True, 0))
+
+    @staticmethod
+    cdef StackCell Sizeof(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "sizeof", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineType, DotNetOpCodeType.Primitive, 2, 0xFE, 0x1C,
+                         DotNetFlowControl.Next, False, 1))
+
+    @staticmethod
+    cdef StackCell Refanytype(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "refanytype", DotNetStackBehaviour.Pop1, DotNetStackBehaviour.Pushi,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Primitive, 2, 0xFE, 0x1D,
+                         DotNetFlowControl.Next, False, 0))
+
+    @staticmethod
+    cdef StackCell Readonly(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(
+            DotNetOpCode(app_domain.get_emulator_obj(), "readonly.", DotNetStackBehaviour.Pop0, DotNetStackBehaviour.Push0,
+                         DotNetOperandType.InlineNone, DotNetOpCodeType.Prefix, 2, 0xFE, 0x1E,
+                         DotNetFlowControl.Meta, False, 0))
+
+    @staticmethod
+    cdef StackCell TakesSingleByteArgument(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        if nparams != 1 or check_object(params[0]):
+            raise net_exceptions.InvalidArgumentsException()
+        cdef DotNetOpCode opcode = <DotNetOpCode>params[0].item.ref
         cdef bint result = False
         if opcode.operand == DotNetOperandType.ShortInlineBrTarget:
             result = True
@@ -9092,13 +9538,12 @@ cdef class DotNetOpCodes(DotNetObject):
             result = True
         elif opcode.operand == DotNetOperandType.ShortInlineVar:
             result = True
-        bool_obj.from_bool(result)
-        return bool_obj
+        return app_domain.get_emulator_obj().pack_bool(result)
 
 cdef class DotNetILGenerator(DotNetObject):
     def __init__(self, emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
-        self.method_body = bytes()
+        self.method_body = bytearray()
         self.add_function(b'Emit', <emu_func_type>self.Emit)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
@@ -9113,127 +9558,171 @@ cdef class DotNetILGenerator(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef __internal_emit_noargs(self, DotNetOpCode opcode):
+    cdef void __internal_emit_noargs(self, DotNetOpCode opcode):
         if opcode.size == 1:
-            self.method_body += bytes([opcode.s2])
+            self.method_body.append(opcode.s2)
         else:
-            self.method_body += bytes([opcode.s1, opcode.s2])
+            self.method_body.append(opcode.s1)
+            self.method_body.append(opcode.s2)
 
-    cdef __internal_emit_call(self, DotNetOpCode opcode, DotNetMethodInfo method_obj):
+    cdef void __internal_emit_ldarg_s(self, DotNetOpCode opcode, int arg):
+        if opcode.size == 1:
+            self.method_body.append(opcode.s2)
+            self.method_body.extend(int.to_bytes(arg, 1, 'little'))
+        else:
+            raise net_exceptions.OperationNotSupportedException()
+
+    cdef void __internal_emit_call(self, DotNetOpCode opcode, DotNetMethodInfo method_obj):
         cdef net_row_objects.MethodDefOrRef internal_obj
+        cdef bytearray instr_bytes = bytearray()
         if isinstance(method_obj, DotNetMethodInfo):
             internal_obj = method_obj.internal_method
             if isinstance(internal_obj, net_row_objects.MemberRef):
-                instr_bytes = bytes([opcode.s2])
-                instr_bytes += int.to_bytes(internal_obj.get_rid(), 3, 'little')
-                instr_bytes += bytes([0xA])
-                self.method_body += instr_bytes
-            else:
-                raise net_exceptions.OperationNotSupportedException()
+                instr_bytes.append(opcode.s2)
+                instr_bytes.extend(int.to_bytes(internal_obj.get_rid(), 3, 'little'))
+                instr_bytes.append(0xA)
+                self.method_body.extend(instr_bytes)
+            elif isinstance(internal_obj, net_row_objects.MethodDef) and internal_obj.get_rid() > 0: # make sure its not dynamic
+                instr_bytes.append(opcode.s2)
+                instr_bytes.extend(int.to_bytes(internal_obj.get_rid(), 3, 'little'))
+                instr_bytes.append(0x06)
+                self.method_body.extend(instr_bytes)
         else:
             raise net_exceptions.OperationNotSupportedException()
 
-    #TODO: can this be optimized?
-    cdef DotNetObject Emit(self, StackCell * params, int nparams):
-        cdef DotNetOpCode opcode = args[0]
-        cdef list other_stuff
-        if len(args) > 1:
-            other_stuff = args[1:]
-        else:
-            other_stuff = []
+    cdef StackCell Emit(self, StackCell * params, int nparams):
+        if nparams < 1 or check_object(params[0]):
+            raise net_exceptions.InvalidArgumentsException()
+        cdef DotNetOpCode opcode = <DotNetOpCode>params[0].item.ref
+        cdef DotNetMethodInfo arg1 = None
 
-        if not isinstance(opcode, DotNetOpCode):
-            raise net_exceptions.ObjectTypeException
-
-        if opcode == DotNetOpCodes.Ldarg_0:
+        if opcode.stringname == 'ldarg.0':
             self.__internal_emit_noargs(opcode)
-        elif opcode == DotNetOpCodes.Ldarg_1:
+        elif opcode.stringname == 'ldarg.1':
             self.__internal_emit_noargs(opcode)
-        elif opcode == DotNetOpCodes.Ldarg_2:
+        elif opcode.stringname == 'ldarg.2':
             self.__internal_emit_noargs(opcode)
-        elif opcode == DotNetOpCodes.Ldarg_3:
+        elif opcode.stringname == 'ldarg.3':
             self.__internal_emit_noargs(opcode)
-        elif opcode == DotNetOpCodes.Ldarg_S:
+        elif opcode.stringname == 'ldarg.s':
+            if nparams != 2 or params[1].tag != CorElementType.ELEMENT_TYPE_I4:
+                raise net_exceptions.InvalidArgumentsException()
+            self.__internal_emit_ldarg_s(opcode, params[1].item.i4)
+        elif opcode.stringname == 'tail.':
             self.__internal_emit_noargs(opcode)
-        elif opcode == DotNetOpCodes.Tailcall:
-            self.__internal_emit_noargs(opcode)
-        elif opcode == DotNetOpCodes.Callvirt:
-            self.__internal_emit_call(opcode, other_stuff[0])
-        elif opcode == DotNetOpCodes.Call:
-            self.__internal_emit_call(opcode, other_stuff[0])
-        elif opcode == DotNetOpCodes.Ret:
+        elif opcode.stringname == 'callvirt':
+            if nparams != 2 or check_object(params[1]):
+                raise net_exceptions.InvalidArgumentsException()
+            arg1 = <DotNetMethodInfo>params[1].item.ref
+            self.__internal_emit_call(opcode, arg1)
+        elif opcode.stringname == 'call':
+            if nparams != 2 or check_object(params[1]):
+                raise net_exceptions.InvalidArgumentsException()
+            arg1 = <DotNetMethodInfo>params[1].item.ref
+            self.__internal_emit_call(opcode, arg1)
+        elif opcode.stringname == 'ret':
             self.__internal_emit_noargs(opcode)
         else:
             raise net_exceptions.OperationNotSupportedException()
+        return self.get_emulator_obj().pack_blanktag()
 
-
-#FIXME: This needs to extend MethodDefOrRef
 cdef class DotNetDynamicMethod(DotNetObject):
     def __init__(self, emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
-    
-    cdef DotNetObject ctor(self, StackCell * params, int nparams):
-        self.name = args[0]
-        self.return_type = args[1]
-        self.parameter_types = args[2]
-        self.parent_type = args[3]
-        self.skip_visibility = args[4]
-        self.il_generar = DotNetILGenerator(self.get_emulator_obj())
-        self.sig_obj = None
-        self.static = True
+        self.add_function(b'GetILGenerator', <emu_func_type>self.GetILGenerator)
+        self.add_function(b'CreateDelegate', <emu_func_type>self.CreateDelegate)
 
-    def disassemble_method(self, no_save=False):
-        return net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
+    cdef StackCell GetILGenerator(self, StackCell * params, int nparams):
+        return self.get_emulator_obj().pack_object(self.il_generator)
 
-    cpdef get_dotnetpe(self):
-        return self.get_emulator_obj().get_appdomain().get_executing_dotnetpe()
+    cdef StackCell CreateDelegate(self, StackCell * params, int nparams):
+        if nparams != 1 or check_object(params[0]):
+            raise net_exceptions.InvalidArgumentsException()
+        cdef DotNetType tp = <DotNetType> params[0].item.ref
+        cdef bytearray new_method_body = bytearray()
+        cdef list params_list = list()
+        cdef net_sigs.TypeSig return_sig = None
+        cdef DotNetType current_param = None
+        cdef net_sigs.TypeSig current_param_sig = None
+        cdef int header_byte = 0
+        cdef int code_size = <int>len(self.il_generator.method_body)
+        cdef int64_t x = 0
+        cdef StackCell cell
+        cdef net_sigs.MethodSig sig_obj = None
+        cdef DynamicMethodObject internal_obj = None
+        cdef DotNetDelegate del_obj = None
+        cdef StackCell args[2]
+        cdef DotNetRuntimeMethodHandle handle = None
+        #For this I think we can ignore the parameter
+        if len(self.il_generator.method_body) > 63:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Fat headers are not supported yet for dynamic methods')
 
-    def GetILGenerator(self):
-        return self.il_generator
-
-    def CreateDelegate(self, owner):
-        return DotNetDelegate.CreateDelegate(owner, self)
-
-    cpdef get_method_data(self):
-        if not len(self.il_generator.method_body) < 0xFF:
-            raise net_exceptions.MethodTooLargeException
-
-        # NOTE: This currently only supports writing tiny headers for basic methods.
-        code_size = len(self.il_generator.method_body)
         header_byte = (code_size << 2 | 2) & 0xFF
-        return bytes([header_byte]) + self.il_generator.method_body
 
-    cpdef get_method_signature(self):
-        if self.sig_obj:
-            return self.sig_obj
+        new_method_body.append(header_byte)
+        new_method_body.extend(self.il_generator.method_body)
+        if self.return_type is not None:
+            return_sig = self.return_type.sig_obj
+            if return_sig is None:
+                raise net_exceptions.InvalidArgumentsException()
 
-        typedef_obj = self.return_type.get_type_handle()
+        else:
+            return_sig = net_sigs.get_CorSig_Void()
 
-        return_sig = get_cor_type_from_name(typedef_obj.get_full_name())
-        if not return_sig:
-            return_sig = net_sigs.TypeDefOrRefSig(None, typedef_obj)
-        param_sigs = list()
-        for param in self.parameter_types:
-            ptype_obj = param.get_type_handle()
-            param_sig = get_cor_type_from_name(ptype_obj.get_full_name())
-            if not param_sig:
-                param_sig = net_sigs.TypeDefOrRefSig(None, ptype_obj)
-            param_sigs.append(param_sig)
-        self.sig_obj = net_sigs.MethodSig(net_structs.CallingConvention_Default, bytes(), None, param_sigs, 0, 0, 0,
-                                           return_sig)
-        return self.sig_obj
+        for x in range(<int64_t>len(self.parameter_types)):
+            cell = self.parameter_types._get_item(x)
+            if check_object(cell):
+                raise net_exceptions.InvalidArgumentsException()
+            current_param = <DotNetType>cell.item.ref
+            self.get_emulator_obj().dealloc_cell(cell)
+            current_param_sig = current_param.sig_obj
+            if current_param_sig is None:
+                print('error getrting sig for {}'.format(current_param.get_type_handle()))
+                raise net_exceptions.InvalidArgumentsException()
 
-    cpdef method_has_this(self):
-        return False
+            params_list.append(current_param_sig)
+        sig_obj = net_sigs.MethodSig(net_structs.CorCallingConvention.Default, bytes(), None, params_list, 0, 0, 0, return_sig)
+        internal_obj = DynamicMethodObject(self.get_emulator_obj(), self.name.get_str_data_as_str(), bytes(new_method_body), sig_obj)
+        handle = DotNetRuntimeMethodHandle(self.get_emulator_obj(), internal_obj)
+        args[0] = self.get_emulator_obj().pack_null()
+        args[1] = self.get_emulator_obj().pack_object(handle)
+        del_obj = DotNetDelegate(self.get_emulator_obj())
+        del_obj.initialize_type(tp.get_type_handle())
+        del_obj.ctor(args, 2)
+        self.get_emulator_obj().dealloc_cell(args[0])
+        self.get_emulator_obj().dealloc_cell(args[1])
+        return self.get_emulator_obj().pack_object(del_obj)
+    
+    cdef StackCell ctor(self, StackCell * params, int nparams):
+        if nparams != 5:
+            raise net_exceptions.InvalidArgumentsException()
 
-    cpdef is_static(self):
-        return self.static
+        if params[0].tag != CorElementType.ELEMENT_TYPE_STRING or params[0].item.ref == NULL:
+            raise net_exceptions.InvalidArgumentsException()
 
-    cpdef has_return_value(self):
-        type_obj = self.return_type.get_type_handle()
-        return type_obj.get_full_name() != b'System.Void'
-"""
+        if params[1].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[2].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[3].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[4].tag != CorElementType.ELEMENT_TYPE_BOOLEAN:
+            raise net_exceptions.InvalidArgumentsException()
+        
+        self.name = <DotNetString>params[0].item.ref
+
+        if params[1].item.ref == NULL:
+            self.return_type = None
+        else:
+            self.return_type = <DotNetType>params[1].item.ref
+
+        if params[2].item.ref == NULL:
+            self.parameter_types = None
+        else:
+            self.parameter_types = <DotNetArray>params[2].item.ref
+        if params[3].item.ref == NULL:
+            self.owner = None
+        else:
+            self.owner = <DotNetType>params[3].item.ref
+
+        self.skip_visibility = params[4].item.b
+        self.il_generator = DotNetILGenerator(self.get_emulator_obj())
+        return self.get_emulator_obj().pack_object(self)
 
 cdef class DotNetSortedList(DotNetList):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
@@ -9247,7 +9736,6 @@ cdef class DotNetSortedList(DotNetList):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-"""
 cdef class DotNetHashTable(DotNetConcurrentDictionary):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetConcurrentDictionary.__init__(self, emulator_obj)
@@ -9260,7 +9748,6 @@ cdef class DotNetHashTable(DotNetConcurrentDictionary):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-"""
 
 cdef class DotNetRSACryptoServiceProvider(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -9278,6 +9765,14 @@ cdef class DotNetBinaryReader(DotNetObject):
         self.add_function(b'ReadByte', <emu_func_type>self.ReadByte)
         self.add_function(b'Close', <emu_func_type>self.Close)
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
+        self.add_function(b'ReadInt32', <emu_func_type>self.ReadInt32)
+        self.add_function(b'ReadUInt16', <emu_func_type>self.ReadUInt16)
+
+    def __str__(self):
+        return 'DotNetBinaryReader: InternalStream={}'.format(str(self.stream))
+
+    def __repr__(self):
+        return str(self)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.IO.BinaryReader' or DotNetObject.isinst(self, tdef)
@@ -9305,6 +9800,34 @@ cdef class DotNetBinaryReader(DotNetObject):
 
     cdef StackCell ReadByte(self, StackCell * params, int nparams):
         return self.stream.ReadByte(params, nparams)
+
+    cdef StackCell ReadUInt16(self, StackCell * params, int nparams):
+        cdef StackCell amt = self.get_emulator_obj().pack_i4(2)
+        cdef StackCell result_array = self.stream.ReadBytes(&amt, 1)
+        cdef int result = 0
+        cdef DotNetArray result_obj = None
+        if self.get_emulator_obj().cell_is_null(result_array):
+            self.get_emulator_obj().dealloc_cell(result_array)
+            raise net_exceptions.InvalidArgumentsException()
+        result_obj = <DotNetArray>result_array.item.ref
+        self.get_emulator_obj().dealloc_cell(amt)
+        self.get_emulator_obj().dealloc_cell(result_array)
+        result = int.from_bytes(result_obj.as_bytes(), 'little', signed=False)
+        return self.get_emulator_obj().pack_i4(result)
+
+    cdef StackCell ReadInt32(self, StackCell * params, int nparams):
+        cdef StackCell amt = self.get_emulator_obj().pack_i4(4)
+        cdef StackCell result_array = self.stream.ReadBytes(&amt, 1)
+        cdef int result = 0
+        cdef DotNetArray result_obj = None
+        if self.get_emulator_obj().cell_is_null(result_array):
+            self.get_emulator_obj().dealloc_cell(result_array)
+            raise net_exceptions.InvalidArgumentsException()
+        result_obj = <DotNetArray>result_array.item.ref
+        self.get_emulator_obj().dealloc_cell(amt)
+        self.get_emulator_obj().dealloc_cell(result_array)
+        result = int.from_bytes(result_obj.as_bytes(), 'little', signed=True)
+        return self.get_emulator_obj().pack_i4(result)
 
     cdef StackCell Close(self, StackCell * params, int nparams):
         self.stream.Close(params, nparams)
@@ -9419,7 +9942,6 @@ cdef class DotNetThreadStart(DotNetObject):
     cpdef net_row_objects.MethodDef get_method_object(self):
         return self.__method_object.internal_method
 
-"""
 cdef class DotNetDebugger(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
@@ -9427,9 +9949,6 @@ cdef class DotNetDebugger(DotNetObject):
     @staticmethod
     cdef StackCell get_IsAttached(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
         return app_domain.get_emulator_obj().pack_bool(False)
-
-
-"""
 
 cdef class DotNetComparison(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
@@ -9700,7 +10219,7 @@ cdef class DotNetDESDecryptor(DotNetICryptoTransform):
             self.get_emulator_obj().dealloc_cell(cell)
 
         output_data = self.des_object.decrypt(input_data)
-        array = DotNetArray(self.get_emulator_obj(), len(output_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), len(output_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Byte'),
                     initialize=False)
 
         
@@ -9756,7 +10275,7 @@ cdef class DotNetMD5CryptoServiceProvider(DotNetHashAlgorithm):
         resulting_data = md5_obj.digest()
         count = <int>len(resulting_data)
 
-        arr_obj = DotNetArray(self.get_emulator_obj(), count, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_type_by_full_name(
+        arr_obj = DotNetArray(self.get_emulator_obj(), count, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(
             b'System.Byte'), initialize=False)
         
         for x in range(count):
@@ -9869,7 +10388,7 @@ cdef class DotNet3DESDecryptor(DotNetICryptoTransform):
         if padding_val.item.i4 == 2:
             output_data = unpad(output_data, DES3.block_size)
         self.get_emulator_obj().dealloc_cell(padding_val)
-        array = DotNetArray(self.get_emulator_obj(), len(output_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_type_by_full_name(b'System.Byte'),
+        array = DotNetArray(self.get_emulator_obj(), len(output_data), self.get_emulator_obj().get_appdomain().get_executing_dotnetpe().get_typeref_by_full_name(b'System.Byte'),
                     initialize=False)
         for x in range(<int>len(output_data)):
             num = self.get_emulator_obj().pack_u1(output_data[x])
@@ -10006,7 +10525,10 @@ cdef DotNetObject New_ConditionalWeakTable(net_emulator.DotNetEmulator emulator_
 cdef DotNetObject New_Random(net_emulator.DotNetEmulator emulator_obj):
     return DotNetRandom(emulator_obj)
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[21]
+cdef DotNetObject New_DynamicMethod(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetDynamicMethod(emulator_obj)
+
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[22]
 NET_EMULATE_TYPE_REGISTRATIONS[0].name = 'System.Collections.Concurrent.ConcurrentDictionary'
 NET_EMULATE_TYPE_REGISTRATIONS[0].func_ptr = <newobj_func_type>&New_ConcurrentDictionary
 NET_EMULATE_TYPE_REGISTRATIONS[1].name = 'System.Collections.Generic.Dictionary'
@@ -10049,8 +10571,10 @@ NET_EMULATE_TYPE_REGISTRATIONS[19].name = 'System.Runtime.CompilerServices.Condi
 NET_EMULATE_TYPE_REGISTRATIONS[19].func_ptr = <newobj_func_type>&New_ConditionalWeakTable
 NET_EMULATE_TYPE_REGISTRATIONS[20].name = 'System.Random'
 NET_EMULATE_TYPE_REGISTRATIONS[20].func_ptr = <newobj_func_type>&New_Random
+NET_EMULATE_TYPE_REGISTRATIONS[21].name = 'System.Reflection.Emit.DynamicMethod'
+NET_EMULATE_TYPE_REGISTRATIONS[21].func_ptr = <newobj_func_type>&New_DynamicMethod
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
@@ -10131,3 +10655,25 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38].name = 'System.Reflection.Assembly.Loa
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[38].func_ptr = <static_func_type>&DotNetAssembly.Load
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[39].name = 'System.Environment.get_Version'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[39].func_ptr = <static_func_type>&DotNetEnvironment.get_Version
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40].name = 'System.Diagnostics.Debugger.get_IsAttached'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[40].func_ptr = <static_func_type>&DotNetDebugger.get_IsAttached
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[41].name = 'System.Delegate.CreateDelegate'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[41].func_ptr = <static_func_type>&DotNetDelegate.CreateDelegate
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[42].name = 'System.Reflection.Emit.OpCodes.Ldarg_0'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[42].func_ptr = <static_func_type>&DotNetOpCodes.Ldarg_0
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[43].name = 'System.Reflection.Emit.OpCodes.Ldarg_1'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[43].func_ptr = <static_func_type>&DotNetOpCodes.Ldarg_1
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[44].name = 'System.Reflection.Emit.OpCodes.Ldarg_2'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[44].func_ptr = <static_func_type>&DotNetOpCodes.Ldarg_2
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[45].name = 'System.Reflection.Emit.OpCodes.Ldarg_3'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[45].func_ptr = <static_func_type>&DotNetOpCodes.Ldarg_3
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[46].name = 'System.Reflection.Emit.OpCodes.Ldarg_S'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[46].func_ptr = <static_func_type>&DotNetOpCodes.Ldarg_S
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[47].name = 'System.Reflection.Emit.OpCodes.Tailcall'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[47].func_ptr = <static_func_type>&DotNetOpCodes.Tailcall
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[48].name = 'System.Reflection.Emit.OpCodes.Callvirt'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[48].func_ptr = <static_func_type>&DotNetOpCodes.Callvirt
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[49].name = 'System.Reflection.Emit.OpCodes.Call'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[49].func_ptr = <static_func_type>&DotNetOpCodes.Call
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[50].name = 'System.Reflection.Emit.OpCodes.Ret'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[50].func_ptr = <static_func_type>&DotNetOpCodes.Ret

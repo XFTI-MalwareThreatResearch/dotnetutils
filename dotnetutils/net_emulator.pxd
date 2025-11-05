@@ -14,7 +14,7 @@ ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator) #Sig for
 ctypedef StackCell (*static_func_type)(EmulatorAppDomain, StackCell * params, int nparams) #Sig for static function calls.
 ctypedef bint (*emu_instr_handler_type)(DotNetEmulator) #sig for emulator instr handlers.
 
-cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj)
+cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDefOrRef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj) except *
 
 cdef void __init_handlers()
 
@@ -30,6 +30,7 @@ cdef class StackCellWrapper:
     cdef int idx_holder
     cdef int rid_holder
     cdef void * extra_data_holder
+    cdef bint is_slim_object_holder
     
     cdef StackCell get_wrapped(self)
 
@@ -353,7 +354,7 @@ cdef class DotNetEmulator:
 
     cpdef CctorRegistry get_executed_cctors(self)
 
-    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*, int timeout_seconds=*, bint strict_typing=*)
+    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*, int timeout_seconds=*, bint strict_typing=*, bint dont_execute_first_cctor=*)
 
     cdef StackCell _get_default_value(self, net_sigs.TypeSig type_sig, net_row_objects.TypeDefOrRef tref)
 
