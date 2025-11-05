@@ -7713,10 +7713,17 @@ cdef class DotNetEmulator:
         cdef Py_ssize_t x = 0
         cdef StackCell cell
         cdef bint should_check_offset = False
+        cdef unsigned int end_offset = 0
         if self.end_method_rid > 0:
             if isinstance(self.method_obj, net_row_objects.MethodDef) and self.method_obj.get_rid() == self.end_method_rid:
                 should_check_offset = True
-                self.end_method_rid = -1 #Clear end_method_rid to prevent issues with children emulators.
+                end_offset = <unsigned int>self.end_offset
+                self.end_method_rid = -1 #Clear end_method_rid to prevent issues with children emulators. #Make it zero not -1 to prevent 
+        else:
+            if self.end_offset > 0:
+                end_offset = <unsigned int>self.end_offset
+                should_check_offset = True
+                self.end_offset = -1
     
         if self.caller is None and has_timeout:
             self.start_time = _perf_counter_ns()
@@ -7755,8 +7762,8 @@ cdef class DotNetEmulator:
             if self.instr.get_opcode() == net_opcodes.Opcodes.Invalid:
                 raise net_exceptions.InstructionNotSupportedException(self.instr.get_name())
             if should_check_offset:
-                if self.current_offset <= <unsigned int>self.end_offset < (self.current_offset + self.instr.get_instr_size()):
-                    raise net_exceptions.EmulatorEndExecutionException(self, self.method_obj.get_rid(), self.end_method_rid, self.end_offset, self.current_offset)
+                if self.current_offset <= end_offset < (self.current_offset + self.instr.get_instr_size()):
+                    raise net_exceptions.EmulatorEndExecutionException(self, self.method_obj.get_rid(), self.end_method_rid, end_offset, self.current_offset)
 
             if (self.print_debug and len(self.print_debug_instrs) == 0) or (self.print_debug and self.instr.get_name() in self.print_debug_instrs):
                 self.print_instr(self.instr)
