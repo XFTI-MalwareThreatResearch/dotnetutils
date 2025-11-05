@@ -17,7 +17,7 @@ from Crypto.Util.Padding import unpad
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, net_table_objects
 from dotnetutils cimport net_sigs, net_opcodes, net_cil_disas
-from dotnetutils cimport net_structs, net_utils
+from dotnetutils cimport net_structs, net_utils, net_tokens
 
 from dotnetutils cimport dotnetpefile
 
@@ -7848,6 +7848,106 @@ cdef class DotNetParameterInfo(DotNetObject):
     def __str__(self):
         return 'ParameterObject: {} {}'.format(hex(self.internal_param.get_token()), self.internal_param.get_column('Name').get_value())
 
+cdef class DynamicMethodObject(net_row_objects.MethodDef):
+    
+    def __init__(self, net_emulator.DotNetEmulator emu, str name, bytes method_data, net_sigs.MethodSig sig):
+        MethodDef.__init__(self, emu.get_method_obj().get_dotnetpe(), 0, list(), dict(), 'DynamicMethod')
+        self.__full_name = 'DynamicMethod: {}'.format(name)
+        self.__name = name
+        self.__sig_obj = sig
+        self.__method_data = method_data
+        self.__emu_obj = emu
+        self.__current_method_hash = None
+        self.__parent_type = None
+        self.__has_invalid_signature = False
+        self.__xrefs = list()
+        self._generic_params = list()
+        self.__has_return_value = not isinstance(self.__sig_obj.get_return_type(), net_sigs.CorLibTypeSig) or self.__sig_obj.get_return_type() != net_sigs.get_CorSig_Void()
+        self.__method_has_this = self.__sig_obj.get_calling_conv() & net_structs.CorCallingConvention.HasThis != 0
+
+    cpdef net_cil_disas.MethodDisassembler disassemble_method(self, bint no_save=False, bint original=False):
+        pass
+
+    cpdef bytes get_original_method_data(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef list get_xrefs(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef bint is_abstract(self):
+        return False
+
+    cpdef bint is_final(self):
+        return False
+
+    cpdef bint is_newslot(self):
+        return False
+
+    cpdef is_virtual(self):
+        return False
+
+    cpdef bint is_hidebysig(self):
+        return False
+
+    cpdef bint is_static_method(self):
+        return True # dynamic methods are static by default
+    
+    cpdef bint is_entrypoint(self):
+        return False
+
+    cpdef bint is_static_constructor(self):
+        return False
+
+    cpdef bint is_constructor(self):
+        return False
+
+    cpdef bint get_method_data(self):
+        return self.__method_data
+
+    cpdef bint has_body(self):
+        return True
+
+    cpdef ColumnValue get_column(self, str col_name):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef list get_sizes(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef int get_token(self):
+        return 0 #Return a fake token.
+
+    cpdef int get_file_offset(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __len__(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __hash__(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __eq__(self, other):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __iter__(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __getitem__(self, item):
+        raise net_exceptions.OperationNotSupportedException()
+
+    def __str__(self):
+        return 'DynamicMethod: name={}, rid={}'.format(self.__name, self.get_rid())
+    
+    cpdef bint has_value(self, str val_name):
+        return False
+
+    cpdef int get_offset_to_col(self, str col_name):
+        raise net_exceptions.OperationNotSupportedException()
+
+    cpdef bytes to_bytes(self):
+        raise net_exceptions.OperationNotSupportedException()
+
+    
+
 cdef class DotNetDelegate(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
@@ -7923,7 +8023,7 @@ cdef class DotNetDelegate(DotNetObject):
         else:
             memcpy(args, params, sizeof(StackCell) * nparams)
         net_emulator.do_call(self.get_emulator_obj(), False, self.dn_methodinfo.internal_method.get_column('Name') == b'.ctor', self.dn_methodinfo.internal_method, None, args, amt_args, self.dn_methodinfo.internal_method)
-        if self.dn_type.tag != CorElementType.ELEMENT_TYPE_END: #TODO: make sure for force_method_args we dont clean up the args ourselves in do_call(), let the do_call from invoke do it.
+        if self.dn_type.tag != CorElementType.ELEMENT_TYPE_END:
             self.get_emulator_obj().dealloc_cell(args[0])
         free(args)
         if self.dn_methodinfo.internal_method.has_return_value():

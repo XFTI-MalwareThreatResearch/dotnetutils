@@ -1367,7 +1367,7 @@ cdef class MethodDef(MethodDefOrRef):
         """
         cdef bytes signature_data
         cdef net_sigs.SignatureReader sig_reader
-        if self.__sig_obj == None and not self.__has_invalid_signature:
+        if self.__sig_obj is None and not self.__has_invalid_signature:
             signature_data = self.get_column('Signature').get_value()
             try:
                 sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature_data, self)

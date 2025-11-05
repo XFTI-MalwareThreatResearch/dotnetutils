@@ -1270,6 +1270,9 @@ cdef class DotNetParameterInfo(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
+cdef class DynamicMethodObject(net_row_objects.MethodDef):
+    pass
+
 cdef class DotNetDelegate(DotNetObject):
     cdef StackCell dn_type
     cdef DotNetRuntimeMethodHandle dn_methodinfo
