@@ -7357,7 +7357,7 @@ cdef class DotNetEmulator:
                 result.emulator_obj = <PyObject*>self
                 Py_INCREF(self)
             return result
-        elif isinstance(type_sig, net_sigs.PinnedSig) or isinstance(type_sig, net_sigs.PtrSig):
+        elif isinstance(type_sig, net_sigs.PinnedSig):
             return self._get_default_value(type_sig.get_next(), tref)
         elif isinstance(type_sig, net_sigs.ValueTypeSig):
             # handle System.Enums as a different case
