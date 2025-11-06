@@ -41,6 +41,8 @@ cdef class DotNetObject:
     cdef int __num_fields
     cdef int orig_type_token
 
+    cpdef object as_python_obj(self)
+
     cdef StackCell ctor(self, StackCell * params, int nparams)
 
     cdef int __get_num_fields(self, net_row_objects.TypeDefOrRef ref)
@@ -899,7 +901,7 @@ cdef class DotNetArray(DotNetObject):
     cdef SlimStackCell * __internal_array
     cdef uint64_t __size
 
-    cpdef list as_python_obj(self)
+    cpdef object as_python_obj(self)
 
     cpdef void from_python_obj(self, list obj)
 

@@ -183,6 +183,15 @@ cdef class DotNetObject:
         """
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
 
+    cpdef object as_python_obj(self):
+        """ Helper method to convert a .NET object to its python equivalent.
+            for most cases, this will likely be just self.
+
+        Returns:
+            object: The python representation of the emulated object.
+        """
+        return self
+
     cdef void __init_fields(self, net_row_objects.TypeDefOrRef ref):
         """ Initialize fields based on the ref object.
 
@@ -5590,7 +5599,7 @@ cdef class DotNetMonitor(DotNetObject):
         # same as above
         return app_domain.get_emulator_obj().pack_blanktag()
 
-cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to fit with the new model.
+cdef class DotNetDictionary(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj): #Capacity probably doesnt actually matter.
         DotNetObject.__init__(self, emulator_obj)
         self.__internal_dict = dict()
@@ -5600,6 +5609,31 @@ cdef class DotNetDictionary(DotNetObject): #TODO need to rewrite this a bit to f
         self.add_function(b'ContainsKey', <emu_func_type>self.ContainsKey)
         self.add_function(b'get_Count', <emu_func_type>self.get_Count)
         self.add_function(b'get_Item', <emu_func_type>self.get_Item)
+
+    cpdef object as_python_obj(self):
+        cdef StackCell cell1
+        cdef StackCell cell2
+        cdef DotNetObject val1
+        cdef DotNetObject val2
+        cdef net_emulator.StackCellWrapper wrapped_key = None
+        cdef net_emulator.StackCellWrapper wrapped_value = None
+        cdef dict result = dict()
+        for wrapped_key, wrapped_value in self.__internal_dict.items():
+            cell1 = self.get_emulator_obj().box_value(wrapped_key.get_wrapped(), None)
+            cell2 = self.get_emulator_obj().box_value(wrapped_value.get_wrapped(), None)
+            if cell1.item.ref == NULL:
+                val1 = None
+            else:
+                val1 = <DotNetObject>cell1.item.ref
+            if cell2.item.ref == NULL:
+                val2 = None
+            else:
+                val2 = <DotNetObject>cell2.item.ref
+
+            result[val1.as_python_obj()] = val2.as_python_obj()
+            self.get_emulator_obj().dealloc_cell(cell1)
+            self.get_emulator_obj().dealloc_cell(cell2)
+        return result
 
     cdef DotNetObject duplicate(self):
         cdef DotNetDictionary result = DotNetDictionary(self.get_emulator_obj())
@@ -6373,7 +6407,7 @@ cdef class DotNetArray(DotNetObject):
         if self.__internal_array == NULL and self.__size > 0:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error for array')
 
-    cpdef list as_python_obj(self):
+    cpdef object as_python_obj(self):
         """ Convert the array to a list of python objects.
         """
         cdef list result = list()
