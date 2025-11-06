@@ -7638,12 +7638,12 @@ cdef class DotNetEmulator:
                 state_str += '{}: {} - {}\n'.format(x, self.cell_to_str(obj), str(param_sigs[x - 1]))
             else:
                 state_str += '{}: {} - {}\n'.format(x, self.cell_to_str(obj), str(param_sigs[x]))
-        #state_str += 'Printing static variables:\n'
-        #if field_table is not None:
-        #    for idno in range(self.get_appdomain().get_amt_static_fields()):
-        #        obj = self.get_appdomain().get_static_field_idx(idno)
-        #        field_sig = (<net_row_objects.Field>field_table.get(obj.rid)).get_field_signature()
-        #        state_str += '{}: {} - {}\n'.format(hex(obj.rid), self.cell_to_str(obj), str(field_sig.get_type_sig()))
+        state_str += 'Printing static variables:\n'
+        if field_table is not None:
+            for idno in range(self.get_appdomain().get_amt_static_fields()):
+                obj = self.get_appdomain().get_static_field_idx(idno)
+                field_sig = (<net_row_objects.Field>field_table.get(obj.rid)).get_field_signature()
+                state_str += '{}: {} - {}\n'.format(hex(obj.rid), self.cell_to_str(obj), str(field_sig.get_type_sig()))
         state_str += 'Printing local vars:\n'
         for key in range(self.localvars.size()):
             value = self.localvars[key]
