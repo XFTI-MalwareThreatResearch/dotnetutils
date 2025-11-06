@@ -443,7 +443,7 @@ cdef class SignatureReader():
         else:
             type_num = <net_structs.CorElementType>self.sig_type
         if type_num == net_structs.CorElementType.INVALID:
-            return None  # TODO: Why is this needed - ConfuserEx
+            return None
         if type_num == net_structs.CorElementType.ELEMENT_TYPE_VOID:
             return get_CorSig_Void()
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:

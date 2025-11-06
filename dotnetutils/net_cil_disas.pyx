@@ -453,6 +453,14 @@ cdef class MethodDisassembler:
         """
         return self.code_size
 
+    cpdef list get_local_types(self):
+        """ Obtain a list of the local types in the method.
+
+        Returns:
+            list[net_sigs.TypeSig]: A list of local type signatures for the method.
+        """
+        return self.local_types
+
     cdef void parse_header(self):
         """ Internal method to parse the method's header.
         """

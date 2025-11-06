@@ -1231,7 +1231,8 @@ cdef class MethodDef(MethodDefOrRef):
                             self.__disasm_obj = net_cil_disas.MethodDisassembler(self.get_dotnetpe(), self)
                             self.__current_method_hash = hashval
                     return self.__disasm_obj
-                except:
+                except Exception as e:
+                    print('returning None due to exception {} {}'.format(hex(self.get_token()), str(e)))
                     return None #Allows for encrypted methods and such.
         return None
 

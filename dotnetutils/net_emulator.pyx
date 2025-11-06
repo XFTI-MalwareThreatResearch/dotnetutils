@@ -4480,7 +4480,7 @@ cdef class DotNetEmulator:
         self.strict_typing = strict_typing
         self.disasm_obj = self.method_obj.disassemble_method()
         if self.disasm_obj is None:
-            raise net_exceptions.InvalidArgumentsException()
+            raise net_exceptions.EmulatorExecutionException(self, 'Could not get disasm object for method {}'.format(hex(self.method_obj.get_token())))
         self.end_offset = end_offset
         self.stack = DotNetStack(self, self.disasm_obj.max_stack)
         self.end_method_rid = end_method_rid
@@ -7357,6 +7357,8 @@ cdef class DotNetEmulator:
                 result.emulator_obj = <PyObject*>self
                 Py_INCREF(self)
             return result
+        elif isinstance(type_sig, net_sigs.PinnedSig) or isinstance(type_sig, net_sigs.PtrSig):
+            return self._get_default_value(type_sig.get_next(), tref)
         elif isinstance(type_sig, net_sigs.ValueTypeSig):
             # handle System.Enums as a different case
             origclass = type_sig.get_type()

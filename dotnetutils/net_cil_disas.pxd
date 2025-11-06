@@ -82,6 +82,8 @@ cdef class MethodDisassembler:
 
     cpdef int get_code_size(self)
 
+    cpdef list get_local_types(self)
+
     cdef void parse_header(self)
 
     cdef void disassemble_loop(self)
