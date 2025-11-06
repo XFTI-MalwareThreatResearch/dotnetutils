@@ -7359,6 +7359,9 @@ cdef class DotNetEmulator:
             return result
         elif isinstance(type_sig, net_sigs.PinnedSig):
             return self._get_default_value(type_sig.get_next(), tref)
+        elif isinstance(type_sig, net_sigs.PtrSig): #For the most part the emulator does not support PtrSigs.  This is just so
+            #That we can patch out the offending methods without it crashing on initialization.
+            return self.pack_u(0)
         elif isinstance(type_sig, net_sigs.ValueTypeSig):
             # handle System.Enums as a different case
             origclass = type_sig.get_type()
