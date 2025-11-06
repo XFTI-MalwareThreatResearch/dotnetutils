@@ -13,6 +13,8 @@ from libcpp.utility cimport pair
 from cpython.exc cimport PyErr_CheckSignals
 from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell, SlimObject
 
+include "net_emu_types.pxi"
+
 """
 Used for polling the performance counter with minimal overhead
 This is done a lot with print debugs so it can save a ton of time.
@@ -3988,7 +3990,7 @@ cdef class EmulatorAppDomain:
         cdef bytes mapping_name
         cdef bytes full_name
         cdef bytes test_name
-        for x in range(net_emu_types.AMT_OF_TYPES):
+        for x in range(AMT_OF_TYPES):
             newobj_mapping = net_emu_types.NET_EMULATE_TYPE_REGISTRATIONS[x]
             mapping_name = newobj_mapping.name[:strlen(newobj_mapping.name)]
             for ref_obj in self.__starter_dpe.get_metadata_table('TypeRef'):
@@ -4002,7 +4004,7 @@ cdef class EmulatorAppDomain:
                         if test_name.startswith(b'`'):
                             self.__newobj_ctors[ref_obj.get_token()] = newobj_mapping.func_ptr
         
-        for x in range(net_emu_types.AMT_OF_STATIC_FUNCTIONS):
+        for x in range(AMT_OF_STATIC_FUNCTIONS):
             func_mapping = net_emu_types.NET_EMULATE_STATIC_FUNC_REGISTRATIONS[x]
             mapping_name = func_mapping.name[:strlen(func_mapping.name)]
             methods = self.__starter_dpe.get_methods_by_full_name(mapping_name) #given the current way this method works it should do well for fields as well.
@@ -7320,6 +7322,33 @@ cdef class DotNetEmulator:
         self.get_appdomain().set_static_field(idno, unboxed)
         self.dealloc_cell(cell)
         self.dealloc_cell(unboxed)
+
+    cpdef net_emu_types.DotNetObject get_static_field_obj(self, int idno):
+        """ For users to get the values of static fields.  Similar to setup_method_params(), it unboxes any value then sets it.
+
+        Args:
+            idno (int): the rid of the static field to get.
+        Returns:
+            net_emu_types.DotNetObject: The DotNetObject held by the field.
+        """
+
+        cdef StackCell cell = self.get_appdomain().get_static_field(idno)
+        cdef StackCell boxed = self.box_value(cell, None)
+        cdef net_emu_types.DotNetObject obj = None
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            self.dealloc_cell(boxed)
+            self.dealloc_cell(cell)
+            return None
+
+        if boxed.is_slim_object:
+            self.dealloc_cell(cell)
+            self.dealloc_cell(boxed)
+            return None #Not supported really.
+        if boxed.item.ref != NULL:
+            obj = <net_emu_types.DotNetObject>boxed.item.ref
+        self.dealloc_cell(cell)
+        self.dealloc_cell(boxed)
+        return obj
 
     cdef StackCell _get_default_value(self, net_sigs.TypeSig type_sig, net_row_objects.TypeDefOrRef tref):
         """ Obtains the default value for a specific type sig and typedef/ref combo.

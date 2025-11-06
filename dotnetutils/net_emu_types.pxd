@@ -11,6 +11,7 @@ from cpython.ref cimport PyObject
 from libcpp.vector cimport vector
 from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell
 
+
 cdef str remove_generics_from_name(str name)
 
 cdef void initialize_array_helper(DotNetArray arr, net_row_objects.RowObject runtime_handle) except *
@@ -2366,12 +2367,10 @@ cdef struct EmuFuncMapping:
     const char * name
     static_func_type func_ptr
 
+include "net_emu_types.pxi"
 
-cdef const int AMT_OF_STATIC_FUNCTIONS = 51
-cdef const int AMT_OF_TYPES = 22
-
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[22]
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51]
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[AMT_OF_TYPES]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[AMT_OF_STATIC_FUNCTIONS]
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 

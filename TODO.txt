@@ -6,3 +6,4 @@ TODO:
 - double check that cctors arent being called twice.
 - Function graphing and control flow cleaning.
 - Fix various warnings related to sphinx docs.
+- Update has_return_value() to work with CmodOpt sigs (can still be void)

@@ -1,6 +1,8 @@
 #cython: language_level=3
 #distutils: language=c++
 
+include "net_emu_types.pxi"
+
 from dotnetutils cimport net_row_objects, net_cil_disas, net_sigs, net_emu_types, dotnetpefile
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector
@@ -187,6 +189,8 @@ cdef class DotNetEmulator:
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
+
+    cpdef net_emu_types.DotNetObject get_static_field_obj(self, int idno)
 
     cpdef void set_static_field_obj(self, int idno, net_emu_types.DotNetObject obj) #So that users can modify static fields
 

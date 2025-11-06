@@ -1392,6 +1392,9 @@ cdef class MethodDef(MethodDefOrRef):
                     raise net_exceptions.InvalidSignatureException('Sig mismatch')
                 self.__has_return_value = not isinstance(
                     self.__sig_obj.get_return_type(), net_sigs.CorLibTypeSig) or self.__sig_obj.get_return_type() != net_sigs.get_CorSig_Void()
+                if isinstance(self.__sig_obj.get_return_type(), net_sigs.ModifierSig):
+                    if self.__sig_obj.get_return_type().get_next() == net_sigs.get_CorSig_Void():
+                        self.__has_return_value = False
                 self.__method_has_this = self.__sig_obj.get_calling_conv() & net_structs.CorCallingConvention.HasThis != 0
             except net_exceptions.InvalidSignatureException:
                 self.__has_invalid_signature = True
@@ -1635,6 +1638,10 @@ cdef class MemberRef(MethodDefOrRef):
         """
         if self.is_field():
             return False
+        cdef net_sigs.TypeSig ret_type = self.get_method_signature().get_return_type()
+        if isinstance(ret_type, net_sigs.ModifierSig):
+            if ret_type.get_next() == net_sigs.get_CorSig_Void():
+                return False
         return self.get_method_signature().get_return_type() != net_sigs.get_CorSig_Void()
 
     cpdef list get_param_types(self):
@@ -1705,6 +1712,9 @@ cdef class MethodSpec(MethodDefOrRef):
 
     cpdef bytes get_name(self):
         return self.get_method().get_name()
+
+    cpdef bint has_return_value(self):
+        return self.get_method().has_return_value()
 
     cpdef list get_xrefs(self):
         """ Obtain a list of xrefs (tuples with (method_rid, instr_offset)) for the MethodSpec

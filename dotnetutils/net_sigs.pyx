@@ -225,7 +225,7 @@ cdef class CModReqdSig(ModifierSig):
     def __init__(self, TypeSig next_sig, net_row_objects.TypeDefOrRef modifier):
         ModifierSig.__init__(self, next_sig, modifier, element_type=net_structs.CorElementType.ELEMENT_TYPE_CMOD_REQD)
 
-cdef class CmodOptSig(ModifierSig):
+cdef class CModOptSig(ModifierSig):
     def __init__(self, TypeSig next_sig, net_row_objects.TypeDefOrRef modifier):
         ModifierSig.__init__(self, next_sig, modifier, element_type=net_structs.CorElementType.ELEMENT_TYPE_CMOD_OPT)
 
@@ -527,7 +527,7 @@ cdef class SignatureReader():
             try:
                 typedef = self.read_typedef_or_ref()
                 new_type = self.handle_type_sig(True)
-                return CmodOptSig(new_type, typedef)
+                return CModOptSig(new_type, typedef)
             except:
                 raise net_exceptions.InvalidSignatureException('CmodOptSig')
         elif type_num == net_structs.CorElementType.ELEMENT_TYPE_SENTINEL:
@@ -904,11 +904,11 @@ cdef bint type_sig_compare(TypeSig sig_one, TypeSig sig_two, GenericInstMethodSi
         comp_one = CModReqdSig(temp, comp_one.get_modifier())
         temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
         comp_two = CModReqdSig(temp, comp_two.get_modifier())
-    elif isinstance(comp_one, CmodOptSig) and isinstance(comp_two, CmodOptSig):
+    elif isinstance(comp_one, CModOptSig) and isinstance(comp_two, CModOptSig):
         temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
-        comp_one = CmodOptSig(temp, comp_one.get_modifier())
+        comp_one = CModOptSig(temp, comp_one.get_modifier())
         temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
-        comp_two = CmodOptSig(temp, comp_two.get_modifier())
+        comp_two = CModOptSig(temp, comp_two.get_modifier())
     elif isinstance(comp_one, PinnedSig) and isinstance(comp_two, PinnedSig):
         temp = sub_sig(comp_one.get_next(), gensig, gentypesig)
         comp_one = PinnedSig(temp)

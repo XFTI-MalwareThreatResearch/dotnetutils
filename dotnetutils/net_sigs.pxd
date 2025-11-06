@@ -115,7 +115,7 @@ cdef class ModifierSig(NonLeafSig):
 cdef class CModReqdSig(ModifierSig):
     pass
 
-cdef class CmodOptSig(ModifierSig):
+cdef class CModOptSig(ModifierSig):
     pass
 
 cdef class PinnedSig(NonLeafSig):

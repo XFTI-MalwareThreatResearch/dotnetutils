@@ -10562,7 +10562,9 @@ cdef DotNetObject New_Random(net_emulator.DotNetEmulator emulator_obj):
 cdef DotNetObject New_DynamicMethod(net_emulator.DotNetEmulator emulator_obj):
     return DotNetDynamicMethod(emulator_obj)
 
-cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[22]
+include "net_emu_types.pxi"
+
+cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[AMT_OF_TYPES]
 NET_EMULATE_TYPE_REGISTRATIONS[0].name = 'System.Collections.Concurrent.ConcurrentDictionary'
 NET_EMULATE_TYPE_REGISTRATIONS[0].func_ptr = <newobj_func_type>&New_ConcurrentDictionary
 NET_EMULATE_TYPE_REGISTRATIONS[1].name = 'System.Collections.Generic.Dictionary'
@@ -10608,7 +10610,7 @@ NET_EMULATE_TYPE_REGISTRATIONS[20].func_ptr = <newobj_func_type>&New_Random
 NET_EMULATE_TYPE_REGISTRATIONS[21].name = 'System.Reflection.Emit.DynamicMethod'
 NET_EMULATE_TYPE_REGISTRATIONS[21].func_ptr = <newobj_func_type>&New_DynamicMethod
 
-cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51]
+cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[AMT_OF_STATIC_FUNCTIONS]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].func_ptr = <static_func_type>&DotNetType.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[1].name = 'System.Type.op_Inequality'
