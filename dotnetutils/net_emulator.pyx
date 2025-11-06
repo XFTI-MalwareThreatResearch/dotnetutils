@@ -7324,7 +7324,8 @@ cdef class DotNetEmulator:
         self.dealloc_cell(unboxed)
 
     cpdef net_emu_types.DotNetObject get_static_field_obj(self, int idno):
-        """ For users to get the values of static fields.  Similar to setup_method_params(), it unboxes any value then sets it.
+        """ For users to get the values of static fields.
+            This method will return boxed values only.
 
         Args:
             idno (int): the rid of the static field to get.
