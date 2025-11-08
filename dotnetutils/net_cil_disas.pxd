@@ -8,6 +8,7 @@ from dotnetutils cimport net_opcodes
 from cpython.ref cimport PyObject
 from cython.operator cimport dereference
 from libcpp.vector cimport vector
+from libc.stdint cimport int64_t
 from libcpp.unordered_map cimport unordered_map
 
 cdef class Instruction:
@@ -19,6 +20,12 @@ cdef class Instruction:
     cdef MethodDisassembler __disasm_obj
     cdef unsigned int instr_index
 
+    cpdef int get_nstack(self)
+
+    cpdef int get_astack(self)
+
+    cpdef int get_pstack(self)
+
     cpdef int get_instr_size(self)
 
     cpdef unsigned int get_instr_index(self)
@@ -27,7 +34,19 @@ cdef class Instruction:
 
     cdef void add_argument(self, int argument)
     
-    cdef void __set_arguments(self, bytes arguments)
+    cdef void _set_arguments(self, bytes arguments)
+
+    cpdef void setup_arguments_from_int32(self, int arguments)
+
+    cpdef void setup_arguments_from_int8(self, char arguments)
+
+    cpdef void setup_arguments_from_int64(self, int64_t arguments)
+
+    cpdef void setup_arguments_from_float(self, float arguments)
+
+    cpdef void setup_arguments_from_double(self, double arguments)
+
+    cpdef void setup_arguments_from_argslist(self, list arguments)
 
     cpdef str get_name(self)
 
@@ -53,6 +72,11 @@ cdef class Instruction:
 
     cpdef bint is_absolute_jmp(self)
 
+    cpdef bint is_in_catch(self)
+
+    cpdef bint is_in_try(self)
+
+    cpdef int get_instr_handler(self)
 
 cdef class MethodDisassembler:
     cdef dotnetpefile.DotNetPeFile dotnetpe
@@ -68,9 +92,15 @@ cdef class MethodDisassembler:
     cdef unordered_map[int, int] offsets
     cdef net_structs.DotNetDataReader __reader
 
+    cpdef void add_instruction_at_index(self, int index, Instruction instr, int handler=*, bint is_try=*, bint is_catch=*)
+
+    cdef void __update_offsets(self, int offset, int index, int difference, int except_handler, bint is_try, bint is_catch)
+
+    cpdef void remove_instruction_at_index(self, int index)
+
     cpdef int get_max_stack_size(self)
 
-    cpdef object get_method(self)
+    cpdef net_row_objects.MethodDefOrRef get_method(self)
 
     cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
 

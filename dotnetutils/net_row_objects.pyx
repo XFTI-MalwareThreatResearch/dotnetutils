@@ -1710,6 +1710,9 @@ cdef class MethodSpec(MethodDefOrRef):
         self.__parsed_sig = None
         self.__xrefs = list()
 
+    cpdef list get_param_types(self):
+        return self.get_method().get_param_types()
+
     cpdef bytes get_name(self):
         return self.get_method().get_name()
 

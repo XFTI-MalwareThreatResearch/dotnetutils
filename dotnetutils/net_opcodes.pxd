@@ -239,6 +239,15 @@ cdef class OpCode:
     cdef bint has_arg_list
     cdef bint is_branch
     cdef bint has_token_argument
+    cdef int nstack
+    cdef int astack
+    cdef int pstack
+
+    cpdef int get_nstack(self)
+
+    cpdef int get_astack(self)
+
+    cpdef int get_pstack(self)
 
     cdef void set_opcode(self, int opcode_)
 
