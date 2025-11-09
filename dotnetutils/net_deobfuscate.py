@@ -41,6 +41,22 @@ def main():
         fgraph.print_root()
         print('done')
         exit(0)
+    elif deob_type == 'printallgraphs':
+        print('Printing graphs for all methods in the executable.')
+        print()
+        dpe = dotnetpefile.try_get_dotnetpe(pe_data=data)
+        if dpe is None:
+            print('error: invalid dotnet pe.')
+        else:
+            for method in dpe.get_metadata_table('MethodDef'):
+                if method.has_body():
+                    print('Printing graph for method {}:{}'.format(hex(method.get_token()), method.get_full_name()))
+                    fgraph = net_graphing.FunctionGraph(method)
+                    fgraph.print_root()
+                    print()
+                    print()
+        print('done')
+        exit(0)
     elif deob_type == 'unk_obf_1':
         print('Attempting to remove obfuscation using unk_obf_1.')
         new_data = net_deobfuscate_funcs.remove_useless_bytearray_conditionals(data)

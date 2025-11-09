@@ -459,12 +459,14 @@ cdef class Instruction:
         return self.opcode_one.opcode_argument_signed()
 
     cpdef bint is_absolute_jmp(self):
-        """ Is the instruction a br or br.s instruction?
+        """ Determines if the instruction causes an absolute jump.
+            Generally only br, br.s, leave and leave.s causes this, since no matter what happens they jump.
 
         Returns:
-            bool: True if the instruction is br or br.s, False otherwise (absolute jumps)
+            bool: True if the instruction causes an absolute jump False otherwise (absolute jumps)
         """
-        return self.get_name() == 'br' or self.get_name() == 'br.s'
+        cdef net_opcodes.Opcodes opcode = self.get_opcode()
+        return opcode == net_opcodes.Opcodes.Br or opcode == net_opcodes.Opcodes.Br_S or opcode == net_opcodes.Opcodes.Leave or opcode == net_opcodes.Opcodes.Leave_S
 
     cpdef int get_instr_handler(self):
         cdef int x = 0
@@ -548,13 +550,22 @@ cdef class MethodDisassembler:
 
 
     def __dealloc__(self):
-        cdef Instruction instr = None
-        cdef size_t x = 0
-        for x in range(self.instrs.size()):
-            instr = <Instruction>self.instrs[x]
-            Py_XDECREF(<PyObject*>instr)
-        self.instrs.clear()
-        self.offsets.clear()
+        self.clear()
+
+    cpdef list get_exception_blocks(self):
+        """ Obtains the exception blocks parsed from the method.
+            Each exception block is represented as a tuple with the following elements
+            exc[0] (int): The flags for the clause
+            exc[1] (int): the IL offset for the try block
+            exc[2] (int): The code size for the try block
+            exc[3] (int): The IL offset for the handler block
+            exc[4] (int): The code size for the handler block
+            exc[5] (int): The class token for the exception block.
+
+        Returns:
+            list[tuple[int, int, int, int, int, int]]: A list of tuples, containing the above described values.
+        """
+        return self.exception_blocks
 
     cpdef int get_max_stack_size(self):
         """ Obtain the maximum stack size for the method.
@@ -636,6 +647,50 @@ cdef class MethodDisassembler:
         """
         return self.local_types
 
+    cdef void clear(self):
+        cdef Instruction instr = None
+        cdef size_t x = 0
+        for x in range(self.instrs.size()):
+            instr = <Instruction>self.instrs[x]
+            Py_XDECREF(<PyObject*>instr)
+        self.instrs.clear()
+        self.offsets.clear()
+
+    cpdef bytes recompile_method(self):
+        cdef Py_ssize_t total_code_size = 0
+        cdef Instruction instr = None
+        cdef bytearray code = bytearray()
+        cdef bint use_fat_header = False
+        cdef bytearray result = bytearray()
+        cdef size_t x = 0
+        cdef char header_byte = 0
+        cdef unsigned short flags = 0
+        if len(self.local_types) > 0:
+            use_fat_header = True
+
+        for x in range(self.instrs.size()):
+            instr = <Instruction>self.instrs[x]
+            total_code_size += len(instr)
+            code.extend(instr.to_bytes())
+
+        if total_code_size > 63:
+            use_fat_header = True
+
+        if not use_fat_header:
+            header_byte = <char>total_code_size
+            header_byte = (header_byte << 2) | 0x02
+            result.append(header_byte)
+            result.extend(code)
+        else:
+            if len(self.exception_blocks) > 0:
+                flags = (3 << 12) | ((self.flags | net_structs.CorILMethod.MoreSects) & 0x0FFF)
+            else:
+                flags = (3 << 12) | (self.flags & 0x0FFF)
+
+            
+
+        return bytes(result)
+
     cdef void parse_header(self):
         """ Internal method to parse the method's header.
         """
@@ -658,8 +713,8 @@ cdef class MethodDisassembler:
         cdef int handler_length
         cdef int try_length
         start = self.__reader.read_byte()
-        val = start & 7
-        if val == 2 or val == 6:
+        val = start & 0x3
+        if val == 2:
             self.flags = 0
             self.header_size = 1
             self.code_size = (start >> 2)
@@ -667,15 +722,16 @@ cdef class MethodDisassembler:
             self.local_var_sig_tok = 0
             self.local_types = list()
             self.exception_blocks = list() #Small headers cant have exceptions.
-        else:
+        elif val == 3:
             self.flags = ((self.__reader.read_byte() << 8) | start)
             self.header_size = (self.flags >> 12)
+            self.flags = self.flags & 0x0FFF
             self.max_stack = self.__reader.read_uint16()
             self.code_size = self.__reader.read_uint32()
             self.local_var_sig_tok = self.__reader.read_uint32()
-            if self.header_size < 3:
-                self.flags &= 0xFFF7
             self.header_size *= 4
+            if self.header_size != 12:
+                raise net_exceptions.InvalidArgumentsException()
             if self.local_var_sig_tok > 0:
                 signature_table = self.dotnetpe.get_metadata_table('StandAloneSig')
                 if self.local_var_sig_tok & 0x11000000:
@@ -753,6 +809,8 @@ cdef class MethodDisassembler:
                     
                     if sect_flags & net_structs.CorILMethod.Sect_MoreSects == 0:
                         break
+        else:
+            raise net_exceptions.InvalidArgumentsException()
 
     cdef void disassemble_loop(self):
         """ Internal method to parse the method's code.
@@ -967,6 +1025,7 @@ cdef class MethodDisassembler:
 
     cdef void __update_offsets(self, int index, int offset, int difference, int except_handler, bint is_try, bint is_catch):
         #ok so first things first, we need to scan through every single instruction.
+        #Really shouldnt use this to modify jmps
         cdef size_t x = 0
         cdef Py_ssize_t y = 0
         cdef Instruction instr = None

@@ -126,5 +126,11 @@ cdef class MethodDisassembler:
 
     cpdef int get_instr_index_by_offset(self, unsigned int instr_offset)
 
+    cpdef bytes recompile_method(self)
+
+    cdef void clear(self)
+
+    cpdef list get_exception_blocks(self)
+
 
 cpdef unsigned long get_total_method_size(bytes data)

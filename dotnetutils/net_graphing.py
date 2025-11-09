@@ -1,9 +1,11 @@
 from dotnetutils import net_cil_disas, net_emulator, net_structs, net_opcodes, net_row_objects, net_exceptions
+from dotnetutils.net_opcodes import Opcodes
 
 class FunctionBlock:
-    def __init__(self, method_object, disasm_object, graph_id):
+    def __init__(self, method_object, disasm_object, graph):
         self.__method_object = method_object
         self.__disasm_object = disasm_object
+        self.__graph = graph
         self.__instrs = list()
         self.__previous = list()
         self.__next = list()
@@ -12,7 +14,6 @@ class FunctionBlock:
         self.__was_cleared = False
         self.__original_cleared = False
         self.__original_nexts = list()
-        self.__graph_id = graph_id
         self.__is_junk_block = False
         self.__is_switch_case = False
         self.__was_switch_block = False
@@ -20,9 +21,21 @@ class FunctionBlock:
         self.__is_block_try = False
         self.__is_block_catch = False
         self.__is_block_finally = False
+        self.__is_block_filter = False
         self.__try_block_offset = -1
         self.__catch_block_offset = -1
         self.__finally_block_offset = -1
+        self.__filter_block_offset = -1
+        self.__exception_handler = None
+
+    def get_exception_handler(self):
+        return self.__exception_handler
+    
+    def set_exception_handler(self, exception_handler):
+        self.__exception_handler = exception_handler
+
+    def set_filter_block_offset(self, offset):
+        self.__filter_block_offset = offset
 
     def set_try_block_offset(self, offset):
         self.__try_block_offset = offset
@@ -41,6 +54,9 @@ class FunctionBlock:
     
     def get_finally_block_offset(self):
         return self.__finally_block_offset
+    
+    def get_filter_block_offset(self):
+        return self.__filter_block_offset
 
     def mark_block_try(self):
         self.__is_block_try = True
@@ -51,6 +67,9 @@ class FunctionBlock:
     def mark_block_finally(self):
         self.__is_block_finally = True
 
+    def mark_block_filter(self):
+        self.__is_block_filter = True
+
     def is_block_try(self):
         return self.__is_block_try
     
@@ -59,6 +78,9 @@ class FunctionBlock:
     
     def is_block_finally(self):
         return self.__is_block_finally
+    
+    def is_block_filter(self):
+        return self.__is_block_filter
 
     def mark_block_finished(self):
         self.__is_block_finished = True
@@ -70,7 +92,7 @@ class FunctionBlock:
         return self.__was_switch_block
 
     def is_block_return(self):
-        return self.get_last_instr().get_name() == 'ret'
+        return self.get_last_instr().get_opcode() == Opcodes.Ret
 
     def __hash__(self):
         return hash(self.__start_offset)
@@ -90,7 +112,7 @@ class FunctionBlock:
     def get_instr_index(self, instr):
         for x in range(len(self.get_instrs())):
             pt_instr = self.get_instrs()[x]
-            if pt_instr.offset == instr.offset:
+            if pt_instr.get_instr_offset() == instr.get_instr_offset():
                 return x
         return -1
     
@@ -142,9 +164,8 @@ class FunctionBlock:
     def is_block_conditional(self):
         instr = self.get_last_instr()
         if not self.is_block_absolutejmp():
-            if instr.get_name() != 'switch':
+            if instr.get_opcode() != Opcodes.Switch:
                 return instr.is_branch()
-
         return False
 
     def contains_instr(self, name):
@@ -177,11 +198,12 @@ class FunctionBlock:
             self.clear_next()
 
     def is_block_switch(self):
-        return self.get_last_instr().get_name() == 'switch'
+        return self.get_last_instr().get_opcode() == Opcodes.Switch
 
     def is_block_absolutejmp(self):
         instr = self.get_last_instr()
-        return instr.get_name() == 'br' or instr.get_name() == 'br.s' or instr.get_name() == 'leave' or instr.get_name() == 'leave.s'
+        opcode = instr.get_opcode()
+        return opcode == Opcodes.Br or opcode == Opcodes.Br_S or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S
     
     def is_block_direct(self):
         return not self.is_block_absolutejmp() and not self.is_block_conditional() and not self.get_last_instr().is_branch() and len(self.get_next()) == 1
@@ -189,7 +211,7 @@ class FunctionBlock:
     def add_instr(self, instr):
         self.__instrs.append(instr)
         if self.__start_offset == -1:
-            self.__start_offset = instr.offset
+            self.__start_offset = instr.get_instr_offset()
 
         self.__original_length += len(instr)
 
@@ -210,8 +232,9 @@ class FunctionBlock:
     
     def add_original_next(self, block):
         #Problem here: switch fallthrough case.  How do I handle it?  TODO: fix
-        self.__original_nexts.append(block.get_start_offset())
-        self.add_next(block)
+        if block.get_start_offset() not in self.__original_nexts:
+            self.__original_nexts.append(block.get_start_offset())
+            self.add_next(block)
 
     def add_next(self, block):
         if not self.has_next(block):
@@ -224,6 +247,13 @@ class FunctionBlock:
         return block in self.__next
 
     def get_next(self):
+        if self.get_last_instr().get_opcode() == Opcodes.Switch:
+            result = list()
+            instr = self.get_last_instr()
+            for target in instr.get_argument():
+                result.append(self.__graph.get_block_by_offset(target))
+            result.append(self.__graph.get_block_by_offset(instr.get_instr_offset() + len(instr)))
+            return result
         return self.__next
 
     def get_prev(self):
@@ -238,31 +268,46 @@ class FunctionBlock:
 
     def has_offset(self, offset):
         if self.__is_block_finished:
-            if self.__start_offset <= offset <= (self.__start_offset + self.__original_length):
+            if self.__start_offset <= offset < (self.__start_offset + self.__original_length):
                 return True
         for instr in self.get_instrs():
-            if instr.offset == offset:
+            if instr.get_instr_offset() == offset:
                 return True
         return False
 
     def validate_block(self):
         last_instr = self.get_last_instr()
+        opcode = last_instr.get_opcode()
         if not last_instr.is_branch():
-            if last_instr.get_name() == 'ret':
+            if opcode == Opcodes.Ret:
                 if not len(self.__next) == 0:
                     raise net_exceptions.InvalidBlockException
             else:
-                if not len(self.__next) == 1:
-                    raise net_exceptions.InvalidBlockException
+                if opcode == Opcodes.Throw or opcode == Opcodes.Endfinally:
+                    #TODO: I think this is correct for endfinally since it doesnt really have a hard transfer, thats handled internally.
+                    if len(self.__next) != 0:
+                        raise net_exceptions.InvalidBlockException
+                else:
+                    if len(self.__next) != 1:
+                        raise net_exceptions.InvalidBlockException
         else:
-            if last_instr.get_name() == 'switch':
-                if not len(self.__next) == len(self.__disasm_object.get_argument(last_instr)):
+            if opcode == Opcodes.Switch:
+                amt_of_unique_targets = 0
+                already_counted = list()
+                for target in last_instr.get_argument():
+                    if target not in already_counted:
+                        amt_of_unique_targets += 1
+                        already_counted.append(target)
+                fallthrough_target = last_instr.get_instr_offset() + len(last_instr)
+                if fallthrough_target not in already_counted:
+                    amt_of_unique_targets += 1
+                if len(self.__next) != amt_of_unique_targets:
                     raise net_exceptions.InvalidBlockException
-            elif last_instr.get_name() == 'br.s' or last_instr.get_name() == 'br' or last_instr.get_name() == 'leave' or last_instr.get_name() == 'leave.s':
-                if not len(self.__next) == 1:
+            elif opcode == Opcodes.Br_S or opcode == Opcodes.Br or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S:
+                if len(self.__next) != 1:
                     raise net_exceptions.InvalidBlockException
             else:
-                if not len(self.__next) == 2:
+                if len(self.__next) != 2:
                     raise net_exceptions.InvalidBlockException
 
     def split_block(self, split_offset):
@@ -271,7 +316,7 @@ class FunctionBlock:
         start_splitting = False
         new_size = 0
         for instr in self.__instrs:
-            if instr.offset == split_offset:
+            if instr.get_instr_offset() == split_offset:
                 start_splitting = True
             if not start_splitting:
                 new_size += len(instr)
@@ -282,7 +327,7 @@ class FunctionBlock:
         self.__instrs = new_instrs
         self.__original_length = new_size
 
-        new_block = FunctionBlock(self.__method_object, self.__disasm_object, self.__graph_id)
+        new_block = FunctionBlock(self.__method_object, self.__disasm_object, self.__graph)
         if self.__is_block_try:
             new_block.mark_block_try()
         
@@ -291,6 +336,10 @@ class FunctionBlock:
 
         if self.__is_block_finally:
             new_block.mark_block_finally()
+        
+        if self.__is_block_filter:
+            new_block.mark_block_filter()
+        new_block.set_exception_handler(self.get_exception_handler())
         
         for instr in split_instrs:
             new_block.add_instr(instr)
@@ -334,14 +383,8 @@ class FunctionBlock:
     def __eq__(self, other):
         return isinstance(other, FunctionBlock) and self.get_start_offset() == other.get_start_offset()
     
-graph_id = 0
 class FunctionGraph:
-    #TODO: Add support for multiple switch statements - in the works.
-    #TODO: Add support for try catch finally exception handling - Going to be very annoying.
     def __init__(self, method_object, init_blocks=True, debug_print=False):
-        global graph_id
-        self.__graph_id = graph_id
-        graph_id += 1
         self.__method_object = method_object
         self.__debug_print = debug_print
         if init_blocks:
@@ -378,372 +421,24 @@ class FunctionGraph:
     def get_root_block(self):
         return self.__root_block
 
-    def __should_split_block(self, split_offset):
-        for block in self.__blocks_start.values():
-            instrs = block.get_instrs()
-            if len(instrs) > 1:
-                for instr in instrs[1:]:
-                    if instr.offset == split_offset:
-                        return block
-        return None
-
-    def __get_block_for_offset(self, offset):
+    def get_block_by_offset(self, offset):
         for block in self.__blocks_start.values():
             if block.has_offset(offset):
                 return block
         return None
 
-    def analyze(self):
-        return self.__analyze_switch_statements()
+    def __handle_try_block(self, try_offset, try_length, handler_offset, handler_length, exc):
+        self.__parse_block(self.__disasm_object, try_offset, try_offset + try_length, True, False, False, False, exc)
+        self.__parse_block(self.__disasm_object, handler_offset, handler_offset + handler_length, False, True, False, False, exc)
 
-    def __handle_switch_block(self, emu: net_emulator.DotNetEmulator, switch_block: FunctionBlock, child_block: FunctionBlock, usable_graph, var_id_no: int, handled_blocks: list, localvars: dict, previous_block: FunctionBlock, initial_child_block: FunctionBlock):
-        if child_block.get_start_offset() in handled_blocks:
-            if self.__debug_print:
-                print('Returning from __handle_switch_statement because child block {} is in handled_blocks'.format(hex(child_block.get_start_offset())))
-            return
-        #first check to see if this is a switch block. 
-        if child_block.is_block_switch() and child_block.get_start_offset() != switch_block.get_start_offset():
-            #if it is a switch block, we need to find the initial block.
-            if self.__is_suspicious_switch(child_block): 
-                if initial_child_block is None:
-                    raise net_exceptions.InvalidBlockException
-                if initial_child_block.is_switch_case():
-                    #find the actual child block - this wont do.
-                    shortest_path = self.get_shortest_path(initial_child_block, child_block)
-                    actual_child_block = None
-                    for actual_child_block in shortest_path:
-                        if actual_child_block.get_start_offset() == initial_child_block.get_start_offset():
-                            continue
-                        if not actual_child_block.is_switch_case() and len(actual_child_block.get_next()) == 1:
-                            break
-                    if self.__debug_print:
-                        print('1 calling analyze_switch_statement_internal with switch block {} and starting block {}'.format(hex(child_block.get_start_offset()), hex(actual_child_block.get_start_offset())))
-                    return self.__analyze_switch_statement_internal(child_block, actual_child_block, usable_graph, handled_blocks)
-                else:
-                    if self.__debug_print:
-                        print('2 calling analyze_switch_statement_internal with switch block {} and starting block {}'.format(hex(child_block.get_start_offset()), hex(initial_child_block.get_start_offset())))
+    def __handle_finally_block(self, try_offset, try_length, handler_offset, handler_length, exc):
+        self.__parse_block(self.__disasm_object, try_offset, try_offset + try_length, True, False, False, False, exc)
+        self.__parse_block(self.__disasm_object, handler_offset, handler_offset + handler_length, False, False, True, False, exc)
 
-                    return self.__analyze_switch_statement_internal(child_block, initial_child_block, usable_graph, handled_blocks)
-        handled_blocks.append(child_block.get_start_offset())
-        if self.__debug_print:
-            print(child_block.is_block_absolutejmp(), (not child_block.get_last_instr().is_branch() and child_block.get_last_instr().get_name() == 'switch'))
-        if (child_block.is_block_absolutejmp() or child_block.is_block_direct()) or (not child_block.get_last_instr().is_branch() and child_block.get_last_instr().get_name() == 'switch'):
-            if not len(child_block.get_next()) == 1:
-                raise net_exceptions.InvalidBlockException 
-            next_block: FunctionBlock = child_block.get_next()[0]
-            if self.__debug_print:
-                print('next block stats {} {} {} {}'.format(hex(next_block.get_start_offset()), next_block.is_junk_block(), next_block.is_switch_case(), next_block.is_block_switch()))
-            if not next_block.is_block_switch() or switch_block.get_start_offset() != next_block.get_start_offset():
-                if self.__debug_print:
-                    print('Going from block {} to {}'.format(hex(child_block.get_start_offset()), hex(next_block.get_start_offset())))
-                if initial_child_block == None:
-                    if self.__debug_print:
-                        print('Calling handle_switch_block (1)')
-                    return self.__handle_switch_block(emu, switch_block, next_block, usable_graph, var_id_no, handled_blocks, localvars.copy(), None, child_block)
-                else:
-                    if self.__debug_print:
-                        print('Calling handle_switch_block (2)')
-                    return self.__handle_switch_block(emu, switch_block, next_block, usable_graph, var_id_no, handled_blocks, localvars.copy(), None, initial_child_block)
-        
-        #our next check - do we have a switch block that we need to handle?
-        
-        usable_child_block = usable_graph.__get_block_for_offset(child_block.get_start_offset())
-        if self.__debug_print:
-            print('Calling __handle_switch_statement with child_block {}'.format(hex(child_block.get_start_offset())))
-
-        #if all the block does is take our switch var and modify it, mark it as junk.
-
-        if child_block.is_switch_case():
-            instrs = child_block.get_instrs()
-            if instrs[0].get_name().startswith('ldloc'):
-                if instrs[0].get_argument() == var_id_no:
-                    allowed_instrs = ['ldc.i4', 'mul', 'pop', 'br', 'br.s', 'xor', 'nop']
-                    check_failed = False
-                    for instr in instrs[1:]:
-                        if instr.get_name() not in allowed_instrs:
-                            check_failed = True
-
-                    if not check_failed:
-                        usable_child_block.mark_junk()
-
-        #run the same check on the initial child_block just to be safe
-        if initial_child_block != None:
-            usable_initial_block = usable_graph.__get_block_for_offset(initial_child_block.get_start_offset())
-            if not usable_initial_block.is_junk_block():
-                instrs = initial_child_block.get_instrs()
-                if instrs[0].get_name().startswith('ldloc'):
-                    if instrs[0].get_argument() == var_id_no:
-                        allowed_instrs = ['ldc.i4', 'mul', 'pop', 'br', 'br.s', 'xor', 'nop']
-                        check_failed = False
-                        for instr in instrs[1:]:
-                            if instr.get_name() not in allowed_instrs:
-                                check_failed = True
-
-                        if not check_failed:
-                            usable_initial_block.mark_junk()
-
-        if child_block.is_block_return():
-            if self.__debug_print:
-                print('child_block.is_block_return(): {}'.format(hex(child_block.get_start_offset())))
-            return
-
-        if child_block.is_block_conditional():
-            # this may have the potential for issues if this isnt the last block in the case - FIXME
-            true_case = child_block.get_next()[0]
-            other_case = child_block.get_next()[1]
-            usable_child_block.clear_next_once()
-            usable_true_case = usable_graph.__get_block_for_offset(true_case.get_start_offset())
-            usable_other_case = usable_graph.__get_block_for_offset(other_case.get_start_offset())
-            if self.__debug_print:
-                print('Adding next of {} to {} as usable_true_case'.format(hex(usable_true_case.get_start_offset()), hex(usable_child_block.get_start_offset())))
-            usable_child_block.add_next(usable_true_case)
-            if self.__debug_print:
-                print('Adding next of {} to {} as usable_other_case'.format(hex(usable_other_case.get_start_offset()), hex(usable_child_block.get_start_offset())))
-            usable_child_block.add_next(usable_other_case)
-            self.__handle_switch_block(
-                emu, switch_block, true_case, usable_graph, var_id_no, handled_blocks, localvars.copy(), child_block, None)
-            self.__handle_switch_block(
-                emu, switch_block, other_case, usable_graph, var_id_no, handled_blocks, localvars.copy(), child_block, None)
-        else:
-            if len(child_block.get_next()) == 0:
-                if self.__debug_print:
-                    print('returning from __handle_switch_block because child_block has no next {}'.format(hex(child_block.get_start_offset())))
-                return
-            # not an if statement
-            math_instrs = list()
-            found = False
-            # this wont work in cases where its a pop etc
-            # FIXME: figure out a better way to determine this.
-            if initial_child_block:
-                if self.__debug_print:
-                    print('initial child block = {} {} {}'.format(initial_child_block.is_block_switch(), initial_child_block.is_switch_case(), initial_child_block.is_junk_block()))
-                    print('Checking initial child block {} for math instrs'.format(hex(initial_child_block.get_start_offset())))
-                for instr in initial_child_block.get_instrs():
-                    if instr.get_name().startswith('ldloc'):
-                        if instr.get_argument() == var_id_no:
-                            found = True
-                    if instr.is_branch():
-                        break
-                    if found:
-                        math_instrs.append(instr)
-                if not found:
-                    if self.__debug_print:
-                        print('Checking previous blocks just in case')
-                    #check from the initial child block
-                    check_block = initial_child_block
-                    prev_block = None
-                    while True:
-                        for instr in check_block.get_instrs():
-                            if instr.get_name().startswith('ldloc'):
-                                if instr.get_argument() == var_id_no:
-                                    found = True
-                                    math_instrs.insert(0, instr)
-                        if found:
-                            #check the previous block if theres only one
-                            if prev_block:
-                                if len(prev_block.get_instrs()) == 2 or (prev_block.is_block_absolutejmp() and len(prev_block.get_instrs()) == 3):
-                                    if prev_block.get_instrs()[0].get_name() == 'ldc.i4':
-                                        if prev_block.get_instrs()[1].get_name() == 'dup':
-                                            math_instrs.insert(0, prev_block.get_instrs()[0])
-                            break
-                        if check_block == child_block:
-                            break
-                        prev_block = check_block
-                        check_block = check_block.get_next()[0]
-
-            if not found:
-                if self.__debug_print:
-                    print('Checking child block {} for math instrs'.format(hex(child_block.get_start_offset())))
-                    print('{} {} {} '.format(child_block.is_block_switch(), child_block.is_switch_case(), child_block.is_junk_block()))
-                for instr in child_block.get_instrs():
-                    if instr.get_name().startswith('ldloc'):
-                        if instr.get_argument() == var_id_no:
-                            found = True
-                    if instr.is_branch():
-                        break
-                    if found:
-                        math_instrs.append(instr)
-                """if len(math_instrs) == 0:
-                    #check if the last instruction is an ldc.i4.
-                    if len(child_block.get_instrs()) >= 2:
-                        if len(child_block.get_next()) == 1 and child_block.get_next()[0].is_block_switch():
-                            if child_block.get_instrs()[-2].get_name() == 'ldc.i4':
-                                math_instrs.append(child_block.get_instrs()[-2])"""
-            
-            #do the ldloc check on the path.
-            
-        
-            #if it directly leads to another block without a branch, check that block too.
-            if self.__debug_print:
-                print('Amount of math instrs found after child block check {}'.format(len(math_instrs)))
-            if len(math_instrs) == 0:
-                ucb: FunctionBlock = child_block
-                prev_block: FunctionBlock = ucb
-                while len(ucb.get_next()) == 1 and (not ucb.get_last_instr().is_branch() or ucb.is_block_absolutejmp()) and not found:
-                    prev_block = ucb
-                    ucb = ucb.get_next()[0]
-                    for instr in ucb.get_instrs():
-                        if instr.get_name().startswith('ldloc'):
-                            if instr.get_argument() == var_id_no:
-                                found = True
-                                #additionally check if the previous block has just math instrs
-                                allowed_instrs = ['ldc.i4', 'mul', 'pop', 'br', 'br.s', 'xor', 'nop', 'dup']
-                                check_worked = True
-                                for instr2 in prev_block.get_instrs():
-                                    if instr2.get_name() not in allowed_instrs:
-                                        check_worked = False
-                                        break
-                                if check_worked:
-                                    math_instrs.append(prev_block.get_instrs()[0])
-                            if instr.is_branch():
-                                break
-                            if found:
-                                math_instrs.append(instr)
-            if self.__debug_print:
-                print('Amount of math instrs found so far {}'.format(len(math_instrs)))
-            if len(math_instrs) == 0:
-                # there may be a case where its not based on that variable and is more so based off of a direct number, check that here.
-                # FIXME: This is not the greatest solution to this problem, but it might work.
-                if initial_child_block == None:
-                    path = self.get_shortest_path(
-                        child_block.get_start_offset(), switch_block.get_start_offset())
-                else:
-                    path = self.get_shortest_path(initial_child_block.get_start_offset(), switch_block.get_start_offset())
-                last_ldc_instr = None
-                if path:
-                    for item in path:
-                        if item == switch_block:
-                            continue
-                        for instr in item.get_instrs():
-                            if instr.get_name().startswith('ldc.'):
-                                last_ldc_instr = instr
-                if last_ldc_instr:
-                    math_instrs.append(last_ldc_instr)
-
-            if not len(math_instrs):
-                raise net_exceptions.InvalidBlockException
-
-            if self.__debug_print:
-                print('(handle_switch_block): Running DotNetEmulator from {} to {}'.format(hex(math_instrs[0].offset), hex(switch_block.get_last_instr().offset)))
-            new_emu = net_emulator.DotNetEmulator(self.__method_object, start_offset=math_instrs[0].offset,
-                                                  end_offset=switch_block.get_last_instr().offset, dont_execute_cctor=True)
-            new_emu.locals = localvars
-            new_emu.run_function()
-            if not len(new_emu.stack) > 0:
-                raise net_exceptions.EmulatorFailureException
-            value = new_emu.stack.pop()
-            if not hasattr(value, 'dtype'):
-                raise net_exceptions.EmulatorFailureException
-            if value < len(switch_block.get_next()):
-                next_block = switch_block.get_next()[value]
-            else:
-                next_block = switch_block.get_next()[-1]
-            index = len(usable_child_block.get_instrs()) - 2
-            num_index = 4 + (value * 4)
-            instr_offset = switch_block.get_last_instr().get_arguments()[num_index:num_index + 4]
-            new_instr1 = net_cil_disas.Instruction(net_opcodes.OpcodeCollection.get_opcode_by_name('nop'), self.__method_object.disassemble_method(),
-                                                   offset=usable_child_block.get_last_instr().offset)
-            new_instr2 = net_cil_disas.Instruction(net_opcodes.OpcodeCollection.get_opcode_by_name('br'), self.__method_object.disassemble_method(),
-                                                   offset=usable_child_block.get_last_instr().offset + len(new_instr1))
-            for arg in instr_offset:
-                new_instr2.add_argument(arg)
-            if usable_child_block.get_last_instr().is_branch():
-                usable_child_block.replace_instr(index, new_instr1)
-                usable_child_block.replace_instr(index + 1, new_instr2)
-            if not usable_child_block.is_block_absolutejmp():
-                usable_child_block.clear_original_next()
-                if self.__debug_print:
-                    print('1: Adding next of {} to {}'.format(hex(next_block.get_start_offset()), hex(usable_child_block.get_start_offset())))
-                usable_child_block.add_next(
-                    usable_graph.__get_block_for_offset(next_block.get_start_offset()))
-            else:
-                #This code is probably busted.  Take a look at what it was meant to do.
-                actual_block: FunctionBlock = usable_child_block
-                switch_path = self.get_shortest_path(0, switch_block.get_start_offset())
-                if self.__debug_print:
-                    print('Starting at actual block {}'.format(hex(actual_block.get_start_offset())))
-                while actual_block.is_block_absolutejmp() and len(actual_block.get_next()) == 1:
-                    #ok so what were looking for here is either the that is hit immediately before a switch statement.
-                    potential_block = actual_block.get_next()[0]
-                    old_block: FunctionBlock = self.__get_block_for_offset(potential_block.get_start_offset())
-                    if len(old_block.get_next()) == 1:
-                        old_next: FunctionBlock = old_block.get_next()[0]
-                        if old_next.is_block_switch():
-                            break
-                    if potential_block in switch_path:
-                        break
-                    if self.__debug_print:
-                        print('Going to block {}'.format(hex(potential_block.get_start_offset())))
-                    actual_block = potential_block
-                actual_block.clear_original_next()
-                if not actual_block.is_block_return(): #this appears to solve the issue of blocks with returns having children, not sure if this code is causing other issues though.
-                    if self.__debug_print:
-                        print('2: Adding next of {} to {}'.format(hex(next_block.get_start_offset()), hex(actual_block.get_start_offset())))
-                    actual_block.add_next(usable_graph.__get_block_for_offset(next_block.get_start_offset()))
-
-            self.__handle_switch_block(emu, switch_block, next_block, usable_graph, var_id_no, handled_blocks, localvars, child_block, None)
-            if self.__debug_print:
-                print('Finished handling child block {}'.format(hex(child_block.get_start_offset())))
-
-    def __cleanup_junk_blocks(self):
-        #handle root block being junk
-        usable_root: FunctionBlock = self.__root_block
-        while usable_root.is_junk_block():
-            if not len(usable_root.get_next()) == 1:
-                raise net_exceptions.InvalidBlockException
-            usable_root = usable_root.get_next()[0]
-        if usable_root.get_start_offset() != self.__root_block.get_start_offset():
-            self.__root_block = usable_root
-        block: FunctionBlock
-        for block in self.__blocks_start.values():
-            #function block relations should be pretty consistent here.  junk blocks should only have ONE next.
-            if not block.is_junk_block():
-                continue
-            if len(block.get_next()) == 1:
-                new_next = block.get_next()[0]
-                previous_block: FunctionBlock
-                for previous_block in block.get_prev().copy():
-                    previous_block.replace_next(block, new_next)
-                #so block is a junk block, just leads to another one with random crap.
-                block.remove_next(new_next)
-            elif block.was_switch_block():
-                #wipe this block out entirely.
-                block.clear_prev()
-                block.clear_next()
-            elif len(block.get_next()) == 0 and block.is_junk_block():
-                pass # yaay our work is somehow already done for us.
-            else:
-                print(len(block.get_next()), hex(block.get_start_offset()))
-                print(block.get_last_instr().get_name())
-                for blk in block.get_next():
-                    print(hex(blk.get_start_offset()))
-                raise Exception() # what do we do here???
-        #additionally remove nexts to blocks that are returns.
-        for block in self.__blocks_start.values():
-            if block.is_junk_block():
-                continue
-            if block.is_block_return():
-                if len(block.get_next()) > 0:
-                    block.clear_next()        
-
-    def __is_suspicious_switch(self, block):
-        instrs = block.get_instrs()
-        if len(instrs) < 6:
-            return False
-        has_rem = instrs[-2].get_name() == 'rem' or instrs[-2].get_name() == 'rem.un'
-        has_args = instrs[-3].get_name().startswith('ldc.i4') and \
-            instrs[-3].get_argument() == len(
-            instrs[-1].get_argument())
-        has_stloc = instrs[-4].get_name().startswith('stloc')
-        has_dup = instrs[-5].get_name() == 'dup'
-        return has_rem and has_stloc and has_dup and has_args
-
-    def __handle_try_block(self, try_offset, try_length, handler_offset, handler_length):
-        self.__parse_block(self.__disasm_object, try_offset, try_offset + try_length, is_try=True)
-        self.__parse_block(self.__disasm_object, handler_offset, handler_offset + handler_length, is_catch=True)
-
-    def __handle_finally_block(self, handler_offset, handler_length):
-        self.__parse_block(self.__disasm_object, handler_offset, handler_offset + handler_length, False, False, True)
+    def __handle_filter_block(self, try_offset, try_length, handler_offset, handler_length, filter_offset, filter_length, exc):
+        self.__parse_block(self.__disasm_object, try_offset, try_offset + try_length, True, False, False, False, exc)
+        self.__parse_block(self.__disasm_object, handler_offset, handler_offset + handler_length, False, True, False, False, exc)
+        self.__parse_block(self.__disasm_object, filter_offset, filter_offset + filter_length, False, False, False, True, exc)
 
     def __handle_try_catch_finally_blocks(self):
         """
@@ -751,242 +446,27 @@ class FunctionGraph:
         """
         disasm_obj: net_cil_disas.MethodDisassembler = self.__disasm_object
 
-        for clause_flags, try_offset, try_length, handler_offset, handler_length, class_token in disasm_obj.exception_blocks:
-            if clause_flags == net_structs.COR_ILEXCEPTION_CLAUSE_EXCEPTION:
-                self.__handle_try_block(try_offset, try_length, handler_offset, handler_length)
-            elif clause_flags == net_structs.COR_ILEXCEPTION_CLAUSE_FINALLY:
-                self.__handle_finally_block(handler_offset, handler_length)
+        for exc in disasm_obj.get_exception_blocks():
+            clause_flags, try_offset, try_length, handler_offset, handler_length, class_token = exc
+            if clause_flags == net_structs.CorILExceptionClause.Exception:
+                self.__handle_try_block(try_offset, try_length, handler_offset, handler_length, exc)
+            elif clause_flags == net_structs.CorILExceptionClause.Finally:
+                self.__handle_finally_block(try_offset, try_length, handler_offset, handler_length, exc)
+            elif clause_flags == net_structs.CorILExceptionClause.Fault:
+                self.__handle_try_block(try_offset, try_length, handler_offset, handler_length, exc)
+            elif clause_flags == net_structs.CorILExceptionClause.Filter:
+                filter_size = handler_offset - class_token
+                self.__handle_filter_block(try_offset, try_length, handler_offset, handler_length, class_token, filter_size, exc)
             else:
                 raise net_exceptions.OperationNotSupportedException()
- 
-
-    def __analyze_switch_statement_internal(self, switch_block: FunctionBlock, starting_block: FunctionBlock, usable_graph, handled_blocks: list):
-        """
-        Some problems here:
-        TODO
-        We are assuming that the path to the switch block is direct - that may not be the case.  ConfuserEx may jump around a bit within the switch block
-        Current possible solution would be to potentially iterate all possible paths of the function until we hit a switch block that is suspicious - then go through that path to determine the first one.
-        It kindof has to be like handle_switch_block works in order to ensure the variables stay consistent - start with a copy of localvars etc etc.
-        Solving this issue may be sortof hard, but is definitely needed for it to work.
-        """
-        # first identify the main source of the initial variable
-        def __find_math_instrs(block, path):
-            # find the instructions executed to get the math for the initial switch done.
-            MATH_INSTRS = ['xor']
-            instrs = block.get_instrs()
-            math_instr = instrs[-6]
-            if math_instr.get_name() not in MATH_INSTRS:
-                if self.__debug_print:
-                    print('Find math instrs returning none due to invalid operand instr?')
-                return None
-
-            result = list()
-            USABLE_INSTRS = ['ldc.i4', 'rem.un'] + MATH_INSTRS
-            for x in range(len(instrs) - 1, -1, -1):
-                instr = instrs[x]
-                is_usable = False
-                for u_instr in USABLE_INSTRS:
-                    if instr.get_name().startswith(u_instr):
-                        is_usable = True
-                        break
-                if is_usable:
-                    result.insert(0, instr)
-
-            def __requires_more_instructions(instrs):
-                # does the initial math instruction have enough in the block to do its stuff?  Assume theres only one for now.
-                # which one do we use?
-                amt_ldc = 0
-                for instr in instrs:
-                    if instr.get_name().startswith('ldc.'):
-                        amt_ldc += 1
-                    if instr.get_name() == 'pop':
-                        amt_ldc -= 1
-                    if instr.get_name() == 'dup':
-                        amt_ldc += 1
-                    if instr.get_name() in MATH_INSTRS:
-                        if amt_ldc != 2:
-                            return 2 - amt_ldc
-                        else:
-                            break
-                return 0
-
-            req_instrs = __requires_more_instructions(result)
-            if req_instrs:
-                if self.__debug_print:
-                    print('find math instrs requires more instrs')
-                block: FunctionBlock
-                
-                reversed_usable_path = path[:-1][::-1]
-                ALLOWED_INSTRS = USABLE_INSTRS + ['dup', 'pop']
-                BREAK_INSTRS = ['call', 'callvirt', 'starg.s']
-                for block in reversed_usable_path:
-                    if block.get_start_offset() == starting_block.get_start_offset():
-                        break
-                    should_end = False
-                    if block.is_block_conditional():
-                        break
-                    for instr in block.get_instrs()[::-1]:
-                        if instr.get_name().startswith('stloc') or instr.get_name() in BREAK_INSTRS:
-                            should_end = True
-                            break
-                        is_allowed = False
-                        for allowed_instr in ALLOWED_INSTRS:
-                            if instr.get_name().startswith(allowed_instr):
-                                is_allowed = True
-                        if is_allowed:
-                            result.insert(0, instr)
-                    if should_end:
-                        break
-
-
-                req_instrs = __requires_more_instructions(result)
-                if self.__debug_print:
-                    print('requires instrs = {}'.format(req_instrs))
-                    print('Initial child block = {} {}'.format(hex(starting_block.get_start_offset()), hex(switch_block.get_start_offset())))
-                    print('Result start = {} {} {}'.format(hex(result[0].offset), result[0].get_name(), result[0].get_argument()))
-                
-                #TODO: revamp math instr getting.  Need to be able to properly account for different variables etc.
-                if not req_instrs == 0:
-                    raise net_exceptions.InvalidBlockException
-            return result
-
-        # Generate a new function graph to modify.
-        usable_switch_block: FunctionBlock = usable_graph.__get_block_for_offset(
-            switch_block.get_start_offset())
-        var_id_no = switch_block.get_instrs()[-4].get_argument()
-        if self.__is_suspicious_switch(switch_block):
-            block_paths = self.get_paths_to_block(starting_block, switch_block)
-            one_path = len(block_paths) == 1
-            for path in block_paths:
-                #ok so how do we determine which block to add the next at?
-                math_instrs = __find_math_instrs(switch_block, path)
-                if self.__debug_print:
-                    print('(analyze_switch_statement): Handling switch statement {} path {} to {}'.format(hex(switch_block.get_start_offset()), hex(path[0].get_start_offset()), hex(path[-1].get_start_offset())))
-                if math_instrs:
-                    if self.__debug_print:
-                        print('(analyze_switch_statement): Running DotNetEmulator from {} to {}'.format(hex(math_instrs[0].offset), hex(math_instrs[-1].offset + 1)))
-                    emu = net_emulator.DotNetEmulator(self.__method_object, start_offset=math_instrs[0].offset,
-                                                    end_offset=math_instrs[-1].offset + 1, dont_execute_cctor=True)
-                    emu.run_function()
-                    if not len(emu.stack) > 0:
-                        raise net_exceptions.EmulatorFailureException
-                    value = emu.stack.pop()
-                    if not hasattr(value, 'dtype'):
-                        raise net_exceptions.EmulatorFailureException
-                    if value < len(switch_block.get_next()):
-                        next_block = switch_block.get_next()[value]
-                    else:
-                        next_block = switch_block.get_next()[-1]
-                    usable_switch_block.mark_switch_block()
-                    usable_prev_block = usable_switch_block
-                    if not one_path:
-                        if self.__debug_print:
-                            print('not one path = True {}'.format(hex(math_instrs[0].offset)))
-                            for tblock in usable_graph.__blocks_start.values():
-                                print('usable graph has block {}'.format(hex(tblock.get_start_offset())))
-                        usable_prev_block = usable_graph.__get_block_for_offset(math_instrs[0].offset)
-                    #make sure math instrs are cleaned off in usable blocks.
-                    for math_instr in math_instrs:
-                        math_block: FunctionBlock = usable_graph.__get_block_for_offset(math_instr.offset)
-                        if math_block:
-                            math_index = math_block.get_instr_index(math_instr)
-                            if math_index >= 0:
-                                block_len = len(math_block.get_instrs())
-                                should_remove = False
-
-                                if math_index == (block_len - 1):
-                                    should_remove = True
-
-                                if math_index == (block_len - 2) and (math_block.get_last_instr().is_branch() or math_block.is_block_absolutejmp()):
-                                    should_remove = True
-
-                                if should_remove:
-                                    if math_index != 0:
-                                        math_block.remove_instrs_after_index(math_index - 1)
-                                
-                        
-
-                    usable_prev_block.clear_original_next()
-                    if self.__debug_print:
-                        print('3: Adding next of {} to {}'.format(hex(next_block.get_start_offset()), hex(usable_prev_block.get_start_offset())))
-                    usable_prev_block.add_next(
-                        usable_graph.__get_block_for_offset(next_block.get_start_offset()))
-                    # remove the switch, replace with jmp - for graphing purposes mostly.
-                    index = len(usable_switch_block.get_instrs()) - 1
-                    num_index = 4 + (value * 4)
-                    instr_offset = switch_block.get_last_instr().get_arguments()[num_index:num_index + 4]
-                    new_instr1 = net_cil_disas.Instruction(net_opcodes.OpcodeCollection.get_opcode_by_name('nop'), self.__method_object.disassemble_method(),
-                                                        offset=switch_block.get_last_instr().offset)
-                    new_instr2 = net_cil_disas.Instruction(net_opcodes.OpcodeCollection.get_opcode_by_name('br'), self.__method_object.disassemble_method(),
-                                                        offset=switch_block.get_last_instr().offset + len(new_instr1))
-                    for arg in instr_offset:
-                        new_instr2.add_argument(arg)
-                    usable_switch_block.replace_instr(index - 1, new_instr1)
-                    usable_switch_block.replace_instr(index, new_instr2)
-                    usable_switch_block.mark_junk()
-                    # figure out noping math instrs later, for now pop the value off the stack.
-                    self.__handle_switch_block(emu, switch_block, next_block, usable_graph, var_id_no, handled_blocks, emu.locals.copy(), None, None)
-                    usable_block: FunctionBlock
-                    for usable_block in usable_graph.__blocks_start.values():
-                        if usable_block.is_junk_block():
-                            continue
-                        if usable_block.is_switch_case():
-                            if len(usable_block.get_instrs()) == 1:
-                                if usable_block.get_instrs()[0].get_name() == 'ldc.i4':
-                                    usable_block.mark_junk()
-                        elif len(usable_block.get_instrs()) == 2:
-                            instr1 = usable_block.get_instrs()[0]
-                            instr2 = usable_block.get_instrs()[1]
-                            if instr1.get_name() == 'nop' or instr1.get_name() == 'pop':
-                                if instr2.get_name() == 'br.s' or instr2.get_name() == 'br':
-                                    usable_block.mark_junk()
-                        elif len(usable_block.get_instrs()) == 3:
-                            instr1 = usable_block.get_instrs()[0]
-                            instr2 = usable_block.get_instrs()[1]
-                            instr3 = usable_block.get_instrs()[2]
-                            if instr1.get_name() == 'ldc.i4' and (instr2.get_name() == 'nop' or instr2.get_name() == 'dup'):
-                                if instr3.get_name() == 'br.s' or instr3.get_name() == 'br':
-                                    usable_block.mark_junk()
-
-                        if not usable_block.is_junk_block():
-                            instrs = usable_block.get_instrs()
-
-                            for x in range(1, len(instrs)):
-                                instr = instrs[x]
-                                if instr.get_name().startswith('ldloc') and instr.get_argument() == var_id_no:
-                                    usable_block.remove_instrs_after_index(x - 1)
-                                    break
-                            if len(instrs) == 2:
-                                if instrs[0].get_name() == 'ldc.i4' and instrs[1].get_name() == 'dup':
-                                    if len(usable_block.get_next()) == 1 and usable_block.get_next()[0].is_switch_case():
-                                        usable_block.mark_junk()
-                            elif len(instrs) == 1:
-                                if instrs[0].get_name() == 'ldc.i4':
-                                    if len(usable_block.get_next()) == 1 and usable_block.get_next()[0].is_switch_case():
-                                        usable_block.mark_junk()
-                            elif len(instrs) == 3:
-                                if instrs[0].get_name() == 'ldc.i4' and instrs[1].get_name() == 'dup':
-                                    if instrs[2].get_name() == 'br' or instrs[2].get_name() == 'br.s':
-                                        if len(usable_block.get_next()) == 1 and usable_block.get_next()[0].is_switch_case():
-                                            usable_block.mark_junk()
-
-                    for usable_block in usable_graph.__blocks_start.values():
-                        if usable_block.is_junk_block():
-                            continue
-                        if len(usable_block.get_prev()) == 1:
-                            if usable_block.get_prev()[0].is_junk_block():
-                                if len(usable_block.get_instrs()) == 1 and usable_block.get_instrs()[0].get_name() == 'pop':
-                                    usable_block.mark_junk()
-            return usable_graph
-        return None
     
     def get_shortest_path(self, from_offset, to_offset):
         if isinstance(to_offset, FunctionBlock) and isinstance(from_offset, FunctionBlock):
             to_block = to_offset
             from_block = from_offset
         else:
-            to_block = self.__get_block_for_offset(to_offset)
-            from_block = self.__get_block_for_offset(from_offset)
+            to_block = self.get_block_by_offset(to_offset)
+            from_block = self.get_block_by_offset(from_offset)
         if to_block == None or from_block == None:
             raise net_exceptions.InvalidBlockException
 
@@ -1015,8 +495,8 @@ class FunctionGraph:
         to_block = to_offset
         from_block = from_offset
         if not isinstance(to_block, FunctionBlock) or not isinstance(from_block, FunctionBlock):
-            to_block = self.__get_block_for_offset(to_block)
-            from_block = self.__get_block_for_offset(from_block)
+            to_block = self.get_block_by_offset(to_block)
+            from_block = self.get_block_by_offset(from_block)
         def path_checker(one: FunctionBlock, two: FunctionBlock, current_path, paths, visited):
             if one == two:
                 paths.append(current_path)
@@ -1042,57 +522,36 @@ class FunctionGraph:
         path_checker(to_block, from_block, [to_block], paths, visited)
         return paths
 
-    def __analyze_switch_statements(self):
-        usable_graph = FunctionGraph(self.__method_object)
-        if self.__debug_print:
-            print('Before analyze graph:\n')
-            usable_graph.print_root()
-
-        handled_blocks = list()
-        for block in self.__blocks_start.values():
-            if self.__debug_print:
-                print('Checking block {} {}'.format(hex(block.get_start_offset()), hex(block.get_last_instr().offset)))
-            if block.contains_instr('switch'):
-                if self.__debug_print:
-                    print('block contains switch')
-                #for now start at block zero, this will need to be changed to support multiple switch statements.
-                if self.__debug_print:
-                    print('3: calling analyze_switch_statement_internal with switch block {} and starting block 0x0'.format(hex(block.get_start_offset())))
-
-                res = self.__analyze_switch_statement_internal(block, self.__get_block_for_offset(0), usable_graph, handled_blocks)
-                if self.__debug_print:
-                    print('Dumping usable graph before cleanup:\n')
-                    usable_graph.print_root()
-
-                if res != None:
-                    usable_graph.__cleanup_junk_blocks()
-
-                if self.__debug_print:
-                    print('Dumping usable graph post cleanup:\n')
-                    usable_graph.print_root()
-                if res != None:
-                    return usable_graph
-        return None
-
-    def __parse_block(self, disasm_obj, start_offset, max_end_offset=-1, is_try=False, is_catch=False, is_finally=False):
+    def __parse_block(self, disasm_obj, start_offset, max_end_offset=-1, is_try=False, is_catch=False, is_finally=False, is_filter=False, exc_clause=None):
         usable_offset = start_offset
         x = disasm_obj.get_instr_index_by_offset(start_offset)
-        print('parsing block with offset {}'.format(hex(start_offset)))
-        block = FunctionBlock(self.__method_object, disasm_obj, self.__graph_id)
         if start_offset in self.__blocks_start:
             blk =  self.__blocks_start[start_offset]
             return blk
         else:
+            block = self.get_block_by_offset(start_offset)
+            if block is None:
+                block = FunctionBlock(self.__method_object, disasm_obj, self)
+            else:
+                block = block.split_block(start_offset)
+
             self.__blocks_start[start_offset] = block
 
         if is_finally:
+            block.set_exception_handler(exc_clause)
             block.mark_block_finally()
 
         if is_catch:
+            block.set_exception_handler(exc_clause)
             block.mark_block_catch()
 
         if is_try:
+            block.set_exception_handler(exc_clause)
             block.mark_block_try()
+
+        if is_filter:
+            block.set_exception_handler(exc_clause)
+            block.mark_block_filter()
 
         while x >= 0 and x < len(disasm_obj):
             if usable_offset in self.__blocks_start and usable_offset != start_offset:
@@ -1103,122 +562,119 @@ class FunctionGraph:
             if max_end_offset != -1 and usable_offset >= max_end_offset:
                 break
             instr = disasm_obj[x]
+            opcode = instr.get_opcode()
             block.add_instr(instr)
             if instr.is_branch():
                 #leave br and br.s are treated as absolute jumps since they basically are.
-                if instr.get_name() == 'br' or instr.get_name() == 'br.s' or instr.get_name() == 'leave' or instr.get_name() == 'leave.s':
-                    potential_offset = usable_offset + \
-                        len(instr) + instr.get_argument()
-                    split_block = self.__should_split_block(potential_offset)
-                    if split_block == None:
-                        new_block = self.__parse_block(
-                            disasm_obj, potential_offset, max_end_offset=max_end_offset, is_try=is_try, is_catch=is_catch, is_finally=is_finally)
-                        usable_block = self.__get_block_for_offset(
-                            usable_offset)
-                        if new_block is None:
-                            raise net_exceptions.InvalidBlockException
-                        usable_block.add_original_next(new_block)
+                if opcode == Opcodes.Br or opcode == Opcodes.Br_S or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S:
+                    potential_offset = usable_offset + len(instr) + instr.get_argument()
+                    if opcode == Opcodes.Br or opcode == Opcodes.Br_S:
+                        new_block = self.__parse_block(disasm_obj, potential_offset, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
                     else:
-                        new_block = split_block.split_block(potential_offset)
-                        self.__blocks_start[new_block.get_start_offset(
-                        )] = new_block
-                        block.add_original_next(new_block)
+                        #check if it should be marked as filters etc.
+                        should_be_try = False
+                        should_be_catch = False
+                        should_be_finally = False
+                        should_be_filter = False
+                        clause_flags = exc_clause[0]
+                        if clause_flags == net_structs.CorILExceptionClause.Exception or clause_flags == net_structs.CorILExceptionClause.Fault or net_structs.CorILExceptionClause.Finally:
+                            try_offset = exc_clause[1]
+                            try_end = exc_clause[2] + try_offset
+                            handler_offset = exc_clause[3]
+                            handler_end = exc_clause[4] + handler_offset
+                            if try_offset <= potential_offset < try_end:
+                                should_be_try = True
+                            elif handler_offset <= potential_offset < handler_end:
+                                if clause_flags == net_structs.CorILExceptionClause.Finally:
+                                    should_be_finally = True
+                                else:
+                                    should_be_catch = True
+                        elif clause_flags == net_structs.CorILExceptionClause.Filter:
+                            try_offset = exc_clause[1]
+                            try_end = exc_clause[2] + try_offset
+                            handler_offset = exc_clause[3]
+                            handler_end = exc_clause[4] + handler_offset
+                            filter_offset = exc_clause[5]
+                            filter_end = filter_offset + (handler_offset - filter_offset)
+                            if try_offset <= potential_offset < try_end:
+                                should_be_try = True
+                            elif handler_offset <= potential_offset < handler_end:
+                                should_be_catch = True
+                            elif filter_offset <= potential_offset < filter_end:
+                                should_be_filter = True
+                        if not should_be_try and not should_be_catch and not should_be_filter and not should_be_finally:
+                            new_block = self.__parse_block(disasm_obj, potential_offset, -1, should_be_try, should_be_catch, should_be_finally, should_be_filter, exc_clause)
+
+                        else:
+                            new_block = self.__parse_block(disasm_obj, potential_offset, max_end_offset, should_be_try, should_be_catch, should_be_finally, should_be_filter, exc_clause)
+
+                    usable_block = self.get_block_by_offset(
+                        usable_offset)
+                    if new_block is None:
+                        raise net_exceptions.InvalidBlockException
+                    usable_block.add_original_next(new_block)
                 else:
-                    if instr.get_name() == 'switch':
+                    if opcode == Opcodes.Switch:
                         targets = instr.get_argument()
                         for target in targets:
-                            split_block = self.__should_split_block(target)
-                            if split_block == None:
-                                new_block = self.__parse_block(
-                                    disasm_obj, target, max_end_offset, is_try, is_catch, is_finally)
-                                usable_block = self.__get_block_for_offset(
-                                    usable_offset)
-                                usable_block.add_original_next(new_block)
-                                new_block.mark_switch_case()
-                            else:
-                                new_block = split_block.split_block(target)
-                                self.__blocks_start[new_block.get_start_offset(
-                                )] = new_block
-                                usable_block = self.__get_block_for_offset(
-                                    instr.offset)
-                                usable_block.add_original_next(new_block)
-                                new_block.mark_switch_case()
-
-                        fallthrough_offset = instr.offset + len(instr)
-                        split_block = self.__should_split_block(fallthrough_offset)
-                        if split_block == None:
-                            new_block = self.__parse_block(
-                                disasm_obj, fallthrough_offset, max_end_offset, is_try, is_catch, is_finally)
-                            usable_block = self.__get_block_for_offset(
+                            new_block = self.__parse_block(disasm_obj, target, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                            usable_block = self.get_block_by_offset(
                                 usable_offset)
                             usable_block.add_original_next(new_block)
                             new_block.mark_switch_case()
-                        else:
-                            new_block = split_block.split_block(fallthrough_offset)
-                            self.__blocks_start[new_block.get_start_offset(
-                            )] = new_block
-                            usable_block = self.__get_block_for_offset(
-                                instr.offset)
-                            usable_block.add_original_next(new_block)
-                            new_block.mark_switch_case()
+
+                        fallthrough_offset = instr.get_instr_offset() + len(instr)
+                        new_block = self.__parse_block(
+                            disasm_obj, fallthrough_offset, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                        usable_block = self.get_block_by_offset(
+                            usable_offset)
+                        usable_block.add_original_next(new_block)
+                        new_block.mark_switch_case()
 
                     else:
                         #this block of code is to handle conditional branches.
                         potential_offset1 = usable_offset + \
                             len(instr) + instr.get_argument()
                         potential_offset2 = usable_offset + len(instr)
-                        split_block = self.__should_split_block(
-                            potential_offset1)
-                        if split_block == None:
-                            new_block = self.__parse_block(
-                                disasm_obj, potential_offset1, max_end_offset, is_try, is_catch, is_finally)
-                            usable_block = self.__get_block_for_offset(
-                                usable_offset)
-                            usable_block.add_original_next(new_block)
-                        else:
-                            new_block = split_block.split_block(
-                                potential_offset1)
-                            self.__blocks_start[new_block.get_start_offset(
-                            )] = new_block
-                            usable_block = self.__get_block_for_offset(
-                                instr.offset)
-                            usable_block.add_original_next(new_block)
-                        split_block = self.__should_split_block(
-                            potential_offset2)
-                        if split_block == None:
-                            new_block = self.__parse_block(
-                                disasm_obj, potential_offset2, max_end_offset, is_try, is_catch, is_finally)
-                            usable_block = self.__should_split_block(
-                                usable_offset)
-                            usable_block.add_original_next(new_block)
-                        else:
-                            new_block = split_block.split_block(
-                                potential_offset2)
-                            self.__blocks_start[new_block.get_start_offset(
-                            )] = new_block
-                            usable_block = self.__get_block_for_offset(
-                                instr.offset)
-                            usable_block.add_original_next(new_block)
+                        new_block = self.__parse_block(
+                            disasm_obj, potential_offset1, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                        usable_block = self.get_block_by_offset(
+                            usable_offset)
+                        usable_block.add_original_next(new_block)
+                        new_block = self.__parse_block(
+                            disasm_obj, potential_offset2, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                        usable_block = self.get_block_by_offset(
+                            usable_offset)
+                        usable_block.add_original_next(new_block)
                 break
+            else:
+                if opcode == Opcodes.Throw:
+                    break
 
             usable_offset += len(instr)
 
-            if instr.get_name() == 'ret':
+            if opcode == Opcodes.Ret or opcode == Opcodes.Endfinally:
                 break
 
-            if instr.is_branch() and instr.get_name() != 'br.s' and instr.get_name() != 'br' and instr.get_name() != 'leave' and instr.get_name() != 'leave.s':
+            if instr.is_branch():
                 break
 
             x = disasm_obj.get_instr_index_by_offset(usable_offset)
-        #block.validate_block()
+        block.validate_block()
         if block is None:
             raise net_exceptions.InvalidBlockException
-
         return block
 
     def print_root(self):
         dont_print_again = list()
         self.__print_block(self.__root_block, dont_print_again)
+
+    def debug_print_blocks(self):
+        print('debug printing blocks')
+        for block in self.__blocks_start.values():
+            print('Block {}'.format(hex(block.get_start_offset())))
+            for instr in block.get_instrs():
+                print('{}: {}'.format(hex(instr.get_instr_offset()), instr.get_name()))
 
     def debug_print_nexts(self):
         block: FunctionBlock
@@ -1232,51 +688,92 @@ class FunctionGraph:
     def get_block_offsets(self):
         return self.__blocks_start
 
-    def __print_block(self, block, already_printed):
-
+    def __print_block(self, block, already_printed, indent=0):
         instrs = block.get_instrs()
+        is_block_try = False
         if block.get_start_offset() not in already_printed:
-            print('Printing block with offset {} (is junk: {}, is switch case: {}, is_try: {}, is_catch: {}, is_finally: {})'.format(
-                hex(block.get_start_offset()), block.is_junk_block(), block.is_switch_case(), block.is_block_try(), block.is_block_catch(), block.is_block_finally()))
+            print((' ' * indent) + 'Printing block with offset {} (is junk: {}, is switch case: {}, is_try: {}, is_catch: {}, is_finally: {}, is_filter: {})'.format(
+                hex(block.get_start_offset()), block.is_junk_block(), block.is_switch_case(), block.is_block_try(), block.is_block_catch(), block.is_block_finally(), block.is_block_filter()))
+            exc_handler = block.get_exception_handler()
+            if block.is_block_try():
+                if exc_handler[1] == block.get_start_offset():
+                    is_block_try = True
+                    print((' ' * indent) + 'try:')
+                    indent += 4
+            elif block.is_block_catch():
+                if exc_handler[3] == block.get_start_offset():
+                    print((' ' * indent) + 'catch:')
+                    indent += 4
+            elif block.is_block_finally():
+                if exc_handler[3] == block.get_start_offset():
+                    print((' ' * indent) + 'finally:')
+                    indent += 4
+            elif block.is_block_filter():
+                if exc_handler[5] == block.get_start_offset():
+                    print((' ' * indent) + 'filter:')
+                    indent += 4
+
             already_printed.append(block.get_start_offset())
             for instr in block.get_instrs():
                 if instr.is_branch() and not instr.is_absolute_jmp():
                     break
                 if instr.is_absolute_jmp():
-                    print('{}: jump to {}'.format(hex(instr.offset),
-                                                  hex(instr.offset + len(instr) + instr.get_argument())))
+                    print((' ' * indent) + '{}: jump to {}'.format(hex(instr.get_instr_offset()),
+                                                  hex(instr.get_instr_offset() + len(instr) + instr.get_argument())))
                 else:
-                    print('{}: {} {}'.format(hex(instr.offset), instr.get_name(),
+                    print((' ' * indent) + '{}: {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(),
                                              instr.get_argument()))
 
-            if instrs[-1].get_name() == 'switch':
-                print('switch ({}):'.format(hex(instrs[-1].offset)))
+            if instrs[-1].get_opcode() == Opcodes.Switch:
+                print((' ' * indent) + 'switch ({}):'.format(hex(instrs[-1].get_instr_offset())))
                 x = 0
                 for case in instrs[-1].get_argument():
-                    print('case {}: ({}:{})'.format(x, hex(case), hex(instrs[-1].offset)))
-                    self.__print_block(block.get_next()[x], already_printed)
+                    print( (' ' * (indent + 4)) +'case {}: ({}:{})'.format(x, hex(case), hex(instrs[-1].get_instr_offset())))
+                    self.__print_block(self.get_block_by_offset(case), already_printed, indent + 8)
                     x += 1
-                fallthrough = block.get_next()[-1]
-                print('default({}:{}):'.format(hex(fallthrough.get_start_offset()), hex(instrs[-1].offset)))
-                self.__print_block(fallthrough, already_printed)
+                fallthrough = instrs[-1].get_instr_offset() + len(instrs[-1])
+                fallthrough = self.get_block_by_offset(fallthrough)
+                print((' ' * (indent + 4)) + 'default({}:{}):'.format(hex(fallthrough.get_start_offset()), hex(instrs[-1].get_instr_offset())))
+                self.__print_block(fallthrough, already_printed, indent + 8)
 
             else:
                 if instrs[-1].is_branch() and not instrs[-1].is_absolute_jmp():
-                    print('if ({}): {} {}'.format(hex(instrs[-1].offset), instrs[-1].get_name(),instrs[-1].get_argument()))
-                    self.__print_block(block.get_next()[0], already_printed)
-                    print('else ({}):'.format(hex(instrs[-1].offset)))
+                    print((' ' * indent) + 'if ({}): {} {}'.format(hex(instrs[-1].get_instr_offset()), instrs[-1].get_name(),instrs[-1].get_argument()))
+                    self.__print_block(block.get_next()[0], already_printed, indent + 4)
+                    print((' ' * indent ) + 'else ({}):'.format(hex(instrs[-1].get_instr_offset())))
                     if len(block.get_next()) == 1:
-                        print('Error: No secondary block!!!!')
+                        print((' ' * (indent + 4)) + 'Error: No secondary block!!!!')
                     else:
-                        self.__print_block(block.get_next()[1], already_printed)
+                        self.__print_block(block.get_next()[1], already_printed, indent + 4)
                 else:
                     if not instrs[-1].is_branch() and len(block.get_next()) == 1:
                         self.__print_block(
-                            block.get_next()[0], already_printed)
+                            block.get_next()[0], already_printed, indent)
                     elif instrs[-1].is_absolute_jmp() and instrs[-1].is_branch():
-                        self.__print_block(block.get_next()[0], already_printed)
+                        self.__print_block(block.get_next()[0], already_printed, indent)
+            if is_block_try:
+                catch_block = self.get_block_by_offset(exc_handler[3])
+                if catch_block is None:
+                    print((' ' * indent) + 'could not find catch block at offset {}'.format(hex(exc_handler[3])))
+                else:
+                    self.__print_block(catch_block, already_printed, indent - 4)
+                for exc in self.__disasm_object.get_exception_blocks():
+                    flags = exc[0]
+                    if flags != net_structs.CorILExceptionClause.Finally:
+                        continue
+                    try_offset = exc[1]
+                    if block.get_start_offset() == try_offset:
+                        finally_offset = exc[3]
+                        finally_block = self.get_block_by_offset(finally_offset)
+                        if finally_block is None:
+                            print((' ' * indent) + 'Could not find finally block at offset {}'.format(hex(finally_offset)))
+                        else:
+                            self.__print_block(finally_block, already_printed, indent - 4)
         else:
-            print('goto block {}'.format(hex(block.get_start_offset())))
+            print((' ' * indent) + 'goto block {}'.format(hex(block.get_start_offset())))
+            
+
+        
 
 class GraphRecompiler:
     def __init__(self, method_obj: net_row_objects.MethodDef, func_graph: FunctionGraph):
@@ -1285,148 +782,11 @@ class GraphRecompiler:
         self.__function_data = bytearray()
         self.__block_locations = dict()
 
-    def __convert_small_instructions(self, opcode):
-        #for usability sake, convert a small instruction to its large counterpart.  For example, blt.s -> blt.
-        match opcode:
-            case 0x2E:
-                return 0x3B
-            case 0x2F:
-                return 0x3C
-            case 0x34:
-                return 0x41
-            case 0x30:
-                return 0x3D
-            case 0x35:
-                return 0x42
-            case 0x31:
-                return 0x3E
-            case 0x36:
-                return 0x43
-            case 0x32:
-                return 0x3F
-            case 0x37:
-                return 0x44
-            case 0x33:
-                return 0x40
-            case 0x2B:
-                return 0x38
-            case 0x2C:
-                return 0x39
-            case 0x2D:
-                return 0x3A
-        return opcode
-
     def __compile_block(self, block:FunctionBlock):
-        if block in self.__block_locations:
-            return
-        current_offset = len(self.__function_data)
-        self.__block_locations[block] = current_offset
-        instrs = block.get_instrs()
-        last_instr_index = len(instrs) - 1
-        for x in range(len(instrs)):
-            instr = instrs[x]
-            if x == last_instr_index:
-                if instr.is_branch():
-                    if block.is_block_absolutejmp():
-                        #if the block is absolute jump it means this instr is br or br.s
-                        #two options here: either we already compiled the block and need a new br instruction, or we havent and we can compile it without this br instr.
-                        if not len(block.get_next()) == 1:
-                            raise net_exceptions.InvalidBlockException
-                        next_block = block.get_next()[0]
-                        if next_block in self.__block_locations:
-                            #we need a new BR to jump to it probably
-                            block_offset = self.__block_locations[next_block]
-                            if block_offset != len(self.__function_data): #TODO: This probably wont ever be false.
-                                br_offset = len(self.__function_data)
-                                new_br_offset = block_offset - br_offset - 5
-                                br_instr = bytearray(bytes([0x38]) + int.to_bytes(new_br_offset, 4, 'little', signed=True))
-                                self.__function_data += br_instr
-                        else:
-                            #just compile the block right after
-                            self.__compile_block(next_block)
-                    elif block.is_block_switch():
-                        raise Exception("switch statements are not currently supported.") #TODO: add support for actual legitimate switch statements.
-                    elif block.is_block_conditional():
-                        if not len(block.get_next()) == 2:
-                            raise net_exceptions.InvalidBlockException
-                        instr_offset = len(self.__function_data) # offset of the placeholder.
-                        true_case = block.get_next()[0] # This should be the jump case
-                        false_case = block.get_next()[1] #this should be fallthrough.
-                        #first check if the fallthrough case has been compiled - reserve enough bytes for the conditional instruction and then compile it if it hasnt already.
-                        if false_case not in self.__block_locations:
-                            #we need to compile the false case.  add the placeholder
-                            placeholder = b'\x00' * 5
-                            self.__function_data += placeholder
-                            self.__compile_block(false_case)
-                        else:
-                            placeholder = b'\x00' * 5
-                            self.__function_data += placeholder
-                            block_offset = self.__block_locations[false_case]
-                            if block_offset != len(self.__function_data): #TODO: This probably wont ever be false.
-                                br_offset = len(self.__function_data)
-                                new_br_offset = block_offset - br_offset - 5
-                                br_instr = bytearray(bytes([0x38]) + int.to_bytes(new_br_offset, 4, 'little', signed=True))
-                                self.__function_data += br_instr
-                        #now for the true case and replacing the placeholder.
-                        if true_case in self.__block_locations:
-                            block_offset = self.__block_locations[true_case]
-                            if block_offset != instr_offset: #TODO: This probably wont ever be false.
-                                br_offset = instr_offset
-                                new_br_offset = block_offset - br_offset - 5
-                                br_instr = bytearray(bytes([self.__convert_small_instructions(instr.get_opcode().value)]) + int.to_bytes(new_br_offset, 4, 'little', signed=True))
-                                self.__function_data = self.__function_data[:instr_offset] + br_instr + self.__function_data[instr_offset + len(placeholder):] # remove the placeholder.
-
-                        else:
-                            #its not compiled.  compile it and then remove the placeholder.
-                            compilation_offset = len(self.__function_data)
-                            self.__compile_block(true_case)
-                            br_offset = instr_offset
-                            new_br_offset = compilation_offset - br_offset - 5
-                            if not isinstance(instr.get_opcode().value, int):
-                                raise net_exceptions.InvalidBlockException
-                            br_instr = bytearray(bytes([self.__convert_small_instructions(instr.get_opcode().value)]) + int.to_bytes(new_br_offset, 4, 'little', signed=True))
-                            self.__function_data = self.__function_data[:instr_offset] + br_instr + self.__function_data[instr_offset + len(placeholder):] # again remove the placeholder
-                    else:
-                        raise net_exceptions.InvalidAssemblyException()
-                else:
-                    self.__function_data += instr.to_bytes()
-                    #check if the block was already compiled, if so add a BR
-                    if len(block.get_next()) > 0:
-                        if not len(block.get_next()) == 1:
-                            raise net_exceptions.InvalidBlockException
-                        next_block = block.get_next()[0]
-                        if next_block in self.__block_locations:
-                            #add a br to the start of the block.
-                            block_offset = self.__block_locations[next_block]
-                            if block_offset != len(self.__function_data):
-                                br_offset = len(self.__function_data)
-                                new_br_offset = block_offset - br_offset - 5
-                                br_instr = bytearray(bytes([0x38]) + int.to_bytes(new_br_offset, 4, 'little', signed=True))
-                                self.__function_data += br_instr
-                        else:
-                            self.__compile_block(next_block)
-            else:
-                self.__function_data += instr.to_bytes()
-    
+        pass
     
     def recompile_graph(self):
-        disasm_obj: net_cil_disas.MethodDisassembler = self.__method_obj.disassemble_method()
-        header_bytes = self.__method_obj.get_method_data()[:disasm_obj.header_size]
-        #now we have the original header.  only thing we should need to change is the size.
-        #compile
-        self.__compile_block(self.__func_graph.get_root_block())
-        #check the header to make sure we dont need to update size
-        header_ident = header_bytes[0]
-        val = header_ident & 7
-        if val == 2 or val == 6:
-            code_size = header_ident >> 2 # ok so if we right shift by 2 bits that gives us the method code meaning lower 2 bits are flags
-        
-            if code_size != len(self.__function_data):
-                pass
-            raise Exception("tiny headers are not currently supported.") # TODO: add tiny header support.
-        else:
-            header_bytes = header_bytes[:4] + int.to_bytes(len(self.__function_data), 4, 'little') + header_bytes[8:]
-        return header_bytes + self.__function_data
+        pass
     
     def get_function_data(self):
         return self.__function_data

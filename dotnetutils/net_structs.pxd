@@ -553,10 +553,10 @@ cpdef enum CorRecordTypeEnumeration:
     MethodReturn = 22
 
 cpdef enum CorILExceptionClause:
-    COR_ILEXCEPTION_CLAUSE_EXCEPTION = 0x0000
-    COR_ILEXCEPTION_CLAUSE_FILTER = 0x0001
-    COR_ILEXCEPTION_CLAUSE_FINALLY = 0x0002
-    COR_ILEXCPETION_CLAUSE_FAULT = 0x0004
+    Exception = 0x0000
+    Filter = 0x0001
+    Finally = 0x0002
+    Fault = 0x0004
 
 cpdef enum CorHeapBitmask:
     BITMASK_STRINGS = 0x1
