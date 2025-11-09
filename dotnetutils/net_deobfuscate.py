@@ -34,7 +34,6 @@ def main():
         raise net_exceptions.OperationNotSupportedException()
     elif deob_type == 'printgraph':
         method_rid = int(output_exe, 10)
-        print('Printing graph for method {}'.format(method_rid))
         dpe = dotnetpefile.DotNetPeFile(pe_data=data)
         mobj = dpe.get_method_by_rid(method_rid)
         fgraph = net_graphing.FunctionGraph(mobj)
@@ -50,7 +49,6 @@ def main():
         else:
             for method in dpe.get_metadata_table('MethodDef'):
                 if method.has_body():
-                    print('Printing graph for method {}:{}'.format(hex(method.get_token()), method.get_full_name()))
                     fgraph = net_graphing.FunctionGraph(method)
                     fgraph.print_root()
                     print()

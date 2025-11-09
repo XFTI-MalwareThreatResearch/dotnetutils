@@ -242,7 +242,7 @@ cdef NET_OPCODE_DB = {
     0x8B: OpCode(name="conv.ovf.u.un", operand_count=0, astack=1, pstack=1),
     0x8C: OpCode(name="box", operand_count=4, has_token_argument=True, astack=1, pstack=1),
     0x8D: OpCode(name="newarr", operand_count=4, has_token_argument=True, astack=1, pstack=1),
-    0x8E: OpCode(name="ldlen", operand_count=0, nstack=1, astack=1),
+    0x8E: OpCode(name="ldlen", operand_count=0, nstack=0, astack=1, pstack=1),
     0x8F: OpCode(name="ldelema", operand_count=4, has_token_argument=True, nstack=-1),
     0x90: OpCode(name="ldelem.i1", operand_count=0, nstack=-1, astack=1, pstack=2),
     0x91: OpCode(name="ldelem.u1", operand_count=0, nstack=-1, astack=1, pstack=2),
