@@ -58,7 +58,9 @@ cdef class Instruction:
 
     cpdef bytes get_arguments(self)
 
-    cdef void setup_instr_size(self, int instr_size)
+    cpdef void setup_instr_size(self, int instr_size)
+
+    cpdef void setup_instr_offset(self, unsigned int instr_offset, unsigned int instr_index)
 
     cpdef bytes get_bytes(self)
     
@@ -91,6 +93,8 @@ cdef class MethodDisassembler:
     cdef vector[PyObject*] instrs
     cdef unordered_map[int, int] offsets
     cdef net_structs.DotNetDataReader __reader
+
+    cpdef Instruction emit_instruction(self, net_opcodes.Opcodes op)
 
     cpdef void add_instruction_at_index(self, int index, Instruction instr, int handler=*, bint is_try=*, bint is_catch=*)
 

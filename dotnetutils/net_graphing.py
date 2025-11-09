@@ -1,5 +1,12 @@
-from dotnetutils import net_cil_disas, net_emulator, net_structs, net_opcodes, net_row_objects, net_exceptions
+from dotnetutils import net_cil_disas, net_emulator, net_cil_disas, net_structs, net_opcodes, net_row_objects, net_exceptions, net_emu_types
 from dotnetutils.net_opcodes import Opcodes
+import struct
+
+"""
+This file is just something ive been working on in spare time
+Adding function graphing would unlock a ton of features such as control flow deobfuscation and better method patching. 
+The graphing part for the most part works, its the recompiling and analyzing that im working on
+"""
 
 class FunctionBlock:
     def __init__(self, method_object, disasm_object, graph):
@@ -10,6 +17,7 @@ class FunctionBlock:
         self.__previous = list()
         self.__next = list()
         self.__start_offset = -1
+        self.__start_index = -1
         self.__original_length = 0
         self.__was_cleared = False
         self.__original_cleared = False
@@ -27,6 +35,28 @@ class FunctionBlock:
         self.__finally_block_offset = -1
         self.__filter_block_offset = -1
         self.__exception_handler = None
+        self.__new_offset = -1
+        self.__new_index = -1
+
+    def get_start_index(self):
+        return self.__start_index
+    
+    def update_start_offset(self, start_offset, start_index):
+        self.__start_offset = start_offset
+        self.__start_index = start_index
+
+    def setup_new_block_location(self, new_offset, new_index):
+        self.__new_offset = new_offset
+        self.__new_index = new_index
+
+    def update_size(self, new_size):
+        self.__original_length = new_size 
+
+    def get_new_offset(self):
+        return self.__new_offset
+    
+    def get_new_index(self):
+        return self.__new_index
 
     def get_exception_handler(self):
         return self.__exception_handler
@@ -212,11 +242,20 @@ class FunctionBlock:
         self.__instrs.append(instr)
         if self.__start_offset == -1:
             self.__start_offset = instr.get_instr_offset()
+            self.__start_index = instr.get_instr_index()
 
         self.__original_length += len(instr)
 
     def remove_instrs_after_index(self, index):
         self.__instrs = self.__instrs[:index + 1]
+    
+    def remove_instrs(self, start, end):
+        if not 0 <= start < len(self.__instrs) or not 0 <= end < len(self.__instrs) or start > end:
+            raise net_exceptions.InvalidArgumentsException()
+        del self.__instrs[start:end]
+
+    def insert_instr(self, index, instr):
+        self.__instrs.insert(index, instr)
 
     def get_instrs(self):
         return self.__instrs
@@ -404,6 +443,11 @@ class FunctionGraph:
 
             for block in self.__blocks_start.values():
                 block.mark_block_finished() #Tell each block that we are done with our initial setup, anything else is a modification.
+        else:
+            self.__disasm_object = method_object.disassemble_method()
+
+    def get_disassembler(self):
+        return self.__disasm_object
 
     def __sort_blocks(self):
         keys = list(self.__blocks_start.keys())
@@ -722,6 +766,9 @@ class FunctionGraph:
 
     def get_block_offsets(self):
         return self.__blocks_start
+    
+    def blocks(self):
+        return self.__blocks_start.values()
 
     def __print_block(self, block, already_printed, indent=0):
         instrs = block.get_instrs()
@@ -825,6 +872,219 @@ class FunctionGraph:
         else:
             print((' ' * indent) + 'goto block {}'.format(hex(block.get_start_offset())))
 
+class GraphAnalyzer:
+    def __init__(self, method_obj: net_row_objects.MethodDefOrRef, func_graph: FunctionGraph):
+        self.__graph = func_graph
+        self.__disasm = self.__graph.get_disassembler()
+        self.__method = method_obj
+
+    def __are_additional_instrs_needed(self, block, instrs, start, end):
+        if len(instrs) == 1 or (end - start) < 3:
+            raise net_exceptions.InvalidArgumentsException()
+        #dont allow single instrs blocks, dont allow only checking one instruction.
+        amt_on_stack = 0
+        first_instr = instrs[start]
+        if first_instr.get_pstack() != amt_on_stack:
+            return True
+        amt_on_stack = first_instr.get_nstack()
+        second_instr = instrs[start + 1]
+        if second_instr.get_pstack() > amt_on_stack:
+            return True
+        
+        return False
+    
+    """
+    Eventually going to want to move instruction generation out of here but for the prototype
+    """
+    def emit_branch_instr(self, opcode, offset, target, small):
+        #target = argument + instr.size + instr.offset
+        #target - instr.size - instr.offset = argument
+        instr_one = self.__disasm.emit_instruction(opcode)
+
+        encoded_target = target - offset
+        if small:
+            if not -126 <= encoded_target <= 129:
+                raise net_exceptions.InvalidArgumentsException()
+            instr_one.setup_instr_size(2)
+            encoded_target -= 2
+            instr_one.setup_argument_from_int8(encoded_target)
+        else:
+            encoded_target -= 5
+            instr_one.setup_argument_from_int32(encoded_target)
+            instr_one.setup_instr_size(5)
+        return instr_one
+
+
+    def emit_ldc_num(self, number):
+        instrs = list()
+        use_ldc_i4 = False
+        if not isinstance(number, net_emu_types.DotNetNumber):
+            raise net_exceptions.InvalidArgumentsException()
+        pobj = number.as_python_obj()
+        if isinstance(number, net_emu_types.DotNetSingle):
+            instr_one = self.__disasm.emit_instruction(0x22)
+            instr_one.setup_arguments_from_float(pobj)
+            instr_one.setup_instr_size(5)
+            instrs.append(instr_one)
+        elif isinstance(number, net_emu_types.DotNetDouble):
+            instr_one = self.__disasm.emit_instruction(0x23)
+            instr_one.setup_instr_size(9)
+            instr_one.setup_arguments_from_double(pobj)
+            instrs.append(instr_one)
+        elif isinstance(number, net_emu_types.DotNetBoolean):
+            if pobj:
+                instr_one = self.__disasm.emit_instruction(0x17)
+            else:
+                instr_one = self.__disasm.emit_instruction(0x16)
+            instr_one.setup_instr_size(1)
+            instrs.append(instr_one)
+        else:
+            if number.is_signed():
+                if pobj == -1:
+                    use_ldc_i4 = True
+                    instr_one = self.__disasm.emit_instruction(0x15)
+                    instr_one.setup_instr_size(1)
+                    instrs.append(instr_one)
+        if len(instrs) == 0:
+            amt_needed = (pobj.bit_length() + 7) // 8
+            if amt_needed <= 4 and -2147483648 <= pobj <= 2147483647:
+                if 0 <= pobj <= 8:
+                    opcode = 0x16 + pobj
+                    instr_one = self.__disasm.emit_instruction(opcode)
+                    instr_one.setup_instr_size(1)
+                    instrs.append(instr_one)
+                    use_ldc_i4 = True
+                else:
+                    if amt_needed == 1 and -128 <= pobj <= 127:
+                        instr_one = self.__disasm.emit_instruction(0x1F)
+                        instr_one.setup_arguments_from_int8(pobj)
+                        instr_one.setup_instr_size(2)
+                        instrs.append(instr_one)
+                        use_ldc_i4 = True
+                    elif amt_needed <= 4:
+                        instr_one = self.__disasm.emit_instruction(0x20)
+                        instr_one.setup_arguments_from_int32(pobj)
+                        instr_one.setup_instr_size(5)
+                        instrs.append(instr_one)
+                        use_ldc_i4 = True
+                    else:
+                        raise net_exceptions.InvalidArgumentsException()
+            elif amt_needed <= 8:
+                instr_one = self.__disasm.emit_instruction(0x1E)
+                instr_one.setup_arguments_from_int64(pobj)
+                instr_one.setup_instr_size(9)
+                instrs.append(instr_one)
+            else:
+                raise net_exceptions.InvalidArgumentsException()
+            
+            if isinstance(number, net_emu_types.DotNetUInt32):
+                instr_one = self.__disasm.emit_instruction(0x6D)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+            elif isinstance(number, net_emu_types.DotNetIntPtr):
+                instr_one = self.__disasm.emit_instruction(0xD3)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+            elif isinstance(number, net_emu_types.DotNetUIntPtr):
+                instr_one = self.__disasm.emit_instruction(0xE0)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+            elif isinstance(number, net_emu_types.DotNetInt64) and use_ldc_i4:
+                instr_one = self.__disasm.emit_instruction(0x6A)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+            elif isinstance(number, net_emu_types.DotNetUInt64):
+                instr_one = self.__disasm.emit_instruction(0x6E)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+        return instrs
+    
+    def __handle_math_instrs(self, block, instrs, start_index, end_index, amt_deleted):
+        instr = instrs[end_index]
+        start_instr = instrs[start_index]
+        start_offset = start_instr.get_instr_offset()
+        end_offset = instr.get_instr_offset()
+        emu_obj = net_emulator.DotNetEmulator(self.__method, start_offset=start_offset, end_offset=end_offset, dont_execute_cctor=True)
+        try:
+            emu_obj.run_function()
+        except net_exceptions.EmulatorEndExecutionException:
+            pass
+        result = emu_obj.get_stack().pop_obj()
+        instrs_result = self.emit_ldc_num(result)
+        amt_instrs = end_index - start_index
+
+        block.remove_instrs(start_index + amt_deleted, end_index + amt_deleted)
+        for x in range(len(instrs_result)):
+            block.insert_instr(start_index + x + amt_deleted, instrs_result[x])
+        return len(instrs_result) - amt_instrs
+    
+    def repair_blocks(self):
+        #repair the relations between blocks and such
+        changed_blocks = dict()
+        current_offset = 0
+        current_index = 0
+        for offset, block in self.__graph.get_block_offsets(): #This will already be sorted.
+            instrs = block.get_instrs()
+            block.setup_new_offset(current_offset, current_index)
+            changed_blocks[offset] = current_offset
+            for instr in instrs:
+                instr.setup_instr_offset(current_offset, current_index)
+                current_offset += len(instr)
+                current_index += 1
+
+        #first pass makes sure that block and instruction offsets are initialized.
+        #second pass is for adjusting branches
+        for offset, block in self.__graph.get_block_offsets():
+            instrs = block.get_instrs()
+
+
+    def remove_useless_math(self):
+        """ Remove math expressions that compute to a constant value.
+        """
+
+        MATH_INSTRS = [Opcodes.Nop, Opcodes.Not, Opcodes.Ldc_I4, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, \
+                       Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_S, Opcodes.Ldc_I8, Opcodes.Ldc_R4, Opcodes.Ldc_R8, \
+                        Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, \
+                            Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8, Opcodes.Dup, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, \
+                                Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        block: FunctionBlock
+        for block in self.__graph.blocks():
+            start_index = -1
+            end_index = -1
+            nstack = 0
+            orig_block_instrs = list(block.get_instrs())
+            amt_deleted = 0
+            for x in range(len(orig_block_instrs)):
+                instr = orig_block_instrs[x]
+                opcode = instr.get_opcode()
+                if opcode not in MATH_INSTRS:
+                    y = x
+                    end_index = y 
+                    nstack = 0
+                    if start_index >= 0 and end_index > 0 and (end_index - start_index) > 4:
+                        if not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
+                            amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
+
+                    start_index = -1
+                    end_index = -1
+                else:
+                    if start_index < 0:
+                        if instr.get_pstack() > nstack:
+                            nstack = 0
+                            continue
+                        start_index = x
+                    else:
+                        #Test the instruction for stack consistency.
+                        if nstack < instr.get_pstack():
+                            y = x
+                            end_index = y 
+                            nstack = 0
+                            if start_index > 0 and (end_index - start_index) > 3 and not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
+                                amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
+                            start_index = -1
+                            end_index = -1
+                    nstack += instr.get_nstack()
+
 class GraphRecompiler:
     def __init__(self, method_obj: net_row_objects.MethodDef, func_graph: FunctionGraph):
         self.__method_obj: net_row_objects.MethodDef = method_obj
@@ -832,8 +1092,9 @@ class GraphRecompiler:
         self.__function_data = bytearray()
         self.__block_locations = dict()
 
-    def __compile_block(self, block:FunctionBlock):
+    def __compile_block(self, block: FunctionBlock, current_offset: int, current_index: int):
         pass
+
     
     def recompile_graph(self):
         pass

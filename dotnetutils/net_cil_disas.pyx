@@ -208,6 +208,10 @@ cdef class Instruction:
             raise net_exceptions.InvalidArgumentsException()
         return self.instr_size
 
+    cpdef void setup_instr_offset(self, unsigned int instr_offset, unsigned int instr_index):
+        self.offset = instr_offset
+        self.instr_index = instr_index
+
     cpdef unsigned int get_instr_index(self):
         """ Obtains the index of an instruction.
 
@@ -255,7 +259,7 @@ cdef class Instruction:
         Args:
             arguments (char): the argument to set.
         """
-        self.arguments = bytes([arguments])
+        self.arguments = int.to_bytes(arguments, 1, 'little', signed=True)
     
     cpdef void setup_arguments_from_argslist(self, list arguments):
         """ Internal method for setting arguments from an argument list value.
@@ -376,7 +380,7 @@ cdef class Instruction:
         """
         return self.arguments
 
-    cdef void setup_instr_size(self, int instr_size):
+    cpdef void setup_instr_size(self, int instr_size):
         """ Internal method for setting up an instruction's size.  Must be called before len() and Instruction.get_instr_size().
 
         Args:
@@ -547,7 +551,10 @@ cdef class MethodDisassembler:
 
         if force_local_types is not None:
             self.local_types = force_local_types
-
+    
+    cpdef Instruction emit_instruction(self, net_opcodes.Opcodes op):
+        cdef net_opcodes.OpCode opcode  = net_opcodes.NET_OPCODE_DB[op]
+        return Instruction(opcode, self, 0, 0) #No offset or index for now, set that up later.
 
     def __dealloc__(self):
         self.clear()
@@ -686,8 +693,6 @@ cdef class MethodDisassembler:
                 flags = (3 << 12) | ((self.flags | net_structs.CorILMethod.MoreSects) & 0x0FFF)
             else:
                 flags = (3 << 12) | (self.flags & 0x0FFF)
-
-            
 
         return bytes(result)
 

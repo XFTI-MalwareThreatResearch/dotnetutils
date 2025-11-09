@@ -50,7 +50,7 @@ cdef class DotNetObject:
 
     cdef void __init_fields(self, net_row_objects.TypeDefOrRef ref)
 
-    cdef bint is_number(self)
+    cpdef bint is_number(self)
 
     cdef bint has_function(self, bytes name)
 
@@ -115,7 +115,7 @@ cdef class DotNetNumber(DotNetObject):
 
     cdef CorElementType get_num_type(self)
 
-    cdef bint is_number(self)
+    cpdef bint is_number(self)
 
     cdef void reset(self)
     
@@ -125,7 +125,7 @@ cdef class DotNetNumber(DotNetObject):
 
     cpdef bytes as_bytes(self)
 
-    cdef bint is_signed(self)
+    cpdef bint is_signed(self)
     
     cdef bint is_float(self)
 
