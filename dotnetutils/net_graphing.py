@@ -764,6 +764,12 @@ class FunctionGraph:
             for nxt in block.get_next():
                 print('Next: {}'.format(hex(nxt.get_start_offset())))
 
+    def update_ofsets(self):
+        blocks = dict(self.__blocks_start)
+        self.__blocks_start.clear()
+        for offset, block in blocks.items():
+            self.__blocks_start[block.get_start_offset()] = block
+
     def get_block_offsets(self):
         return self.__blocks_start
     
@@ -1020,23 +1026,101 @@ class GraphAnalyzer:
     
     def repair_blocks(self):
         #repair the relations between blocks and such
+        original_blocks = dict()
+        for offset, block in self.__graph.get_block_offsets().items():
+            original_blocks[offset] = offset + block.get_original_length()
         changed_blocks = dict()
         current_offset = 0
         current_index = 0
-        for offset, block in self.__graph.get_block_offsets(): #This will already be sorted.
+        current_offsets = dict()
+        for offset, block in self.__graph.get_block_offsets().items(): #This will already be sorted.
             instrs = block.get_instrs()
-            block.setup_new_offset(current_offset, current_index)
+            block.setup_new_block_location(current_offset, current_index)
             changed_blocks[offset] = current_offset
+            index = 0
+            new_instr = None
+            start_offset = current_offset
             for instr in instrs:
-                instr.setup_instr_offset(current_offset, current_index)
-                current_offset += len(instr)
+                opcode = instr.get_opcode()
+                if instr.is_absolute_jmp() or instr.is_branch():
+                    if opcode != Opcodes.Switch:
+                        current_offsets[current_offset] = instr.get_instr_offset() + len(instr) + instr.get_argument()
+                    else:
+                        current_offsets[current_offset] = instr.get_argument()
+                if instr.is_absolute_jmp():
+                    if opcode == Opcodes.Leave_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Leave)
+                        new_instr.setup_arguments_from_int32(instr.get_argument())
+                        new_instr.setup_instr_offset(current_offset, current_index)
+                        new_instr.setup_instr_size(5)
+                        block.replace_instr(index, new_instr)
+                    elif opcode == Opcodes.Br_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                        new_instr.setup_arguments_from_int32(instr.get_argument())
+                        new_instr.setup_instr_offset(current_offset, current_index)
+                        new_instr.setup_instr_size(5)
+                        block.replace_instr(index, new_instr)
+                elif instr.is_branch():
+                    if opcode == Opcodes.Beq_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Beq)
+                    elif opcode == Opcodes.Bge_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Bge)
+                    elif opcode == Opcodes.Bgt_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Bgt)
+                    elif opcode == Opcodes.Ble_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Ble)
+                    elif opcode == Opcodes.Blt_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Blt)
+                    elif opcode == Opcodes.Bne_Un_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Bne_Un)
+                    elif opcode == Opcodes.Bge_Un_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Bge_Un)
+                    elif opcode == Opcodes.Bgt_Un_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Bgt_Un)
+                    elif opcode == Opcodes.Ble_Un_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Ble_Un)
+                    elif opcode == Opcodes.Blt_Un_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Blt_Un)
+                    if new_instr is not None:
+                        new_instr.setup_arguments_fmo_int32(instr.get_argument())
+                        new_instr.setup_instr_offset(current_offset, current_index)
+                        new_instr.setup_instr_size(5)
+                        block.replace_instr(index, new_instr)
+
+                if new_instr is None:
+                    instr.setup_instr_offset(current_offset, current_index)
+                if new_instr is not None:
+                    current_offset += len(new_instr)
+                else:
+                    current_offset += len(instr)
                 current_index += 1
+                index += 1
+            block.update_size(current_offset - start_offset)
+            block.update_start_offset(block.get_new_offset(), block.get_new_index())
+
+        self.__graph.update_ofsets()
 
         #first pass makes sure that block and instruction offsets are initialized.
         #second pass is for adjusting branches
-        for offset, block in self.__graph.get_block_offsets():
-            instrs = block.get_instrs()
-
+        for new_offset, old_argument in current_offsets.items():
+            blk = self.__graph.get_block_by_offset(new_offset)
+            instr = blk.get_last_instr()
+            if new_offset != instr.get_instr_offset():
+                raise net_exceptions.OperationNotSupportedException()
+            
+            if instr.get_opcode() != Opcodes.Switch:
+                new_target = changed_blocks[old_argument]
+                #target = instr.offset + len(instr) + argument
+                #argument   = target - instr.offset - len(instr)
+                argument = new_target - instr.get_instr_offset() - len(instr)
+                instr.setup_arguments_from_int32(argument)
+            else:
+                args = list()
+                for target in old_argument:
+                    new_target = changed_blocks[target]
+                    argument = new_target - instr.get_instr_offset() - len(instr)
+                    args.append(argument)
+                instr.setup_arguments_from_argslist(args) 
 
     def remove_useless_math(self):
         """ Remove math expressions that compute to a constant value.

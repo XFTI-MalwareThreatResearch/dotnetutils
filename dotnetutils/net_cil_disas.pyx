@@ -251,6 +251,7 @@ cdef class Instruction:
         Args:
             arguments (int): the argument to set.
         """
+        self.__saved_argument = None
         self.arguments = int.to_bytes(arguments, 4, 'little', signed=True)
 
     cpdef void setup_arguments_from_int8(self, char arguments):
@@ -259,6 +260,7 @@ cdef class Instruction:
         Args:
             arguments (char): the argument to set.
         """
+        self.__saved_argument = None
         self.arguments = int.to_bytes(arguments, 1, 'little', signed=True)
     
     cpdef void setup_arguments_from_argslist(self, list arguments):
@@ -272,19 +274,23 @@ cdef class Instruction:
         cdef unsigned int x = 0
         for x in range(l):
             result.extend(int.to_bytes(arguments[x], 4, 'little', signed=True))
+        self.__saved_argument = None
         self.arguments = bytes(result)
 
     cpdef void setup_arguments_from_int64(self, int64_t arguments):
+        self.__saved_argument = None
         self.arguments = int.to_bytes(arguments, 8, 'little', signed=True)
 
     cpdef void setup_arguments_from_float(self, float arguments):
         cdef bytes b = PyBytes_FromStringAndSize(NULL, 4)
         memcpy(PyBytes_AS_STRING(b), &arguments, 4)
+        self.__saved_argument = None
         self.arguments = b
 
     cpdef void setup_arguments_from_double(self, double arguments):
         cdef bytes b = PyBytes_FromStringAndSize(NULL, 8)
         memcpy(PyBytes_AS_STRING(b), &arguments, 8)
+        self.__saved_argument = None
         self.arguments = b
 
     cpdef str get_name(self):
