@@ -427,11 +427,13 @@ class FunctionGraph:
     def __init__(self, method_object, init_blocks=True, debug_print=False):
         self.__method_object = method_object
         self.__debug_print = debug_print
+        self.__disasm_object = None
         if init_blocks:
             if not self.__method_object.has_body():
                 raise net_exceptions.InvalidBlockException
             self.__disasm_object = method_object.disassemble_method()
             self.__blocks_start = dict()
+            self.__exception_blocks = self.__disasm_object.get_exception_blocks()
             self.__handle_try_catch_finally_blocks() # first handle try catch finally since thats a special case.
             self.__sort_blocks()
             if 0 not in self.__blocks_start:
@@ -445,6 +447,14 @@ class FunctionGraph:
                 block.mark_block_finished() #Tell each block that we are done with our initial setup, anything else is a modification.
         else:
             self.__disasm_object = method_object.disassemble_method()
+        if self.__disasm_object is None:
+            self.__exception_blocks = list()
+
+    def update_exception_blocks(self, blocks):
+        self.__exception_blocks = blocks
+    
+    def get_exception_blocks(self):
+        return self.__exception_blocks
 
     def get_disassembler(self):
         return self.__disasm_object
@@ -489,9 +499,7 @@ class FunctionGraph:
         """
         Ensure that try catch finally blocks are treated as their own blocks.  
         """
-        disasm_obj: net_cil_disas.MethodDisassembler = self.__disasm_object
-
-        for exc in disasm_obj.get_exception_blocks():
+        for exc in self.__exception_blocks:
             clause_flags, try_offset, try_length, handler_offset, handler_length, class_token = exc
             if clause_flags == net_structs.CorILExceptionClause.Exception:
                 self.__handle_try_block(try_offset, try_length, handler_offset, handler_length, exc)
@@ -856,7 +864,7 @@ class FunctionGraph:
                 else:
                     if exc_handler[0] == net_structs.CorILExceptionClause.Exception:
                         self.__print_block(catch_block, already_printed, indent - 4)
-                for exc in self.__disasm_object.get_exception_blocks():
+                for exc in self.__exception_blocks:
                     flags = exc[0]
                     if flags != net_structs.CorILExceptionClause.Finally:
                         continue
@@ -1120,7 +1128,43 @@ class GraphAnalyzer:
                     new_target = changed_blocks[target]
                     argument = new_target - instr.get_instr_offset() - len(instr)
                     args.append(argument)
-                instr.setup_arguments_from_argslist(args) 
+                instr.setup_arguments_from_argslist(args)
+
+            #TODO: need to repair exception blocks.  Going to have to determine what to do for size and such
+            exceptions = self.__graph.get_exception_blocks()
+            new_handlers = list()
+            for exc in exceptions:
+                clause_flags, try_offset, try_length, catch_offset, catch_length, token = exc
+                new_try_offset = changed_blocks[try_offset]
+                new_catch_offset = changed_blocks[catch_offset]
+                new_token = token
+                new_try_length = try_length
+                new_catch_length = catch_length
+                if clause_flags == net_structs.CorILExceptionClause.Fault:
+                    new_token = changed_blocks[token]
+                
+                total_try_size = 0
+                total_catch_size = 0
+                block: FunctionBlock
+                for block in self.__graph.blocks():
+                    exc_handler = block.get_exception_handler()
+                    if block.is_block_try():
+                        if exc_handler[1] == try_offset:
+                            total_try_size += block.get_original_length()
+                    elif block.is_block_catch() or block.is_block_finally():
+                        if exc_handler[3] == catch_offset:
+                            total_catch_size += block.get_original_length()
+                new_try_length = total_try_size
+                new_catch_length = total_catch_size
+                new_handler = [clause_flags, new_try_offset, new_try_length, new_catch_offset, new_catch_length, new_token]
+                new_handlers.append(new_handler)
+            for x in range(len(exceptions)):
+                old_handler = exceptions[x]
+                new_handler = new_handlers[x]
+                for block in self.__graph.blocks():
+                    exc_handler = block.get_exception_handler()
+                    if exc_handler == old_handler:
+                        block.set_exception_handler(new_handler)
 
     def remove_useless_math(self):
         """ Remove math expressions that compute to a constant value.
