@@ -4,8 +4,11 @@
 import io
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_sigs, net_table_objects
-from cpython.ref cimport PyObject, Py_INCREF
-from libc.stdint cimport uint16_t, uint32_t
+from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
+from libc.stdint cimport uint16_t, uint32_t, int64_t
+from libc.string cimport memcpy
+from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING
+
 
 from cython.operator cimport dereference
 from libcpp.utility cimport pair
@@ -113,6 +116,85 @@ cdef class Instruction:
         self.__disasm_obj = disasm_obj
         self.instr_index = instr_index
 
+    cpdef int get_nstack(self):
+        """ Returns the number of stack items that the instruction will add or remove to the stack.
+
+        Returns:
+            int: the number of items added or removed from the stack by the instruction.
+        """
+
+        cdef int result = 0
+        cdef net_row_objects.MethodDefOrRef mref = None
+        cdef net_opcodes.Opcodes opcode = self.get_opcode()
+        if opcode == net_opcodes.Opcodes.Call or opcode == net_opcodes.Opcodes.Callvirt:
+            mref = self.get_argument()
+            result = <int>len(mref.get_param_types())
+            result *= -1
+            if mref.method_has_this():
+                result -= 1
+
+            if mref.has_return_value():
+                result += 1
+        elif opcode == net_opcodes.Opcodes.Ret:
+            mref = self.__disasm_obj.get_method()
+            if mref.has_return_value():
+                result = -1
+        elif opcode == net_opcodes.Opcodes.Newobj:
+            mref = self.get_argument()
+            result = <int>len(mref.get_param_types())
+            result *= -1
+            result += 1
+        else:
+            result = self.opcode_one.get_nstack()
+        return result
+
+    cpdef int get_astack(self):
+        """ Returns the number of stack items that the instruction will add to the stack.
+
+        Returns:
+            int: the number of items added to the stack by the instruction.
+        """
+
+        cdef int result = 0
+        cdef net_row_objects.MethodDefOrRef mref = None
+        cdef net_opcodes.Opcodes opcode = self.get_opcode()
+        if opcode == net_opcodes.Opcodes.Call or opcode == net_opcodes.Opcodes.Callvirt:
+            mref = self.get_argument()
+            if mref.has_return_value():
+                result += 1
+        elif opcode == net_opcodes.Opcodes.Newobj:
+            result += 1
+        else:
+            result = self.opcode_one.get_astack()
+        return result
+
+    cpdef int get_pstack(self):
+        """ Returns the number of stack items that the instruction will pop from the stack.
+
+        Returns:
+            int: the number of items popped from the stack by the instruction.
+        """
+
+        cdef int result = 0
+        cdef net_row_objects.MethodDefOrRef mref = None
+        cdef net_opcodes.Opcodes opcode = self.get_opcode()
+        if opcode == net_opcodes.Opcodes.Call or opcode == net_opcodes.Opcodes.Callvirt:
+            mref = self.get_argument()
+            result = <int>len(mref.get_param_types())
+            if mref.method_has_this():
+                result += 1
+
+        elif opcode == net_opcodes.Opcodes.Ret:
+            mref = self.__disasm_obj.get_method()
+            if mref.has_return_value():
+                result = 1
+        elif opcode == net_opcodes.Opcodes.Newobj:
+            mref = self.get_argument()
+            result = <int>len(mref.get_param_types())
+        else:
+            result = self.opcode_one.get_pstack()
+        return result
+
     cpdef int get_instr_size(self):
         """ Obtain the size of the instruction.
 
@@ -125,6 +207,10 @@ cdef class Instruction:
         if self.instr_size == -1:
             raise net_exceptions.InvalidArgumentsException()
         return self.instr_size
+
+    cpdef void setup_instr_offset(self, unsigned int instr_offset, unsigned int instr_index):
+        self.offset = instr_offset
+        self.instr_index = instr_index
 
     cpdef unsigned int get_instr_index(self):
         """ Obtains the index of an instruction.
@@ -151,13 +237,61 @@ cdef class Instruction:
         self.arguments += bytes([argument])
         self.__saved_argument = None #Reset saved argument for this.
 
-    cdef void __set_arguments(self, bytes arguments):
+    cdef void _set_arguments(self, bytes arguments):
         """ Internal method for setting the Instruction's argument data.
 
         Args:
             arguments (bytes): The bytes representation of the instruction's arguments
         """
         self.arguments = arguments
+
+    cpdef void setup_arguments_from_int32(self, int arguments):
+        """ Internal method for setting arguments from an integer value.
+
+        Args:
+            arguments (int): the argument to set.
+        """
+        self.__saved_argument = None
+        self.arguments = int.to_bytes(arguments, 4, 'little', signed=True)
+
+    cpdef void setup_arguments_from_int8(self, char arguments):
+        """ Internal method for setting arguments from an int8 value.
+
+        Args:
+            arguments (char): the argument to set.
+        """
+        self.__saved_argument = None
+        self.arguments = int.to_bytes(arguments, 1, 'little', signed=True)
+    
+    cpdef void setup_arguments_from_argslist(self, list arguments):
+        """ Internal method for setting arguments from an argument list value.
+            Used for switch instrs.
+        Args:
+            arguments (list): the argument to set.
+        """
+        cdef unsigned int l = <unsigned int>len(arguments)
+        cdef bytearray result = bytearray(int.to_bytes(l, 4, 'little', signed=False))
+        cdef unsigned int x = 0
+        for x in range(l):
+            result.extend(int.to_bytes(arguments[x], 4, 'little', signed=True))
+        self.__saved_argument = None
+        self.arguments = bytes(result)
+
+    cpdef void setup_arguments_from_int64(self, int64_t arguments):
+        self.__saved_argument = None
+        self.arguments = int.to_bytes(arguments, 8, 'little', signed=True)
+
+    cpdef void setup_arguments_from_float(self, float arguments):
+        cdef bytes b = PyBytes_FromStringAndSize(NULL, 4)
+        memcpy(PyBytes_AS_STRING(b), &arguments, 4)
+        self.__saved_argument = None
+        self.arguments = b
+
+    cpdef void setup_arguments_from_double(self, double arguments):
+        cdef bytes b = PyBytes_FromStringAndSize(NULL, 8)
+        memcpy(PyBytes_AS_STRING(b), &arguments, 8)
+        self.__saved_argument = None
+        self.arguments = b
 
     cpdef str get_name(self):
         """ Obtains the name of an instruction's OpCode.
@@ -252,7 +386,7 @@ cdef class Instruction:
         """
         return self.arguments
 
-    cdef void setup_instr_size(self, int instr_size):
+    cpdef void setup_instr_size(self, int instr_size):
         """ Internal method for setting up an instruction's size.  Must be called before len() and Instruction.get_instr_size().
 
         Args:
@@ -335,13 +469,52 @@ cdef class Instruction:
         return self.opcode_one.opcode_argument_signed()
 
     cpdef bint is_absolute_jmp(self):
-        """ Is the instruction a br or br.s instruction?
+        """ Determines if the instruction causes an absolute jump.
+            Generally only br, br.s, leave and leave.s causes this, since no matter what happens they jump.
 
         Returns:
-            bool: True if the instruction is br or br.s, False otherwise (absolute jumps)
+            bool: True if the instruction causes an absolute jump False otherwise (absolute jumps)
         """
-        return self.get_name() == 'br' or self.get_name() == 'br.s'
+        cdef net_opcodes.Opcodes opcode = self.get_opcode()
+        return opcode == net_opcodes.Opcodes.Br or opcode == net_opcodes.Opcodes.Br_S or opcode == net_opcodes.Opcodes.Leave or opcode == net_opcodes.Opcodes.Leave_S
 
+    cpdef int get_instr_handler(self):
+        cdef int x = 0
+        cdef list exc = None
+        cdef int try_offset = 0
+        cdef int try_length = 0
+        for exc in self.__disasm_obj.exception_blocks:
+            try_offset = exc[1]
+            try_length = exc[2]
+
+            if try_offset <= <int>self.get_instr_offset() < (try_offset + try_length):
+                return x
+            try_offset = exc[3]
+            try_length = exc[4]
+            if try_offset <= <int>self.get_instr_offset() < (try_offset + try_length):
+                return x
+            x += 1
+        return -1
+
+    cpdef bint is_in_try(self):
+        cdef int handler = self.get_instr_handler()
+        cdef list exc = None
+        if handler == -1:
+            return False
+        exc = self.__disasm_obj.exception_blocks[handler]
+        if exc[1] <= <int>self.get_instr_offset() < (exc[1] + exc[2]):
+            return True
+        return False
+
+    cpdef bint is_in_catch(self):
+        cdef int handler = self.get_instr_handler()
+        cdef list exc = None
+        if handler == -1:
+            return False
+        exc = self.__disasm_obj.exception_blocks[handler]
+        if exc[3] <= <int>self.get_instr_offset() < (exc[3] + exc[4]):
+            return True
+        return False
 
 cdef class MethodDisassembler:
     """ Represents a disassembler for a specific method.
@@ -357,7 +530,7 @@ cdef class MethodDisassembler:
         local_var_sig_tok (int): The token which represents the LocalSig for the method.
         exception_blocks: (list[uint16_t, uint16_t, uint16_t, uint16_t, uint16_t, int]): A list of tuples representing exception blocks for the method, containing the following values: (clause_flags, try_offset, try_length, handler_offset, handler_length, class_token)
     """
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, object method, bytes force_data=None):
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, object method, bytes force_data=None, list force_local_types=None):
         """ Constructor for MethodDisassembler - creates a new object.
         
         Args:
@@ -374,12 +547,38 @@ cdef class MethodDisassembler:
         self.dotnetpe = dotnetpe
         self.method_obj = method
         self.max_stack = 0
-        if not force_data:
+        self.local_types = list()
+        if force_data is None:
             self.__reader: net_structs.DotNetDataReader = net_structs.DotNetDataReader(self.method_obj.get_method_data())
             self.disassemble_loop()
         else:
             self.__reader: net_structs.DotNetDataReader = net_structs.DotNetDataReader(force_data)
             self.disassemble_loop()
+
+        if force_local_types is not None:
+            self.local_types = force_local_types
+    
+    cpdef Instruction emit_instruction(self, net_opcodes.Opcodes op):
+        cdef net_opcodes.OpCode opcode  = net_opcodes.NET_OPCODE_DB[op]
+        return Instruction(opcode, self, 0, 0) #No offset or index for now, set that up later.
+
+    def __dealloc__(self):
+        self.clear()
+
+    cpdef list get_exception_blocks(self):
+        """ Obtains the exception blocks parsed from the method.
+            Each exception block is represented as a tuple with the following elements
+            exc[0] (int): The flags for the clause
+            exc[1] (int): the IL offset for the try block
+            exc[2] (int): The code size for the try block
+            exc[3] (int): The IL offset for the handler block
+            exc[4] (int): The code size for the handler block
+            exc[5] (int): The class token for the exception block.
+
+        Returns:
+            list[tuple[int, int, int, int, int, int]]: A list of tuples, containing the above described values.
+        """
+        return self.exception_blocks
 
     cpdef int get_max_stack_size(self):
         """ Obtain the maximum stack size for the method.
@@ -389,11 +588,11 @@ cdef class MethodDisassembler:
         """
         return self.max_stack
 
-    cpdef object get_method(self):
+    cpdef net_row_objects.MethodDefOrRef get_method(self):
         """ Obtain the method object being disassembled.
 
         Returns:
-            object: The method object being disassembled.
+            net_row_objects.MethodDefOrRef: The method object being disassembled.
         """
         return self.method_obj
 
@@ -413,7 +612,7 @@ cdef class MethodDisassembler:
         """
         cdef list result = list()
         cdef unsigned int i = 0
-        for i in range(self.instrs.size()):
+        for i in range(<unsigned int>self.instrs.size()):
             result.append(<Instruction>self.instrs.at(i))
         return result
 
@@ -461,6 +660,48 @@ cdef class MethodDisassembler:
         """
         return self.local_types
 
+    cdef void clear(self):
+        cdef Instruction instr = None
+        cdef size_t x = 0
+        for x in range(self.instrs.size()):
+            instr = <Instruction>self.instrs[x]
+            Py_XDECREF(<PyObject*>instr)
+        self.instrs.clear()
+        self.offsets.clear()
+
+    cpdef bytes recompile_method(self):
+        cdef Py_ssize_t total_code_size = 0
+        cdef Instruction instr = None
+        cdef bytearray code = bytearray()
+        cdef bint use_fat_header = False
+        cdef bytearray result = bytearray()
+        cdef size_t x = 0
+        cdef char header_byte = 0
+        cdef unsigned short flags = 0
+        if len(self.local_types) > 0:
+            use_fat_header = True
+
+        for x in range(self.instrs.size()):
+            instr = <Instruction>self.instrs[x]
+            total_code_size += len(instr)
+            code.extend(instr.to_bytes())
+
+        if total_code_size > 63:
+            use_fat_header = True
+
+        if not use_fat_header:
+            header_byte = <char>total_code_size
+            header_byte = (header_byte << 2) | 0x02
+            result.append(header_byte)
+            result.extend(code)
+        else:
+            if len(self.exception_blocks) > 0:
+                flags = (3 << 12) | ((self.flags | net_structs.CorILMethod.MoreSects) & 0x0FFF)
+            else:
+                flags = (3 << 12) | (self.flags & 0x0FFF)
+
+        return bytes(result)
+
     cdef void parse_header(self):
         """ Internal method to parse the method's header.
         """
@@ -483,8 +724,8 @@ cdef class MethodDisassembler:
         cdef int handler_length
         cdef int try_length
         start = self.__reader.read_byte()
-        val = start & 7
-        if val == 2 or val == 6:
+        val = start & 0x3
+        if val == 2:
             self.flags = 0
             self.header_size = 1
             self.code_size = (start >> 2)
@@ -492,15 +733,16 @@ cdef class MethodDisassembler:
             self.local_var_sig_tok = 0
             self.local_types = list()
             self.exception_blocks = list() #Small headers cant have exceptions.
-        else:
+        elif val == 3:
             self.flags = ((self.__reader.read_byte() << 8) | start)
             self.header_size = (self.flags >> 12)
+            self.flags = self.flags & 0x0FFF
             self.max_stack = self.__reader.read_uint16()
             self.code_size = self.__reader.read_uint32()
             self.local_var_sig_tok = self.__reader.read_uint32()
-            if self.header_size < 3:
-                self.flags &= 0xFFF7
             self.header_size *= 4
+            if self.header_size != 12:
+                raise net_exceptions.InvalidArgumentsException()
             if self.local_var_sig_tok > 0:
                 signature_table = self.dotnetpe.get_metadata_table('StandAloneSig')
                 if self.local_var_sig_tok & 0x11000000:
@@ -517,12 +759,6 @@ cdef class MethodDisassembler:
                         sig_reader = net_sigs.SignatureReader(self.dotnetpe, blob_value)
                         local_sig = sig_reader.read_signature()
                         self.local_types = local_sig.get_local_vars()
-                    else:
-                        self.local_types = list()
-                else:
-                    self.local_types = list()
-            else:
-                self.local_types = list()
 
             self.exception_blocks = list()
 
@@ -584,6 +820,8 @@ cdef class MethodDisassembler:
                     
                     if sect_flags & net_structs.CorILMethod.Sect_MoreSects == 0:
                         break
+        else:
+            raise net_exceptions.InvalidArgumentsException()
 
     cdef void disassemble_loop(self):
         """ Internal method to parse the method's code.
@@ -737,3 +975,167 @@ cdef class MethodDisassembler:
             return None
         cdef Instruction result = <Instruction>self.instrs.at(index)
         return result
+
+    cpdef void remove_instruction_at_index(self, int index):
+        if self.instrs.empty() or index < 0:
+            raise net_exceptions.InvalidArgumentsException()
+
+        cdef list exc = None
+        cdef int try_offset = 0
+        cdef int try_length = 0
+        cdef int catch_offset = 0
+        cdef int catch_length = 0
+        cdef int handler = -1
+        cdef bint is_try = False
+        cdef bint is_catch = False
+        cdef int x = 0
+
+        cdef Instruction instr = <Instruction>self.instrs[index]
+        for exc in self.exception_blocks:
+            try_offset, try_length, catch_offset, catch_length = exc[1:5]
+            if try_offset <= <int>instr.get_instr_offset() < (try_offset + try_length):
+                is_try = True
+                handler = x
+                break
+            if catch_offset <= <int>instr.get_instr_offset() < (catch_offset + catch_length):
+                is_catch = True
+                handler = x
+                break
+            x += 1
+        self.__update_offsets(instr.get_instr_index(), instr.get_instr_offset(), <int>(-1 * len(instr)), handler, is_try, is_catch)
+        Py_XDECREF(<PyObject*>instr)
+        self.instrs.erase(self.instrs.begin() + index)
+
+    cpdef void add_instruction_at_index(self, int index, Instruction instr, int handler=-1, bint is_try=False, bint is_catch=False):
+        cdef Instruction last_instr = None
+        cdef unsigned int new_offset = 0
+        cdef unsigned int new_index = 0
+        Py_INCREF(instr)
+        if index == <int>self.instrs.size():
+            #for appending we only need to add it to the list.
+            if self.instrs.empty():
+                instr.instr_offset = 0
+                instr.instr_index = 0
+            else:
+                last_instr = <Instruction>self.instrs.back()
+                new_offset = last_instr.get_instr_offset() + <unsigned int>len(last_instr)
+                new_index = index
+                instr.instr_offset = new_offset
+                instr.instr_index = new_index
+            self.instrs.push_back(<PyObject*>instr)
+        else:
+            if index < 0:
+                raise net_exceptions.InvalidArgumentsException()
+            last_instr = <Instruction>self.instrs[index]
+            new_offset = last_instr.get_instr_offset()
+            new_index = index
+            instr.instr_offset = new_offset
+            instr.instr_index = new_index
+            self.instrs.insert(self.instrs.begin() + index, <PyObject*>instr)
+            self.__update_offsets(new_index, new_offset, <int>len(instr), handler, is_try, is_catch) #TODO: figure out how to handle try catch
+
+    cdef void __update_offsets(self, int index, int offset, int difference, int except_handler, bint is_try, bint is_catch):
+        #ok so first things first, we need to scan through every single instruction.
+        #Really shouldnt use this to modify jmps
+        cdef size_t x = 0
+        cdef Py_ssize_t y = 0
+        cdef Instruction instr = None
+        cdef bint adding = difference > 0
+        cdef unsigned int new_instr_count = 0
+        cdef unsigned int new_offset = 0
+        cdef list switch_args = list()
+        cdef bytes instr_args = None
+        cdef int z = 0
+        cdef list exceptions = self.exception_blocks
+        cdef list exc = None
+        cdef int try_offset = 0
+        cdef int try_length = 0
+        cdef int catch_offset = 0
+        cdef int catch_length = 0
+        cdef int new_try_offset = 0
+        cdef int new_try_length = 0
+        cdef int new_catch_offset = 0
+        cdef int new_catch_length = 0
+        self.offsets.clear()
+        for x in range(self.instrs.size()):
+            new_offset = instr.get_instr_offset()
+            new_instr_count = <unsigned int>x
+            instr = <Instruction>self.instrs[x]
+            if <int>x != index:
+                if <int>x > index:
+                    #For instructions that are greater than index, we need to first change the instruction count, then change the offset.
+                    if adding:
+                        new_instr_count = <unsigned int>x + 1
+                    else:
+                        new_instr_count = <unsigned int>x - 1
+                    new_offset = instr.get_instr_offset() + difference
+                    instr.instr_index = new_instr_count
+                    instr.instr_offset = new_offset
+            if instr.is_branch():
+                if instr.get_opcode() == net_opcodes.Opcodes.Switch:
+                    switch_args = instr.get_arguments()
+                    for y in range(switch_args):
+                        z = switch_args[y]
+                        if z == offset:
+                            raise net_exceptions.InvalidArgumentsException()
+                        elif z > offset:
+                            switch_args[y] = z + difference
+                    instr.setup_arguments_from_argslist(switch_args)
+                else:
+                    instr_args = instr.get_arguments()
+                    y = len(instr_args)
+                    if y == 1:
+                        z = <int>instr.get_argument()
+                        if z == offset:
+                            raise net_exceptions.InvalidArgumentsException()
+                        elif z > offset:
+                            z += difference
+                            instr.setup_arguments_from_int8(<char>z)
+                    elif y == 4:
+                        z = instr.get_argument()
+                        if z == offset:
+                            raise net_exceptions.InvalidArgumentsException()
+                        elif z > offset:
+                            z += difference
+                            instr.setup_arguments_from_int32(z)
+                    else:
+                        raise net_exceptions.InvalidArgumentsException()        
+            self.offsets[new_offset] = new_instr_count
+
+        if except_handler >= 0:
+            exc = exceptions[except_handler]
+            try_offset = exc[1]
+            try_length = exc[2]
+            catch_offset = exc[3]
+            catch_length = exc[4]
+            new_try_offset = try_offset
+            new_catch_offset = catch_offset
+            new_catch_length = catch_length
+            new_try_length = try_length
+            if not is_try:
+                if try_offset > offset:
+                    new_try_offset += difference
+            if not is_catch:
+                if catch_offset > offset:
+                    new_catch_offset += difference
+            
+            if not adding:
+                if is_try:                
+                    if try_offset <= offset < (try_offset + try_length):
+                        new_try_length += difference
+                if is_catch:                
+                    if catch_offset <= offset < (catch_offset + catch_length):
+                        new_catch_length += difference
+            else:
+                if is_try:                
+                    if try_offset <= offset <= (try_offset + try_length):
+                        new_try_length += difference
+                if is_catch:                
+                    if catch_offset <= offset <= (catch_offset + catch_length):
+                        new_catch_length += difference
+
+            exc[1] = new_try_offset
+            exc[2] = new_try_length
+            exc[3] = new_catch_offset
+            exc[4] = new_catch_length
+            self.exception_blocks[except_handler] = exc

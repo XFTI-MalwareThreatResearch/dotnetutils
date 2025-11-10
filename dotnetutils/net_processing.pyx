@@ -840,7 +840,7 @@ cdef class UserStringsHeapObject(HeapObject):
                             argument_token += difference
                             argument_token = net_tokens.get_Signature().encode_token('#US', argument_token)
                             instr_argument = int.to_bytes(argument_token, 4, 'little')
-                            instr.__set_arguments(instr_argument)
+                            instr.setup_arguments_from_int32(argument_token)
                             new_instr = b'\x72' + instr_argument
                             self.get_dotnetpe().patch_instruction(method, new_instr, instr.get_instr_offset(), <unsigned long>len(instr))
 

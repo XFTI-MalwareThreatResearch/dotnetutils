@@ -34,11 +34,28 @@ def main():
         raise net_exceptions.OperationNotSupportedException()
     elif deob_type == 'printgraph':
         method_rid = int(output_exe, 10)
-        print('Printing graph for method {}'.format(method_rid))
         dpe = dotnetpefile.DotNetPeFile(pe_data=data)
         mobj = dpe.get_method_by_rid(method_rid)
         fgraph = net_graphing.FunctionGraph(mobj)
+        fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+        fanalyzer.remove_useless_math()
+        fanalyzer.repair_blocks()
         fgraph.print_root()
+        print('done')
+        exit(0)
+    elif deob_type == 'printallgraphs':
+        print('Printing graphs for all methods in the executable.')
+        print()
+        dpe = dotnetpefile.try_get_dotnetpe(pe_data=data)
+        if dpe is None:
+            print('error: invalid dotnet pe.')
+        else:
+            for method in dpe.get_metadata_table('MethodDef'):
+                if method.has_body():
+                    fgraph = net_graphing.FunctionGraph(method)
+                    fgraph.print_root()
+                    print()
+                    print()
         print('done')
         exit(0)
     elif deob_type == 'unk_obf_1':

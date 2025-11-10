@@ -4280,7 +4280,12 @@ cdef class DotNetStack:
 
     cdef StackCell pop(self):
         """ Pops an item off the stack and dereferences it.  All items returned from this function must be dealloced.
+
+        Raises:
+            net_exceptions.EmulatorExecutionException: If the stack is empty.
         """
+        if self.__internal_stack.empty():
+            raise net_exceptions.EmulatorExecutionException(self.__emulator, 'Attempted to pop an item off the stack when its empty')
         cdef StackCell obj = self.__internal_stack.back()
         self.__internal_stack.pop_back()
         self.__emulator.deref_cell(obj)
@@ -4292,7 +4297,11 @@ cdef class DotNetStack:
 
         Returns:
             net_emu_types.DotNetObject: A boxed representation of the top item on the stack.
+        Raises:
+            net_exceptions.EmulatorExecutionException: If the stack is empty.
         """
+        if self.__internal_stack.empty():
+            raise net_exceptions.EmulatorExecutionException(self.__emulator, 'Attempted to pop an item off the stack when its empty')
         cdef StackCell obj = self.__internal_stack.back()
         cdef StackCell boxed_obj = self.__emulator.box_value(obj, None)
         cdef net_emu_types.DotNetObject return_value = None

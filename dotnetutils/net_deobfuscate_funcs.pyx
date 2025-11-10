@@ -1012,8 +1012,10 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
     cdef unsigned long instr_index
     cdef net_row_objects.MethodDef method_obj2
     cdef net_cil_disas.Instruction instr
+    cdef net_sigs.MethodSig msig = None
+    cdef Py_ssize_t index = 0
 
-    allowed_instrs = ['nop', 'ceq', 'ldnull', 'ldsfld', 'ret']
+    allowed_instrs = ['nop', 'ceq', 'ldnull', 'ldsfld', 'ret', 'ldc.i4.1']
     # skip getters and setters
     if method_obj.get_column('Name').get_value_as_bytes().startswith(b'get_') or method_obj.get_column('Name').get_value_as_bytes().startswith(b'set_'):
         return 0
@@ -1048,7 +1050,15 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
     # skip property methods that start with get and set
     if has_compare:
         return 1
-    return 2
+    msig = method_obj.get_method_signature()
+    if len(msig.get_parameters()) == 0 and isinstance(msig.get_return_type(), net_sigs.CorLibTypeSig):
+        if msig.get_return_type().get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+            return 2
+        elif msig.get_return_type().get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
+            index = len(disasm_obj) - 2
+            if len(disasm_obj) > 1 and disasm_obj[index].get_name() == 'ldc.i4.1':
+                return 1
+    return 0
 
 cpdef bytes remove_useless_functions(bytes data) except *:
     """ Removes functions that simply call another function with the same arguments.  Used heavily in confuserex.

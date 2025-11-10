@@ -287,7 +287,7 @@ cdef class DotNetObject:
             return True
         return False
 
-    cdef bint is_number(self):
+    cpdef bint is_number(self):
         """ Is this object a DotNetNumber
 
         Returns:
@@ -627,7 +627,7 @@ cdef class DotNetNumber(DotNetObject):
             memcpy(self._ptr, <char*>num_data, self.__amt_bytes)
         self.add_function(b'ToString', <emu_func_type>self.ToString)
 
-    cdef bint is_number(self):
+    cpdef bint is_number(self):
         return True
 
     cdef bint ptr_check(self):
@@ -881,7 +881,7 @@ cdef class DotNetNumber(DotNetObject):
         return self.__num_type == CorElementType.ELEMENT_TYPE_R4 or \
             self.__num_type == CorElementType.ELEMENT_TYPE_R8
         
-    cdef bint is_signed(self):
+    cpdef bint is_signed(self):
         """ Returns true if the number represents a signed integer, False otherwise.
         """
         return self.__num_type == CorElementType.ELEMENT_TYPE_I or \
