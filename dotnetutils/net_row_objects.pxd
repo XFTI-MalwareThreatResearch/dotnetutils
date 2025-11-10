@@ -306,6 +306,8 @@ cdef class MethodDefOrRef(RowObject):
 
     cpdef int get_amt_params(self)
 
+    cpdef void set_method_data(self, bytes data)
+
 cdef class MethodDef(MethodDefOrRef):
     cdef public list _generic_params
     cdef bytes __full_name

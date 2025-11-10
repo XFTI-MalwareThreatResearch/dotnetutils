@@ -262,7 +262,7 @@ cdef class PeFile:
             x += 1
         return -1
 
-    cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index):
+    cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index, uint64_t inject_rva, uint64_t inject_size, bytes inject_data):
         """Anytime you make any changes to the binary that results in the size of the binary being changed, you should call this function before doing so.
         It will go through and modify all the VAs in the binary to account for the changes.
         At the end of this function, get_exe_data() on the dotnetpe should have the fixed RVAs.
@@ -275,6 +275,10 @@ cdef class PeFile:
             do_reconstruction (bytes):  Should the executable be reconstructed after VA updating is finished?  This usually should be true when editing streams or code, however if you are adding the data yourself to the binary you will want this to be False.
             stream_name (bool): stream name that youre editing, if applicable.  can be None
             sec_index (int): index of the section where the data resides.
+            For the most part, these can be left as 0 and NULL:
+            inject_rva (uint64_t): For injection of data outside the metadata tables.  the RVA to inject to.
+            inject_size (uint64_t): The size of the original data that was here.  
+            inject_data (bytes): The data to inject.
         """
         if difference == 0:
             return
@@ -306,14 +310,14 @@ cdef class PeFile:
             for x in range(1, len(mdef_table) + 1):
                 mdef_obj = mdef_table.get(<int>x)
                 cobj = mdef_obj.get_column('RVA')
-                if cobj.get_raw_value() > va_addr: #TODO: should this be >=?
+                if cobj.get_raw_value() >= va_addr:
                     cobj.set_raw_value(cobj.get_raw_value() + difference)
 
         if rva_table is not None:
             for x in range(1, len(rva_table) + 1):
                 rva_obj = rva_table.get(<int>x)
                 cobj = rva_obj.get_column('RVA')
-                if cobj.get_raw_value() > va_addr: #TODO: should this be >=?
+                if cobj.get_raw_value() >= va_addr: 
                     cobj.set_raw_value(cobj.get_raw_value() + difference)
 
     cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index):

@@ -1090,6 +1090,9 @@ cdef class MethodDefOrRef(RowObject):
         RowObject.__init__(self, dotnetpe, raw_data, rid,
                            sizes, col_types, table_name)
 
+    cpdef void set_method_data(self, bytes new_data):
+        pass
+
     cpdef bytes get_name(self):
         return b''
 
@@ -1183,6 +1186,28 @@ cdef class MethodDef(MethodDefOrRef):
         self.__current_method_hash = None
         self.__has_invalid_signature = False
         self.__xrefs = list()
+
+    cpdef void set_method_data(self, bytes data):
+        if len(data) % 4 == 0:
+            raise net_exceptions.InvalidArgumentsException()
+        if self.get_column('RVA').get_value_as_int() == 0:
+            raise net_exceptions.InvalidArgumentsException()
+            #TODO: add the ability to add addiitonal methods when they dont already exist.
+
+        cdef int orig_method_size = <int>len(self.get_method_data())
+        cdef int new_method_size = <int>len(data)
+        cdef int difference = new_method_size - orig_method_size
+        cdef dotnetpefile.PeFile pe = self.get_dotnetpe().get_pe()
+        cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
+        cdef uint64_t file_offset = 0
+        cdef bytes new_data = None
+        if difference != 0:
+            pe.update_va(rva + orig_method_size, difference, self.get_dotnetpe(), False, False, None, pe.get_sec_index_va(rva), rva, orig_method_size, data)
+        else:
+            file_offset = pe.get_offset_from_rva(rva)
+            new_data = self.get_dotnetpe().get_exe_data()
+            new_data = new_data[:file_offset] + data + new_data[file_offset + orig_method_size:]
+            self.get_dotnetpe().set_exe_data(new_data)
 
     cpdef bytes get_name(self):
         """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().

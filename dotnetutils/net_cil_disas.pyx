@@ -548,6 +548,10 @@ cdef class MethodDisassembler:
         self.method_obj = method
         self.max_stack = 0
         self.local_types = list()
+        self.local_var_sig_tok = 0
+        self.flags = 0
+        self.header_size = 0
+        self.code_size = 0
         if force_data is None:
             self.__reader: net_structs.DotNetDataReader = net_structs.DotNetDataReader(self.method_obj.get_method_data())
             self.disassemble_loop()
@@ -660,6 +664,22 @@ cdef class MethodDisassembler:
         """
         return self.local_types
 
+    cpdef int get_flags(self):
+        """ Obtain the flags associated with the method.
+
+        Returns:
+            int: the flags for the method.
+        """
+        return self.flags
+
+    cpdef int get_local_var_sig_token(self):
+        """ Obtain the integer local variable signature token associated with the method.
+
+        Returns:
+            int: the token value for the local var signature token.
+        """
+        return self.local_var_sig_tok
+
     cdef void clear(self):
         cdef Instruction instr = None
         cdef size_t x = 0
@@ -765,7 +785,6 @@ cdef class MethodDisassembler:
             #parse exception data
             if self.flags & net_structs.CorILMethod.MoreSects:
                 extra_sect_offset = self.header_size + self.code_size
-                #align to next 4 byte boundry - TODO: Will method offset always be aligned to 4?
                 if extra_sect_offset % 4 != 0:
                     amt_to_add = 4 - (extra_sect_offset % 4)
                     extra_sect_offset += amt_to_add

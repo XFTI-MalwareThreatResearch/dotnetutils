@@ -114,6 +114,10 @@ cdef class MethodDisassembler:
 
     cpdef int get_header_size(self)
 
+    cpdef int get_flags(self)
+
+    cpdef int get_local_var_sig_token(self)
+
     cpdef int get_code_size(self)
 
     cpdef list get_local_types(self)
