@@ -694,11 +694,8 @@ cdef class SignatureReader():
         return size
 
     cdef net_row_objects.RowObject read_typedef_or_ref(self):
-        try:
-            table_name, table_rid = net_tokens.get_TypeDefOrRef().decode_token(self.read_compressed_integer())
-            return self.dotnetpe.get_metadata_table(table_name).get(table_rid)
-        except:
-            raise net_exceptions.InvalidSignatureException('TypeDefOrRef')
+        table_name, table_rid = net_tokens.get_TypeDefOrRef().decode_token(self.read_compressed_integer())
+        return self.dotnetpe.get_metadata_table(table_name).get(table_rid)
 
 class GenericArgsSubstitutor:
     """ Unused and highly likely to be removed soon.

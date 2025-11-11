@@ -1263,7 +1263,6 @@ cdef class MethodDef(MethodDefOrRef):
                             self.__current_method_hash = hashval
                     return self.__disasm_obj
                 except Exception as e:
-                    print('returning None due to exception {} {}'.format(hex(self.get_token()), str(e)))
                     return None #Allows for encrypted methods and such.
         return None
 
@@ -1427,7 +1426,7 @@ cdef class MethodDef(MethodDefOrRef):
                     if self.__sig_obj.get_return_type().get_next() == net_sigs.get_CorSig_Void():
                         self.__has_return_value = False
                 self.__method_has_this = self.__sig_obj.get_calling_conv() & net_structs.CorCallingConvention.HasThis != 0
-            except net_exceptions.InvalidSignatureException:
+            except net_exceptions.InvalidSignatureException as e:
                 self.__has_invalid_signature = True
         return self.__sig_obj
 
@@ -1797,8 +1796,8 @@ cdef class MethodSpec(MethodDefOrRef):
             sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
             try:
                 self.__parsed_sig = sig_reader.read_calling_convention_sig()
-            except net_exceptions.InvalidSignatureException:
-                pass
+            except net_exceptions.InvalidSignatureException as e:
+                raise e
         return self.__parsed_sig
 
     def __hash__(self):
