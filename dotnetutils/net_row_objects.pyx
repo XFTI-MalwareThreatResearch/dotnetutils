@@ -248,15 +248,15 @@ cdef class ColumnValue:
             stream = self.dotnetpe.get_heap(table_name)
             if stream is None:
                 raise net_exceptions.InvalidArgumentsException()
-            table_rid = stream.append_item(new_value)
-            self.raw_value = table_rid
+            self.raw_value = stream.get_next_append_index()
+            stream.append_item(new_value)
             self.cached_value = None
             self.__has_no_value = False #Reset everything for next grab.
             if orig_value != 0: #Stream.del_item() already handles references checks.  It will warn for now but thats fine.
                 stream.del_item(orig_value)
         elif self.col_type.is_fixed_value():
             self.raw_value = new_value
-            self.dotnetpe.reconstruct_executable() # Ensure the raw change is updated in.
+            self.dotnetpe.update_streams() # Ensure the raw change is updated in.
         else:
             #I dont think it would be safe to edit metadata columns that reference other metadata columns.
             #Nor can I really think of a good reason to do it right now.  May be something to implement later.
@@ -1196,15 +1196,21 @@ cdef class MethodDef(MethodDefOrRef):
 
         cdef int orig_method_size = <int>len(self.get_method_data())
         cdef int new_method_size = <int>len(data)
-        cdef int difference = new_method_size - orig_method_size
+        cdef int difference = 0
         cdef dotnetpefile.PeFile pe = self.get_dotnetpe().get_pe()
         cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
-        cdef uint64_t file_offset = 0
+        cdef uint64_t file_offset = pe.get_offset_from_rva(rva)
+        cdef int amt_padding = 0
+        cdef bytes old_exe_data = self.get_dotnetpe().get_exe_data()
         cdef bytes new_data = None
+        while orig_method_size % 4 != 0:
+            if old_exe_data[file_offset + orig_method_size] != 0:
+                raise net_exceptions.OperationNotSupportedException()
+            orig_method_size += 1 #Make sure the size is padded to ensure we account for that in our difference.
+        difference = new_method_size - orig_method_size
         if difference != 0:
-            pe.update_va(rva + orig_method_size, difference, self.get_dotnetpe(), False, False, None, pe.get_sec_index_va(rva), rva, orig_method_size, data)
+            pe.update_va(rva + orig_method_size, difference, self.get_dotnetpe(), None, rva)
         else:
-            file_offset = pe.get_offset_from_rva(rva)
             new_data = self.get_dotnetpe().get_exe_data()
             new_data = new_data[:file_offset] + data + new_data[file_offset + orig_method_size:]
             self.get_dotnetpe().set_exe_data(new_data)

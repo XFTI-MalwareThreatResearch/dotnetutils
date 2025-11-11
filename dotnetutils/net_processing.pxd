@@ -17,6 +17,8 @@ cdef class HeapObject:
 
     cdef void update_bitmask(self, int new_size)
 
+    cpdef int get_next_append_index(self)
+
     cpdef void begin_append_tx(self)
 
     cpdef void end_append_tx(self)

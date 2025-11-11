@@ -205,6 +205,14 @@ cdef class HeapObject:
         """
         raise net_exceptions.FeatureNotImplementedException()
 
+    cpdef int get_next_append_index(self):
+        """ Return the next index an item would be appended to for a heap.  This can be useful for append operations when you need to know
+            where the next item will be appended beforehand.
+        Returns:
+            int: The next index where an item would be appended to.
+        """
+        raise net_exceptions.FeatureNotImplementedException()
+
     def __len__(self):
         return len(self.raw_data)
 
@@ -256,7 +264,7 @@ cdef class StringHeapObject(HeapObject):
         for x in range(self.amt_trailing_zeroes):
             self.raw_data.append(0)
         va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
-        self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(self.tx_data), self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+        self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(self.tx_data), self.get_dotnetpe(), b'#Strings', va_addr - new_offset)
         self.tx_data = bytearray()
 
     cdef void update_bitmask(self, int new_size):
@@ -273,7 +281,7 @@ cdef class StringHeapObject(HeapObject):
         if difference == 0:
             return
         va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
-        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), True, True, b'#~', self.get_dotnetpe().get_pe().get_sec_index_phys(heap_obj.get_offset()))        
+        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#~', va_addr - old_metadata_size)        
 
     cpdef int append_tx(self, bytes item):
         cdef int new_offset = 0
@@ -362,6 +370,7 @@ cdef class StringHeapObject(HeapObject):
         cdef int difference = 0
         cdef bytes bitem = None
         cdef int off = 0
+        cdef uint64_t va_addr
         if len(b) and b[-1] != 0:
             b += b'\x00'
         if not self.has_offset(offset):
@@ -374,13 +383,15 @@ cdef class StringHeapObject(HeapObject):
         self.update_bitmask(self.get_size() + difference)
         self.raw_data = self.raw_data[:offset] + b + self.raw_data[offset + len(old_item):]
         self.update(offset, offset, difference)
-        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#Strings', va_addr - offset)
         return difference
 
     cpdef int append_item(self, object item):
         cdef bytes b = <bytes> item
         cdef int new_offset = <int>len(self.raw_data)
         cdef int potential = 0
+        cdef uint64_t va_addr = 0
         if len(b) > 0 and b[-1] != 0:
             b += b'\x00'
         potential = self.get_offset_of_item(b)
@@ -394,10 +405,14 @@ cdef class StringHeapObject(HeapObject):
             self.raw_data += b
             if self.amt_trailing_zeroes > 0:
                 self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(b), self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
+            self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(b), self.get_dotnetpe(), b'#Strings', va_addr - new_offset)
             return new_offset
         else:
             return potential
+
+    cpdef int get_next_append_index(self):
+        return <int>len(self.raw_data) - self.amt_trailing_zeroes
 
     cpdef bint has_offset(self, int offset):
         return 0 < offset < self.get_size()
@@ -438,11 +453,13 @@ cdef class StringHeapObject(HeapObject):
         cdef bytes item = self.read_item(offset)
         cdef int difference = -1 * <int>len(item)
         cdef int off = 0
+        cdef uint64_t va_addr = 0
         if not self.is_offset_referenced(offset):
             self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Strings', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+            self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#Strings', va_addr - offset)
             return difference
         else:
             warnings.warn('Attempting to delete a string item that is currently referenced.  Ignoring.')
@@ -471,7 +488,7 @@ cdef class BlobHeapObject(HeapObject):
         if difference == 0:
             return
         va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
-        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), True, True, b'#~', self.get_dotnetpe().get_pe().get_sec_index_phys(heap_obj.get_offset()))        
+        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#~', va_addr - old_metadata_size)        
 
 
     cdef void __build_metadata_references(self):
@@ -554,11 +571,13 @@ cdef class BlobHeapObject(HeapObject):
         cdef bytes orig_item = self.read_item(offset)
         cdef bytes final = compressed_size + b
         cdef bytes bitem = None
+        cdef uint64_t va_addr = 0
         cdef int difference = <int>(len(final) - len(orig_item))
         self.update_bitmask(self.get_size() + difference)
         self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(orig_item):]
         self.update(offset, offset, difference)
-        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+        self.get_dotnetpe().get_pe().update_va( va_addr, difference, self.get_dotnetpe(), b'#Blob', va_addr - offset)
         return difference
 
     cpdef bint has_item(self, object item):
@@ -569,13 +588,18 @@ cdef class BlobHeapObject(HeapObject):
         cdef int offset = <int>len(self.raw_data)
         cdef bytes final = self.compress_integer(<unsigned long>len(item)) + <bytes>item
         cdef int potential = self.get_offset_of_item(final)
+        cdef uint64_t va_addr = 0
         if potential == -1:
             self.update_bitmask(self.get_size() + <int>len(final))
             self.raw_data += final
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(final), self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+            self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(final), self.get_dotnetpe(), b'#Blob', va_addr - offset)
             return offset
         else:
             return potential
+
+    cpdef int get_next_append_index(self):
+        return <int>len(self.raw_data)
 
     cpdef object get_item(self, int offset):
         cdef bytes result = self.read_item(offset)
@@ -589,11 +613,13 @@ cdef class BlobHeapObject(HeapObject):
         cdef bytes item = <bytes>self.read_item(offset)
         cdef int difference = <int>len(item) * -1
         cdef int off = 0
+        cdef uint64_t va_addr = 0
         if not self.is_offset_referenced(offset):
             self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#Blob', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+            self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#Blob', va_addr - offset)
             return difference
         else:
             warnings.warn('Attempting to delete an item that is currently referenced')
@@ -634,8 +660,7 @@ cdef class GuidHeapObject(HeapObject):
         if difference == 0:
             return
         va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
-        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), True, True, b'#~', self.get_dotnetpe().get_pe().get_sec_index_phys(heap_obj.get_offset()))        
-
+        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#~', va_addr - old_metadata_size)        
 
     cpdef bint is_offset_referenced(self, int offset):
         cdef str table_name = None
@@ -698,13 +723,15 @@ cdef class GuidHeapObject(HeapObject):
     cpdef int del_item(self, int offset):
         cdef int difference = -16
         cdef int off = 0
+        cdef uint64_t va_addr = 0
         if not self.has_offset(offset):
             raise net_exceptions.InvalidArgumentsException()
         if not self.is_offset_referenced(offset):
             self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + 16:]
             self.update(offset, offset, difference)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#GUID', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+            self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#GUID', va_addr - offset)
             return difference
         else:
             warnings.warn('Attempting to delete a guid item that is currently referenced.')
@@ -723,12 +750,17 @@ cdef class GuidHeapObject(HeapObject):
             raise net_exceptions.InvalidArgumentsException()
         cdef int offset = <int>len(self.raw_data)
         cdef int potential = self.get_offset_of_item(item)
+        cdef uint64_t va_addr = 0
         if potential == -1:
             self.update_bitmask(self.get_size() + 16)
             self.raw_data += item
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), <int>len(item), self.get_dotnetpe(), True, True, b'#GUID', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+            self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(item), self.get_dotnetpe(), b'#GUID', va_addr - offset)
             return offset
         return potential
+
+    cpdef int get_next_append_index(self):
+        return <int>len(self.raw_data)
 
 cdef class UserStringsHeapObject(HeapObject):
     def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
@@ -756,7 +788,7 @@ cdef class UserStringsHeapObject(HeapObject):
         new_offset = <int>len(self.raw_data)
         self.raw_data.extend(self.tx_data)
         va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
-        self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(self.tx_data), self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+        self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(self.tx_data), self.get_dotnetpe(), b'#US', va_addr - new_offset)
         self.tx_data = bytearray()
 
     cpdef int append_tx(self, bytes item):
@@ -893,13 +925,15 @@ cdef class UserStringsHeapObject(HeapObject):
         cdef bytes old_item = self.read_item(offset)
         cdef int difference = 0
         cdef int off = 0
+        cdef uint64_t va_addr = 0
         if old_item is None:
             return 0
         difference = <int>len(old_item) * -1
         if not self.is_offset_referenced(offset):
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(old_item):]
             self.update(offset, -1, difference)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+            self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#US', va_addr - offset)
             return difference
         else:
             warnings.warn('cant delete item because its referenced')
@@ -914,13 +948,15 @@ cdef class UserStringsHeapObject(HeapObject):
         cdef int difference = 0
         cdef int off = 0
         cdef bytes bitem = None
+        cdef uint64_t va_addr = 0
         if b is None:
             return 0
         final = self.sanitize_input(b)
         difference = <int>(len(final) - len(old_item))
         self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(old_item):]
         self.update(offset, offset, difference)
-        self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset), difference, self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
+        self.get_dotnetpe().get_pe().update_va(va_addr, difference, self.get_dotnetpe(), b'#US', va_addr - offset)
         return difference
 
     cpdef int append_item(self, object item):
@@ -928,6 +964,7 @@ cdef class UserStringsHeapObject(HeapObject):
         cdef bytes final = None
         cdef int new_offset = <int>len(self.raw_data)
         cdef int potential = 0
+        cdef uint64_t va_addr = 0
         final = self.sanitize_input(b)
         potential = self.get_offset_of_item(final)
         if potential == -1:
@@ -938,10 +975,14 @@ cdef class UserStringsHeapObject(HeapObject):
             self.raw_data += final
             if self.amt_trailing_zeroes > 0:
                 self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
-            self.get_dotnetpe().get_pe().update_va(self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset), <int>len(final), self.get_dotnetpe(), True, True, b'#US', self.get_dotnetpe().get_pe().get_sec_index_phys(self.get_offset()))
+            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
+            self.get_dotnetpe().get_pe().update_va(va_addr, <int>len(final), self.get_dotnetpe(), b'#US', va_addr - new_offset)
             return new_offset
         else:
             return potential #Dont append if it already exists.
+
+    cpdef int get_next_append_index(self):
+        return <int>len(self.raw_data) - self.amt_trailing_zeroes
 
     cpdef list get_items(self):
         cdef list result = list()

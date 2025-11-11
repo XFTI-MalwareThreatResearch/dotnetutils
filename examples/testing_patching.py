@@ -6,6 +6,7 @@ start = datetime.now()
 dpe = dotnetpefile.try_get_dotnetpe('EmulatorTesting.exe')
 end = datetime.now()
 print('took {} to parse'.format(end - start))
+
 start = end
 ep = dpe.get_entry_point()
 print('entry point {}'.format(ep))
@@ -16,3 +17,12 @@ data_hash.update(data)
 data_hash = data_hash.hexdigest()
 assert data_hash == '8063E51CF9C3ADA9C915DA878C221A332C90670C527CD05AFE5D24B02E14A46D'.lower()
 print('Done!!!')
+
+"""
+dpe.get_heap('#Strings').append_item(b'ILovePieVeryMuch')
+
+fd = open('result.bin', 'wb')
+fd.write(dpe.get_exe_data())
+fd.close()
+print('done')
+"""

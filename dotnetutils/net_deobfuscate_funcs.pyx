@@ -295,7 +295,7 @@ cpdef bytes remove_unk_obf_1_obfuscation(bytes exe_data):
     dotnet = dotnetpefile.try_get_dotnetpe(pe_data=exe_data)
     remove_unk_obf_1_junk_loops(dotnet)
     remove_unk_obf_1_string_obfuscation(dotnet)
-    return dotnet.reconstruct_executable()
+    return dotnet.get_exe_data()
 
 
 cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
@@ -525,7 +525,7 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                                                  start_offset,
                                                                                                  end_offset - start_offset)
 
-    return dotnet.reconstruct_executable()
+    return dotnet.get_exe_data()
 
 
 cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=[]):
@@ -832,7 +832,7 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                                                      num_instrs, 4, 'little', signed=True),
                                                  instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
 
-    return dotnet.reconstruct_executable()
+    return dotnet.get_exe_data()
 
 cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj):
     """ A useless method is defined as a method that for instance just pulls all arguments off the stack then does either newobj, callvirt or call then returns
@@ -1172,7 +1172,7 @@ cpdef bytes remove_useless_functions(bytes data) except *:
                                          * b'\x00') + patch
                                 dotnet.patch_instruction(
                                     method, patch, instr.get_instr_offset(), instr.get_instr_size())
-    return dotnet.reconstruct_executable()
+    return dotnet.get_exe_data()
 
 cdef bint has_prefix(bytes type_name):
     """ Does the provided name include a prefix that we set?
@@ -1918,7 +1918,7 @@ cpdef bytes cleanup_names(bytes data,
                                 col_val.set_raw_value(new_index)
             strings_heap.end_append_tx()
             count = 0
-    return dotnet.reconstruct_executable()
+    return dotnet.get_exe_data()
 
 def deobfuscate_method_control_flow(file_data: bytes):
     """ WIP for control flow deobfuscation once I can finish that.
@@ -1954,4 +1954,4 @@ def deobfuscate_method_control_flow(file_data: bytes):
             except Exception as e:
                 print('Error analyzing or recompiling function with RID {}: {}'.format(method.get_rid(), str(e)))
                 raise e
-    return dpe.reconstruct_executable()
+    return dpe.get_exe_data()

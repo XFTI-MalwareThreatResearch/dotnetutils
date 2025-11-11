@@ -43,15 +43,14 @@ cdef class PeFile:
 
     cpdef uint64_t get_physical_by_rva(self, uint64_t rva)
 
-    cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index)
+    cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
 
-    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index)
+    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
 
-    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index)
-
-    cdef void __update_metadata_rvas(self, uint64_t va_addr, int difference, DotNetPeFile dpe)
+    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
 
     cdef int get_sec_index_va(self, uint64_t va_addr)
+
     cdef int get_sec_index_phys(self, uint64_t offset)
 
 cdef class DotNetPeFile:
@@ -63,6 +62,10 @@ cdef class DotNetPeFile:
     cdef PeFile pe
     cdef uint64_t __cor_header_offset
 
+    cpdef void reinit_dpe(self, bint no_processing)
+
+    cpdef void update_streams(self)
+
     cpdef uint64_t get_cor_header_offset(self)
 
     cpdef net_row_objects.MethodDef get_entry_point(self)
@@ -72,8 +75,6 @@ cdef class DotNetPeFile:
     cpdef net_row_objects.TypeRef get_typeref_by_full_name(self, bytes full_name)
 
     cpdef int delete_user_string(self, unsigned int us_index)
-
-    cpdef bytes reconstruct_executable(self) except *
 
     cpdef net_row_objects.TypeDefOrRef get_type_by_full_name(self, bytes type_full_name)
 
