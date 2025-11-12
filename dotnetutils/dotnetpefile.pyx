@@ -542,7 +542,7 @@ cdef class PeFile:
                     # append the stream data
                     patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset + 4]
                     patch_ptr[0] = <int>(size + difference)
-                if target_offset < stream_offset or (passed_userstrings and stream_name != name):
+                if (stream_name is None and target_offset < stream_offset) or (passed_userstrings and stream_name != name):
                     # fix the offset of the rest of the streams
                     patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset]
                     patch_ptr[0] = <int>(offset + difference)
@@ -550,6 +550,10 @@ cdef class PeFile:
                         #If its not in here it could be a phantom heap, ignore.
                         heap_obj = heaps_by_offset[stream_offset]
                         heap_obj.update_offset(<int>(stream_offset + difference))
+
+            if orig_streams_offset <= target_offset < streams_offset:
+                last_difference += difference
+
         if before_streams:
             #if its before streams, we dont want to update the data itself, just our held offsets.
             for heap_obj in heaps_by_offset.values():
@@ -852,7 +856,7 @@ cdef class PeFile:
                     # append the stream data
                     patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset + 4]
                     patch_ptr[0] = <int>(size + difference)
-                if target_offset < stream_offset or (passed_userstrings and stream_name != name):
+                if (stream_name is None and target_offset < stream_offset) or (passed_userstrings and stream_name != name):
                     # fix the offset of the rest of the streams
                     patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset]
                     patch_ptr[0] = <int>(offset + difference)
@@ -860,6 +864,8 @@ cdef class PeFile:
                         #If its not in here it could be a phantom heap, ignore.
                         heap_obj = heaps_by_offset[stream_offset]
                         heap_obj.update_offset(<int>(stream_offset + difference))
+            if orig_streams_offset <= target_offset < streams_offset:
+                last_difference += difference
         
         if before_streams:
             #if its before streams, we dont want to update the data itself, just our held offsets.

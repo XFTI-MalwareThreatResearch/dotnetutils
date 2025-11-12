@@ -65,7 +65,7 @@ cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
             current_offset += 1
         current_offset += (4 - (current_offset % 4))
     #construct the new streamheader.
-    us_size = 1
+    us_size = 0
     new_header_offset = current_offset
     us_offset = stream_offset + stream_size
     new_streamheader = int.to_bytes(us_offset, 4, 'little') + int.to_bytes(us_size, 4, 'little')
@@ -73,28 +73,20 @@ cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     amt_to_align = (4 - ((current_offset + 12) % 4))
     new_streamheader += b'\x00' * amt_to_align
     new_streamheader = int.to_bytes(us_offset + len(new_streamheader), 4, 'little') + new_streamheader[4:]
-    #fix the offsets of streamhaeders
-    current_offset = streams_offset
-    for x in range(number_of_streams):
-        stream_offset = int.from_bytes(exe_data[current_offset:current_offset+4], 'little')
-        new_stream_offset = stream_offset + <int>len(new_streamheader)
-        new_exe_data = new_exe_data[:current_offset] + int.to_bytes(new_stream_offset, 4, 'little') + new_exe_data[current_offset + 4:]
-        current_offset += 8
-        while new_exe_data[current_offset] != 0:
-            current_offset += 1
-        current_offset += (4 - (current_offset % 4))
     va_addr = dotnetpe.get_pe().get_rva_from_offset(new_header_offset)
-    dotnetpe.get_pe().update_va(va_addr, <int>len(new_streamheader), dotnetpe, None, va_addr)
+    dotnetpe.get_pe().update_va(va_addr, <int>len(new_streamheader), dotnetpe, None, va_addr - 1)
     new_exe_data = bytearray(dotnetpe.get_exe_data())
     new_exe_data = new_exe_data[:new_header_offset] + new_streamheader + new_exe_data[new_header_offset:]
+    stream_amt_offset = streams_offset - 2
+    new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
     dotnetpe.set_exe_data(bytes(new_exe_data))
     new_data_offset = us_offset + metadata_offset + <int>len(new_streamheader)
     new_data_va = dotnetpe.get_pe().get_rva_from_offset(new_data_offset)
-    dotnetpe.get_pe().update_va(new_data_va, 1, dotnetpe, b'#US', new_data_va)
+    dotnetpe.get_pe().update_va(new_data_va, 1, dotnetpe, b'#US', new_data_va - 1)
     new_exe_data = bytearray(dotnetpe.get_exe_data())
     new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
-    stream_amt_offset = streams_offset - 2
-    new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
+    dotnetpe.set_exe_data(bytes(new_exe_data))
+    dotnetpe.reinit_dpe(False)
     return bytes(new_exe_data)
 
 cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):
