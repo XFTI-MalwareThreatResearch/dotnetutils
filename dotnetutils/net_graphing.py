@@ -1267,7 +1267,6 @@ class GraphAnalyzer:
                             if instr2.get_opcode() in MATH_OPS:
                                 has_math_op = True
                                 break
-
                         if has_math_op and not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
                             was_anything_changed = True
                             amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
