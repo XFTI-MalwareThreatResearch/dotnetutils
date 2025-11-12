@@ -401,6 +401,11 @@ class FunctionBlock:
                 if new_block and not new_block.has_prev(self):
                     new_block.__previous.append(self)
 
+    def get_nstack(self):
+        result = 0
+        for instr in self.get_instrs():
+            result += instr.get_nstack()
+
     def __str__(self):
         return 'Block at offset {}'.format(hex(self.get_start_offset()))
 
@@ -408,20 +413,21 @@ class FunctionBlock:
         return isinstance(other, FunctionBlock) and self.get_start_offset() == other.get_start_offset()
     
 class FunctionGraph:
-    def __init__(self, method_object, force_instrs=None, init_blocks=True, debug_print=False):
+    def __init__(self, method_object, force_instrs=None, force_exc_blocks=None, init_blocks=True, debug_print=False):
         self.__method_object = method_object
         self.__debug_print = debug_print
         self.__disasm_object = None
         self.__instr_offsets = dict()
         self.__instrs = list()
+        self.__blocks_start = dict()
+
         if force_instrs is None:
             if init_blocks:
                 if not self.__method_object.has_body():
                     raise net_exceptions.InvalidBlockException
                 self.__disasm_object = method_object.disassemble_method()
-                self.__blocks_start = dict()
                 self.__exception_blocks = self.__disasm_object.get_exception_blocks()
-                self.__instrs = self.__disasm_object.get_instrs_as_list()
+                self.__instrs = self.__disasm_object.get_list_of_instrs()
                 for instr in self.__instrs:
                     self.__instr_offsets[instr.get_instr_offset()] = instr
                 self.__handle_try_catch_finally_blocks() # first handle try catch finally since thats a special case.
@@ -438,9 +444,23 @@ class FunctionGraph:
             else:
                 self.__disasm_object = method_object.disassemble_method()
         else:
+            if force_exc_blocks is None:
+                raise net_exceptions.InvalidArgumentsException()
+            self.__exception_blocks = force_exc_blocks
             self.__instrs = force_instrs
             for instr in self.__instrs:
                 self.__instr_offsets[instr.get_instr_offset()] = instr
+            self.__handle_try_catch_finally_blocks() # first handle try catch finally since thats a special case.
+            self.__sort_blocks()
+            if 0 not in self.__blocks_start:
+                self.__root_block = self.__parse_block(0)
+            else:
+                self.__root_block = self.__blocks_start[0]
+
+            self.__sort_blocks()
+
+            for block in self.__blocks_start.values():
+                block.mark_block_finished() #Tell each block that we are done with our initial setup, anything else is a modification.
 
         if self.__disasm_object is None:
             self.__exception_blocks = list()
@@ -594,7 +614,7 @@ class FunctionGraph:
 
     def __parse_block(self, start_offset, max_end_offset=-1, is_try=False, is_catch=False, is_finally=False, is_filter=False, exc_clause=None):
         usable_offset = start_offset
-        x = self.__instr_offsets[start_offset]
+        x = self.__instr_offsets[start_offset].get_instr_index()
         if start_offset in self.__blocks_start:
             blk =  self.__blocks_start[start_offset]
             return blk
@@ -783,6 +803,25 @@ class FunctionGraph:
     
     def blocks(self):
         return self.__blocks_start.values()
+    
+    def __stack_checker(self, block, stack_count, checked):
+
+        curr_count = stack_count
+        for instr in block.get_instrs():
+            needed = instr.get_pstack()
+            if curr_count < needed:
+                print('error on stack at {} {} {}: not enough elements'.format(hex(instr.get_instr_offset()), instr.get_name(), instr.get_argument()))
+                raise Exception()
+            curr_count += instr.get_nstack()
+
+        for nxt in block.get_next():
+            if (block.get_start_offset(), nxt.get_start_offset()) not in checked:
+                checked.append((block.get_start_offset(), nxt.get_start_offset()))
+                self.__stack_checker(nxt, curr_count, checked)
+
+    def stack_checker(self):
+        checked = list()
+        self.__stack_checker(self.__blocks_start[0], 0, checked)
 
     def __print_block(self, block, already_printed, indent=0):
         instrs = block.get_instrs()
@@ -910,6 +949,9 @@ class FunctionGraph:
                 current_offset += len(instr)
                 current_index += 1
         return result
+    
+    def set_exception_blocks(self, exc_blocks):
+        self.__exception_blocks = exc_blocks
 
 class GraphAnalyzer:
     def __init__(self, method_obj: net_row_objects.MethodDefOrRef, func_graph: FunctionGraph):
@@ -1048,8 +1090,10 @@ class GraphAnalyzer:
             emu_obj.run_function()
         except net_exceptions.EmulatorEndExecutionException:
             pass
-        result = emu_obj.get_stack().pop_obj()
-        instrs_result = self.emit_ldc_num(result)
+        instrs_result = list()
+        for x in range(len(emu_obj.get_stack())):
+            result = emu_obj.get_stack().pop_obj()
+            instrs_result = self.emit_ldc_num(result) + instrs_result
         amt_instrs = end_index - start_index
 
         block.remove_instrs(start_index + amt_deleted, end_index + amt_deleted)
@@ -1191,6 +1235,7 @@ class GraphAnalyzer:
                     exc_handler = block.get_exception_handler()
                     if exc_handler == old_handler:
                         block.set_exception_handler(new_handler)
+            self.__graph.set_exception_blocks(new_handlers)
 
     def remove_useless_math(self):
         """ Remove math expressions that compute to a constant value.
@@ -1199,7 +1244,7 @@ class GraphAnalyzer:
         MATH_INSTRS = [Opcodes.Nop, Opcodes.Not, Opcodes.Ldc_I4, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, \
                        Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_S, Opcodes.Ldc_I8, Opcodes.Ldc_R4, Opcodes.Ldc_R8, \
                         Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, \
-                            Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8, Opcodes.Dup, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, \
+                            Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, \
                                 Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
         block: FunctionBlock
         for block in self.__graph.blocks():
@@ -1215,10 +1260,9 @@ class GraphAnalyzer:
                     y = x
                     end_index = y 
                     nstack = 0
-                    if start_index >= 0 and end_index > 0 and (end_index - start_index) > 4:
+                    if start_index >= 0 and end_index > 0 and (end_index - start_index) > 1:
                         if not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
                             amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
-
                     start_index = -1
                     end_index = -1
                 else:
@@ -1233,7 +1277,7 @@ class GraphAnalyzer:
                             y = x
                             end_index = y 
                             nstack = 0
-                            if start_index > 0 and (end_index - start_index) > 3 and not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
+                            if start_index > 0 and (end_index - start_index) > 1 and not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
                                 amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
                             start_index = -1
                             end_index = -1
@@ -1258,17 +1302,15 @@ class MethodRecompiler:
         if len(self.__exception_blocks) != 0:
             use_fat = True
 
-        fgraph = FunctionGraph(None, self.__instrs)
+        fgraph = FunctionGraph(None, self.__instrs, self.__exception_blocks)
         calculated_max_stack = fgraph.calculate_max_stack_size()
         if calculated_max_stack > 8:
             use_fat = True
         result = bytearray()
         if not use_fat:
-            result.append(int.to_bytes((self.__code_size << 2) | 0x2, 1, 'little'))
+            result.extend(int.to_bytes((self.__code_size << 2) | 0x2, 1, 'little'))
             for instr in self.__instrs:
                 result.extend(instr.to_bytes())
-            while len(result) % 4 != 0: 
-                result.append(0)
             return bytes(result)
         else:
             flags = 0x0003
@@ -1285,12 +1327,14 @@ class MethodRecompiler:
             result.extend(int.to_bytes(self.__localvarsigtok, 4, 'little'))
             for instr in self.__instrs:
                 result.extend(instr.to_bytes())
-            while len(result) % 4 != 0: 
-                result.append(0)
+
             if len(self.__exception_blocks) == 0:
                 return bytes(result)
             def calc_int_size(num: int):
                 return (num.bit_length() + 7) // 8
+            
+            while len(result) % 4 != 0: 
+                result.append(0)
             
             use_fat_exceptions = False
 

@@ -60,7 +60,6 @@ cdef class DotNetPeFile:
     cdef net_metadata.MetaDataDirectory metadata_dir
     cdef bytes original_exe_data
     cdef PeFile pe
-    cdef uint64_t __cor_header_offset
 
     cpdef void reinit_dpe(self, bint no_processing)
 

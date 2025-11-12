@@ -347,6 +347,7 @@ cdef class PeFile:
         cdef net_row_objects.ColumnValue cobj = None
         cdef uint64_t target_offset = self.get_offset_from_rva(target_addr)
         cdef dict heaps_by_offset = dict()
+        cdef bint in_table = False
 
         PyObject_GetBuffer(new_exe_data, &new_exe_view, PyBUF_WRITABLE)
         dos_header = <IMAGE_DOS_HEADER*>new_exe_view.buf
@@ -559,27 +560,35 @@ cdef class PeFile:
             for heap_obj in heaps_by_offset.values():
                 heap_obj.update_offset(heap_obj.get_offset() + difference)
         #Let reconstruct executable handle updating heap offsets and sizes internally.
-        PyBuffer_Release(&new_exe_view)
-        if amt_padding != 0 and padding_offset != 0:
-            padding = b'\x00' * amt_padding
-            new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
         tobj = dpe.get_metadata_table('MethodDef')
         if tobj is not None:
             for x in range(1, len(tobj) + 1):
                 mdef_obj = tobj.get(<int>x)
                 cobj = mdef_obj.get_column('RVA')
-                if cobj.get_raw_value() >= target_addr:
-                    if (cobj.get_raw_value() + difference) % 4 != 0:
-                        raise net_exceptions.OperationNotSupportedException()
-                    cobj.set_raw_value(cobj.get_raw_value() + difference)
+                resource_offset = cobj.get_raw_value()
+                if resource_offset == 0:
+                    continue
+                resource_rva = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, resource_offset, va_addr, difference, target_addr)
+                if resource_rva != resource_offset:
+                    in_table = True
+                    cobj.set_raw_value(<unsigned int>resource_rva)
         tobj = dpe.get_metadata_table('FieldRVA')
         if tobj is not None:
             for x in range(1, len(tobj) + 1):
                 rva_obj = tobj.get(<int>x)
                 cobj = rva_obj.get_column('RVA')
-                if cobj.get_raw_value() >= target_addr: 
-                    cobj.set_raw_value(cobj.get_raw_value() + difference)
-        if in_streams and stream_name is not None:
+                resource_offset = cobj.get_raw_value()
+                if resource_offset == 0:
+                    continue
+                resource_rva = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, resource_offset, va_addr, difference, target_addr)
+                if resource_offset != resource_rva:
+                    in_table = True
+                    cobj.set_raw_value(<unsigned int>resource_rva)
+        PyBuffer_Release(&new_exe_view)
+        if amt_padding != 0 and padding_offset != 0:
+            padding = b'\x00' * amt_padding
+            new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
+        if (in_streams and stream_name is not None) or in_table:
             #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
             #One thing thats sort of assumed here is that we are not updating the offset of the metadata heap (otherwise wed have to re initialize metadata header offsets).  I cant really think of a reason to do that though.
             for offset in heaps_by_offset.keys():
@@ -665,6 +674,7 @@ cdef class PeFile:
         cdef net_row_objects.ColumnValue cobj = None
         cdef dict heaps_by_offset = dict()
         cdef uint64_t target_offset = self.get_offset_from_rva(target_addr)
+        cdef bint in_table = False
 
         PyObject_GetBuffer(new_exe_data, &new_exe_view, PyBUF_WRITABLE)
         dos_header = <IMAGE_DOS_HEADER*>new_exe_view.buf
@@ -866,34 +876,41 @@ cdef class PeFile:
                         heap_obj.update_offset(<int>(stream_offset + difference))
             if orig_streams_offset <= target_offset < streams_offset:
                 last_difference += difference
-        
+
         if before_streams:
             #if its before streams, we dont want to update the data itself, just our held offsets.
             for heap_obj in heaps_by_offset.values():
                 heap_obj.update_offset(heap_obj.get_offset() + difference)
-
         #Let reconstruct executable handle updating heap offsets and sizes internally.
-        PyBuffer_Release(&new_exe_view)
-        if amt_padding != 0 and padding_offset != 0:
-            padding = b'\x00' * amt_padding
-            new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
         tobj = dpe.get_metadata_table('MethodDef')
         if tobj is not None:
             for x in range(1, len(tobj) + 1):
                 mdef_obj = tobj.get(<int>x)
                 cobj = mdef_obj.get_column('RVA')
-                if cobj.get_raw_value() >= target_addr:
-                    if (cobj.get_raw_value() + difference) % 4 != 0:
-                        raise net_exceptions.OperationNotSupportedException()
-                    cobj.set_raw_value(cobj.get_raw_value() + difference)
+                resource_offset = cobj.get_raw_value()
+                if resource_offset == 0:
+                    continue
+                resource_rva = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, resource_offset, va_addr, difference, target_addr)
+                if resource_rva != resource_offset:
+                    in_table = True
+                    cobj.set_raw_value(<unsigned int>resource_rva)
         tobj = dpe.get_metadata_table('FieldRVA')
         if tobj is not None:
             for x in range(1, len(tobj) + 1):
                 rva_obj = tobj.get(<int>x)
                 cobj = rva_obj.get_column('RVA')
-                if cobj.get_raw_value() >= target_addr: 
-                    cobj.set_raw_value(cobj.get_raw_value() + difference)
-        if in_streams and stream_name is not None:
+                resource_offset = cobj.get_raw_value()
+                if resource_offset == 0:
+                    continue
+                resource_rva = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, resource_offset, va_addr, difference, target_addr)
+                if resource_offset != resource_rva:
+                    in_table = True
+                    cobj.set_raw_value(<unsigned int>resource_rva)
+        PyBuffer_Release(&new_exe_view)
+        if amt_padding != 0 and padding_offset != 0:
+            padding = b'\x00' * amt_padding
+            new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
+        if (in_streams and stream_name is not None) or in_table:
             #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
             #One thing thats sort of assumed here is that we are not updating the offset of the metadata heap (otherwise wed have to re initialize metadata header offsets).  I cant really think of a reason to do that though.
             for offset in heaps_by_offset.keys():
@@ -913,7 +930,6 @@ cdef class DotNetPeFile:
         file_path (str): The file path of the executable, if set.
         exe_data (bytes): A byte representation of the current exe data.
         pe (PeFile): A PeFile object representing the executable.
-        __cor_header_offset (uint64_t): The offset of the IMAGE_COR20_HEADER
         metadata_dir (MetadataDirectory): A metadata directory object representing the executable's Metadata.
         original_exe_data (bytes): A holder for the unmodified exe data.
         __versioninfo_str (str): Used to hold the version info string obtained by DotNetPeFile.get_product_version().
@@ -963,7 +979,6 @@ cdef class DotNetPeFile:
                 raise net_exceptions.NotADotNetFile
         except IndexError:
             raise net_exceptions.NotADotNetFile
-        self.__cor_header_offset = self.pe.get_offset_from_rva(com_table_directory.VirtualAddress)
         self.original_exe_data = bytes(self.exe_data)
         self.metadata_dir = net_metadata.MetaDataDirectory(self)
         self.__versioninfo_str = None
@@ -977,7 +992,14 @@ cdef class DotNetPeFile:
         Returns:
             uint64_t: The offset of the IMAGE_COR20_HEADER structure.
         """
-        return self.__cor_header_offset
+        cdef IMAGE_DATA_DIRECTORY com_table_directory
+        try:
+            com_table_directory = self.pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
+            if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
+                raise net_exceptions.NotADotNetFile
+        except IndexError:
+            raise net_exceptions.NotADotNetFile
+        return self.pe.get_offset_from_rva(com_table_directory.VirtualAddress)
 
     cpdef bytes get_original_exe_data(self):
         """ Obtain the original exe's data before any patching etc.

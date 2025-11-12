@@ -1188,8 +1188,6 @@ cdef class MethodDef(MethodDefOrRef):
         self.__xrefs = list()
 
     cpdef void set_method_data(self, bytes data):
-        if len(data) % 4 == 0:
-            raise net_exceptions.InvalidArgumentsException()
         if self.get_column('RVA').get_value_as_int() == 0:
             raise net_exceptions.InvalidArgumentsException()
             #TODO: add the ability to add addiitonal methods when they dont already exist.
@@ -1203,17 +1201,12 @@ cdef class MethodDef(MethodDefOrRef):
         cdef int amt_padding = 0
         cdef bytes old_exe_data = self.get_dotnetpe().get_exe_data()
         cdef bytes new_data = None
-        while orig_method_size % 4 != 0:
-            if old_exe_data[file_offset + orig_method_size] != 0:
-                raise net_exceptions.OperationNotSupportedException()
-            orig_method_size += 1 #Make sure the size is padded to ensure we account for that in our difference.
         difference = new_method_size - orig_method_size
         if difference != 0:
-            pe.update_va(rva + orig_method_size, difference, self.get_dotnetpe(), None, rva)
-        else:
-            new_data = self.get_dotnetpe().get_exe_data()
-            new_data = new_data[:file_offset] + data + new_data[file_offset + orig_method_size:]
-            self.get_dotnetpe().set_exe_data(new_data)
+            pe.update_va(rva + orig_method_size, difference, self.get_dotnetpe(), None, rva + 1) #make sure we dont patch out the current method.
+        new_data = self.get_dotnetpe().get_exe_data()
+        new_data = new_data[:file_offset] + data + new_data[file_offset + orig_method_size:]
+        self.get_dotnetpe().set_exe_data(new_data)
 
     cpdef bytes get_name(self):
         """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().

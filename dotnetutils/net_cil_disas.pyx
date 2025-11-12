@@ -727,7 +727,6 @@ cdef class MethodDisassembler:
         """
         cdef int start
         cdef int val
-        cdef net_table_objects.TableObject signature_table
         cdef net_row_objects.RowObject signature_entry
         cdef bytes blob_value
         cdef net_sigs.SignatureReader sig_reader
@@ -764,21 +763,18 @@ cdef class MethodDisassembler:
             if self.header_size != 12:
                 raise net_exceptions.InvalidArgumentsException()
             if self.local_var_sig_tok > 0:
-                signature_table = self.dotnetpe.get_metadata_table('StandAloneSig')
-                if self.local_var_sig_tok & 0x11000000:
-                    try:
-                        self.local_var_sig_tok = net_tokens.get_Signature().decode_token(self.local_var_sig_tok)[1]
-                    except net_exceptions.InvalidTokenException:
-                        self.local_var_sig_tok = 0
                 if self.local_var_sig_tok != 0:
-                    signature_entry = signature_table.get(self.local_var_sig_tok)
-                    if signature_entry:
+                    signature_entry = self.dotnetpe.get_token_value(self.local_var_sig_tok)
+                    if signature_entry is not None and signature_entry.get_table_name() == 'StandAloneSig':
                         blob_value = signature_entry.get_column('Signature').get_value()
                         if blob_value[0] != net_structs.CorCallingConvention.LocalSig:
                             raise net_exceptions.InvalidHeaderException
                         sig_reader = net_sigs.SignatureReader(self.dotnetpe, blob_value)
                         local_sig = sig_reader.read_signature()
                         self.local_types = local_sig.get_local_vars()
+                    else:
+                        #the local var sig token is invalid.
+                        raise net_exceptions.InvalidTokenException()
 
             self.exception_blocks = list()
 
