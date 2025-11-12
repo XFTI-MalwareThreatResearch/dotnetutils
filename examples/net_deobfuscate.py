@@ -45,22 +45,25 @@ def main():
         exit(0)
     elif deob_type == 'dumbmath':
         #Remove useless math expressions.
-        method_rid = int(sys.argv[4], 10)
         dpe = dotnetpefile.DotNetPeFile(pe_data=data)
-        mobj = dpe.get_method_by_rid(method_rid)
-        print('removing useless math from method {}'.format(hex(mobj.get_token())))
-        fgraph = net_graphing.FunctionGraph(mobj)
-        fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
-        fanalyzer.remove_useless_math()
-        fanalyzer.repair_blocks()
-        localvartok = mobj.disassemble_method().get_local_var_sig_token()
-        instrs = fgraph.emit_instructions_as_list()
-        exc_blocks = fgraph.get_exception_blocks()
-        recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
-        data = recompiler.compile_method()
-        mobj.set_method_data(data)
-        fgraph = net_graphing.FunctionGraph(mobj)
-        fgraph.stack_checker()
+        for mobj in dpe.get_metadata_table('MethodDef'):
+            if not mobj.has_body():
+                continue
+            print('checking for useless math from method {}'.format(hex(mobj.get_token())))
+            fgraph = net_graphing.FunctionGraph(mobj)
+            fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+            has_math = fanalyzer.remove_useless_math()
+            if has_math:
+                fanalyzer.repair_blocks()
+                localvartok = mobj.disassemble_method().get_local_var_sig_token()
+                instrs = fgraph.emit_instructions_as_list()
+                exc_blocks = fgraph.get_exception_blocks()
+                recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
+                data = recompiler.compile_method()
+                mobj.set_method_data(data)
+                print('patched method {}'.format(hex(mobj.get_token())))
+            else:
+                print('method {} has no useless math.'.format(hex(mobj.get_token())))
         new_data = dpe.get_exe_data()
 
     elif deob_type == 'printallgraphs':

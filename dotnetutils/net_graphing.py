@@ -805,7 +805,6 @@ class FunctionGraph:
         return self.__blocks_start.values()
     
     def __stack_checker(self, block, stack_count, checked):
-
         curr_count = stack_count
         for instr in block.get_instrs():
             needed = instr.get_pstack()
@@ -960,7 +959,7 @@ class GraphAnalyzer:
         self.__method = method_obj
 
     def __are_additional_instrs_needed(self, block, instrs, start, end):
-        if len(instrs) == 1 or (end - start) < 3:
+        if len(instrs) <= 1:
             raise net_exceptions.InvalidArgumentsException()
         #dont allow single instrs blocks, dont allow only checking one instruction.
         amt_on_stack = 0
@@ -1200,7 +1199,6 @@ class GraphAnalyzer:
                     args.append(argument)
                 instr.setup_arguments_from_argslist(args)
 
-            #TODO: need to repair exception blocks.  Going to have to determine what to do for size and such
             exceptions = self.__graph.get_exception_blocks()
             new_handlers = list()
             for exc in exceptions:
@@ -1246,6 +1244,8 @@ class GraphAnalyzer:
                         Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, \
                             Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, \
                                 Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        was_anything_changed = False
         block: FunctionBlock
         for block in self.__graph.blocks():
             start_index = -1
@@ -1261,7 +1261,15 @@ class GraphAnalyzer:
                     end_index = y 
                     nstack = 0
                     if start_index >= 0 and end_index > 0 and (end_index - start_index) > 1:
-                        if not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
+                        has_math_op = False
+                        for z in range(start_index, end_index):
+                            instr2 = orig_block_instrs[z]
+                            if instr2.get_opcode() in MATH_OPS:
+                                has_math_op = True
+                                break
+
+                        if has_math_op and not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
+                            was_anything_changed = True
                             amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
                     start_index = -1
                     end_index = -1
@@ -1278,10 +1286,19 @@ class GraphAnalyzer:
                             end_index = y 
                             nstack = 0
                             if start_index > 0 and (end_index - start_index) > 1 and not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
-                                amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
+                                has_math_op = False
+                                for z in range(start_index, end_index):
+                                    instr2 = orig_block_instrs[z]
+                                    if instr2.get_opcode() in MATH_OPS:
+                                        has_math_op = True
+                                        break
+                                if has_math_op:
+                                    was_anything_changed = True
+                                    amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
                             start_index = -1
                             end_index = -1
                     nstack += instr.get_nstack()
+        return was_anything_changed
 
 class MethodRecompiler:
 
