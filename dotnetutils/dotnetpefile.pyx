@@ -274,6 +274,122 @@ cdef class PeFile:
         else:
             self.__update_va32(va_addr, difference, dpe, stream_name, target_addr)
 
+    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, uint64_t target_offset):
+        cdef uint64_t metadata_offset = 0
+        cdef uint64_t streams_offset = 0
+        cdef int number_of_streams = 0
+        cdef bytes number_of_streams_bytes = None
+        cdef int length_of_str = 0
+        cdef bint passed_userstrings = False
+        cdef uint64_t orig_streams_offset = 0
+        cdef net_processing.HeapObject heap_obj = None
+        cdef int x = 0
+        cdef uint64_t orig_offset = 0
+        cdef int offset = 0
+        cdef bytearray name = None
+        cdef int size = 0
+        cdef uint64_t stream_offset = 0
+        cdef int * patch_ptr = NULL
+        cdef int last_difference = 0
+        cdef net_table_objects.TableObject tobj = None
+        cdef uint32_t resource_rva = 0
+        cdef bint in_table = False
+        cdef int old_size = 0
+        cdef bytes new_data = None
+        cdef bytes result = None
+        cdef dict heaps_by_offset = dict()
+
+        metadata_offset = self.get_offset_from_rva(dpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
+        streams_offset = metadata_offset + 12
+        number_of_streams = <int>(metadata_offset + 12)
+        number_of_streams_bytes = old_exe_data[number_of_streams:number_of_streams + 4]
+        length_of_str = int.from_bytes(number_of_streams_bytes, 'little')
+        streams_offset += length_of_str + 6
+        number_of_streams = int.from_bytes(old_exe_data[streams_offset:streams_offset + 2], 'little')
+        streams_offset += 2
+        passed_userstrings = False
+        orig_streams_offset = streams_offset
+        for heap_obj in dpe.get_heaps().values():
+            heaps_by_offset[heap_obj.get_offset()] = heap_obj
+        if in_streams and before_streams:
+            raise net_exceptions.InvalidArgumentsException()
+        if in_streams:
+            for x in range(number_of_streams):
+                orig_offset = streams_offset
+                offset = int.from_bytes(old_exe_data[streams_offset:streams_offset + 4], 'little')
+                streams_offset += 4
+                size = int.from_bytes(old_exe_data[streams_offset: streams_offset + 4], 'little')
+                streams_offset += 4
+                name = bytearray()
+                while old_exe_data[streams_offset] != 0:
+                    name += bytes([old_exe_data[streams_offset]])
+                    streams_offset += 1
+                streams_offset += (4 - (streams_offset % 4))
+                stream_offset = metadata_offset + offset
+                if name == stream_name and not passed_userstrings:
+                    passed_userstrings = True
+                    # fix the size of user strings stream
+                    # append the stream data
+                    patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset + 4]
+                    patch_ptr[0] = <int>(size + difference)
+                if (stream_name is None and target_offset < stream_offset) or (passed_userstrings and stream_name != name):
+                    # fix the offset of the rest of the streams
+                    patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset]
+                    patch_ptr[0] = <int>(offset + difference)
+                    if stream_offset in heaps_by_offset:
+                        #If its not in here it could be a phantom heap, ignore.
+                        heap_obj = heaps_by_offset[stream_offset]
+                        heap_obj.update_offset(<int>(stream_offset + difference))
+
+            if orig_streams_offset <= target_offset < streams_offset:
+                last_difference += difference
+
+        if before_streams:
+            #if its before streams, we dont want to update the data itself, just our held offsets.
+            for heap_obj in heaps_by_offset.values():
+                heap_obj.update_offset(heap_obj.get_offset() + difference)
+        #Let reconstruct executable handle updating heap offsets and sizes internally.
+        tobj = dpe.get_metadata_table('MethodDef')
+        if tobj is not None:
+            for x in range(1, len(tobj) + 1):
+                mdef_obj = tobj.get(<int>x)
+                cobj = mdef_obj.get_column('RVA')
+                resource_offset = cobj.get_raw_value()
+                if resource_offset == 0:
+                    continue
+                resource_rva = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, resource_offset, va_addr, difference, target_addr)
+                if resource_rva != resource_offset:
+                    in_table = True
+                    cobj.set_raw_value(<unsigned int>resource_rva)
+        tobj = dpe.get_metadata_table('FieldRVA')
+        if tobj is not None:
+            for x in range(1, len(tobj) + 1):
+                rva_obj = tobj.get(<int>x)
+                cobj = rva_obj.get_column('RVA')
+                resource_offset = cobj.get_raw_value()
+                if resource_offset == 0:
+                    continue
+                resource_rva = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, resource_offset, va_addr, difference, target_addr)
+                if resource_offset != resource_rva:
+                    in_table = True
+                    cobj.set_raw_value(<unsigned int>resource_rva)
+        PyBuffer_Release(&new_exe_view)
+        if amt_padding != 0 and padding_offset != 0:
+            padding = b'\x00' * amt_padding
+            new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
+        if (in_streams and stream_name is not None) or in_table:
+            #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
+            #One thing thats sort of assumed here is that we are not updating the offset of the metadata heap (otherwise wed have to re initialize metadata header offsets).  I cant really think of a reason to do that though.
+            for offset in heaps_by_offset.keys():
+                heap_obj = heaps_by_offset[offset]
+                old_size = heap_obj.get_size()
+                new_data = heap_obj.to_bytes()
+                new_exe_data = new_exe_data[:offset + last_difference] + new_data + new_exe_data[offset + old_size + last_difference:]
+                heap_obj.update_size(<int>len(new_data))
+                last_difference += <int>len(new_data) - old_size
+        result = bytes(new_exe_data)
+        dpe.set_exe_data(result)
+
     cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr):
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
         cdef Py_buffer new_exe_view
@@ -508,98 +624,9 @@ cdef class PeFile:
                     resource_rva = resource_offset
                     resource_offset = self.get_offset_from_rva(resource_offset)
                     net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, self, new_exe_view, va_addr, difference, target_addr)
-                    
-        # now process .NET heaps.
-        metadata_offset = self.get_offset_from_rva(dpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
-        streams_offset = metadata_offset + 12
-        number_of_streams = <int>(metadata_offset + 12)
-        number_of_streams_bytes = old_exe_data[number_of_streams:number_of_streams + 4]
-        length_of_str = int.from_bytes(number_of_streams_bytes, 'little')
-        streams_offset += length_of_str + 6
-        number_of_streams = int.from_bytes(old_exe_data[streams_offset:streams_offset + 2], 'little')
-        streams_offset += 2
-        passed_userstrings = False
-        orig_streams_offset = streams_offset
-        for heap_obj in dpe.get_heaps().values():
-            heaps_by_offset[heap_obj.get_offset()] = heap_obj
-        if in_streams and before_streams:
-            raise net_exceptions.InvalidArgumentsException()
-        if in_streams:
-            for x in range(number_of_streams):
-                orig_offset = streams_offset
-                offset = int.from_bytes(old_exe_data[streams_offset:streams_offset + 4], 'little')
-                streams_offset += 4
-                size = int.from_bytes(old_exe_data[streams_offset: streams_offset + 4], 'little')
-                streams_offset += 4
-                name = bytearray()
-                while old_exe_data[streams_offset] != 0:
-                    name += bytes([old_exe_data[streams_offset]])
-                    streams_offset += 1
-                streams_offset += (4 - (streams_offset % 4))
-                stream_offset = metadata_offset + offset
-                if name == stream_name and not passed_userstrings:
-                    passed_userstrings = True
-                    # fix the size of user strings stream
-                    # append the stream data
-                    patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset + 4]
-                    patch_ptr[0] = <int>(size + difference)
-                if (stream_name is None and target_offset < stream_offset) or (passed_userstrings and stream_name != name):
-                    # fix the offset of the rest of the streams
-                    patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset]
-                    patch_ptr[0] = <int>(offset + difference)
-                    if stream_offset in heaps_by_offset:
-                        #If its not in here it could be a phantom heap, ignore.
-                        heap_obj = heaps_by_offset[stream_offset]
-                        heap_obj.update_offset(<int>(stream_offset + difference))
-
-            if orig_streams_offset <= target_offset < streams_offset:
-                last_difference += difference
-
-        if before_streams:
-            #if its before streams, we dont want to update the data itself, just our held offsets.
-            for heap_obj in heaps_by_offset.values():
-                heap_obj.update_offset(heap_obj.get_offset() + difference)
-        #Let reconstruct executable handle updating heap offsets and sizes internally.
-        tobj = dpe.get_metadata_table('MethodDef')
-        if tobj is not None:
-            for x in range(1, len(tobj) + 1):
-                mdef_obj = tobj.get(<int>x)
-                cobj = mdef_obj.get_column('RVA')
-                resource_offset = cobj.get_raw_value()
-                if resource_offset == 0:
-                    continue
-                resource_rva = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, resource_offset, va_addr, difference, target_addr)
-                if resource_rva != resource_offset:
-                    in_table = True
-                    cobj.set_raw_value(<unsigned int>resource_rva)
-        tobj = dpe.get_metadata_table('FieldRVA')
-        if tobj is not None:
-            for x in range(1, len(tobj) + 1):
-                rva_obj = tobj.get(<int>x)
-                cobj = rva_obj.get_column('RVA')
-                resource_offset = cobj.get_raw_value()
-                if resource_offset == 0:
-                    continue
-                resource_rva = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, resource_offset, va_addr, difference, target_addr)
-                if resource_offset != resource_rva:
-                    in_table = True
-                    cobj.set_raw_value(<unsigned int>resource_rva)
-        PyBuffer_Release(&new_exe_view)
-        if amt_padding != 0 and padding_offset != 0:
-            padding = b'\x00' * amt_padding
-            new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
-        if (in_streams and stream_name is not None) or in_table:
-            #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
-            #One thing thats sort of assumed here is that we are not updating the offset of the metadata heap (otherwise wed have to re initialize metadata header offsets).  I cant really think of a reason to do that though.
-            for offset in heaps_by_offset.keys():
-                heap_obj = heaps_by_offset[offset]
-                old_size = heap_obj.get_size()
-                new_data = heap_obj.to_bytes()
-                new_exe_data = new_exe_data[:offset + last_difference] + new_data + new_exe_data[offset + old_size + last_difference:]
-                heap_obj.update_size(<int>len(new_data))
-                last_difference += <int>len(new_data) - old_size
-        result = bytes(new_exe_data)
-        dpe.set_exe_data(result)
+        
+        #
+        self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_offset)
 
     cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr):
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
