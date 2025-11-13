@@ -13,15 +13,11 @@ from cpython.bytes cimport PyBytes_FromStringAndSize
 
 from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_SCN_CNT_CODE, IMAGE_OPTIONAL_HEADER32, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_ORDINAL_FLAG64, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_OPTIONAL_HEADER64, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_DATA_DIRECTORY, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_COR20_HEADER, IMAGE_BASE_RELOCATION, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64, IMAGE_DEBUG_DIRECTORY
 
-cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
+cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     """ Inserts a blank user strings stream (#US) into the dotnetpe.
-        After running this method, you should discard the old DotNetPeFile object.
 
     Args:
         dotnetpe (dotnetpefile.DotNetPeFile): the dotnetpe to add to.
-    
-    Returns:
-        bytes: a bytes representation of the new dotnetpe, with a blank #US stream appended.
     """
     cdef bytearray new_exe_data
     cdef uint64_t metadata_offset
@@ -87,7 +83,6 @@ cpdef bytes insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
     dotnetpe.set_exe_data(bytes(new_exe_data))
     dotnetpe.reinit_dpe(False)
-    return bytes(new_exe_data)
 
 cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):
     """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.
