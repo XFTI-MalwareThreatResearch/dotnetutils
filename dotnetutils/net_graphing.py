@@ -184,8 +184,7 @@ class FunctionBlock:
         return self.__instrs[index]
 
     def replace_instr(self, index, new_instr):
-        del self.__instrs[index]
-        self.__instrs.insert(index, new_instr)
+        self.__instrs[index] = new_instr
 
     def insert_instr(self, index, instr):
         self.__instrs.insert(index, instr)
@@ -240,9 +239,12 @@ class FunctionBlock:
 
     def remove_instrs_after_index(self, index):
         self.__instrs = self.__instrs[:index + 1]
+
+    def replace_instr(self, index, instr):
+        self.__instrs[index] = instr
     
     def remove_instrs(self, start, end):
-        if not 0 <= start < len(self.__instrs) or not 0 <= end < len(self.__instrs) or start > end:
+        if not 0 <= start < len(self.__instrs) or not 0 <= end <= len(self.__instrs) or start > end:
             raise net_exceptions.InvalidArgumentsException()
         del self.__instrs[start:end]
 
@@ -289,6 +291,8 @@ class FunctionBlock:
         self.__previous.remove(prev)
 
     def get_last_instr(self):
+        if len(self.__instrs) == 0:
+            return None
         return self.get_instrs()[-1]
 
     def has_offset(self, offset):
@@ -299,6 +303,28 @@ class FunctionBlock:
             if instr.get_instr_offset() == offset:
                 return True
         return False
+    
+    def merge_block(self, block):
+        #merge a block with another.
+        last_instr = self.get_last_instr()
+        if last_instr is None:
+            last_instr_offset = self.__start_offset
+            last_instr_size = 0
+            last_instr_index = 0
+        else:
+            last_instr_offset = last_instr.get_instr_offset()
+            last_instr_size = len(last_instr)
+            last_instr_index = last_instr.get_instr_index()
+            
+        new_offset = last_instr_offset + last_instr_size
+        new_index = last_instr_index
+        new_length = self.get_original_length()
+        for instr in block.get_next():
+            instr.setup_instr_offset(new_offset, new_index)
+            new_offset += len(instr)
+            new_index += 1
+            new_length += len(instr)
+        self.__original_length = new_length
 
     def validate_block(self):
         last_instr = self.get_last_instr()
@@ -464,6 +490,9 @@ class FunctionGraph:
 
         if self.__disasm_object is None:
             self.__exception_blocks = list()
+    
+    def register_block(self, offset, block):
+        self.__blocks_start[offset] = block
 
     def update_exception_blocks(self, blocks):
         self.__exception_blocks = blocks
@@ -787,7 +816,7 @@ class FunctionGraph:
             for nxt in block.get_next():
                 print('Next: {}'.format(hex(nxt.get_start_offset())))
 
-    def update_ofsets(self):
+    def update_offsets(self):
         blocks = dict(self.__blocks_start)
         self.__blocks_start.clear()
         for offset, block in blocks.items():
@@ -797,6 +826,9 @@ class FunctionGraph:
         for offset, block in blocks.items():
             for instr in block.get_instrs():
                 self.__instr_offsets[instr.get_instr_offset()] = instr
+    
+    def unregister_block(self, offset):
+        del self.__blocks_start[offset]
 
     def get_block_offsets(self):
         return self.__blocks_start
@@ -994,7 +1026,6 @@ class GraphAnalyzer:
             instr_one.setup_instr_size(5)
         return instr_one
 
-
     def emit_ldc_num(self, number):
         instrs = list()
         use_ldc_i4 = False
@@ -1099,7 +1130,7 @@ class GraphAnalyzer:
         for x in range(len(instrs_result)):
             block.insert_instr(start_index + x + amt_deleted, instrs_result[x])
         return len(instrs_result) - amt_instrs
-    
+                            
     def repair_blocks(self):
         #repair the relations between blocks and such
         original_blocks = dict()
@@ -1175,7 +1206,7 @@ class GraphAnalyzer:
             block.update_size(current_offset - start_offset)
             block.update_start_offset(block.get_new_offset(), block.get_new_index())
 
-        self.__graph.update_ofsets()
+        self.__graph.update_offsets()
 
         #first pass makes sure that block and instruction offsets are initialized.
         #second pass is for adjusting branches

@@ -52,6 +52,7 @@ def main():
             print('checking for useless math from method {}'.format(hex(mobj.get_token())))
             fgraph = net_graphing.FunctionGraph(mobj)
             fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+            fanalyzer.repair_blocks()
             has_math = fanalyzer.remove_useless_math()
             if has_math:
                 fanalyzer.repair_blocks()

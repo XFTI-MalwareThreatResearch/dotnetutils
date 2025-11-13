@@ -4,14 +4,14 @@
 
 import os
 import hashlib
-from dotnetutils import net_exceptions
+from dotnetutils import net_exceptions, net_graphing
 from dotnetutils cimport net_structs
 from dotnetutils cimport net_sigs
 from dotnetutils cimport net_utils
 from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
-from dotnetutils cimport net_processing
+from dotnetutils cimport net_processing, net_opcodes
 from typing import Union
 
 cdef class RowObject:
@@ -1186,6 +1186,121 @@ cdef class MethodDef(MethodDefOrRef):
         self.__current_method_hash = None
         self.__has_invalid_signature = False
         self.__xrefs = list()
+        self.__graph = None
+        self.__was_something_changed = False
+
+    cpdef bint replace_instruction(self, unsigned int offset, net_cil_disas.Instruction instr):
+        return self.remove_instruction(offset) and self.add_instruction(offset, instr)
+
+    cpdef bint add_instruction(self, unsigned int offset, net_cil_disas.Instruction instr):
+        cdef object block = None
+        cdef net_cil_disas.Instruction insn = None
+        cdef net_cil_disas.Instruction target_instr = None
+        cdef object next_block = None
+        cdef unsigned int target = 0
+        if self.__graph is None:
+            return False
+
+        block = self.__graph.get_block_by_offset(offset)
+        if block is None:
+            return False
+        for insn in block.get_instrs():
+            if insn.get_instr_offset() == offset:
+                target_instr = insn
+                break
+        if target_instr is None:
+            return False
+        if instr.is_branch() or instr.is_absolute_jmp():
+            next_block = block.split_block(offset)
+            self.__graph.register_block(offset, next_block)
+
+            if instr.get_opcode() == net_opcodes.Opcodes.Switch:
+                instr.setup_instr_offset(offset, target_instr.get_instr_index())
+                for target in instr.get_arguments():
+                    block.add_next(self.__graph.get_block_by_offset(target))
+            else:
+                if instr.is_branch():
+                    target = offset + <int>len(instr) + instr.get_argument()
+                    block.add_next(self.__graph.get_block_by_offset(target))    
+                else:
+                    block.remove_next(next_block)
+                    target = offset + <int>len(instr) + instr.get_argument()
+                    block.add_next(self.__graph.get_block_by_offset(target))
+        instr.setup_instr_offset(offset, target_instr.get_instr_index())
+        block.insert_instr(target_instr.get_instr_index(), instr)
+        self.__was_something_changed = True
+        return True
+
+    cpdef bint remove_instruction(self, unsigned int offset):
+        cdef object block = None
+        cdef net_cil_disas.Instruction instr = None
+        cdef net_cil_disas.Instruction target_instr = None
+        cdef object next_block = None
+        cdef unsigned int index = 0
+        cdef unsigned int target = 0
+        if self.__graph is None:
+            return False
+
+        block = self.__graph.get_block_by_offset(offset)
+        if block is None:
+            return False
+        for instr in block.get_instrs():
+            if instr.get_instr_offset() == offset:
+                target_instr = instr
+                break
+        if target_instr is None:
+            return False
+        if target_instr.is_branch() or target_instr.is_absolute_jmp():
+            if target_instr.get_opcode() == net_opcodes.Opcodes.Switch:
+                for target in target_instr.get_arguments():
+                    block.remove_next(self.__graph.get_block_by_offset(target))
+            else:
+                if target_instr.is_branch():
+                    target = target_instr.get_instr_offset() + <int>len(instr)
+                    block.remove_next(self.__graph.get_block_by_offset(target))
+                    target = target_instr.get_argument() + <int>len(target_instr) + offset
+                    block.remove_next(self.__graph.get_block_by_offset(target))
+                else:
+                    target = target_instr.get_instr_offset() + <int>len(instr) + target_instr.get_argument()
+                    block.remove_next(self.__graph.get_block_by_offset(target))
+        index = target_instr.get_instr_index()
+        block.remove_instrs(index, index + 1) #TODO This wont work - need to fix these methods.
+        self.__was_something_changed = True
+        return True
+
+    cpdef bint finish_recompile(self):
+        if self.__graph is None:
+            return False
+
+        if not self.__was_something_changed:
+            self.__graph = None
+            return True #if nothings been edited, dont do anything.
+        cdef list instrs = None
+        cdef list exc_blocks = None
+        cdef int localvartok = self.disassemble_method().get_local_var_sig_token()
+        cdef object fanalyzer = net_graphing.GraphAnalyzer(self, self.__graph)
+        cdef object recompiler = None
+        cdef bytes data = None
+        fanalyzer.repair_blocks()
+        instrs = self.__graph.emit_instructions_as_list()
+        exc_blocks = self.__graph.get_exception_blocks()
+        recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
+        data = recompiler.compile_method()
+        self.__was_something_changed = False
+        self.__graph = None
+        if data is None:
+            return False
+        self.set_method_data(data)
+        return True
+
+    cpdef object get_recompile_graph(self):
+        return self.__graph
+
+    cpdef bint begin_recompile(self):
+        if not self.has_body():
+            return False
+        self.__graph = net_graphing.FunctionGraph(self)
+        return True
 
     cpdef void set_method_data(self, bytes data):
         if self.get_column('RVA').get_value_as_int() == 0:
