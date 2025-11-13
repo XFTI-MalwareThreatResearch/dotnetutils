@@ -931,8 +931,9 @@ cdef class DotNetPeFile:
         """
         self.get_heap('#Strings').append_item(string.encode('utf-8'))
 
-    cdef void set_exe_data(self, bytes exe_data):
+    cpdef void set_exe_data(self, bytes exe_data):
         """ Used internally to update the exe_data attribute as well as the PeFile.
+            Can be used externally but you MUST update call update_va, etc etc.
 
         Args:
             exe_data (bytes): The new exe's bytes.

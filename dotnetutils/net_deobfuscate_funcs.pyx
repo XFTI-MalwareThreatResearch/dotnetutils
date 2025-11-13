@@ -281,24 +281,18 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
                         dotnet.patch_instruction(method_obj, ldstr_instr, instr.get_instr_offset(), total_len)
 
 
-cpdef bytes remove_unk_obf_1_obfuscation(bytes exe_data):
+cpdef void remove_unk_obf_1_obfuscation(dotnetpefile.DotNetPeFile dotnet):
     """Temporary method to remove more obfuscation in a sample with hash e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
     Once its determined if the sample is actually .NET Reactor or something else it should be moved to a parser.
 
     Args:
-        exe_data (bytes): A byte representation of the exe to deobfuscate.
+        dotnet (dotnetpefile.DotNetPeFile): The dotnet file to deobfuscate.
     
-    Returns:
-        bytes: The new exe data.
     """
-    cdef dotnetpefile.DotNetPeFile dotnet
-    dotnet = dotnetpefile.try_get_dotnetpe(pe_data=exe_data)
     remove_unk_obf_1_junk_loops(dotnet)
     remove_unk_obf_1_string_obfuscation(dotnet)
-    return dotnet.get_exe_data()
 
-
-cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
+cpdef void remove_useless_bytearray_conditionals(dotnetpefile.DotNetPeFile dotnet):
     """
     Something seen in possible DotNetReactor samples with hash
     e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb
@@ -330,12 +324,8 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
         /* 0x00001846 2DAF         */ IL_0052: brtrue.s  IL_0003
 
     Args:
-        exe_data (bytes): The byte representation of exe to deobfuscate.
-
-    Returns:
-        bytes: The new exe data.
+        dotnet (dotnetpefile.DotNetPeFile): the dotnet file to deobfuscate.
     """
-    cdef dotnetpefile.DotNetPeFile dotnet
     cdef list initialize_arrays
     cdef net_row_objects.MemberRef initialize_array
     cdef unsigned long method_rid
@@ -354,14 +344,13 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
     cdef bytes nop_buffer
     cdef int br_arg_length
     cdef int br_opcode
-    dotnet = dotnetpefile.try_get_dotnetpe(pe_data=exe_data)
     if not dotnet:
-        return None
+        return
 
     initialize_arrays = dotnet.get_methods_by_full_name(
         b'System.Runtime.CompilerServices.RuntimeHelpers.InitializeArray')
     if len(initialize_arrays) != 1:
-        return None
+        return
 
     initialize_array = initialize_arrays[0]
     for method_rid, xref_offset in initialize_array.get_xrefs():
@@ -525,22 +514,16 @@ cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data):
                                                                                                  start_offset,
                                                                                                  end_offset - start_offset)
 
-    return dotnet.get_exe_data()
-
-
-cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=[]):
+cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list target_method_rids=[]):
     """Removes conditionals that will either always be true or always false
     currently handles the following cases:
     brtrue.s, brfalse.s, brtrue, brfalse: conditionals like if (6 != 0)
     
     Args:
-        exe_data (bytes): The exe data to deobfuscate.
+        dotnet (dotnetpefile.DotNetPeFile): The dotnet exe to deobfuscate.
         target_method_rids (list[int]): The target rids to deobfuscate.  If empty, it will deobfuscate the whole executable.
 
-    Returns:
-        bytes: A byte representation of the deobfuscated executable.
     """
-    cdef dotnetpefile.DotNetPeFile dotnet
     cdef net_row_objects.MethodDef method_obj
     cdef net_cil_disas.MethodDisassembler disas_obj
     cdef long x
@@ -554,7 +537,6 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
     cdef net_table_objects.MethodDefTable methods
     cdef bint check_target_methods = len(target_method_rids) != 0
 
-    dotnet = dotnetpefile.DotNetPeFile(pe_data=exe_data)
     methods = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
     for y in range(len(methods)):
         method_obj = <net_row_objects.MethodDef>methods.get(y + 1)
@@ -832,8 +814,6 @@ cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=
                                                      num_instrs, 4, 'little', signed=True),
                                                  instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
 
-    return dotnet.get_exe_data()
-
 cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj):
     """ A useless method is defined as a method that for instance just pulls all arguments off the stack then does either newobj, callvirt or call then returns
     
@@ -1060,17 +1040,13 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
                 return 1
     return 0
 
-cpdef bytes remove_useless_functions(bytes data) except *:
+cpdef void remove_useless_functions(dotnetpefile.DotNetPeFile dotnet) except *:
     """ Removes functions that simply call another function with the same arguments.  Used heavily in confuserex.
 
     Args:
-        data (bytes): The executable data to deobfuscate.
-
-    Returns:
-        bytes: the deobfuscated executable.
+        dotnet (dotnetpefile.DotNetPeFile): The executable to deobfuscate.
     """
     cdef dict useless_methods
-    cdef dotnetpefile.DotNetPeFile dotnet
     cdef net_row_objects.MethodDef method
     cdef bytes data2
     cdef int u_rid
@@ -1094,9 +1070,12 @@ cpdef bytes remove_useless_functions(bytes data) except *:
     cdef list useless_xrefs
     cdef tuple xref_info    
     useless_methods = dict()  # dictionary of useless method rids and the instructions to replace them with
-    dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     method_table = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
+    if method_table is None:
+        return
     memberref_table = <net_table_objects.MemberRefTable>dotnet.get_metadata_table('MemberRef')
+    if memberref_table is None:
+        return
     for x in range(1, len(method_table) + 1):
         method = <net_row_objects.MethodDef>method_table.get(x)
         if method.has_body() and not method.is_static_constructor():
@@ -1172,7 +1151,6 @@ cpdef bytes remove_useless_functions(bytes data) except *:
                                          * b'\x00') + patch
                                 dotnet.patch_instruction(
                                     method, patch, instr.get_instr_offset(), instr.get_instr_size())
-    return dotnet.get_exe_data()
 
 cdef bint has_prefix(bytes type_name):
     """ Does the provided name include a prefix that we set?
@@ -1458,7 +1436,7 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
         find_method_chains(methodimpl, base_type, ptr, inst_sigs, override_chains, sealed_slots)
 
 
-cpdef bytes cleanup_names(bytes data,
+cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
                   bint change_namespaces=True,
                   bint change_method_names=True,
                   bint change_param_names=True,
@@ -1475,7 +1453,7 @@ cpdef bytes cleanup_names(bytes data,
     This function will recover what it can, but for the most part only imported functions can be changed to original names.
     Additionally this function now supports inheritence and can be used on more complex binaries.
     Args:
-        data (bytes): The byte executable to deobfuscate.
+        dotnet (dotnetpefile.DotNetPeFile): The dotnet executable to deobfuscate.
         change_namespaces (bool): Change namespace names, defaults to true.
         change_method_names (bool): Change method names, defaults to true.
         change_param_names (bool): Change GenericParam and Param names, defaults to true.
@@ -1487,14 +1465,10 @@ cpdef bytes cleanup_names(bytes data,
         change_import_names (bool): Change names of imported methods from C dlls to proper names.  Defaults to true.
         change_events (bool): Change Event names, defaults to true.
 
-    Returns:
-        bytes: the deobfuscated executable data.
-
     Raises:
         net_exceptions.InvalidArgumentsException: If the data is None or invalid, or doesnt have a #Strings heap.
 
     """
-    cdef dotnetpefile.DotNetPeFile dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     cdef net_processing.StringHeapObject strings_heap = None
     cdef Py_ssize_t x = 0
     cdef net_row_objects.RowObject row_obj = None
@@ -1918,40 +1892,3 @@ cpdef bytes cleanup_names(bytes data,
                                 col_val.set_raw_value(new_index)
             strings_heap.end_append_tx()
             count = 0
-    return dotnet.get_exe_data()
-
-def deobfuscate_method_control_flow(file_data: bytes):
-    """ WIP for control flow deobfuscation once I can finish that.
-
-    Args:
-        file_data (bytes): Exe data to deobfuscate.
-    
-    Returns:
-        bytes: The deobfuscated exe data.
-    """
-    dpe = dotnetpefile.DotNetPeFile(pe_data=file_data)
-    method: net_row_objects.MethodDef
-    for method in dpe.get_metadata_table('MethodDef'):
-        if method.has_body():
-            disasm_obj = method.disassemble_method()
-            if method.get_rid() != 55:
-                continue
-            print('Checking method with RID {} {} {}'.format(method.get_rid(), hex(method.get_token()), method.get_full_name()))
-            try:
-                fgraph = net_graphing.FunctionGraph(method, debug_print=True)
-                for offset in fgraph.get_block_offsets():
-                    print('Block at offset {}'.format(hex(offset)))
-                """new_graph = fgraph.analyze()
-                if new_graph:
-                    mrec = net_graphing.GraphRecompiler(method, new_graph)
-                    disasm_obj = method.disassemble_method()
-                    original_size = disasm_obj.header_size + disasm_obj.code_size
-                    new_method_bytes = mrec.recompile_graph()
-                    if len(new_method_bytes) < original_size:
-                        new_method_bytes += (b'\x00' * (original_size - len(new_method_bytes)))
-                    method_offset = dpe.pe.get_offset_from_rva(method['RVA'].get_value())
-                    dpe.exe_data = dpe.exe_data[:method_offset] + new_method_bytes + dpe.exe_data[method_offset + original_size:]"""
-            except Exception as e:
-                print('Error analyzing or recompiling function with RID {}: {}'.format(method.get_rid(), str(e)))
-                raise e
-    return dpe.get_exe_data()

@@ -121,7 +121,7 @@ cdef class DotNetPeFile:
 
     cpdef PeFile get_pe(self)
 
-    cdef void set_exe_data(self, bytes exe_data)
+    cpdef void set_exe_data(self, bytes exe_data)
 
     cpdef void add_string(self, str string) except *
 
