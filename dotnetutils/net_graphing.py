@@ -1,15 +1,25 @@
 from dotnetutils import net_cil_disas, net_emulator, net_cil_disas, net_structs, net_opcodes, net_row_objects, net_exceptions, net_emu_types
 from dotnetutils.net_opcodes import Opcodes
-import struct
 
 """
-This file is just something ive been working on in spare time
-Adding function graphing would unlock a ton of features such as control flow deobfuscation and better method patching. 
-The graphing part for the most part works, its the recompiling and analyzing that im working on
+This file is meant to eventually be a grapher and maybe a recompiler + analyzer for method code.
+Currently the graphing functionality actually works pretty well.
+So far using the graphing functionality I managed to implement a max stack size calculator, which is used for patching methods
+Additionally, I was able to implement a math instruction compressor - useful for studying Babel.NET.
+Currently working out some of the issues with instruction patching, control flow deobfuscation and stuff so this file isnt really ready for use.
+This file will be cythonized once complete.  Its also possible that I may split up the classes into separate files.
+Methods and such may change within this file as I continue working on it.
 """
 
 class FunctionBlock:
     def __init__(self, method_object, disasm_object, graph):
+        """ Setup a new FunctionBlock
+        
+        Args:
+            method_object (net_row_object.MethodDef): The method object the block belongs to.
+            disasm_object (net_row_objects.MethodDisassembler): The disassembler object associated with the method (can be None for patching.)
+            graph: (FunctionGraph): The graph associated with the block.
+        """
         self.__method_object = method_object
         self.__disasm_object = disasm_object
         self.__graph = graph
@@ -38,41 +48,108 @@ class FunctionBlock:
         self.__new_index = -1
 
     def get_start_index(self):
+        """ Obtain the index of the first instruction within the block relative to index 0 of the method.
+
+        Returns:
+            unsigned int: The start index of the block
+        """
         return self.__start_index
     
     def update_start_offset(self, start_offset, start_index):
+        """ Updates the stored offset and index for the block.
+
+        Args:
+            start_offset (unsigned int): The new start offset.
+            start_index (unsigned int): The new start index.
+        """
         self.__start_offset = start_offset
         self.__start_index = start_index
 
     def setup_new_block_location(self, new_offset, new_index):
+        """ Updates the stored new offset and index for the block.
+        
+            Likely to be removed.
+
+        Args:
+            start_offset (unsigned int): The new start offset.
+            start_index (unsigned int): The new start index.
+        """
         self.__new_offset = new_offset
         self.__new_index = new_index
 
     def update_size(self, new_size):
+        """ Update the stored byte size of the block.
+
+        Args:
+            new_size (unsigned int): The new byte size of the block.
+        """
         self.__original_length = new_size 
 
     def get_new_offset(self):
+        """ Obtains the stored value for the new offset after changes.
+            Likely to be removed.
+        
+        Returns:
+            unsigned int: The stored value for the new offset after changes.
+        """
         return self.__new_offset
     
     def get_new_index(self):
+        """ Obtains the stored value for the new index after changes.
+            Likely to be removed.
+        
+        Returns:
+            unsigned int: The stored value for the new index after changes.
+        """
         return self.__new_index
 
     def get_exception_handler(self):
+        """ Obtains a single exception handler associated with a block.
+            see net_cil_disas for result format.
+        
+        Returns:
+            list: An exception handler associated with the block.
+        """
         return self.__exception_handler
     
     def set_exception_handler(self, exception_handler):
+        """ Sets the block's exception handler.
+
+        Args:
+            exception_handler (list): The exception handler to set.
+        """
         self.__exception_handler = exception_handler
 
     def set_filter_block_offset(self, offset):
+        """ Sets the offset of the filter handler associated with the block.
+
+        Args:
+            offset (unsigned int): The offset of a filter clause holding the block.
+        """
         self.__filter_block_offset = offset
 
     def set_try_block_offset(self, offset):
+        """ Sets the offset of the try handler associated with the block.
+
+        Args:
+            offset (unsigned int): The offset of a try clause holding the block.
+        """
         self.__try_block_offset = offset
 
     def set_catch_block_offset(self, offset):
+        """ Sets the offset of the catch handler associated with the block.
+
+        Args:
+            offset (unsigned int): The offset of a catch clause holding the block.
+        """
         self.__catch_block_offset = offset
 
     def set_finally_block_offset(self, offset):
+        """ Sets the offset of the finally handler associated with the block.
+
+        Args:
+            offset (unsigned int): The offset of a finally clause holding the block.
+        """
         self.__finally_block_offset = offset
 
     def get_try_block_offset(self):

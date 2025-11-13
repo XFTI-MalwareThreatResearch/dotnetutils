@@ -8,7 +8,6 @@ import traceback
 from dotnetutils.net_structs import DotNetResourceSet
 from dotnetutils import net_exceptions
 from logging import getLogger
-from ctypes import sizeof
 
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_row_objects, net_table_objects, net_patch
@@ -275,6 +274,22 @@ cdef class PeFile:
             self.__update_va32(va_addr, difference, dpe, stream_name, target_addr)
 
     cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding):
+        """ Handles the .NET Portions of patching.  Checks over the metadata tables, rvas etc.
+
+        Args:
+            va_addr (uint64_t):  The va_addr where the changes occur.
+            difference (int): The difference in the binary once the changes are complete.
+            dpe (DotNetPeFile): The dotnetpe instance to modify
+            stream_name (bytes): stream name that youre editing, if applicable.  can be None
+            target_addr (uint64_t): An address within the block of data that you are attempting to modify.
+            in_streams (bint): Whether or not the target is within the metadata directory.
+            before_streams (bint): Whether or not the target is before the metadata directory.
+            new_exe_data (bytearray): The current exe data with all the prior updates.
+            old_exe_data (bytearray): The old exe data.
+            new_exe_view (Py_buffer): A writable view to new_exe_data.  Will be released by this function.
+            padding_offset (int): offset of section padding.
+            amt_padding (int): Amt to pad.
+        """
         cdef uint64_t metadata_offset = 0
         cdef uint64_t streams_offset = 0
         cdef int number_of_streams = 0

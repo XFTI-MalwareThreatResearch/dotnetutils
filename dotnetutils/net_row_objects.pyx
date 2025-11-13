@@ -1190,9 +1190,33 @@ cdef class MethodDef(MethodDefOrRef):
         self.__was_something_changed = False
 
     cpdef bint replace_instruction(self, unsigned int offset, net_cil_disas.Instruction instr):
+        """ Replaces an instruction within a method with another instruction.
+            begin_recompile() must be called before calling this method.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Args:
+            offset (unsigned int): The offset within the ORIGINAL method to replace.
+            instr (net_cil_disas.Instruction): The instruction to replace it with.
+        Returns:
+            bint: True if successful, False otherwise.
+        """
         return self.remove_instruction(offset) and self.add_instruction(offset, instr)
 
     cpdef bint add_instruction(self, unsigned int offset, net_cil_disas.Instruction instr):
+        """ adds an instruction to a method's code.
+            begin_recompile() must be called before calling this method.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Args:
+            offset (unsigned int): The offset within the ORIGINAL method to add.
+            instr (net_cil_disas.Instruction): The instruction to add.
+        Returns:
+            bint: True if successful, False otherwise.
+        """
         cdef object block = None
         cdef net_cil_disas.Instruction insn = None
         cdef net_cil_disas.Instruction target_instr = None
@@ -1232,6 +1256,17 @@ cdef class MethodDef(MethodDefOrRef):
         return True
 
     cpdef bint remove_instruction(self, unsigned int offset):
+        """ Removes an instruction from a method's code.
+            begin_recompile() must be called before calling this method.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Args:
+            offset (unsigned int): The offset within the ORIGINAL method to remove.
+        Returns:
+            bint: True if successful, False otherwise.
+        """
         cdef object block = None
         cdef net_cil_disas.Instruction instr = None
         cdef net_cil_disas.Instruction target_instr = None
@@ -1269,6 +1304,14 @@ cdef class MethodDef(MethodDefOrRef):
         return True
 
     cpdef bint finish_recompile(self):
+        """ Finish recompiling a method and patch it into the exe file.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Returns:
+            bint: True if successful, False otherwise.
+        """
         if self.__graph is None:
             return False
 
@@ -1294,15 +1337,37 @@ cdef class MethodDef(MethodDefOrRef):
         return True
 
     cpdef object get_recompile_graph(self):
+        """ Obtain the function graph associated with the recompile.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Returns:
+            net_graphing.FunctionGraph: The function graph associated with the current recompile.
+        """
         return self.__graph
 
     cpdef bint begin_recompile(self):
+        """ Called before calling add_instruction(), replace_instruction() and remove_instruction()
+
+            finish_recompile() must be called once all method changes are complete.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+        Returns:
+            bint: True if successful, False otherwise.
+        """
         if not self.has_body():
             return False
         self.__graph = net_graphing.FunctionGraph(self)
         return True
 
     cpdef void set_method_data(self, bytes data):
+        """ Replaces the data of a method with different content.
+
+        Args:
+            data (bytes): The new method data to patch in.
+        """
         if self.get_column('RVA').get_value_as_int() == 0:
             raise net_exceptions.InvalidArgumentsException()
             #TODO: add the ability to add addiitonal methods when they dont already exist.
