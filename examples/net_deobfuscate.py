@@ -2,8 +2,8 @@ import sys
 from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing
 
 def main():
-    if len(sys.argv) != 4:
-        print('Usage: net_deobfuscate.py <deob type> <input file> <output file>')
+    if len(sys.argv) < 4:
+        print('Usage: net_deobfuscate.py <deob type> <input file> <output file> <extra args>')
         print('Types:')
         print('conditional: Removes certain conditional statements that arent needed.')
         print('names: cleans up type, method names etc.')
@@ -13,44 +13,75 @@ def main():
         print('printgraph: Prints a function graph of a fucntion within a exe.')
         print(
             'unk_obf_1: a currently unknown obfuscator.  Example hash: e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb')
+        print('dumbmath: Removes redundant math expressions.  Example: 7005baba5671e99eb677bc7dff5b2e15527cb196668ad0340e9f015903430625')
         exit()
     deob_type = sys.argv[1]
     obf_exe = sys.argv[2]
     output_exe = sys.argv[3]
     with open(obf_exe, 'rb') as infile:
         data = infile.read()
+    dotnet = net_deobfuscate_funcs.try_get_dotnetpe(pe_data=data)
+    if dotnet is None:
+        print('Not a dotnet file.')
+        exit(0)
     if deob_type == 'conditional':
         print('Attempting to remove useless conditionals')
-        new_data = net_deobfuscate_funcs.remove_useless_conditionals(data)
+        net_deobfuscate_funcs.remove_useless_conditionals(dotnet)
     elif deob_type == 'names':
         print('Cleaning up various names throughout the binary.')
-        new_data = net_deobfuscate_funcs.cleanup_names(data)
+        net_deobfuscate_funcs.cleanup_names(dotnet)
     elif deob_type == 'dumbfuncs':
         print('Cleaning up useless function calls')
-        new_data = net_deobfuscate_funcs.remove_useless_functions(data)
+        net_deobfuscate_funcs.remove_useless_functions(dotnet)
     elif deob_type == 'switch':
         print('Removing switch statements with constant outcomes.')
         # new_data = deobfuscate_method_control_flow(data)
         raise net_exceptions.OperationNotSupportedException()
     elif deob_type == 'printgraph':
         method_rid = int(output_exe, 10)
-        dpe = dotnetpefile.DotNetPeFile(pe_data=data)
-        mobj = dpe.get_method_by_rid(method_rid)
+        mobj = dotnet.get_method_by_rid(method_rid)
         fgraph = net_graphing.FunctionGraph(mobj)
-        fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
-        fanalyzer.remove_useless_math()
-        fanalyzer.repair_blocks()
         fgraph.print_root()
         print('done')
         exit(0)
+    elif deob_type == 'dumbmath':
+        #Remove useless math expressions.
+        """
+        Removes multiple math expressions chained after eachother with a single ldc.i4
+        e.x
+        ldc.i4 x
+        not
+        neg
+        not 
+
+        Is replaced to a single ldc.i4 with the result.
+        """
+        for mobj in dotnet.get_metadata_table('MethodDef'):
+            if not mobj.has_body():
+                continue
+            print('checking for useless math from method {}'.format(hex(mobj.get_token())))
+            fgraph = net_graphing.FunctionGraph(mobj)
+            fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+            fanalyzer.repair_blocks()
+            has_math = fanalyzer.remove_useless_math()
+            if has_math:
+                fanalyzer.repair_blocks()
+                localvartok = mobj.disassemble_method().get_local_var_sig_token()
+                instrs = fgraph.emit_instructions_as_list()
+                exc_blocks = fgraph.get_exception_blocks()
+                recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
+                data = recompiler.compile_method()
+                mobj.set_method_data(data)
+                print('patched method {}'.format(hex(mobj.get_token())))
+            else:
+                print('method {} has no useless math.'.format(hex(mobj.get_token())))
     elif deob_type == 'printallgraphs':
         print('Printing graphs for all methods in the executable.')
         print()
-        dpe = dotnetpefile.try_get_dotnetpe(pe_data=data)
-        if dpe is None:
+        if dotnet is None:
             print('error: invalid dotnet pe.')
         else:
-            for method in dpe.get_metadata_table('MethodDef'):
+            for method in dotnet.get_metadata_table('MethodDef'):
                 if method.has_body():
                     fgraph = net_graphing.FunctionGraph(method)
                     fgraph.print_root()
@@ -60,13 +91,13 @@ def main():
         exit(0)
     elif deob_type == 'unk_obf_1':
         print('Attempting to remove obfuscation using unk_obf_1.')
-        new_data = net_deobfuscate_funcs.remove_useless_bytearray_conditionals(data)
-        new_data = net_deobfuscate_funcs.cleanup_names(new_data)
-        new_data = net_deobfuscate_funcs.remove_unk_obf_1_obfuscation(new_data)
+        net_deobfuscate_funcs.remove_useless_bytearray_conditionals(dotnet)
+        net_deobfuscate_funcs.cleanup_names(dotnet)
+        net_deobfuscate_funcs.remove_unk_obf_1_obfuscation(dotnet)
     else:
         print('invalid mode')
         exit()
-
+    new_data = dotnet.get_exe_data()
     if new_data != None:
         with open(output_exe, 'wb') as outfile:
             outfile.write(new_data)

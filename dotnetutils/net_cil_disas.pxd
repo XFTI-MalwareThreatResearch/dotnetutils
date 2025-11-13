@@ -96,12 +96,6 @@ cdef class MethodDisassembler:
 
     cpdef Instruction emit_instruction(self, net_opcodes.Opcodes op)
 
-    cpdef void add_instruction_at_index(self, int index, Instruction instr, int handler=*, bint is_try=*, bint is_catch=*)
-
-    cdef void __update_offsets(self, int offset, int index, int difference, int except_handler, bint is_try, bint is_catch)
-
-    cpdef void remove_instruction_at_index(self, int index)
-
     cpdef int get_max_stack_size(self)
 
     cpdef net_row_objects.MethodDefOrRef get_method(self)
@@ -113,6 +107,10 @@ cdef class MethodDisassembler:
     cpdef tuple get_arg_token_properties(self, Instruction instr)
 
     cpdef int get_header_size(self)
+
+    cpdef int get_flags(self)
+
+    cpdef int get_local_var_sig_token(self)
 
     cpdef int get_code_size(self)
 
@@ -129,8 +127,6 @@ cdef class MethodDisassembler:
     cpdef int get_instr_offset(self, int instr_index)
 
     cpdef int get_instr_index_by_offset(self, unsigned int instr_offset)
-
-    cpdef bytes recompile_method(self)
 
     cdef void clear(self)
 

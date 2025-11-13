@@ -213,8 +213,6 @@ cdef class MetaDataDirectory:
         metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
         self.metadata_header = MetaDataHeader(self.dotnetpe, file_data, metadata_offset)
         for file_offset, size, name in self.metadata_header.get_stream_headers():
-            #TODO: need to do a better job of supporting streams that arent actually there. (Duplicate streams)
-            #Also need to work out issues where reconstruct_executable() is called on binaries with custom heaps / streams
             if name == b'#~' or name == b'#-':
                 self.metadata_file_offset = file_offset
                 self.metadata_file_size = size
@@ -236,6 +234,7 @@ cdef class MetaDataDirectory:
                     self.heaps[name.decode('ascii')] = net_processing.HeapObject(file_offset, size, name, self.dotnetpe)
         if not (self.metadata_file_offset != 0 and self.metadata_file_size != 0):
             raise net_exceptions.InvalidMetadataException
+
         PyBuffer_Release(&file_data_view)
         return True
 
@@ -247,6 +246,7 @@ cdef class MetaDataDirectory:
         self.metadata_table_header = net_table_objects.MetadataTableHeader(self.dotnetpe, self.metadata_file_offset)
         mheap = net_processing.MetadataTableHeapObject(self.metadata_file_offset, self.metadata_file_size, b'#~', self.dotnetpe)
         self.heaps['#~'] = mheap
+        self.heaps = dict(sorted(self.heaps.items(), key=lambda item: item[1].get_offset()))
         self.metadata_heap_size = self.metadata_file_size
         if not dont_process:
             mheap.process_tables()

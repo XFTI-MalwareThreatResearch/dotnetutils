@@ -306,6 +306,8 @@ cdef class MethodDefOrRef(RowObject):
 
     cpdef int get_amt_params(self)
 
+    cpdef void set_method_data(self, bytes data)
+
 cdef class MethodDef(MethodDefOrRef):
     cdef public list _generic_params
     cdef bytes __full_name
@@ -317,10 +319,24 @@ cdef class MethodDef(MethodDefOrRef):
     cdef net_cil_disas.MethodDisassembler __disasm_obj
     cdef bint __has_invalid_signature
     cdef list __xrefs
+    cdef object __graph
+    cdef bint __was_something_changed
 
     cpdef net_cil_disas.MethodDisassembler disassemble_method(self, bint no_save=*, bint original=*)
 
     cpdef bytes get_original_method_data(self)
+
+    cpdef bint begin_recompile(self)
+
+    cpdef object get_recompile_graph(self)
+
+    cpdef bint replace_instruction(self, unsigned int offset, net_cil_disas.Instruction instr)
+
+    cpdef bint add_instruction(self, unsigned int offset, net_cil_disas.Instruction instr)
+
+    cpdef bint finish_recompile(self)
+
+    cpdef bint remove_instruction(self, unsigned int offset)
 
     cpdef list get_xrefs(self)
 

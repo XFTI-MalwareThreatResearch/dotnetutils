@@ -4,14 +4,14 @@
 
 import os
 import hashlib
-from dotnetutils import net_exceptions
+from dotnetutils import net_exceptions, net_graphing
 from dotnetutils cimport net_structs
 from dotnetutils cimport net_sigs
 from dotnetutils cimport net_utils
 from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
-from dotnetutils cimport net_processing
+from dotnetutils cimport net_processing, net_opcodes
 from typing import Union
 
 cdef class RowObject:
@@ -248,15 +248,15 @@ cdef class ColumnValue:
             stream = self.dotnetpe.get_heap(table_name)
             if stream is None:
                 raise net_exceptions.InvalidArgumentsException()
-            table_rid = stream.append_item(new_value)
-            self.raw_value = table_rid
+            self.raw_value = stream.get_next_append_index()
+            stream.append_item(new_value)
             self.cached_value = None
             self.__has_no_value = False #Reset everything for next grab.
             if orig_value != 0: #Stream.del_item() already handles references checks.  It will warn for now but thats fine.
                 stream.del_item(orig_value)
         elif self.col_type.is_fixed_value():
             self.raw_value = new_value
-            self.dotnetpe.reconstruct_executable() # Ensure the raw change is updated in.
+            self.dotnetpe.update_streams() # Ensure the raw change is updated in.
         else:
             #I dont think it would be safe to edit metadata columns that reference other metadata columns.
             #Nor can I really think of a good reason to do it right now.  May be something to implement later.
@@ -1090,6 +1090,9 @@ cdef class MethodDefOrRef(RowObject):
         RowObject.__init__(self, dotnetpe, raw_data, rid,
                            sizes, col_types, table_name)
 
+    cpdef void set_method_data(self, bytes new_data):
+        pass
+
     cpdef bytes get_name(self):
         return b''
 
@@ -1183,6 +1186,207 @@ cdef class MethodDef(MethodDefOrRef):
         self.__current_method_hash = None
         self.__has_invalid_signature = False
         self.__xrefs = list()
+        self.__graph = None
+        self.__was_something_changed = False
+
+    cpdef bint replace_instruction(self, unsigned int offset, net_cil_disas.Instruction instr):
+        """ Replaces an instruction within a method with another instruction.
+            begin_recompile() must be called before calling this method.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Args:
+            offset (unsigned int): The offset within the ORIGINAL method to replace.
+            instr (net_cil_disas.Instruction): The instruction to replace it with.
+        Returns:
+            bint: True if successful, False otherwise.
+        """
+        return self.remove_instruction(offset) and self.add_instruction(offset, instr)
+
+    cpdef bint add_instruction(self, unsigned int offset, net_cil_disas.Instruction instr):
+        """ adds an instruction to a method's code.
+            begin_recompile() must be called before calling this method.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Args:
+            offset (unsigned int): The offset within the ORIGINAL method to add.
+            instr (net_cil_disas.Instruction): The instruction to add.
+        Returns:
+            bint: True if successful, False otherwise.
+        """
+        cdef object block = None
+        cdef net_cil_disas.Instruction insn = None
+        cdef net_cil_disas.Instruction target_instr = None
+        cdef object next_block = None
+        cdef unsigned int target = 0
+        if self.__graph is None:
+            return False
+
+        block = self.__graph.get_block_by_offset(offset)
+        if block is None:
+            return False
+        for insn in block.get_instrs():
+            if insn.get_instr_offset() == offset:
+                target_instr = insn
+                break
+        if target_instr is None:
+            return False
+        if instr.is_branch() or instr.is_absolute_jmp():
+            next_block = block.split_block(offset)
+            self.__graph.register_block(offset, next_block)
+
+            if instr.get_opcode() == net_opcodes.Opcodes.Switch:
+                instr.setup_instr_offset(offset, target_instr.get_instr_index())
+                for target in instr.get_arguments():
+                    block.add_next(self.__graph.get_block_by_offset(target))
+            else:
+                if instr.is_branch():
+                    target = offset + <int>len(instr) + instr.get_argument()
+                    block.add_next(self.__graph.get_block_by_offset(target))    
+                else:
+                    block.remove_next(next_block)
+                    target = offset + <int>len(instr) + instr.get_argument()
+                    block.add_next(self.__graph.get_block_by_offset(target))
+        instr.setup_instr_offset(offset, target_instr.get_instr_index())
+        block.insert_instr(target_instr.get_instr_index(), instr)
+        self.__was_something_changed = True
+        return True
+
+    cpdef bint remove_instruction(self, unsigned int offset):
+        """ Removes an instruction from a method's code.
+            begin_recompile() must be called before calling this method.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Args:
+            offset (unsigned int): The offset within the ORIGINAL method to remove.
+        Returns:
+            bint: True if successful, False otherwise.
+        """
+        cdef object block = None
+        cdef net_cil_disas.Instruction instr = None
+        cdef net_cil_disas.Instruction target_instr = None
+        cdef object next_block = None
+        cdef unsigned int index = 0
+        cdef unsigned int target = 0
+        if self.__graph is None:
+            return False
+
+        block = self.__graph.get_block_by_offset(offset)
+        if block is None:
+            return False
+        for instr in block.get_instrs():
+            if instr.get_instr_offset() == offset:
+                target_instr = instr
+                break
+        if target_instr is None:
+            return False
+        if target_instr.is_branch() or target_instr.is_absolute_jmp():
+            if target_instr.get_opcode() == net_opcodes.Opcodes.Switch:
+                for target in target_instr.get_arguments():
+                    block.remove_next(self.__graph.get_block_by_offset(target))
+            else:
+                if target_instr.is_branch():
+                    target = target_instr.get_instr_offset() + <int>len(instr)
+                    block.remove_next(self.__graph.get_block_by_offset(target))
+                    target = target_instr.get_argument() + <int>len(target_instr) + offset
+                    block.remove_next(self.__graph.get_block_by_offset(target))
+                else:
+                    target = target_instr.get_instr_offset() + <int>len(instr) + target_instr.get_argument()
+                    block.remove_next(self.__graph.get_block_by_offset(target))
+        index = target_instr.get_instr_index()
+        block.remove_instrs(index, index + 1) #TODO This wont work - need to fix these methods.
+        self.__was_something_changed = True
+        return True
+
+    cpdef bint finish_recompile(self):
+        """ Finish recompiling a method and patch it into the exe file.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Returns:
+            bint: True if successful, False otherwise.
+        """
+        if self.__graph is None:
+            return False
+
+        if not self.__was_something_changed:
+            self.__graph = None
+            return True #if nothings been edited, dont do anything.
+        cdef list instrs = None
+        cdef list exc_blocks = None
+        cdef int localvartok = self.disassemble_method().get_local_var_sig_token()
+        cdef object fanalyzer = net_graphing.GraphAnalyzer(self, self.__graph)
+        cdef object recompiler = None
+        cdef bytes data = None
+        fanalyzer.repair_blocks()
+        instrs = self.__graph.emit_instructions_as_list()
+        exc_blocks = self.__graph.get_exception_blocks()
+        recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
+        data = recompiler.compile_method()
+        self.__was_something_changed = False
+        self.__graph = None
+        if data is None:
+            return False
+        self.set_method_data(data)
+        return True
+
+    cpdef object get_recompile_graph(self):
+        """ Obtain the function graph associated with the recompile.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+
+        Returns:
+            net_graphing.FunctionGraph: The function graph associated with the current recompile.
+        """
+        return self.__graph
+
+    cpdef bint begin_recompile(self):
+        """ Called before calling add_instruction(), replace_instruction() and remove_instruction()
+
+            finish_recompile() must be called once all method changes are complete.
+
+            Do not use this method.  It is a work in progress and does not currently work.
+            Use DotNetPeFile.patch_instruction().
+        Returns:
+            bint: True if successful, False otherwise.
+        """
+        if not self.has_body():
+            return False
+        self.__graph = net_graphing.FunctionGraph(self)
+        return True
+
+    cpdef void set_method_data(self, bytes data):
+        """ Replaces the data of a method with different content.
+
+        Args:
+            data (bytes): The new method data to patch in.
+        """
+        if self.get_column('RVA').get_value_as_int() == 0:
+            raise net_exceptions.InvalidArgumentsException()
+            #TODO: add the ability to add addiitonal methods when they dont already exist.
+
+        cdef int orig_method_size = <int>len(self.get_method_data())
+        cdef int new_method_size = <int>len(data)
+        cdef int difference = 0
+        cdef dotnetpefile.PeFile pe = self.get_dotnetpe().get_pe()
+        cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
+        cdef uint64_t file_offset = pe.get_offset_from_rva(rva)
+        cdef int amt_padding = 0
+        cdef bytes old_exe_data = self.get_dotnetpe().get_exe_data()
+        cdef bytes new_data = None
+        difference = new_method_size - orig_method_size
+        if difference != 0:
+            pe.update_va(rva + orig_method_size, difference, self.get_dotnetpe(), None, rva + 1) #make sure we dont patch out the current method.
+        new_data = self.get_dotnetpe().get_exe_data()
+        new_data = new_data[:file_offset] + data + new_data[file_offset + orig_method_size:]
+        self.get_dotnetpe().set_exe_data(new_data)
 
     cpdef bytes get_name(self):
         """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().
@@ -1232,7 +1436,6 @@ cdef class MethodDef(MethodDefOrRef):
                             self.__current_method_hash = hashval
                     return self.__disasm_obj
                 except Exception as e:
-                    print('returning None due to exception {} {}'.format(hex(self.get_token()), str(e)))
                     return None #Allows for encrypted methods and such.
         return None
 
@@ -1396,7 +1599,7 @@ cdef class MethodDef(MethodDefOrRef):
                     if self.__sig_obj.get_return_type().get_next() == net_sigs.get_CorSig_Void():
                         self.__has_return_value = False
                 self.__method_has_this = self.__sig_obj.get_calling_conv() & net_structs.CorCallingConvention.HasThis != 0
-            except net_exceptions.InvalidSignatureException:
+            except net_exceptions.InvalidSignatureException as e:
                 self.__has_invalid_signature = True
         return self.__sig_obj
 
@@ -1766,8 +1969,8 @@ cdef class MethodSpec(MethodDefOrRef):
             sig_reader = net_sigs.SignatureReader(self.get_dotnetpe(), signature)
             try:
                 self.__parsed_sig = sig_reader.read_calling_convention_sig()
-            except net_exceptions.InvalidSignatureException:
-                pass
+            except net_exceptions.InvalidSignatureException as e:
+                raise e
         return self.__parsed_sig
 
     def __hash__(self):

@@ -43,15 +43,16 @@ cdef class PeFile:
 
     cpdef uint64_t get_physical_by_rva(self, uint64_t rva)
 
-    cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bint do_reconstruction, bytes stream_name, int sec_index)
+    cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
 
-    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index)
+    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding)
 
-    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bint in_streams, bytes stream_name, int sec_index)
+    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
 
-    cdef void __update_metadata_rvas(self, uint64_t va_addr, int difference, DotNetPeFile dpe)
+    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
 
     cdef int get_sec_index_va(self, uint64_t va_addr)
+
     cdef int get_sec_index_phys(self, uint64_t offset)
 
 cdef class DotNetPeFile:
@@ -61,7 +62,10 @@ cdef class DotNetPeFile:
     cdef net_metadata.MetaDataDirectory metadata_dir
     cdef bytes original_exe_data
     cdef PeFile pe
-    cdef uint64_t __cor_header_offset
+
+    cpdef void reinit_dpe(self, bint no_processing)
+
+    cpdef void update_streams(self)
 
     cpdef uint64_t get_cor_header_offset(self)
 
@@ -72,8 +76,6 @@ cdef class DotNetPeFile:
     cpdef net_row_objects.TypeRef get_typeref_by_full_name(self, bytes full_name)
 
     cpdef int delete_user_string(self, unsigned int us_index)
-
-    cpdef bytes reconstruct_executable(self) except *
 
     cpdef net_row_objects.TypeDefOrRef get_type_by_full_name(self, bytes type_full_name)
 
@@ -119,7 +121,7 @@ cdef class DotNetPeFile:
 
     cpdef PeFile get_pe(self)
 
-    cdef void set_exe_data(self, bytes exe_data)
+    cpdef void set_exe_data(self, bytes exe_data)
 
     cpdef void add_string(self, str string) except *
 

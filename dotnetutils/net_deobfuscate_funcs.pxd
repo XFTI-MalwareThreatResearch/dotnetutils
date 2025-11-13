@@ -8,11 +8,11 @@ cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet)
 
 cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet)
 
-cpdef bytes remove_unk_obf_1_obfuscation(bytes exe_data)
+cpdef void remove_unk_obf_1_obfuscation(dotnetpefile.DotNetPeFile dotnet)
 
-cpdef bytes remove_useless_bytearray_conditionals(bytes exe_data)
+cpdef void remove_useless_bytearray_conditionals(dotnetpefile.DotNetPeFile dotnet)
 
-cpdef bytes remove_useless_conditionals(bytes exe_data, list target_method_rids=*)
+cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list target_method_rids=*)
 
 cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj)
 
@@ -20,11 +20,11 @@ cdef bint __is_modified_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
 
 cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj)
 
-cpdef bytes remove_useless_functions(bytes data) except *
+cpdef void remove_useless_functions(dotnetpefile.DotNetPeFile dotnet) except *
 
 cdef bint has_prefix(bytes type_name)
 
-cpdef bytes cleanup_names(bytes data,
+cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
                   bint change_namespaces=*,
                   bint change_method_names=*,
                   bint change_param_names=*,
