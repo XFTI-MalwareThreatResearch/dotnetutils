@@ -20,7 +20,7 @@ def main():
     output_exe = sys.argv[3]
     with open(obf_exe, 'rb') as infile:
         data = infile.read()
-    dotnet = net_deobfuscate_funcs.try_get_dotnetpe(pe_data=data)
+    dotnet = dotnetpefile.try_get_dotnetpe(pe_data=data)
     if dotnet is None:
         print('Not a dotnet file.')
         exit(0)
