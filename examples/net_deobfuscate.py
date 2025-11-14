@@ -20,7 +20,7 @@ def main():
     output_exe = sys.argv[3]
     with open(obf_exe, 'rb') as infile:
         data = infile.read()
-    dotnet = net_deobfuscate_funcs.try_get_dotnetpe(pe_data=data)
+    dotnet = dotnetpefile.try_get_dotnetpe(pe_data=data)
     if dotnet is None:
         print('Not a dotnet file.')
         exit(0)
@@ -42,6 +42,14 @@ def main():
         mobj = dotnet.get_method_by_rid(method_rid)
         fgraph = net_graphing.FunctionGraph(mobj)
         fgraph.print_root()
+        print('done')
+        exit(0)
+    elif deob_type == 'cflow':
+        rid = 2
+        mobj = dotnet.get_method_by_rid(rid)
+        fgraph = net_graphing.FunctionGraph(mobj)
+        fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+        fanalyzer.simplify_control_flow()
         print('done')
         exit(0)
     elif deob_type == 'dumbmath':

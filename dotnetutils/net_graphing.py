@@ -508,6 +508,7 @@ class FunctionBlock:
         result = 0
         for instr in self.get_instrs():
             result += instr.get_nstack()
+        return result
 
     def __str__(self):
         return 'Block at offset {}'.format(hex(self.get_start_offset()))
@@ -1066,6 +1067,88 @@ class GraphAnalyzer:
         self.__graph = func_graph
         self.__disasm = self.__graph.get_disassembler()
         self.__method = method_obj
+
+    """
+    An attempt at control flow deobfuscation.
+    """
+
+    def __repair_switch_block(self, block, start_offset, output_graph):
+        last_instr = block.get_last_instr()
+
+    def __target_walker(self, block, nstack, already_checked):
+        """
+        This method is definitely going to need some testing and work but I mean its okay for now.
+        """
+        MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        ALLOWED_STACK_OPS = [Opcodes.Br, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
+        current_nstack = nstack
+        instrs = block.get_instrs()
+        if block.get_start_offset() in already_checked:
+            return False
+        block_nstack = block.get_nstack()
+        already_checked.append(block.get_start_offset())
+        for x in range(len(instrs) - 1, -1, -1):
+            instr = instrs[x]
+            ins_op = instr.get_opcode()
+            if instr.get_pstack() > (current_nstack + 1) and instr.get_opcode() not in (MATH_OPS + ALLOWED_STACK_OPS):
+                return False
+            elif current_nstack == 0 and instr.get_opcode() not in (MATH_OPS + ALLOWED_STACK_OPS):
+                return True
+            if instr.get_pstack() == 0 and current_nstack == 0:
+                return True
+            current_nstack += instr.get_nstack()
+        if current_nstack != block_nstack:
+            for prev in block.get_prev():
+                if not self.__target_walker(prev, current_nstack, already_checked):
+                    return False
+            return True
+        else:
+            return True
+
+    def __is_target_switch(self, block):
+        #check if all paths have a relatively constant value.
+        instrs = block.get_instrs()
+        MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        ALLOWED_STACK_OPS = [Opcodes.Br, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Stloc, Opcodes.Stloc_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
+        if len(instrs) < 2:
+            print(1)
+            return False
+        if instrs[-2].get_opcode() not in MATH_OPS:
+            print(2)
+            return False
+        if block.get_last_instr().get_opcode() != Opcodes.Switch:
+            print(3)
+            return False
+        #make sure theres at least one branch thats a fall through or a 1-1 ration
+        already_checked = list()
+        return self.__target_walker(block, 1, already_checked)
+            
+        
+
+    
+
+
+
+
+
+    def __simplify_control_flow(self, block, already_done, output_graph):
+        if block.get_start_offset() not in already_done:
+            already_done.add(block.get_start_offset())
+            last_instr = block.get_last_instr()
+            last_opcode = last_instr.get_opcode()
+            if last_opcode == Opcodes.Switch:
+                if self.__is_target_switch(block):
+                    print('Block {} is target switch'.format(hex(block.get_start_offset())))
+
+    def simplify_control_flow(self):
+        already_done = set()
+        out = FunctionGraph(self.__method, None, None, False, False)
+        block = self.__graph.get_block_by_offset(0)
+        for block in self.__graph.blocks():
+            print('checking block {}'.format(hex(block.get_start_offset())))
+            if self.__is_target_switch(block):
+                print('is target switch {}'.format(hex(block.get_start_offset())))
+        return out
 
     def __are_additional_instrs_needed(self, block, instrs, start, end):
         if len(instrs) <= 1:
