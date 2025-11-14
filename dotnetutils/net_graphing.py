@@ -1075,7 +1075,7 @@ class GraphAnalyzer:
     def __repair_switch_block(self, block, start_offset, output_graph):
         last_instr = block.get_last_instr()
 
-    def __target_walker(self, block, needed, already_checked, stloc_instr, start_offsets, counter=0):
+    def __target_walker(self, block, needed, already_checked, stloc_instr, start_offsets, child_addr, counter=0):
         """
         This method is definitely going to need some testing and work but I mean its okay for now.
         """
@@ -1085,17 +1085,25 @@ class GraphAnalyzer:
                     Opcodes.Bge, Opcodes.Bge_S, Opcodes.Bge_Un, Opcodes.Bge_Un_S, Opcodes.Bgt, Opcodes.Bgt_S, Opcodes.Bgt_Un, Opcodes.Bgt_Un_S, \
                     Opcodes.Ble, Opcodes.Ble_S, Opcodes.Ble_Un, Opcodes.Ble_Un_S, Opcodes.Blt, Opcodes.Blt_S, Opcodes.Blt_Un, Opcodes.Blt_Un_S]
         instrs = block.get_instrs()
+        debug = False
         if block.get_start_offset() in already_checked:
-            print(0)
+            if debug:
+                print(hex(instr.get_instr_offset()), 0)
             return False
         already_checked.append(block.get_start_offset())
+        if debug:
+            print('Checking block {} {}'.format(hex(block.get_start_offset()), needed))
         for x in range(len(instrs) - 1, -1, -1):
             instr = instrs[x]
             ins_op = instr.get_opcode()
             pulled = instr.get_pstack()
             added = instr.get_astack()
+            if debug:
+                print('Checking instr {} {} {} {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(), needed, added, pulled))
             if ins_op not in (MATH_OPS + ALLOWED_STACK_OPS + [Opcodes.Switch, Opcodes.Stloc, Opcodes.Stloc_S]):
                 if pulled > 0 or added > 0:
+                    if debug:
+                        print(1, hex(instr.get_instr_offset()))
                     return False
             if ins_op in (Opcodes.Ldloc_S, Opcodes.Ldloc):
                 if instr.get_argument() == stloc_instr.get_argument():
@@ -1104,32 +1112,57 @@ class GraphAnalyzer:
                     needed -= 1
 
                     if needed == 0:
-                        start_offsets.append(instr.get_instr_offset())
+                        start_offsets.append((child_addr, instr.get_instr_offset()))
+                        if debug:
+                            print(2, hex(instr.get_instr_offset()))
                         return True
+                    needed += 1
             needed = needed - added + pulled
+            if debug:
+                print('needed is now 1 {} {} {}'.format(needed, added, pulled))
             if needed < 0:
                 needed = 0
+            if debug:
+                print('needed is now 2 {}'.format(needed))
             if needed == 0:
-                start_offsets.append(instr.get_instr_offset())
+                start_offsets.append((child_addr, instr.get_instr_offset()))
+                if debug:
+                    print(3, hex(instr.get_instr_offset()), hex(child_addr))
                 return True
             if ins_op in (Opcodes.Stloc, Opcodes.Stloc_S):
                 if instr.get_argument() == stloc_instr.get_argument() and x != (len(instrs) - 1):
                     continue
                 elif instr.get_argument() != stloc_instr.get_argument():
                     if needed == 0:
-                        start_offsets.append(instr.get_instr_offset())
+                        start_offsets.append((child_addr, instr.get_instr_offset()))
+                        if debug:
+                            print(4, hex(instr.get_instr_offset()))
                         return True
                     else:
+                        if debug:
+                            print(5, hex(instr.get_instr_offset()))
                         return False
             if ins_op not in (MATH_OPS + ALLOWED_STACK_OPS):
                 if counter == 0 and ins_op == Opcodes.Switch:
                     continue
+                if debug:
+                    print(6, hex(instr.get_instr_offset()))
                 return False
             
         if needed != 0:
             for prev in block.get_prev():
-                if not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, counter=counter+1):
+                if debug:
+                    print('Checking prev {} {}'.format(hex(prev.get_start_offset()), counter))
+                if counter == 0:
+                    result = not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, prev.get_start_offset(), counter=counter+1)
+                else:
+                    result = not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, child_addr, counter=counter+1)
+                if result:
+                    if debug:
+                        print(7, hex(instr.get_instr_offset()))
                     return False
+        if debug:
+            print(8, hex(block.get_start_offset()), hex(child_addr))
         return True
 
     def __is_target_switch(self, block, start_offsets):
@@ -1154,7 +1187,7 @@ class GraphAnalyzer:
         if stloc_instr is None:
             return False
         start_offsets.clear()
-        return self.__target_walker(block, 0, already_checked, stloc_instr, start_offsets)
+        return self.__target_walker(block, 0, already_checked, stloc_instr, start_offsets, block.get_start_offset())
     
 
     def __deobfuscate_switch(self):
@@ -1173,8 +1206,8 @@ class GraphAnalyzer:
                 start_offsets = list()
                 if self.__is_target_switch(block, start_offsets):
                     print('Block {} is target switch'.format(hex(block.get_start_offset())))
-                    for offset in start_offsets:
-                        print('start offset', hex(offset))
+                    for block_offset, offset in start_offsets:
+                        print('Start offset: Block = {}, Offset = {}'.format(hex(block_offset), hex(offset)))
                 else:
                     print('Block {} is not target switch'.format(hex(block.get_start_offset())))
 
@@ -1184,12 +1217,14 @@ class GraphAnalyzer:
         out = FunctionGraph(self.__method, None, None, False, False)
         block = self.__graph.get_block_by_offset(0)
         for block in self.__graph.blocks():
+            if block.get_start_offset() != 0x27:
+                continue
             print('checking block {}'.format(hex(block.get_start_offset())))
             start_offsets = list()
             if self.__is_target_switch(block, start_offsets):
                 print('is target switch {}'.format(hex(block.get_start_offset())))
-                for offset in start_offsets:
-                    print('start offset', hex(offset))
+                for block_offset, offset in start_offsets:
+                    print('Start offset: Block = {}, Offset = {}'.format(hex(block_offset), hex(offset)))
             else:
                 print('Block {} is not target switch'.format(hex(block.get_start_offset())))
         return out
