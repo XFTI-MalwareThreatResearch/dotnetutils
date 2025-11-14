@@ -1075,60 +1075,98 @@ class GraphAnalyzer:
     def __repair_switch_block(self, block, start_offset, output_graph):
         last_instr = block.get_last_instr()
 
-    def __target_walker(self, block, nstack, already_checked):
+    def __target_walker(self, block, nstack, already_checked, stloc_instr, start_offsets, counter=0):
         """
         This method is definitely going to need some testing and work but I mean its okay for now.
         """
         MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
-        ALLOWED_STACK_OPS = [Opcodes.Br, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
+        ALLOWED_STACK_OPS = [Opcodes.Br, Opcodes.Pop, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
         current_nstack = nstack
         instrs = block.get_instrs()
+        print('calling target walker for block {} {}'.format(hex(block.get_start_offset()), nstack))
         if block.get_start_offset() in already_checked:
+            print(0)
             return False
+        
         block_nstack = block.get_nstack()
+        print('block nstack', block_nstack)
         already_checked.append(block.get_start_offset())
+        has_ldloc = False
         for x in range(len(instrs) - 1, -1, -1):
             instr = instrs[x]
             ins_op = instr.get_opcode()
-            if instr.get_pstack() > (current_nstack + 1) and instr.get_opcode() not in (MATH_OPS + ALLOWED_STACK_OPS):
+            print('{} {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(), current_nstack))
+            if ins_op == Opcodes.Ldloc or ins_op == Opcodes.Ldloc_S:
+                if instr.get_argument() != stloc_instr.get_argument():
+                    print(1)
+                    return False
+                else:
+                    start_offsets.append(instr.get_instr_offset())
+                    return True
+            elif ins_op == Opcodes.Stloc or ins_op == Opcodes.Stloc_S:
+                if block.get_last_instr().get_opcode() == Opcodes.Switch:
+                    has_ldloc = True
+            if instr.get_pstack() > (current_nstack) and instr.get_opcode() not in (MATH_OPS + ALLOWED_STACK_OPS):
+                print(instr.get_pstack(), current_nstack)
+                print(2)
                 return False
             elif current_nstack == 0 and instr.get_opcode() not in (MATH_OPS + ALLOWED_STACK_OPS):
-                return True
-            if instr.get_pstack() == 0 and current_nstack == 0:
-                return True
-            current_nstack += instr.get_nstack()
+                if x > 0 and instrs[x-1].get_astack() != 0:
+                    current_nstack += instr.get_nstack()
+                    continue
+                if has_ldloc:
+                    start_offsets.append(instr.get_instr_offset())
+                print(3, has_ldloc)
+                return has_ldloc
+            
+            if instr.get_pstack() == 0 and instr.get_astack() != 0 and current_nstack == 0:
+                if has_ldloc:
+                    start_offsets.append(instr.get_instr_offset())
+                print(4, has_ldloc)
+                return has_ldloc
+            current_nstack += (instr.get_nstack() * -1)
+        print('current nstack {} block {}'.format(current_nstack, block_nstack))
         if current_nstack != block_nstack:
             for prev in block.get_prev():
-                if not self.__target_walker(prev, current_nstack, already_checked):
+                if not self.__target_walker(prev, current_nstack, already_checked, stloc_instr, start_offsets, counter=counter+1):
+                    print(5)
                     return False
-            return True
+            print(6, has_ldloc)
+            return has_ldloc
         else:
-            return True
+            start_offsets.append(instr.get_instr_offset())
+            print(7, has_ldloc)
+            return has_ldloc
 
-    def __is_target_switch(self, block):
+    def __is_target_switch(self, block, start_offsets):
         #check if all paths have a relatively constant value.
         instrs = block.get_instrs()
         MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
         ALLOWED_STACK_OPS = [Opcodes.Br, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Stloc, Opcodes.Stloc_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
         if len(instrs) < 2:
-            print(1)
             return False
         if instrs[-2].get_opcode() not in MATH_OPS:
-            print(2)
             return False
         if block.get_last_instr().get_opcode() != Opcodes.Switch:
-            print(3)
             return False
         #make sure theres at least one branch thats a fall through or a 1-1 ration
         already_checked = list()
-        return self.__target_walker(block, 1, already_checked)
-            
-        
-
+        stloc_instr = None
+        for x in range(len(instrs) - 1, -1, -1):
+            ins_op = instrs[x].get_opcode()
+            if ins_op == Opcodes.Stloc or ins_op == Opcodes.Stloc_S:
+                stloc_instr = instrs[x]
+                break
+        if stloc_instr is None:
+            return False
+        return self.__target_walker(block, 1, already_checked, stloc_instr, start_offsets)
     
 
-
-
+    def __deobfuscate_switch(self):
+        pass
+        
+            
+        
 
 
     def __simplify_control_flow(self, block, already_done, output_graph):
@@ -1137,8 +1175,14 @@ class GraphAnalyzer:
             last_instr = block.get_last_instr()
             last_opcode = last_instr.get_opcode()
             if last_opcode == Opcodes.Switch:
-                if self.__is_target_switch(block):
+                start_offsets = list()
+                if self.__is_target_switch(block, start_offsets):
                     print('Block {} is target switch'.format(hex(block.get_start_offset())))
+                    for offset in start_offsets:
+                        print('start offset', hex(offset))
+                else:
+                    print('Block {} is not target switch'.format(hex(block.get_start_offset())))
+
 
     def simplify_control_flow(self):
         already_done = set()
@@ -1146,8 +1190,13 @@ class GraphAnalyzer:
         block = self.__graph.get_block_by_offset(0)
         for block in self.__graph.blocks():
             print('checking block {}'.format(hex(block.get_start_offset())))
-            if self.__is_target_switch(block):
+            start_offsets = list()
+            if self.__is_target_switch(block, start_offsets):
                 print('is target switch {}'.format(hex(block.get_start_offset())))
+                for offset in start_offsets:
+                    print('start offset', hex(offset))
+            else:
+                print('Block {} is not target switch'.format(hex(block.get_start_offset())))
         return out
 
     def __are_additional_instrs_needed(self, block, instrs, start, end):

@@ -858,7 +858,7 @@ cdef class DotNetPeFile:
             fd.close()
         try:
             self.pe = PeFile(self.exe_data)
-        except ValueError:
+        except ValueError as e:
             raise net_exceptions.NotADotNetFile
 
         self.reinit_dpe(no_processing)

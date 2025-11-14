@@ -6432,10 +6432,10 @@ cdef class DotNetArray(DotNetObject):
         """ Initialize an array from a list of DotNetObjects
         """
         cdef StackCell cell
-        cdef uint64_t x = 0
-        if len(obj) != self.__size:
+        cdef int64_t x = 0
+        if len(obj) != <Py_ssize_t>self.__size:
             raise net_exceptions.InvalidArgumentsException()
-        for x in range(self.__size):
+        for x in range(<int64_t>self.__size):
             cell = self.get_emulator_obj().pack_u1(obj[x])
             self._set_item(x, cell)
             self.get_emulator_obj().dealloc_cell(cell)
