@@ -1674,15 +1674,37 @@ class GraphAnalyzer:
                 new_instr.setup_instr_offset(blk.get_start_offset() + blk.get_current_length(), last_instr.get_instr_index() + 1)
                 new_instr.setup_arguments_from_int32(target)
                 #TODO: need to account for leave instrs.
-                print('adding br instr')
                 blk.add_instr(len(instrs), new_instr)
+        #lastly update all the offsets for branches
+        for blk in new_graph.blocks():
+            last_instr = blk.get_last_instr()
+            if last_instr is None:
+                continue
+            last_op = last_instr.get_opcode()
+            if last_instr.is_absolute_jmp():
+                if len(blk.get_next()) != 1:
+                    raise Exception()
+                nxt = blk.get_next()[0]
+                argument = nxt.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                last_instr.setup_arguments_from_int32(argument)
+            else:
+                if last_instr.is_branch():
+                    if last_instr.get_opcode() == Opcodes.Switch:
+                        #TODO: Need to make some changes to FunctionBlock to properly support switches - get_next() is all messed up.
+                        raise Exception()
+                    else:
+                        if len(blk.get_next()) != 2:
+                            raise Exception()
+                        nxt = blk.get_next()[1]
+                        argument = nxt.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                        last_instr.setup_arguments_from_int32(argument)
         new_graph.sort_blocks()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
         new_analyzer.repair_blocks()
         new_graph.update_offsets()
         new_graph.sort_blocks()
         new_graph.validate_blocks()
-        #new_graph.print_root()
+        new_graph.print_root()
 
 
     def simplify_control_flow(self):
@@ -1734,7 +1756,6 @@ class GraphAnalyzer:
                 if instr.is_absolute_jmp() or instr.is_branch():
                     if opcode != Opcodes.Switch:
                         current_offsets[current_offset] = instr.get_instr_offset() + len(instr) + instr.get_argument()
-                        print('registering original argument of {} {} at {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(), hex(current_offset), hex(current_offsets[current_offset])))
                     else:
                         current_offsets[current_offset] = instr.get_argument()
                 if instr.is_absolute_jmp():
@@ -1806,9 +1827,7 @@ class GraphAnalyzer:
                 new_target = changed_blocks[old_argument]
                 #target = instr.offset + len(instr) + argument
                 #argument   = target - instr.offset - len(instr)
-                print('new target {}'.format(hex(new_target)))
                 argument = new_target - instr.get_instr_offset() - len(instr)
-                print('setting instr {} to arg {}'.format(hex(instr.get_instr_offset()), hex(argument)))
                 instr.setup_arguments_from_int32(argument)
             else:
                 args = list()

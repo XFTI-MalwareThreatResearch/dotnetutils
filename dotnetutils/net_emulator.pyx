@@ -7705,7 +7705,7 @@ cdef class DotNetEmulator:
     cdef StackCell get_local(self, int idx):
         """ Obtains a duplicated local value for index idx.
         """
-        if idx < 0 or idx >= self.localvars.size():
+        if idx < 0 or <size_t>idx >= self.localvars.size():
             raise net_exceptions.InvalidArgumentsException()
         cdef StackCell return_value = self.duplicate_cell(self.localvars[idx])
         return return_value
@@ -7755,7 +7755,7 @@ cdef class DotNetEmulator:
         """ Sets a local value to obj at idx.
             obj must be deallocated by caller.
         """
-        if idx < 0 or idx >= self.localvars.size():
+        if idx < 0 or <size_t>idx >= self.localvars.size():
             raise net_exceptions.InvalidArgumentsException()
         cdef StackCell prev_val = self.get_local(idx)
         cdef StackCell dup_obj = self.cast_cell(obj, <net_sigs.TypeSig>self.local_var_sigs[idx])
