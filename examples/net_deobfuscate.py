@@ -55,6 +55,7 @@ def main():
         exc = list()
         recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
         data = recompiler.compile_method()
+        print('decompiled method {}'.format(len(data)))
         mobj.set_method_data(data)
         print('done')
     elif deob_type == 'dumbmath':
