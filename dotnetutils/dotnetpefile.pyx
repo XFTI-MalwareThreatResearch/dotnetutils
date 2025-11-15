@@ -273,7 +273,7 @@ cdef class PeFile:
         else:
             self.__update_va32(va_addr, difference, dpe, stream_name, target_addr)
 
-    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding):
+    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference):
         """ Handles the .NET Portions of patching.  Checks over the metadata tables, rvas etc.
 
         Args:
@@ -360,7 +360,7 @@ cdef class PeFile:
 
             if orig_streams_offset <= target_offset < streams_offset:
                 last_difference += difference
-
+        print('before streams {} {}'.format(before_streams, in_same_section))
         if before_streams and in_same_section:
             #if its before streams, we dont want to update the data itself, just our held offsets.
             for heap_obj in heaps_by_offset.values():
@@ -396,6 +396,7 @@ cdef class PeFile:
             new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
             if before_streams and not in_same_section:
                 last_difference += amt_padding
+        print('last difference {} {} {} {}'.format(hex(last_difference), hex(difference), hex(amt_padding), hex(target_rawsize_difference)))
         if (in_streams and stream_name is not None) or in_table:
             #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
             #One thing thats sort of assumed here is that we are not updating the offset of the metadata heap (otherwise wed have to re initialize metadata header offsets).  I cant really think of a reason to do that though.
@@ -403,6 +404,7 @@ cdef class PeFile:
                 heap_obj = heaps_by_offset[offset]
                 old_size = heap_obj.get_size()
                 new_data = heap_obj.to_bytes()
+                print('laying out heap {} at offset {} with last diff {} and new size {}'.format(heap_obj.get_name(), hex(offset + last_difference), hex(last_difference), hex(len(new_data))))
                 new_exe_data = new_exe_data[:offset + last_difference] + new_data + new_exe_data[offset + old_size + last_difference:]
                 heap_obj.update_size(<int>len(new_data))
                 last_difference += <int>len(new_data) - old_size
@@ -614,9 +616,10 @@ cdef class PeFile:
                     resource_rva = resource_offset
                     resource_offset = self.get_offset_from_rva(resource_offset)
                     net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, self, new_exe_view, va_addr, difference, target_addr)
-            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding)
+            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference)
 
     cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr):
+        print('calling update_va64 {} {} {} {}'.format(hex(va_addr), hex(difference), stream_name, hex(target_addr)))
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
         cdef Py_buffer new_exe_view
         cdef IMAGE_DOS_HEADER * dos_header = NULL
@@ -661,6 +664,11 @@ cdef class PeFile:
         cdef int padding_offset = 0
         cdef bint in_streams = False
         cdef bint before_streams = False
+        cdef IMAGE_SECTION_HEADER old_section
+        cdef int target_index = 0
+        cdef int target_section_difference = 0
+        cdef IMAGE_SECTION_HEADER * sections = NULL
+        cdef IMAGE_SECTION_HEADER new_section
 
         PyObject_GetBuffer(new_exe_data, &new_exe_view, PyBUF_WRITABLE)
         dos_header = <IMAGE_DOS_HEADER*>new_exe_view.buf
@@ -729,7 +737,14 @@ cdef class PeFile:
                 #I think it may hypothetically cause other issues.  Not sure.  Might need to remove <= and replace with < again.
                 cor_header.MetaData.Size = cor_header.MetaData.Size + difference
                 in_streams = True
+            target_index = self.get_sec_index_va(cor_header.MetaData.VirtualAddress)
+            old_section = self.get_sections()[target_index]
             cor_header.MetaData.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.MetaData.VirtualAddress, va_addr, difference, target_addr)
+            section_offset = self.get_elfanew() + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader
+            sections = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
+            new_section = sections[target_index]
+            target_section_difference = new_section.PointerToRawData - old_section.PointerToRawData
+            print('target sec difference {}'.format(hex(target_section_difference)))
             cor_header.Resources.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.Resources.VirtualAddress,
                                                                 va_addr, difference, target_addr)
             cor_header.StrongNameSignature.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view,
@@ -819,7 +834,7 @@ cdef class PeFile:
                     resource_rva = resource_offset
                     resource_offset = self.get_offset_from_rva(resource_offset)
                     net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, self, new_exe_view, va_addr, difference, target_addr)
-            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding)
+            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference)
 
 
 cdef class DotNetPeFile:

@@ -1587,28 +1587,30 @@ class GraphAnalyzer:
                 else:
                     blk_prev = list(blk.get_prev())
                     blk_next = list(blk.get_next())
+                    next_blk = blk_next[0]
 
-                    if len(blk_prev) == len(blk_next) == 1:
-                        prev_blk = blk_prev[0]
-                        next_blk = blk_next[0]
-                        nxts = list(prev_blk.get_next())
-                        prev_blk.remove_next(blk)
-                        prev_blk.clear_next_raw()
-                        for nxt in nxts:
-                            if nxt.get_start_offset() == blk.get_start_offset():
-                                continue
-                            prev_blk.add_next_raw(nxt)
-                        
-                        prvs = list(next_blk.get_prev())
-                        next_blk.remove_prev(blk)
-                        next_blk.clear_prev_raw()
-                        for prev in prvs:
-                            if prev.get_start_offset() == blk.get_start_offset():
-                                continue
-                            next_blk.add_prev_raw(nxt)
-                        prev_blk.add_next(next_blk)
+                    if len(blk_next) == 1:
+                        for prev_blk in blk_prev:
+                            nxts = list(prev_blk.get_next())
+                            prev_blk.remove_next(blk)
+                            prev_blk.clear_next_raw()
+                            for nxt in nxts:
+                                if nxt.get_start_offset() == blk.get_start_offset():
+                                    continue
+                                prev_blk.add_next_raw(nxt)
+                            
+                            prvs = list(next_blk.get_prev())
+                            next_blk.remove_prev(blk)
+                            next_blk.clear_prev_raw()
+                            for prev in prvs:
+                                if prev.get_start_offset() == blk.get_start_offset():
+                                    continue
+                                next_blk.add_prev_raw(nxt)
+                            prev_blk.add_next(next_blk)
                         new_graph.unregister_block(blk.get_start_offset())
                     else:
+                        print(blk.get_prev())
+                        print(blk.get_next())
                         raise Exception()
         for blk in list(new_graph.blocks()):
             blk_last = blk.get_last_instr()
@@ -1657,12 +1659,11 @@ class GraphAnalyzer:
                     new_instr = self.__disasm.emit_instruction(Opcodes.Br)
                 else:
                     new_instr = self.__disasm.emit_instruction(Opcodes.Leave)
-                target = nxt.get_start_offset() - (blk.get_start_offset() + blk.get_current_length()) - 5
+                target = nxt.get_start_offset() - (blk.get_start_offset() + blk.get_current_size()) - 5
                 new_instr.setup_instr_size(5)
-                new_instr.setup_instr_offset(blk.get_start_offset() + blk.get_current_length(), last_instr.get_instr_index() + 1)
+                new_instr.setup_instr_offset(blk.get_start_offset() + blk.get_current_size(), last_instr.get_instr_index() + 1)
                 new_instr.setup_arguments_from_int32(target)
-                #TODO: need to account for leave instrs.
-                blk.add_instr(len(instrs), new_instr)
+                blk.add_instr(new_instr)
         #lastly update all the offsets for branches
         for blk in new_graph.blocks():
             last_instr = blk.get_last_instr()
@@ -1698,8 +1699,6 @@ class GraphAnalyzer:
         out = self.__graph.duplicate()
         block = self.__graph.get_block_by_offset(0)
         for block in self.__graph.blocks():
-            if block.get_start_offset() != 0x27:
-                continue
             print('checking block {}'.format(hex(block.get_start_offset())))
             start_offsets = list()
             bad_instrs = set()

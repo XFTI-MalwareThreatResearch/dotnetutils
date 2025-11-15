@@ -45,19 +45,21 @@ def main():
         print('done')
         exit(0)
     elif deob_type == 'cflow':
-        rid = 2
-        mobj = dotnet.get_method_by_rid(rid)
-        fgraph = net_graphing.FunctionGraph(mobj)
-        fgraph.validate_blocks()
-        fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
-        new_graph = fanalyzer.simplify_control_flow()
-        #new_graph.print_root()
-        instrs = new_graph.emit_instructions_as_list()
-        localsigtok = mobj.disassemble_method().get_local_var_sig_token()
-        exc = list()
-        recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
-        data = recompiler.compile_method()
-        mobj.set_method_data(data)
+        rids = [1, 2]
+        for rid in rids:
+            print('doing method', rid)
+            mobj = dotnet.get_method_by_rid(rid)
+            fgraph = net_graphing.FunctionGraph(mobj)
+            fgraph.validate_blocks()
+            fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+            new_graph = fanalyzer.simplify_control_flow()
+            #new_graph.print_root()
+            instrs = new_graph.emit_instructions_as_list()
+            localsigtok = mobj.disassemble_method().get_local_var_sig_token()
+            exc = list()
+            recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
+            data = recompiler.compile_method()
+            mobj.set_method_data(data)
     elif deob_type == 'dumbmath':
         #Remove useless math expressions.
         """
