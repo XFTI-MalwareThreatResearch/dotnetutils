@@ -1502,7 +1502,7 @@ class GraphAnalyzer:
             nxts = blk.get_next()
             if len(nxts) != 1:
                 raise Exception()
-=            nxt = nxts[0]
+            nxt = nxts[0]
             print('next block = {}'.format(hex(nxt.get_start_offset())))
             if len(nxt.get_prev()) == 1:
                 blk.remove_next(nxt)
@@ -1523,6 +1523,7 @@ class GraphAnalyzer:
                 new_instr.setup_instr_offset(blk.get_current_length(), last_instr.get_instr_index() + 1)
                 new_instr.setup_arguments_from_int32(target)
                 print('adding jmp to block {}'.format(blk.get_start_offset()))
+                #TODO: need to account for leave instrs.
                 blk.add_instr(len(instrs), new_instr)
         new_graph.sort_blocks()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
