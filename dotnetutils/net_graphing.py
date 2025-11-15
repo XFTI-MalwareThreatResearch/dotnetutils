@@ -392,7 +392,7 @@ class FunctionBlock:
 
     def add_next(self, block):
         if not self.has_next(block):
-            if block and not self.has_next(block):
+            if block:
                 self.__next.append(block)
             if block and not block.has_prev(self):
                 block.__previous.append(self)
@@ -401,17 +401,6 @@ class FunctionBlock:
         return block in self.__next
 
     def get_next(self):
-        last_instr = self.get_last_instr()
-        if last_instr is not None and last_instr.get_opcode() == Opcodes.Switch:
-            result = list()
-            instr = self.get_last_instr()
-            for target in instr.get_argument():
-                if target in self.__no_longer_in_next:
-                    continue
-                result.append(self.__graph.get_block_by_offset(target))
-            if (instr.get_instr_offset() + len(instr)) not in self.__no_longer_in_next:
-                result.append(self.__graph.get_block_by_offset(instr.get_instr_offset() + len(instr)))
-            return result
         return self.__next
 
     def get_prev(self):
@@ -508,9 +497,6 @@ class FunctionBlock:
             else:
 
                 if len(self.__next) != 2:
-                    print(last_instr.get_name())
-                    print(len(self.__next))
-                    print(self)
                     raise net_exceptions.InvalidBlockException
 
     def split_block(self, split_offset):
@@ -1637,8 +1623,6 @@ class GraphAnalyzer:
                     if len(blk.get_next()) != 2:
                         raise Exception()
                     nxt = blk.get_next()[0]
-                    #target = argument + len(instr) + instr.offset
-                    #target - len(instr) - offset  = argument
                     target = nxt.get_start_offset() - len(blk_last) - blk_last.get_instr_offset()
                     blk_last.setup_arguments_from_int32(target)
 
@@ -1665,10 +1649,14 @@ class GraphAnalyzer:
                 blk_nxts = list(nxt.get_next())
                 nxt.clear_next()
                 for n in blk_nxts:
+                    n_last = n.get_last_instr()
                     blk.add_next(n)
                 new_graph.unregister_block(nxt.get_start_offset())
             else:
-                new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                if not blk.is_block_try() and not blk.is_block_catch() and not blk.is_block_finally() and not blk.is_block_filter():
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                else:
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Leave)
                 target = nxt.get_start_offset() - (blk.get_start_offset() + blk.get_current_length()) - 5
                 new_instr.setup_instr_size(5)
                 new_instr.setup_instr_offset(blk.get_start_offset() + blk.get_current_length(), last_instr.get_instr_index() + 1)
@@ -1704,8 +1692,6 @@ class GraphAnalyzer:
         new_graph.update_offsets()
         new_graph.sort_blocks()
         new_graph.validate_blocks()
-        new_graph.print_root()
-
 
     def simplify_control_flow(self):
         already_done = set()
@@ -1728,6 +1714,7 @@ class GraphAnalyzer:
                             
     def repair_blocks(self):
         #repair the relations between blocks and such
+        #TODO: make this based on the relationship between blocks, nothing else.
         original_blocks = dict()
         for offset, block in self.__graph.get_block_offsets().items():
             original_blocks[offset] = offset + block.get_original_length()
@@ -1735,7 +1722,6 @@ class GraphAnalyzer:
         current_offset = 0
         current_index = 0
         current_offsets = dict()
-
         for offset, block in list(self.__graph.get_block_offsets().items()): #This will already be sorted.
             instrs = block.get_instrs()
             if len(instrs) == 0:
@@ -1753,24 +1739,24 @@ class GraphAnalyzer:
             start_offset = current_offset
             for instr in instrs:
                 opcode = instr.get_opcode()
+                skip = False
                 if instr.is_absolute_jmp() or instr.is_branch():
                     if opcode != Opcodes.Switch:
                         current_offsets[current_offset] = instr.get_instr_offset() + len(instr) + instr.get_argument()
                     else:
                         current_offsets[current_offset] = instr.get_argument()
+                    
                 if instr.is_absolute_jmp():
                     if opcode == Opcodes.Leave_S:
                         new_instr = self.__disasm.emit_instruction(Opcodes.Leave)
                         new_instr.setup_arguments_from_int32(instr.get_argument())
                         new_instr.setup_instr_offset(current_offset, current_index)
                         new_instr.setup_instr_size(5)
-                        block.replace_instr(index, new_instr)
                     elif opcode == Opcodes.Br_S:
                         new_instr = self.__disasm.emit_instruction(Opcodes.Br)
                         new_instr.setup_arguments_from_int32(instr.get_argument())
                         new_instr.setup_instr_offset(current_offset, current_index)
                         new_instr.setup_instr_size(5)
-                        block.replace_instr(index, new_instr)
                 elif instr.is_branch():
                     if opcode == Opcodes.Beq_S:
                         new_instr = self.__disasm.emit_instruction(Opcodes.Beq)
@@ -1792,17 +1778,20 @@ class GraphAnalyzer:
                         new_instr = self.__disasm.emit_instruction(Opcodes.Ble_Un)
                     elif opcode == Opcodes.Blt_Un_S:
                         new_instr = self.__disasm.emit_instruction(Opcodes.Blt_Un)
+                    elif opcode == Opcodes.Brtrue_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Brtrue)
+                    elif opcode == Opcodes.Brfalse_S:
+                        new_instr = self.__disasm.emit_instruction(Opcodes.Brfalse)
                     if new_instr is not None:
                         new_instr.setup_arguments_from_int32(instr.get_argument())
                         new_instr.setup_instr_offset(current_offset, current_index)
                         new_instr.setup_instr_size(5)
-                        block.replace_instr(index, new_instr)
 
                 if new_instr is None:
-                    
                     instr.setup_instr_offset(current_offset, current_index)
 
                 if new_instr is not None:
+                    block.replace_instr(index, new_instr)
                     current_offset += len(new_instr)
                 else:
                     current_offset += len(instr)
@@ -1817,7 +1806,6 @@ class GraphAnalyzer:
         #first pass makes sure that block and instruction offsets are initialized.
         #second pass is for adjusting branches
         for new_offset, old_argument in current_offsets.items():
-            print('new off', hex(new_offset), hex(old_argument))
             blk = self.__graph.get_block_by_offset(new_offset)
             instr = blk.get_last_instr()
             if new_offset != instr.get_instr_offset():
@@ -1975,12 +1963,15 @@ class MethodRecompiler:
                 flags |= 0x0010
             flags |= (3 << 12)
             #we need a function graph to calculate the max stack size.
+            import binascii
             result.extend(int.to_bytes(flags, 2, 'little'))
             result.extend(int.to_bytes(calculated_max_stack, 2, 'little'))
             result.extend(int.to_bytes(self.__code_size, 4, 'little'))
             result.extend(int.to_bytes(self.__localvarsigtok, 4, 'little'))
+
             for instr in self.__instrs:
-                result.extend(instr.to_bytes())
+                b = instr.to_bytes()
+                result.extend(b)
 
             if len(self.__exception_blocks) == 0:
                 return bytes(result)
