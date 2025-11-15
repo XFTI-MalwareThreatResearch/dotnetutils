@@ -80,6 +80,8 @@ cdef class Instruction:
 
     cpdef int get_instr_handler(self)
 
+    cpdef Instruction duplicate(self)
+
 cdef class MethodDisassembler:
     cdef dotnetpefile.DotNetPeFile dotnetpe
     cdef net_row_objects.MethodDef method_obj

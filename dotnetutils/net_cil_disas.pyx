@@ -114,6 +114,12 @@ cdef class Instruction:
         self.__disasm_obj = disasm_obj
         self.instr_index = instr_index
 
+    cpdef Instruction duplicate(self):
+        cdef Instruction new_instr = Instruction(self.opcode_one, self.__disasm_obj, self.offset, self.instr_index)
+        new_instr.arguments = self.arguments
+        new_instr.instr_size = self.instr_size
+        return new_instr
+
     cpdef int get_nstack(self):
         """ Returns the number of stack items that the instruction will add or remove to the stack.
 
