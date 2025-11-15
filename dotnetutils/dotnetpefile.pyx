@@ -315,7 +315,7 @@ cdef class PeFile:
         cdef dict heaps_by_offset = dict()
         cdef bytes padding = None
         cdef uint64_t target_offset = self.get_offset_from_rva(target_addr)
-
+        cdef bint in_same_section = self.get_sec_index_va(dpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress) == self.get_sec_index_va(target_addr)
         metadata_offset = self.get_offset_from_rva(dpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
         streams_offset = metadata_offset + 12
         number_of_streams = <int>(metadata_offset + 12)
@@ -361,7 +361,7 @@ cdef class PeFile:
             if orig_streams_offset <= target_offset < streams_offset:
                 last_difference += difference
 
-        if before_streams:
+        if before_streams and in_same_section:
             #if its before streams, we dont want to update the data itself, just our held offsets.
             for heap_obj in heaps_by_offset.values():
                 heap_obj.update_offset(heap_obj.get_offset() + difference)
@@ -394,6 +394,8 @@ cdef class PeFile:
         if amt_padding != 0 and padding_offset != 0:
             padding = b'\x00' * amt_padding
             new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
+            if before_streams and not in_same_section:
+                last_difference += amt_padding
         if (in_streams and stream_name is not None) or in_table:
             #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
             #One thing thats sort of assumed here is that we are not updating the offset of the metadata heap (otherwise wed have to re initialize metadata header offsets).  I cant really think of a reason to do that though.
@@ -728,7 +730,6 @@ cdef class PeFile:
                 cor_header.MetaData.Size = cor_header.MetaData.Size + difference
                 in_streams = True
             cor_header.MetaData.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.MetaData.VirtualAddress, va_addr, difference, target_addr)
-
             cor_header.Resources.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.Resources.VirtualAddress,
                                                                 va_addr, difference, target_addr)
             cor_header.StrongNameSignature.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view,

@@ -119,13 +119,12 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
     cdef IMAGE_DOS_HEADER * dos_header
     cdef IMAGE_NT_HEADERS32 * nt_headers
     cdef IMAGE_SECTION_HEADER * section_header
-    cdef int difference
-    cdef int x
+    cdef int difference = 0
+    cdef int x = 0
     cdef bint found_old_section = False
     cdef bint found_target_section = False
-    cdef unsigned int section_offset
+    cdef unsigned int section_offset = 0
     cdef IMAGE_SECTION_HEADER * new_section = NULL
-
     if addr == 0 or old_userstrings_va > addr:
         return addr
 
@@ -145,6 +144,7 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
         if section.VirtualAddress <= addr < (section.VirtualAddress + section.Misc.VirtualSize):
             old_section = section
             found_old_section = True
+            break
         if memcmp(section.Name, target_section.Name, 8) == 0:
             passed_text = True
     if not found_old_section:
