@@ -45,7 +45,7 @@ def main():
         print('done')
         exit(0)
     elif deob_type == 'cflow':
-        rids = [1, 2]
+        rids = [1, 2, 3, 4]
         for rid in rids:
             print('doing method', rid)
             mobj = dotnet.get_method_by_rid(rid)

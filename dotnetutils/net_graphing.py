@@ -546,7 +546,6 @@ class FunctionBlock:
 
     def remove_next(self, block):
         if self.has_next(block):
-            self.__no_longer_in_next.append(block.get_start_offset())
             self.__next.remove(block)
             block.__previous.remove(self)
     
@@ -1431,52 +1430,52 @@ class GraphAnalyzer:
     
 
     def __switch_block_walker(self, block, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num):
-        if block.get_start_offset() not in already_handled:
-            already_handled.append(block.get_start_offset())
-
-            if block.get_start_offset() in offsets_grouped:
-                offsets = offsets_grouped[block.get_start_offset()]
-                if len(offsets) == 1:
-                    offset = offsets[0]
-                    target_link = new_graph.get_block_by_offset(offset)
-                for offset in offsets:
-                    #absolute jmp, it can only go one place.
-                    start_offset = offset
-                    end_offset = switch_instr.get_instr_offset()
-                    emu = initial_emu.spawn_new_emulator(self.__method, start_offset=start_offset, end_offset=end_offset)
-                    emu.set_local_obj(stloc_num, base_local_var)
-                    emu.setup_method_params([])
-                    worked = False
-                    try:
-                        emu.run_function()
-                    except net_exceptions.EmulatorEndExecutionException:
-                        worked = True
-                    if not worked:
-                        raise Exception()
-                    new_target = emu.get_stack().pop_obj()
-                    if not isinstance(new_target, net_emu_types.DotNetNumber):
-                        raise Exception()
-                    new_local_var = emu.get_local_obj(stloc_num)
-                    switch_targets = switch_instr.get_argument()
-                    new_target = new_target.as_python_obj()
-                    if new_target < 0 or new_target >= len(switch_targets):
-                        new_offset = len(switch_instr) + switch_instr.get_instr_offset()
-                    else:
-                        new_offset = switch_targets[new_target]
-                    new_start_block = new_graph.get_block_by_offset(start_offset)
-                    old_start_block = self.__graph.get_block_by_offset(start_offset)
-                    new_next_block = new_graph.get_block_by_offset(new_offset)
-                    if len(old_start_block.get_next()) != 1:
-                        raise Exception()
-                    old_next = old_start_block.get_next()[0]
-                    new_next = new_graph.get_block_by_offset(old_next.get_start_offset())
-                    new_start_block.remove_next(new_next)
-                    new_start_block.add_next(new_next_block)
-
-                    self.__switch_block_walker(self.__graph.get_block_by_offset(new_offset), switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, new_local_var, stloc_num)
-                    
-            for nxt in block.get_next():
-                self.__switch_block_walker(nxt, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num)
+        if block.get_start_offset() in already_handled:
+            base_vars = already_handled[block.get_start_offset()]
+            if base_local_var.as_python_obj() in base_vars:
+                return
+        else:
+            already_handled[block.get_start_offset()] = list()
+        already_handled[block.get_start_offset()].append(base_local_var.as_python_obj())
+        if block.get_start_offset() in offsets_grouped:
+            offsets = offsets_grouped[block.get_start_offset()]
+            for offset in offsets:
+                #absolute jmp, it can only go one place.
+                start_offset = offset
+                end_offset = switch_instr.get_instr_offset()
+                emu = initial_emu.spawn_new_emulator(self.__method, start_offset=start_offset, end_offset=end_offset)
+                emu.set_local_obj(stloc_num, base_local_var)
+                emu.setup_method_params([])
+                worked = False
+                try:
+                    emu.run_function()
+                except net_exceptions.EmulatorEndExecutionException:
+                    worked = True
+                if not worked:
+                    raise Exception()
+                new_target = emu.get_stack().pop_obj()
+                if not isinstance(new_target, net_emu_types.DotNetNumber):
+                    raise Exception()
+                new_local_var = emu.get_local_obj(stloc_num)
+                switch_targets = switch_instr.get_argument()
+                new_target = new_target.as_python_obj()
+                if new_target < 0 or new_target >= len(switch_targets):
+                    new_offset = len(switch_instr) + switch_instr.get_instr_offset() 
+                else:
+                    new_offset = switch_targets[new_target]
+                new_start_block = new_graph.get_block_by_offset(start_offset)
+                old_start_block = self.__graph.get_block_by_offset(start_offset)
+                new_next_block = new_graph.get_block_by_offset(new_offset)
+                if len(old_start_block.get_next()) != 1:
+                    raise Exception()
+                old_next = old_start_block.get_next()[0]
+                new_next = new_graph.get_block_by_offset(old_next.get_start_offset())
+                new_start_block.remove_next(new_next)
+                new_start_block.add_next(new_next_block)
+                self.__switch_block_walker(self.__graph.get_block_by_offset(new_offset), switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, new_local_var, stloc_num)
+            return
+        for nxt in block.get_next():
+            self.__switch_block_walker(nxt, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num)
 
     
     def __deobfuscate_switch(self, block, offsets, switch_instr, new_graph, bad_instrs):
@@ -1562,7 +1561,7 @@ class GraphAnalyzer:
         initial_block = self.__graph.get_block_by_offset(starting_offset)
         new_switch_block.remove_prev(new_start_block)
         new_start_block.add_next(new_initial_block)
-        already_handled = [new_start_block.get_start_offset()]
+        already_handled = {new_start_block.get_start_offset(): [base_local]}
         stloc_num = stloc_instr.get_argument()
         self.__switch_block_walker(initial_block, switch_instr, offsets_grouped, new_graph, already_handled, emu, orig_base_local, stloc_num)
         new_switch_block.clear_next()
@@ -1609,8 +1608,6 @@ class GraphAnalyzer:
                             prev_blk.add_next(next_blk)
                         new_graph.unregister_block(blk.get_start_offset())
                     else:
-                        print(blk.get_prev())
-                        print(blk.get_next())
                         raise Exception()
         for blk in list(new_graph.blocks()):
             blk_last = blk.get_last_instr()
@@ -1699,16 +1696,17 @@ class GraphAnalyzer:
         out = self.__graph.duplicate()
         block = self.__graph.get_block_by_offset(0)
         for block in self.__graph.blocks():
-            print('checking block {}'.format(hex(block.get_start_offset())))
+            #print('checking block {}'.format(hex(block.get_start_offset())))
             start_offsets = list()
             bad_instrs = set()
             if self.__is_target_switch(block, start_offsets, bad_instrs):
                 print('is target switch {}'.format(hex(block.get_start_offset())))
-                for block_offset, offset in start_offsets:
-                    print('Start offset: Block = {}, Offset = {}'.format(hex(block_offset), hex(offset)))
+                #for block_offset, offset in start_offsets:
+                #    print('Start offset: Block = {}, Offset = {}'.format(hex(block_offset), hex(offset)))
                 self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
             else:
-                print('Block {} is not target switch'.format(hex(block.get_start_offset())))
+                pass
+                #print('Block {} is not target switch'.format(hex(block.get_start_offset())))
         return out
                             
     def repair_blocks(self):
