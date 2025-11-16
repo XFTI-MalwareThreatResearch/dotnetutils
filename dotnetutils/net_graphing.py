@@ -157,6 +157,8 @@ class FunctionBlock:
         Args:
             exception_handler (list): The exception handler to set.
         """
+        if not isinstance(exception_handler, FunctionBlock):
+            raise Exception() #Update the docs later etc etc
         self.__exception_handler = exception_handler
 
     def set_filter_block_offset(self, offset):
@@ -595,18 +597,29 @@ class FunctionGraph:
         self.__instr_offsets = dict()
         self.__instrs = list()
         self.__blocks_start = dict()
+        self.__exception_blocks = list()
 
         if force_instrs is None:
             if init_blocks:
                 if not self.__method_object.has_body():
                     raise net_exceptions.OperationNotSupportedException
                 self.__disasm_object = method_object.disassemble_method()
-                self.__exception_blocks = self.__disasm_object.get_exception_blocks()
                 self.__instrs = self.__disasm_object.get_list_of_instrs()
                 for instr in self.__instrs:
                     self.__instr_offsets[instr.get_instr_offset()] = instr
-                self.__handle_try_catch_finally_blocks() # first handle try catch finally since thats a special case.
-                self.sort_blocks()
+                for cl_flags, try_offset, try_length, catch_offset, catch_length, token in self.__disasm_object.get_exception_blocks():
+                    try_block = self.__parse_block(try_offset, try_offset + try_length, True, False, False, False, None)#TODO: fix last param
+                    if cl_flags == net_structs.CorILExceptionClause.Finally:
+                        catch_block = self.__parse_block(catch_offset, catch_offset + catch_length, False, False, True, False, None)
+                    else:
+                        catch_block = self.__parse_block(catch_offset, catch_offset + catch_length, False, True, False, False, None)
+                    filter_blk = token
+                    #self.__parse_block(handler_offset, handler_offset + handler_length, False, True, False, False, exc)
+                    if cl_flags == net_structs.CorILExceptionClause.Filter:
+                        filter_size = catch_offset - token
+                        filter_blk = self.__parse_block(token, token + filter_size, False, False, False, True, None)
+                    self.__exception_blocks.append((cl_flags, try_block, catch_block, filter_blk))
+
                 if 0 not in self.__blocks_start:
                     self.__root_block = self.__parse_block(0)
                 else:
@@ -621,11 +634,21 @@ class FunctionGraph:
         else:
             if force_exc_blocks is None:
                 raise net_exceptions.InvalidArgumentsException()
-            self.__exception_blocks = force_exc_blocks
             self.__instrs = force_instrs
             for instr in self.__instrs:
                 self.__instr_offsets[instr.get_instr_offset()] = instr
-            self.__handle_try_catch_finally_blocks() # first handle try catch finally since thats a special case.
+            for cl_flags, try_offset, try_length, catch_offset, catch_length, token in force_exc_blocks:
+                try_block = self.__parse_block(try_offset, try_offset + try_length, True, False, False, False, None)#TODO: fix last param
+                if cl_flags == net_structs.CorILExceptionClause.Finally:
+                    catch_block = self.__parse_block(catch_offset, catch_offset + catch_length, False, False, True, False, None)
+                else:
+                    catch_block = self.__parse_block(catch_offset, catch_offset + catch_length, False, True, False, False, None)
+                filter_blk = token
+                #self.__parse_block(handler_offset, handler_offset + handler_length, False, True, False, False, exc)
+                if cl_flags == net_structs.CorILExceptionClause.Filter:
+                    filter_size = catch_offset - token
+                    filter_blk = self.__parse_block(token, token + filter_size, False, False, False, True, None)
+                self.__exception_blocks.append((cl_flags, try_block, catch_block, filter_blk))
             self.sort_blocks()
             if 0 not in self.__blocks_start:
                 self.__root_block = self.__parse_block(0)
@@ -637,8 +660,7 @@ class FunctionGraph:
             for block in self.__blocks_start.values():
                 block.mark_block_finished() #Tell each block that we are done with our initial setup, anything else is a modification.
 
-        if self.__disasm_object is None:
-            self.__exception_blocks = list()
+
 
     def duplicate(self):
         new_graph = FunctionGraph(self.__method_object, init_blocks=False)
@@ -648,22 +670,19 @@ class FunctionGraph:
         new_graph.__disasm_object = self.__disasm_object
         new_graph.__debug_print = self.__debug_print
         new_graph.__exception_blocks = list()
-        for exc in self.__exception_blocks:
-            new_graph.__exception_blocks.append(list(exc))
         already_duplicated = dict()
         usable_dict = dict(new_graph.__blocks_start)
         new_graph.__blocks_start.clear()
         for offset, blk in usable_dict.items():
             new_graph.__blocks_start[offset] = blk.duplicate(new_graph, already_duplicated)
         new_graph.__root_block = new_graph.get_block_by_offset(0)
+        for exc in self.__exception_blocks:
+            new_graph.__exception_blocks.append(list(exc))
         return new_graph
 
     def register_block(self, offset, block):
         self.__blocks_start[offset] = block
 
-    def update_exception_blocks(self, blocks):
-        self.__exception_blocks = blocks
-    
     def get_exception_blocks(self):
         return self.__exception_blocks
 
@@ -1687,7 +1706,7 @@ class GraphAnalyzer:
         new_graph.sort_blocks()
 
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
-        new_analyzer.repair_blocks2()
+        new_analyzer.repair_blocks()
         new_graph.update_offsets()
         new_graph.sort_blocks()
         new_graph.validate_blocks()
@@ -1813,7 +1832,7 @@ class GraphAnalyzer:
                 else:
                     self.__block_walker(blk_next[0], handled, exc_handlers)
 
-    def repair_blocks2(self):
+    def repair_blocks(self):
         self.__graph.validate_blocks()
         for block in list(self.__graph.blocks()):
             block_prev = block.get_prev()
@@ -1875,157 +1894,6 @@ class GraphAnalyzer:
                 target = blk_next[0].get_start_offset()
                 argument = target - len(last_instr) - last_instr.get_instr_offset()
                 last_instr.setup_arguments_from_int32(argument)
-
-        
-                            
-    def repair_blocks(self):
-        #repair the relations between blocks and such
-        #TODO: make this based on the relationship between blocks, nothing else.
-        original_blocks = dict()
-        for offset, block in self.__graph.get_block_offsets().items():
-            original_blocks[offset] = offset + block.get_original_length()
-        changed_blocks = dict()
-        current_offset = 0
-        current_index = 0
-        current_offsets = dict()
-        for offset, block in list(self.__graph.get_block_offsets().items()): #This will already be sorted.
-            instrs = block.get_instrs()
-            if len(instrs) == 0:
-                if len(block.get_next()) != 1:
-                    raise Exception()
-                new_instr = self.__disasm.emit_instruction(Opcodes.Br)
-                new_instr.setup_instr_offset(block.get_start_offset())
-                new_instr.setup_instr_size(5)
-                block.add_instr(0, new_instr)
-                instrs = block.get_instrs()
-            block.setup_new_block_location(current_offset, current_index)
-            changed_blocks[offset] = current_offset
-            index = 0
-            new_instr = None
-            start_offset = current_offset
-            for instr in instrs:
-                opcode = instr.get_opcode()
-                skip = False
-                if instr.is_absolute_jmp() or instr.is_branch():
-                    if opcode != Opcodes.Switch:
-                        current_offsets[current_offset] = instr.get_instr_offset() + len(instr) + instr.get_argument()
-                    else:
-                        current_offsets[current_offset] = instr.get_argument()
-                    
-                if instr.is_absolute_jmp():
-                    if opcode == Opcodes.Leave_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Leave)
-                        new_instr.setup_arguments_from_int32(instr.get_argument())
-                        new_instr.setup_instr_offset(current_offset, current_index)
-                        new_instr.setup_instr_size(5)
-                    elif opcode == Opcodes.Br_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Br)
-                        new_instr.setup_arguments_from_int32(instr.get_argument())
-                        new_instr.setup_instr_offset(current_offset, current_index)
-                        new_instr.setup_instr_size(5)
-                elif instr.is_branch():
-                    if opcode == Opcodes.Beq_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Beq)
-                    elif opcode == Opcodes.Bge_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Bge)
-                    elif opcode == Opcodes.Bgt_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Bgt)
-                    elif opcode == Opcodes.Ble_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Ble)
-                    elif opcode == Opcodes.Blt_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Blt)
-                    elif opcode == Opcodes.Bne_Un_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Bne_Un)
-                    elif opcode == Opcodes.Bge_Un_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Bge_Un)
-                    elif opcode == Opcodes.Bgt_Un_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Bgt_Un)
-                    elif opcode == Opcodes.Ble_Un_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Ble_Un)
-                    elif opcode == Opcodes.Blt_Un_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Blt_Un)
-                    elif opcode == Opcodes.Brtrue_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Brtrue)
-                    elif opcode == Opcodes.Brfalse_S:
-                        new_instr = self.__disasm.emit_instruction(Opcodes.Brfalse)
-                    if new_instr is not None:
-                        new_instr.setup_arguments_from_int32(instr.get_argument())
-                        new_instr.setup_instr_offset(current_offset, current_index)
-                        new_instr.setup_instr_size(5)
-
-                if new_instr is None:
-                    instr.setup_instr_offset(current_offset, current_index)
-
-                if new_instr is not None:
-                    block.replace_instr(index, new_instr)
-                    current_offset += len(new_instr)
-                else:
-                    current_offset += len(instr)
-                current_index += 1
-                index += 1
-            block.update_size(current_offset - start_offset)
-            block.update_start_offset(block.get_new_offset(), block.get_new_index())
-
-        self.__graph.update_offsets()
-        #TODO: cant do this based on offset needs to be based on nexts, change it for remove_useless_math too.
-
-        #first pass makes sure that block and instruction offsets are initialized.
-        #second pass is for adjusting branches
-        for new_offset, old_argument in current_offsets.items():
-            blk = self.__graph.get_block_by_offset(new_offset)
-            instr = blk.get_last_instr()
-            if new_offset != instr.get_instr_offset():
-                raise net_exceptions.OperationNotSupportedException()
-            
-            if instr.get_opcode() != Opcodes.Switch:
-                new_target = changed_blocks[old_argument]
-                #target = instr.offset + len(instr) + argument
-                #argument   = target - instr.offset - len(instr)
-                argument = new_target - instr.get_instr_offset() - len(instr)
-                instr.setup_arguments_from_int32(argument)
-            else:
-                args = list()
-                for target in old_argument:
-                    new_target = changed_blocks[target]
-                    argument = new_target - instr.get_instr_offset() - len(instr)
-                    args.append(argument)
-                instr.setup_arguments_from_argslist(args)
-
-            exceptions = self.__graph.get_exception_blocks()
-            new_handlers = list()
-            for exc in exceptions:
-                clause_flags, try_offset, try_length, catch_offset, catch_length, token = exc
-                new_try_offset = changed_blocks[try_offset]
-                new_catch_offset = changed_blocks[catch_offset]
-                new_token = token
-                new_try_length = try_length
-                new_catch_length = catch_length
-                if clause_flags == net_structs.CorILExceptionClause.Fault:
-                    new_token = changed_blocks[token]
-                
-                total_try_size = 0
-                total_catch_size = 0
-                block: FunctionBlock
-                for block in self.__graph.blocks():
-                    exc_handler = block.get_exception_handler()
-                    if block.is_block_try():
-                        if exc_handler[1] == try_offset:
-                            total_try_size += block.get_original_length()
-                    elif block.is_block_catch() or block.is_block_finally():
-                        if exc_handler[3] == catch_offset:
-                            total_catch_size += block.get_original_length()
-                new_try_length = total_try_size
-                new_catch_length = total_catch_size
-                new_handler = [clause_flags, new_try_offset, new_try_length, new_catch_offset, new_catch_length, new_token]
-                new_handlers.append(new_handler)
-            for x in range(len(exceptions)):
-                old_handler = exceptions[x]
-                new_handler = new_handlers[x]
-                for block in self.__graph.blocks():
-                    exc_handler = block.get_exception_handler()
-                    if exc_handler == old_handler:
-                        block.set_exception_handler(new_handler)
-            self.__graph.set_exception_blocks(new_handlers)
 
     def remove_useless_math(self):
         """ Remove math expressions that compute to a constant value.
