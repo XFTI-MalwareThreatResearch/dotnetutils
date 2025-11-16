@@ -1707,7 +1707,48 @@ class GraphAnalyzer:
                 #print('Block {} is not target switch'.format(hex(block.get_start_offset())))
         return out
     
+    def __emit_small_instr_for_big(self, instr):
+        if not instr.is_branch() and not instr.is_absolute_jmp():
+            return None
+        ins_op = instr.get_opcode()
+        new_instr = None
+        if ins_op == Opcodes.Br:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Br_S)
+        elif ins_op == Opcodes.Brfalse:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Brfalse_S)
+        elif ins_op == Opcodes.Brtrue:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Brtrue_S)
+        elif ins_op == Opcodes.Beq:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Beq_S)
+        elif ins_op == Opcodes.Bge:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bge_S)
+        elif ins_op == Opcodes.Bgt:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bgt_S)
+        elif ins_op == Opcodes.Ble:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Ble_S)
+        elif ins_op == Opcodes.Blt:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Blt_S)
+        elif ins_op == Opcodes.Bne_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bne_Un_S)
+        elif ins_op == Opcodes.Bge_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bge_Un_S)
+        elif ins_op == Opcodes.Bgt_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bgt_Un_S)
+        elif ins_op == Opcodes.Ble_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Ble_Un_S)
+        elif ins_op == Opcodes.Blt_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Blt_Un_S)
+        elif ins_op == Opcodes.Leave:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Leave_S)
+        
+        if new_instr is None:
+            return None
+        new_instr.setup_instr_size(2)
+        return new_instr
+    
     def __emit_big_instr_for_small(self, instr):
+        if not instr.is_branch() and not instr.is_absolute_jmp():
+            return None
         ins_op = instr.get_opcode()
         new_instr = None
         if ins_op == Opcodes.Br_S:
@@ -1800,13 +1841,22 @@ class GraphAnalyzer:
         current_offset = 0
         current_index = 0
         #lay out the offsets
-        for block in blocks_order:
+        total_compiled = len(blocks_order)
+        for x in range(total_compiled):
+            block = blocks_order[x]
             block.update_start_offset(current_offset, current_index)
             block.update_size(block.get_current_size())
+            y = 0
             for instr in block.get_instrs():
+                ins_op = instr.get_opcode()
+                if ins_op in (Opcodes.Br, Opcodes.Br_S) and x < (total_compiled - 1):
+                    if block.get_next()[0] == blocks_order[x+1]:
+                        block.remove_instrs(y, y+1)
+                        continue
                 instr.setup_instr_offset(current_offset, current_index)
                 current_offset += len(instr)
                 current_index += 1
+                y += 1
 
         self.__graph.update_offsets()
         #fixup the branches of any blocks
@@ -1824,7 +1874,9 @@ class GraphAnalyzer:
             elif last_instr.is_absolute_jmp() or last_instr.is_branch():
                 target = blk_next[0].get_start_offset()
                 argument = target - len(last_instr) - last_instr.get_instr_offset()
-                last_instr.setup_arguments_from_int32(argument)    
+                last_instr.setup_arguments_from_int32(argument)
+
+        
                             
     def repair_blocks(self):
         #repair the relations between blocks and such
