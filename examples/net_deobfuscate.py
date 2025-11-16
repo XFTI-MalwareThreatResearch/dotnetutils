@@ -20,7 +20,7 @@ def main():
     output_exe = sys.argv[3]
     with open(obf_exe, 'rb') as infile:
         data = infile.read()
-    dotnet = dotnetpefile.try_get_dotnetpe(pe_data=data)
+    dotnet = dotnetpefile.DotNetPeFile(pe_data=data)
     if dotnet is None:
         print('Not a dotnet file.')
         exit(0)
@@ -45,13 +45,52 @@ def main():
         print('done')
         exit(0)
     elif deob_type == 'cflow':
-        rids = [1, 2, 3, 4]
-        for rid in rids:
-            print('doing method', rid)
-            mobj = dotnet.get_method_by_rid(rid)
+        """
+        Current state of control flow deobfuscation:
+        It seems to work for non try / catch finally filter methods
+        Adds a useless br instruction after every block though.  Need to fix that.
+        Currently need to fix stuff for try catch finally to work.
+        """
+        mspec_table = dotnet.get_metadata_table('MethodSpec')
+        mspec_methods = set()
+        for mspec in mspec_table:
+            mspec_methods.add(mspec.get_method().get_rid())
+        for mobj in dotnet.get_metadata_table('MethodDef'):
+            if not mobj.has_body():
+                continue
+            if mobj.get_rid() in mspec_methods:
+                continue
+            if mobj.disassemble_method() is None:
+                continue
+            print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
             fgraph.validate_blocks()
             fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+            try:
+                new_graph = fanalyzer.simplify_control_flow()
+            except net_exceptions.EmulatorExecutionException:
+                print('emulation failed due to error')
+                continue
+            #new_graph.print_root()
+            instrs = new_graph.emit_instructions_as_list()
+            blk = new_graph.get_block_by_offset(0x323)
+            localsigtok = mobj.disassemble_method().get_local_var_sig_token()
+            exc = list()
+            recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
+            data = recompiler.compile_method()
+            mobj.set_method_data(data)
+        mspecs_completed = set()
+        for mspec in mspec_table:
+            method = mspec.get_method()
+            if method.get_rid() in mspecs_completed:
+                continue
+            mspecs_completed.add(method.get_rid())
+            if method.disassemble_method() is None:
+                continue
+            print('doing method', hex(mobj.get_token()))
+            fgraph = net_graphing.FunctionGraph(mspec)
+            fgraph.validate_blocks()
+            fanalyzer = net_graphing.GraphAnalyzer(mspec, fgraph)
             new_graph = fanalyzer.simplify_control_flow()
             #new_graph.print_root()
             instrs = new_graph.emit_instructions_as_list()
@@ -59,7 +98,8 @@ def main():
             exc = list()
             recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
             data = recompiler.compile_method()
-            mobj.set_method_data(data)
+            mobj.get_method().set_method_data(data)
+
     elif deob_type == 'dumbmath':
         #Remove useless math expressions.
         """

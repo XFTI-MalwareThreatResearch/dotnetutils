@@ -1892,3 +1892,88 @@ cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
                                 col_val.set_raw_value(new_index)
             strings_heap.end_append_tx()
             count = 0
+
+
+cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list target_rids=None):
+    """ A control flow deobfuscator.  Deobfuscates control flow obfuscation that uses switch statements to produce constant outcomes.
+        Currently in development.  There may be issues.  Currently doesnt support methods with try catch finally filter.
+    
+    Args:
+        dotnet (dotnetpefile.DotNetPeFile): The dotnetpe to deobfuscate
+        target_rids (list[int]): Rids of methods to target.  None for all.
+        
+    """
+    cdef net_row_objects.MethodSpec mspec = None
+    cdef list already_completed = list()
+    cdef net_row_objects.MethodDef mdef = None
+    cdef object fgraph = None
+    cdef object fanalyzer = None
+    cdef int localvartok = 0
+    cdef list instrs = None
+    cdef list exc_blocks = None
+    cdef net_cil_disas.MethodDisassembler disasm = None
+    cdef object recompiler = None
+    cdef bytes data = None
+    cdef bint has_math = False
+    for mspec in dotnet.get_metadata_table('MethodSpec'):
+        mdef = mspec.get_method()
+        if target_rids is not None and mdef.get_rid() not in target_rids:
+            continue
+        if mdef.get_rid() in already_completed:
+            continue
+        already_completed.append(mdef.get_rid())
+        disasm = mdef.disassemble_method()
+        if disasm is None:
+            continue
+        if len(disasm.get_exception_blocks()) > 0:
+            print('Exception blocks are currently not supported.  Skipping method {}'.format(hex(mdef.get_token())))
+            continue
+        try:
+            fgraph = net_graphing.FunctionGraph(mdef)
+            fanalyzer = net_graphing.GraphAnalyzer(mdef, fgraph)
+            fanalyzer.repair_blocks()
+            has_math = fanalyzer.remove_useless_math()
+            if has_math:
+                fanalyzer.repair_blocks()
+                localvartok = disasm.get_local_var_sig_token()
+                instrs = fgraph.emit_instructions_as_list()
+                exc_blocks = fgraph.get_exception_blocks()
+                recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
+                data = recompiler.compile_method()
+                mdef.set_method_data(data)
+                print('Deobfuscated control flow from method {}'.format(hex(mdef.get_token())))
+            else:
+                print('method {} has no useless math.'.format(hex(mdef.get_token())))
+        except Exception as e:
+            print('Error deobfuscating method {}. Its probably an issue with the control flow deobfuscator, as its still buggy.'.format(hex(mdef.get_token())))
+
+    for mdef in dotnet.get_metadata_table('MethodDef'):
+        if target_rids is not None and mdef.get_rid() not in target_rids:
+            continue
+        if mdef.get_rid() in already_completed:
+            continue
+        already_completed.append(mdef.get_rid())
+        disasm = mdef.disassemble_method()
+        if disasm is None:
+            continue
+        if len(disasm.get_exception_blocks()) > 0:
+            print('Exception blocks are currently not supported.  Skipping method {}'.format(hex(mdef.get_token())))
+            continue
+        try:
+            fgraph = net_graphing.FunctionGraph(mdef)
+            fanalyzer = net_graphing.GraphAnalyzer(mdef, fgraph)
+            fanalyzer.repair_blocks()
+            has_math = fanalyzer.remove_useless_math()
+            if has_math:
+                fanalyzer.repair_blocks()
+                localvartok = disasm.get_local_var_sig_token()
+                instrs = fgraph.emit_instructions_as_list()
+                exc_blocks = fgraph.get_exception_blocks()
+                recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
+                data = recompiler.compile_method()
+                mdef.set_method_data(data)
+                print('Deobfuscated control flow from method {}'.format(hex(mdef.get_token())))
+            else:
+                print('method {} has no useless math.'.format(hex(mdef.get_token())))
+        except Exception as e:
+            print('Error deobfuscating method {}. Its probably an issue with the control flow deobfuscator, as its still buggy.'.format(hex(mdef.get_token())))

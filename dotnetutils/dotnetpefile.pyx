@@ -315,6 +315,7 @@ cdef class PeFile:
         cdef dict heaps_by_offset = dict()
         cdef bytes padding = None
         cdef uint64_t target_offset = self.get_offset_from_rva(target_addr)
+        cdef int hdr_size = 0
         cdef bint in_same_section = self.get_sec_index_va(self.get_net_header().MetaData.VirtualAddress) == self.get_sec_index_va(target_addr)
         metadata_offset = self.get_offset_from_rva(self.get_net_header().MetaData.VirtualAddress)
         streams_offset = metadata_offset + 12
@@ -341,7 +342,11 @@ cdef class PeFile:
                 while old_exe_data[streams_offset] != 0:
                     name += bytes([old_exe_data[streams_offset]])
                     streams_offset += 1
-                streams_offset += (4 - (streams_offset % 4))
+                streams_offset += 1
+                hdr_size = <int>(streams_offset - orig_offset)
+                while hdr_size % 4 != 0:
+                    hdr_size += 1
+                streams_offset = orig_offset + hdr_size
                 stream_offset = metadata_offset + offset
                 if name == stream_name and not passed_userstrings:
                     passed_userstrings = True

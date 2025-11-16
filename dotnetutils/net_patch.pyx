@@ -66,8 +66,8 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     us_offset = stream_offset + stream_size
     new_streamheader = int.to_bytes(us_offset, 4, 'little') + int.to_bytes(us_size, 4, 'little')
     new_streamheader += b'#US\x00'
-    amt_to_align = (4 - ((current_offset + 12) % 4))
-    new_streamheader += b'\x00' * amt_to_align
+    while len(new_streamheader) % 4 != 0:
+        new_streamheader += b'\x00'
     new_streamheader = int.to_bytes(us_offset + len(new_streamheader), 4, 'little') + new_streamheader[4:]
     va_addr = dotnetpe.get_pe().get_rva_from_offset(new_header_offset)
     dotnetpe.get_pe().update_va(va_addr, <int>len(new_streamheader), dotnetpe, None, va_addr - 1)

@@ -35,3 +35,5 @@ cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
                   bint force_main_method=*,
                   bint change_import_names=*,
                   bint change_events=*) except *
+
+cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list target_rids=*)
