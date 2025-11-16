@@ -52,4 +52,3 @@ cdef class MetaDataDirectory:
     cpdef net_processing.HeapObject get_heap(self, str name)
     cpdef dict get_heaps(self)
     cpdef int get_metadata_heap_size(self)
-    cpdef IMAGE_COR20_HEADER get_net_header(self)

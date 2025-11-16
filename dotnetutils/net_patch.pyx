@@ -40,7 +40,7 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     cdef uint64_t va_addr = 0
     new_exe_data = bytearray(exe_data)
 
-    metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
+    metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_pe().get_net_header().MetaData.VirtualAddress)
     streams_offset = metadata_offset + 12
     number_of_streams = <int>(metadata_offset + 12)
     number_of_streams_bytes = exe_data[number_of_streams:number_of_streams + 4]

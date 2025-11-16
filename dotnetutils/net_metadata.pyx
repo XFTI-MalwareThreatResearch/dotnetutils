@@ -162,11 +162,6 @@ cdef class MetaDataDirectory:
         self.metadata_file_size = 0
         self.is_valid_directory = self.process_directory(self.dotnetpe.get_exe_data())
 
-    cpdef IMAGE_COR20_HEADER get_net_header(self):
-        """ Obtain the IMAGE_COR20_HEADER for this executable.
-        """
-        return self.net_header
-
     cpdef net_processing.HeapObject get_heap(self, str name):
         """ Obtain a heap from the metadata directory.
         """
@@ -205,6 +200,8 @@ cdef class MetaDataDirectory:
         cdef unsigned int file_offset
         cdef unsigned int size
         cdef bytes name
+        if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
+            raise net_exceptions.NotADotNetFile
         PyObject_GetBuffer(file_data, &file_data_view, PyBUF_ANY_CONTIGUOUS)
         cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>file_data_view.buf + <uintptr_t>com_offset)
         self.net_header = cor_header[0]

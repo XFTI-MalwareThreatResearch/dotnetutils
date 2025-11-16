@@ -55,6 +55,8 @@ cdef class PeFile:
 
     cdef int get_sec_index_phys(self, uint64_t offset)
 
+    cpdef IMAGE_COR20_HEADER get_net_header(self)
+
 cdef class DotNetPeFile:
     cdef str __versioninfo_str
     cdef str file_path
@@ -114,8 +116,6 @@ cdef class DotNetPeFile:
     cpdef list get_methods_by_name(self, bytes name)
 
     cpdef int get_processor_bits(self)
-
-    cpdef IMAGE_COR20_HEADER get_cor20_header(self)
 
     cpdef object get_token_value(self, unsigned long token)
 
