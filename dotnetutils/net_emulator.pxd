@@ -190,6 +190,10 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
 
+    cpdef void set_local_obj(self, int idx, net_emu_types.DotNetObject obj)
+
+    cpdef net_emu_types.DotNetObject get_local_obj(self, int idx)
+
     cpdef net_emu_types.DotNetObject get_static_field_obj(self, int idno)
 
     cpdef void set_static_field_obj(self, int idno, net_emu_types.DotNetObject obj) #So that users can modify static fields

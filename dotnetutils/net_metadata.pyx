@@ -43,7 +43,7 @@ cdef class MetaDataHeader:
         if offset == -1:
             raise ValueError('invalid metadataheader offset')
         self.start_offset = offset
-        self.signature = 0x424A534
+        self.signature = 0x424A5342
         self.majorversion = 0x1
         self.minorversion = 0x1
         self.reserved = 0
@@ -67,8 +67,13 @@ cdef class MetaDataHeader:
         cdef int size
         cdef bytes name
         cdef int x
+        cdef int signature
+        cdef int header_start = 0
+        cdef int header_size = 0
         current_offset = self.start_offset
-        self.signature = int.from_bytes(file_data[current_offset: current_offset + 4], 'little')
+        signature = int.from_bytes(file_data[current_offset: current_offset + 4], 'little')
+        if signature != self.signature:
+            raise net_exceptions.NotADotNetFile
         current_offset += 4
         self.majorversion = int.from_bytes(file_data[current_offset:current_offset + 2], 'little')
         current_offset += 2
@@ -84,8 +89,8 @@ cdef class MetaDataHeader:
         current_offset += 2
         self.num_streams = int.from_bytes(file_data[current_offset:current_offset + 2], 'little')
         current_offset += 2
-
         for x in range(self.num_streams):
+            header_start = current_offset
             offset = int.from_bytes(file_data[current_offset:current_offset + 4], 'little')
             current_offset += 4
             size = int.from_bytes(file_data[current_offset:current_offset + 4], 'little')
@@ -94,7 +99,13 @@ cdef class MetaDataHeader:
             while file_data[current_offset] != 0:
                 name += bytes([file_data[current_offset]])
                 current_offset += 1
-            current_offset += (4 - (current_offset % 4))
+            current_offset += 1
+            header_size = current_offset - header_start
+            while header_size % 4 != 0:
+                header_size += 1
+            
+            current_offset = header_start + header_size
+            
             self.streamheaders.append([self.start_offset + offset, size, name])
         self.end_offset = current_offset
 
@@ -162,11 +173,6 @@ cdef class MetaDataDirectory:
         self.metadata_file_size = 0
         self.is_valid_directory = self.process_directory(self.dotnetpe.get_exe_data())
 
-    cpdef IMAGE_COR20_HEADER get_net_header(self):
-        """ Obtain the IMAGE_COR20_HEADER for this executable.
-        """
-        return self.net_header
-
     cpdef net_processing.HeapObject get_heap(self, str name):
         """ Obtain a heap from the metadata directory.
         """
@@ -205,6 +211,8 @@ cdef class MetaDataDirectory:
         cdef unsigned int file_offset
         cdef unsigned int size
         cdef bytes name
+        if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
+            raise net_exceptions.NotADotNetFile
         PyObject_GetBuffer(file_data, &file_data_view, PyBUF_ANY_CONTIGUOUS)
         cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>file_data_view.buf + <uintptr_t>com_offset)
         self.net_header = cor_header[0]

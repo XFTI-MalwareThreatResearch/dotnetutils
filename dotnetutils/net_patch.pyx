@@ -40,7 +40,7 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     cdef uint64_t va_addr = 0
     new_exe_data = bytearray(exe_data)
 
-    metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
+    metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_pe().get_net_header().MetaData.VirtualAddress)
     streams_offset = metadata_offset + 12
     number_of_streams = <int>(metadata_offset + 12)
     number_of_streams_bytes = exe_data[number_of_streams:number_of_streams + 4]
@@ -66,8 +66,8 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     us_offset = stream_offset + stream_size
     new_streamheader = int.to_bytes(us_offset, 4, 'little') + int.to_bytes(us_size, 4, 'little')
     new_streamheader += b'#US\x00'
-    amt_to_align = (4 - ((current_offset + 12) % 4))
-    new_streamheader += b'\x00' * amt_to_align
+    while len(new_streamheader) % 4 != 0:
+        new_streamheader += b'\x00'
     new_streamheader = int.to_bytes(us_offset + len(new_streamheader), 4, 'little') + new_streamheader[4:]
     va_addr = dotnetpe.get_pe().get_rva_from_offset(new_header_offset)
     dotnetpe.get_pe().update_va(va_addr, <int>len(new_streamheader), dotnetpe, None, va_addr - 1)
@@ -119,13 +119,12 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
     cdef IMAGE_DOS_HEADER * dos_header
     cdef IMAGE_NT_HEADERS32 * nt_headers
     cdef IMAGE_SECTION_HEADER * section_header
-    cdef int difference
-    cdef int x
+    cdef int difference = 0
+    cdef int x = 0
     cdef bint found_old_section = False
     cdef bint found_target_section = False
-    cdef unsigned int section_offset
+    cdef unsigned int section_offset = 0
     cdef IMAGE_SECTION_HEADER * new_section = NULL
-
     if addr == 0 or old_userstrings_va > addr:
         return addr
 
@@ -145,6 +144,7 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
         if section.VirtualAddress <= addr < (section.VirtualAddress + section.Misc.VirtualSize):
             old_section = section
             found_old_section = True
+            break
         if memcmp(section.Name, target_section.Name, 8) == 0:
             passed_text = True
     if not found_old_section:

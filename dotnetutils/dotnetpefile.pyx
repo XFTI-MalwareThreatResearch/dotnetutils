@@ -273,7 +273,7 @@ cdef class PeFile:
         else:
             self.__update_va32(va_addr, difference, dpe, stream_name, target_addr)
 
-    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding):
+    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference):
         """ Handles the .NET Portions of patching.  Checks over the metadata tables, rvas etc.
 
         Args:
@@ -315,8 +315,9 @@ cdef class PeFile:
         cdef dict heaps_by_offset = dict()
         cdef bytes padding = None
         cdef uint64_t target_offset = self.get_offset_from_rva(target_addr)
-
-        metadata_offset = self.get_offset_from_rva(dpe.get_metadata_dir().get_net_header().MetaData.VirtualAddress)
+        cdef int hdr_size = 0
+        cdef bint in_same_section = self.get_sec_index_va(self.get_net_header().MetaData.VirtualAddress) == self.get_sec_index_va(target_addr)
+        metadata_offset = self.get_offset_from_rva(self.get_net_header().MetaData.VirtualAddress)
         streams_offset = metadata_offset + 12
         number_of_streams = <int>(metadata_offset + 12)
         number_of_streams_bytes = old_exe_data[number_of_streams:number_of_streams + 4]
@@ -341,7 +342,11 @@ cdef class PeFile:
                 while old_exe_data[streams_offset] != 0:
                     name += bytes([old_exe_data[streams_offset]])
                     streams_offset += 1
-                streams_offset += (4 - (streams_offset % 4))
+                streams_offset += 1
+                hdr_size = <int>(streams_offset - orig_offset)
+                while hdr_size % 4 != 0:
+                    hdr_size += 1
+                streams_offset = orig_offset + hdr_size
                 stream_offset = metadata_offset + offset
                 if name == stream_name and not passed_userstrings:
                     passed_userstrings = True
@@ -361,10 +366,6 @@ cdef class PeFile:
             if orig_streams_offset <= target_offset < streams_offset:
                 last_difference += difference
 
-        if before_streams:
-            #if its before streams, we dont want to update the data itself, just our held offsets.
-            for heap_obj in heaps_by_offset.values():
-                heap_obj.update_offset(heap_obj.get_offset() + difference)
         #Let reconstruct executable handle updating heap offsets and sizes internally.
         tobj = dpe.get_metadata_table('MethodDef')
         if tobj is not None:
@@ -391,9 +392,19 @@ cdef class PeFile:
                     in_table = True
                     cobj.set_raw_value(<unsigned int>resource_rva)
         PyBuffer_Release(&new_exe_view)
+
         if amt_padding != 0 and padding_offset != 0:
             padding = b'\x00' * amt_padding
             new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
+            if before_streams and not in_same_section:
+                last_difference += amt_padding
+        if before_streams and in_same_section:
+            #if its before streams, we dont want to update the data itself, just our held offsets.
+            for heap_obj in heaps_by_offset.values():
+                heap_obj.update_offset(heap_obj.get_offset() + difference)
+        elif before_streams:
+            for heap_obj in heaps_by_offset.values():
+                heap_obj.update_offset(heap_obj.get_offset() + target_rawsize_difference)
         if (in_streams and stream_name is not None) or in_table:
             #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
             #One thing thats sort of assumed here is that we are not updating the offset of the metadata heap (otherwise wed have to re initialize metadata header offsets).  I cant really think of a reason to do that though.
@@ -461,6 +472,7 @@ cdef class PeFile:
             for x in range(nt_headers.FileHeader.NumberOfSections):
                 section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
                 if section_header.VirtualAddress <= target_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
+
                     old_rawsize = section_header.SizeOfRawData
                     new_rawsize = old_rawsize + difference
                     new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
@@ -612,7 +624,7 @@ cdef class PeFile:
                     resource_rva = resource_offset
                     resource_offset = self.get_offset_from_rva(resource_offset)
                     net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, self, new_exe_view, va_addr, difference, target_addr)
-            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding)
+            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference)
 
     cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr):
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
@@ -667,6 +679,7 @@ cdef class PeFile:
         if difference != 0:
             for x in range(nt_headers.FileHeader.NumberOfSections):
                 section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
+                #TODO: maybe look into how this code works when subtracting?
                 if section_header.VirtualAddress <= target_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
                     old_rawsize = section_header.SizeOfRawData
                     new_rawsize = old_rawsize + difference
@@ -728,7 +741,6 @@ cdef class PeFile:
                 cor_header.MetaData.Size = cor_header.MetaData.Size + difference
                 in_streams = True
             cor_header.MetaData.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.MetaData.VirtualAddress, va_addr, difference, target_addr)
-
             cor_header.Resources.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.Resources.VirtualAddress,
                                                                 va_addr, difference, target_addr)
             cor_header.StrongNameSignature.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view,
@@ -818,8 +830,23 @@ cdef class PeFile:
                     resource_rva = resource_offset
                     resource_offset = self.get_offset_from_rva(resource_offset)
                     net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, self, new_exe_view, va_addr, difference, target_addr)
-            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding)
+            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference)
 
+    cpdef IMAGE_COR20_HEADER get_net_header(self):
+        """ Obtain the IMAGE_COR20_HEADER associated with the executable.
+
+        Returns:
+            IMAGE_COR20_HEADER: the IMAGE_COR20_HEADER associated with the executable.
+        """
+        cdef IMAGE_DATA_DIRECTORY dir = self.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
+        cdef uint64_t offset = 0
+        cdef IMAGE_COR20_HEADER * ptr = NULL
+        if dir.VirtualAddress == 0 or dir.Size == 0:
+            raise net_exceptions.NotADotNetFile
+
+        offset = self.get_offset_from_rva(dir.VirtualAddress)
+        ptr = <IMAGE_COR20_HEADER*>(<uint64_t>self.__file_view.buf + offset)
+        return ptr[0]
 
 cdef class DotNetPeFile:
     """Represents a DotNetPeFile.  Contains all methods used to access other parts of the .NET metadata structure.
@@ -858,7 +885,7 @@ cdef class DotNetPeFile:
             fd.close()
         try:
             self.pe = PeFile(self.exe_data)
-        except ValueError:
+        except ValueError as e:
             raise net_exceptions.NotADotNetFile
 
         self.reinit_dpe(no_processing)
@@ -870,13 +897,6 @@ cdef class DotNetPeFile:
             exe_data = exe_data[:heap_obj.get_offset()] + heap_obj.to_bytes() + exe_data[heap_obj.get_offset() + heap_obj.get_size():]
 
     cpdef void reinit_dpe(self, bint no_processing):
-        cdef IMAGE_DATA_DIRECTORY com_table_directory
-        try:
-            com_table_directory = self.pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
-            if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
-                raise net_exceptions.NotADotNetFile
-        except IndexError:
-            raise net_exceptions.NotADotNetFile
         self.original_exe_data = bytes(self.exe_data)
         self.metadata_dir = net_metadata.MetaDataDirectory(self)
         self.__versioninfo_str = None
@@ -949,14 +969,6 @@ cdef class DotNetPeFile:
         """
         return self.pe
 
-    cpdef IMAGE_COR20_HEADER get_cor20_header(self):
-        """ Obtain the IMAGE_COR20_HEADER structure.
-
-        Returns:
-            IMAGE_COR20_HEADER: The IMAGE_COR20_HEADER structure for the executable.
-        """
-        return self.metadata_dir.get_net_header()
-
     cpdef int get_processor_bits(self):
         """Determines what procesor bits (32 or 64) the .NET Assembly actually runs as.
         see dnSpy's dnSpy.Decompiler.TargetFrameworkUtils.GetArchString
@@ -965,8 +977,9 @@ cdef class DotNetPeFile:
             int: 0 if an error occurred, otherwise 32 if the file runs on 32-bit and 64 if it runs on 64-bit.
         """
         cdef int c
+        cdef IMAGE_COR20_HEADER cor_header
         c = 0
-        cor_header = self.get_cor20_header()
+        cor_header = self.get_pe().get_net_header()
         if cor_header.Flags & net_structs.COMIMAGE_FLAGS_32BITREQUIRED != 0:
             c += 2
         
@@ -1365,7 +1378,7 @@ cdef class DotNetPeFile:
             net_row_objects.MethodDef: A MethodDef object representing the executable's entry point, or None if it doesnt exist.
         """
         try:
-            return self.get_token_value(self.metadata_dir.get_net_header().EntryPoint.EntryPointToken)
+            return self.get_token_value(self.get_pe().get_net_header().EntryPoint.EntryPointToken)
         except net_exceptions.InvalidTokenException:
             return None
 
@@ -1375,7 +1388,7 @@ cdef class DotNetPeFile:
         Args:
             ep_token (unsigned int): The new entrypoint's metadata token.
         """
-        cdef IMAGE_COR20_HEADER new_net_header = self.metadata_dir.get_net_header()
+        cdef IMAGE_COR20_HEADER new_net_header = self.get_pe().get_net_header()
         cdef bytes new_cor_bytes
         cdef bytes current_exe_data
         cdef bytes new_exe_data

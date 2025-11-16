@@ -3,6 +3,7 @@ dotnetutils/*.html
 *.h
 *.dep
 *.pdb
+*.bin
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

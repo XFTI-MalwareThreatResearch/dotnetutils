@@ -103,8 +103,8 @@ class MethodLookupException(DotNetUtilsException):
         Exception.__init__(self, 'The method {} could not be found.'.format(full_name))
 
 class InvalidBlockException(DotNetUtilsException):
-    def __init__(self): 
-        Exception.__init__(self, "The .NET block is invalid (or has an unexpected structure).")
+    def __init__(self, block): 
+        Exception.__init__(self, "The .NET block is invalid (or has an unexpected structure): {}.  Block last instr {}, Block Prev {}, Block Next {}".format(block, block.get_last_instr(), block.get_prev(), block.get_next()))
 
 class OpcodeNotInitializedException(DotNetUtilsException):
     def __init__(self):

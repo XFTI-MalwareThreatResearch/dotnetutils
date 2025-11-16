@@ -4546,6 +4546,7 @@ cdef class DotNetEmulator:
         else:
             self.timeout_ns = 0
         self.start_time = 0
+        self.initialize_locals() #So that locals can be set before everything is set up.
 
     cdef StackCell convert_unsigned(self, StackCell cell):
         """ For numbers, this will convert a StackCell to its unsigned counterpart and return a duplicate.
@@ -7704,13 +7705,58 @@ cdef class DotNetEmulator:
     cdef StackCell get_local(self, int idx):
         """ Obtains a duplicated local value for index idx.
         """
+        if idx < 0 or <size_t>idx >= self.localvars.size():
+            raise net_exceptions.InvalidArgumentsException()
         cdef StackCell return_value = self.duplicate_cell(self.localvars[idx])
         return return_value
+
+    cpdef net_emu_types.DotNetObject get_local_obj(self, int idx):
+        """ Obtains a DotNetObject representing the local at value idx.
+
+        Returns:
+            net_emu_types.DotNetObject: The object value corresponding to local idx.
+        """
+
+        cdef StackCell ret_val = self.get_local(idx)
+        cdef StackCell boxed_cell
+        cdef net_emu_types.DotNetObject result = None
+        if ret_val.tag == CorElementType.ELEMENT_TYPE_END:
+            raise net_exceptions.InvalidArgumentsException()
+        boxed_cell = self.box_value(ret_val, None)
+        if self.cell_is_null(boxed_cell):
+            result = None
+        else:
+            result = <net_emu_types.DotNetObject>boxed_cell.item.ref
+        self.dealloc_cell(boxed_cell)
+        self.dealloc_cell(ret_val)
+        return result
+
+    cpdef void set_local_obj(self, int idx, net_emu_types.DotNetObject obj):
+        """ Sets a local variable to a specified value.  Intended for user use.
+
+        Args:
+            idx (int): the local var number to set.
+            obj (net_emu_types.DotNetObject): The object to set it to (None for NULL)
+        """
+        cdef StackCell cell
+        cdef StackCell unboxed
+        if obj is None:
+            cell = self.pack_null()
+            self.set_local(idx, cell)
+            self.dealloc_cell(cell)
+            return
+        cell = self.pack_object(obj)
+        unboxed = self.unbox_value(cell)
+        self.set_local(idx, unboxed)
+        self.dealloc_cell(unboxed)
+        self.dealloc_cell(cell)
 
     cdef void set_local(self, int idx, StackCell obj):
         """ Sets a local value to obj at idx.
             obj must be deallocated by caller.
         """
+        if idx < 0 or <size_t>idx >= self.localvars.size():
+            raise net_exceptions.InvalidArgumentsException()
         cdef StackCell prev_val = self.get_local(idx)
         cdef StackCell dup_obj = self.cast_cell(obj, <net_sigs.TypeSig>self.local_var_sigs[idx])
         self.ref_cell(dup_obj)
@@ -7738,7 +7784,10 @@ cdef class DotNetEmulator:
         cdef StackCell ref
         for index in range(len(self.disasm_obj.local_types)):
             tsig = self.disasm_obj.local_types[index]
-            ref = self._get_default_value(tsig, self.method_obj.get_parent_type())
+            try:
+                ref = self._get_default_value(tsig, self.method_obj.get_parent_type())
+            except Exception as e:
+                raise net_exceptions.EmulatorExecutionException(self, 'Error initializing local {}.  Likely an unsupported signature {}'.format(index, tsig))
             Py_INCREF(tsig)
             self.ref_cell(ref)
             self.local_var_sigs.push_back(<PyObject*>tsig)
@@ -7773,7 +7822,6 @@ cdef class DotNetEmulator:
             self.start_time = _perf_counter_ns()
         self.get_appdomain().set_current_emulator(self)
         self.get_appdomain().set_executing_dotnetpe(self.method_obj.get_dotnetpe())
-        self.initialize_locals()
         for x in range(self.get_num_params()):
             cell = self.__method_params[x]
             if cell.tag == CorElementType.ELEMENT_TYPE_END:
