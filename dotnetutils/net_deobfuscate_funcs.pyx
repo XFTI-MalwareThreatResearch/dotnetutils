@@ -1968,7 +1968,7 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
                 fanalyzer.repair_blocks()
                 localvartok = disasm.get_local_var_sig_token()
                 instrs = fgraph.emit_instructions_as_list()
-                exc_blocks = fgraph.get_exception_blocks()
+                exc_blocks = fgraph.get_raw_exception_clauses()
                 recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
                 data = recompiler.compile_method()
                 mdef.set_method_data(data)

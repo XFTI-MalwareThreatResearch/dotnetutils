@@ -120,6 +120,7 @@ cdef class MetaDataHeader:
         cdef tuple stream
         cdef int str_len
         cdef int amt_zero
+        cdef bytes stream_header
         result = bytes()
         result += int.to_bytes(self.signature, 4, 'little')
         result += int.to_bytes(self.majorversion, 2, 'little')
@@ -135,13 +136,17 @@ cdef class MetaDataHeader:
         for x in range(self.num_streams):
             stream = self.streamheaders[x]
             usable_offset = stream[0] - self.start_offset
-            result += int.to_bytes(usable_offset, 4, 'little')
-            result += int.to_bytes(stream[1], 4, 'little')
+            stream_header = int.to_bytes(usable_offset, 4, 'little')
+            stream_header += int.to_bytes(stream[1], 4, 'little')
             if not stream[2].endswith(b'\x00'):
                 stream[2] = stream[2] + b'\x00'
-            str_len = <int>(len(stream[2]) + (4 - (len(stream[2]) % 4)))
-            amt_zero = <int>(str_len - len(stream[2]))
-            result += stream[2] + (b'\x00' * amt_zero)
+            stream_header += stream[2]
+            str_len = <int>len(stream_header)
+            while str_len % 4 != 0:
+                str_len += 1
+            amt_zero = str_len - <int>len(stream_header)
+            stream_header += (b'\x00' * amt_zero)
+            result += stream_header
         return result
 
     cdef list get_stream_headers(self):

@@ -124,7 +124,7 @@ def main():
                 fanalyzer.repair_blocks()
                 localvartok = mobj.disassemble_method().get_local_var_sig_token()
                 instrs = fgraph.emit_instructions_as_list()
-                exc_blocks = fgraph.get_exception_blocks()
+                exc_blocks = fgraph.get_raw_exception_clauses()
                 recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
                 data = recompiler.compile_method()
                 mobj.set_method_data(data)

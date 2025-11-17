@@ -1,6 +1,8 @@
 #cython: language_level=3
 #distutils: language=c++
 
+import warnings
+
 from cpython.ref cimport Py_INCREF, PyObject, Py_XDECREF
 from dotnetutils cimport net_tokens
 from dotnetutils cimport dotnetpefile, net_processing, net_structs, net_row_objects, net_cil_disas
@@ -569,7 +571,7 @@ cdef class MethodDefTable(TableObject):
                 try:
                     disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
                 except Exception as e:
-                    logger.warn('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
+                    warnings.warn('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
                     disasm_obj = None
                 if disasm_obj != None:
                     for x in range(len(disasm_obj)):
