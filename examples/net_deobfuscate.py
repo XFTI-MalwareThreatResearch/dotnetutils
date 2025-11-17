@@ -117,11 +117,13 @@ def main():
                 continue
             print('checking for useless math from method {}'.format(hex(mobj.get_token())))
             fgraph = net_graphing.FunctionGraph(mobj)
+            #fgraph.print_root()
+            fgraph.validate_blocks()
             fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
-            fanalyzer.repair_blocks()
             has_math = fanalyzer.remove_useless_math()
             if has_math:
                 fanalyzer.repair_blocks()
+                #fgraph.print_root()
                 localvartok = mobj.disassemble_method().get_local_var_sig_token()
                 instrs = fgraph.emit_instructions_as_list()
                 exc_blocks = fgraph.get_raw_exception_clauses()
