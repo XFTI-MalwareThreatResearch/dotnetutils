@@ -62,8 +62,8 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            if mobj.get_token() != 0x06000052:
-                continue
+            #if mobj.get_token() != 0x06000052:
+            #    continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
             fgraph.validate_blocks()

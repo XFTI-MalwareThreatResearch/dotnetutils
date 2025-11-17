@@ -1372,9 +1372,6 @@ class GraphAnalyzer:
     An attempt at control flow deobfuscation.
     """
 
-    def __repair_switch_block(self, block, start_offset, output_graph):
-        last_instr = block.get_last_instr()
-
     def __target_walker(self, block, needed, already_checked, stloc_instr, start_offsets, child_addr, bad_instr_offsets, counter=0):
         """
         This method is definitely going to need some testing and work but I mean its okay for now.
@@ -1492,6 +1489,7 @@ class GraphAnalyzer:
     
 
     def __switch_block_walker(self, block, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num):
+        debug = True
         if block.get_start_offset() in already_handled:
             base_vars = already_handled[block.get_start_offset()]
             if base_local_var.as_python_obj() in base_vars:
@@ -1500,9 +1498,13 @@ class GraphAnalyzer:
             already_handled[block.get_start_offset()] = list()
         already_handled[block.get_start_offset()].append(base_local_var.as_python_obj())
         if block.get_start_offset() in offsets_grouped:
+            if debug:
+                print('handling switch block {}'.format(block))
             offsets = offsets_grouped[block.get_start_offset()]
             for offset in offsets:
                 #absolute jmp, it can only go one place.
+                if debug:
+                    print('Handling offset {}'.format(hex(offset)))
                 start_offset = offset
                 end_offset = switch_instr.get_instr_offset()
                 emu = initial_emu.spawn_new_emulator(self.__method, start_offset=start_offset, end_offset=end_offset)
@@ -1525,6 +1527,8 @@ class GraphAnalyzer:
                     new_offset = len(switch_instr) + switch_instr.get_instr_offset() 
                 else:
                     new_offset = switch_targets[new_target]
+                if debug:
+                    print('new target {}'.format(hex(new_offset)))
                 new_start_block = new_graph.get_block_by_offset(start_offset)
                 old_start_block = self.__graph.get_block_by_offset(start_offset)
                 new_next_block = new_graph.get_block_by_offset(new_offset)
@@ -1533,8 +1537,13 @@ class GraphAnalyzer:
                     raise Exception()
                 old_next = old_start_block.get_next()[0]
                 new_next = new_graph.get_block_by_offset(old_next.get_start_offset())
+                if debug:
+                    print('new start block {} new next {} new next block {}'.format(new_start_block, new_next, new_next_block))
+                    print('new start block prev nexts {}'.format(new_start_block.get_next()))
                 new_start_block.remove_next(new_next)
                 new_start_block.add_next(new_next_block)
+                if debug:
+                    print('new start block new nexts {}'.format(new_start_block.get_next()))
                 self.__switch_block_walker(self.__graph.get_block_by_offset(new_offset), switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, new_local_var, stloc_num)
             return
         for nxt in block.get_next():
@@ -1544,11 +1553,16 @@ class GraphAnalyzer:
     def __deobfuscate_switch(self, block, offsets, switch_instr, new_graph, bad_instrs):
         #first group the offsets together.
         offsets_grouped = dict()
-        switch_values = dict()
         for block_offset, offset in offsets:
             if block_offset not in offsets_grouped:
                 offsets_grouped[block_offset] = list()
             offsets_grouped[block_offset].append(offset)
+
+        debug = True
+        if debug:
+            for block_offset, offsets in offsets_grouped.items():
+                for offset in offsets:
+                    print('block offset {} -> start {}'.format(hex(block_offset), hex(offset)))
         start_block = None
         for prev in block.get_prev():
             if (prev.get_start_offset() + prev.get_original_length()) == block.get_start_offset():
@@ -1622,8 +1636,13 @@ class GraphAnalyzer:
         new_start_block = new_graph.get_block_by_offset(start_block.get_start_offset())
         new_initial_block = new_graph.get_block_by_offset(starting_offset)
         initial_block = self.__graph.get_block_by_offset(starting_offset)
+        if debug:
+            print('new switch block {} new start block {}'.format(new_switch_block, new_start_block))
+            print('PRE: new switch block next {} new start block next {}'.format(new_switch_block.get_next(), new_start_block.get_next()))
         new_switch_block.remove_prev(new_start_block)
         new_start_block.add_next(new_initial_block)
+        if debug:
+            print('POST: new switch block next {} new start block next {}'.format(new_switch_block.get_next(), new_start_block.get_next()))
         already_handled = {new_start_block.get_start_offset(): [base_local]}
         stloc_num = stloc_instr.get_argument()
         self.__switch_block_walker(initial_block, switch_instr, offsets_grouped, new_graph, already_handled, emu, orig_base_local, stloc_num)
@@ -1633,6 +1652,7 @@ class GraphAnalyzer:
             if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
                 new_graph.unregister_block(blk.get_start_offset())
         #now remove any instructions that we know are junk.
+        new_graph.validate_blocks()
         for blk in new_graph.blocks():
             amt_deleted = 0
             instrs = list(blk.get_instrs())
