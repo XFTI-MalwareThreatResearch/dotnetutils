@@ -46,7 +46,6 @@ class FunctionBlock:
         self.__exception_handlers = set()
         self.__new_offset = -1
         self.__new_index = -1
-        self.__no_longer_in_next = list()
 
     def duplicate(self, new_graph, existing_blocks):
         #Create a deep duplicate of a block.
@@ -78,12 +77,10 @@ class FunctionBlock:
         new_block.__catch_block_offset = self.__catch_block_offset
         new_block.__finally_block_offset = self.__finally_block_offset
         new_block.__filter_block_offset = self.__filter_block_offset
-        if self.__exception_handler is None:
-            new_block.__exception_handler = None
-        else:
-            new_block.__exception_handler = self.__exception_handler.duplicate(new_graph, existing_blocks)
+        for exc_block in self.__exception_handlers:
+            new_block.__exception_handlers.add(exc_block.duplicate(new_graph, existing_blocks))
         new_block.__new_offset = self.__new_offset
-        new_block.__new_indx = self.__new_index
+        new_block.__new_index = self.__new_index
         return new_block
 
     def get_start_index(self):
@@ -157,7 +154,7 @@ class FunctionBlock:
         Args:
             exception_handler (list): The exception handler to set.
         """
-        if exception_handler is not None and not isinstance(exception_handler, FunctionBlock):
+        if exception_handler[1] is None or not isinstance(exception_handler[1], FunctionBlock):
             raise Exception() #Update the docs later etc etc
         self.__exception_handlers.add(exception_handler)
 
@@ -534,7 +531,8 @@ class FunctionBlock:
         if self.__is_block_filter:
             new_block.mark_block_filter()
     
-        new_block.set_exception_handler(self.get_exception_handler())
+        for exc_handler in self.__exception_handlers:
+            new_block.add_exception_handler(exc_handler)
         
         for instr in split_instrs:
             new_block.add_instr(instr)
@@ -611,22 +609,10 @@ class FunctionGraph:
                     raise net_exceptions.OperationNotSupportedException
                 self.__disasm_object = method_object.disassemble_method()
                 self.__instrs = self.__disasm_object.get_list_of_instrs()
+                self.__raw_exception_blocks = self.__disasm_object.get_exception_blocks()
                 for instr in self.__instrs:
                     self.__instr_offsets[instr.get_instr_offset()] = instr
-                for cl_flags, try_offset, try_length, catch_offset, catch_length, token in self.__disasm_object.get_exception_blocks():
-                    print('parsing try block {} {}'.format(hex(try_offset), hex(try_offset + try_length)))
-                    try_block = self.__parse_block(try_offset, try_offset + try_length, True, False, False, False, None)#TODO: fix last param
-                    if cl_flags == net_structs.CorILExceptionClause.Finally:
-                        catch_block = self.__parse_block(catch_offset, catch_offset + catch_length, False, False, True, False, None)
-                    else:
-                        catch_block = self.__parse_block(catch_offset, catch_offset + catch_length, False, True, False, False, None)
-                    filter_blk = token
-                    #self.__parse_block(handler_offset, handler_offset + handler_length, False, True, False, False, exc)
-                    if cl_flags == net_structs.CorILExceptionClause.Filter:
-                        filter_size = catch_offset - token
-                        filter_blk = self.__parse_block(token, token + filter_size, False, False, False, True, None)
-                    self.__exception_blocks.append((cl_flags, try_block, catch_block, filter_blk))
-
+                self.__handle_try_catch_finally_blocks()
                 if 0 not in self.__blocks_start:
                     self.__root_block = self.__parse_block(0)
                 else:
@@ -644,18 +630,8 @@ class FunctionGraph:
             self.__instrs = force_instrs
             for instr in self.__instrs:
                 self.__instr_offsets[instr.get_instr_offset()] = instr
-            for cl_flags, try_offset, try_length, catch_offset, catch_length, token in force_exc_blocks:
-                try_block = self.__parse_block(try_offset, try_offset + try_length, True, False, False, False, None)#TODO: fix last param
-                if cl_flags == net_structs.CorILExceptionClause.Finally:
-                    catch_block = self.__parse_block(catch_offset, catch_offset + catch_length, False, False, True, False, None)
-                else:
-                    catch_block = self.__parse_block(catch_offset, catch_offset + catch_length, False, True, False, False, None)
-                filter_blk = token
-                #self.__parse_block(handler_offset, handler_offset + handler_length, False, True, False, False, exc)
-                if cl_flags == net_structs.CorILExceptionClause.Filter:
-                    filter_size = catch_offset - token
-                    filter_blk = self.__parse_block(token, token + filter_size, False, False, False, True, None)
-                self.__exception_blocks.append((cl_flags, try_block, catch_block, filter_blk))
+            self.__raw_exception_blocks = force_exc_blocks
+            self.__handle_try_catch_finally_blocks()
             self.sort_blocks()
             if 0 not in self.__blocks_start:
                 self.__root_block = self.__parse_block(0)
@@ -666,18 +642,7 @@ class FunctionGraph:
 
             for block in self.__blocks_start.values():
                 block.mark_block_finished() #Tell each block that we are done with our initial setup, anything else is a modification.
-        for block in list(self.blocks()):
-            last_instr = block.get_last_instr()
-            if last_instr is None:
-                continue
-            last_op = last_instr.get_opcode()
-            if last_op in (Opcodes.Leave, Opcodes.Leave_S):
-                target = last_instr.get_argument() + len(last_instr) + last_instr.get_instr_offset()
-                b = self.get_block_by_start_offset(target)
-                if b is None:
-                    print('getting block {}'.format(hex(target)))
-                    b = self.__parse_block(target, -1, False, False, False, False, None)
-                block.add_next(self.get_block_by_start_offset(last_instr.get_argument() + len(last_instr) + last_instr.get_instr_offset()))
+        self.update_block_handlers()
 
     def update_exc_handlers(self):
         self.__raw_exception_blocks = self.get_raw_exception_clauses()
@@ -701,10 +666,42 @@ class FunctionGraph:
                 new_graph.__exception_blocks.append((clause_flags, try_block.duplicate(new_graph, already_duplicated), catch_block.duplicate(new_graph, already_duplicated), filter_block.duplicate(new_graph, already_duplicated)))
             else:
                 new_graph.__exception_blocks.append((clause_flags, try_block.duplicate(new_graph, already_duplicated), catch_block.duplicate(new_graph, already_duplicated), filter_block))
+        new_graph.__raw_exception_blocks = list(self.__raw_exception_blocks)
         return new_graph
 
     def register_block(self, offset, block):
         self.__blocks_start[offset] = block
+
+    def __handle_try_block(self, try_offset, try_length, handler_offset, handler_length):
+        self.__parse_block(try_offset, try_offset, try_offset + try_length, True, False, False, False)
+        self.__parse_block(handler_offset, handler_offset, handler_offset + handler_length, False, True, False, False)
+
+    def __handle_finally_block(self, try_offset, try_length, handler_offset, handler_length):
+        self.__parse_block(try_offset, try_offset, try_offset + try_length, True, False, False, False)
+        self.__parse_block(handler_offset, handler_offset, handler_offset + handler_length, False, False, True, False)
+
+    def __handle_filter_block(self, try_offset, try_length, handler_offset, handler_length, filter_offset, filter_length):
+        self.__parse_block(try_offset, try_offset, try_offset + try_length, True, False, False, False)
+        self.__parse_block(handler_offset, handler_offset, handler_offset + handler_length, False, True, False, False)
+        self.__parse_block(filter_offset, filter_offset, filter_offset + filter_length, False, False, False, True)
+
+    def __handle_try_catch_finally_blocks(self):
+        """
+        Ensure that try catch finally blocks are treated as their own blocks.  
+        """
+        for exc in self.__exception_blocks:
+            clause_flags, try_offset, try_length, handler_offset, handler_length, class_token = exc
+            if clause_flags == net_structs.CorILExceptionClause.Exception:
+                self.__handle_try_block(try_offset, try_length, handler_offset, handler_length)
+            elif clause_flags == net_structs.CorILExceptionClause.Finally:
+                self.__handle_finally_block(try_offset, try_length, handler_offset, handler_length)
+            elif clause_flags == net_structs.CorILExceptionClause.Fault:
+                self.__handle_try_block(try_offset, try_length, handler_offset, handler_length)
+            elif clause_flags == net_structs.CorILExceptionClause.Filter:
+                filter_size = handler_offset - class_token
+                self.__handle_filter_block(try_offset, try_length, handler_offset, handler_length, class_token, filter_size)
+            else:
+                raise net_exceptions.OperationNotSupportedException()
 
     def get_exception_blocks(self):
         return self.__exception_blocks
@@ -824,12 +821,36 @@ class FunctionGraph:
         visited = list()
         path_checker(to_block, from_block, [to_block], paths, visited)
         return paths
+    
+    def update_block_handlers(self):
+        for exc_flags, try_offset, try_length, catch_offset, catch_length, token in self.__raw_exception_blocks:
+            filter_offset = -1
+            filter_length = -1
+            if exc_flags == net_structs.CorILExceptionClause.Filter:
+                filter_offset = token
+                filter_length = catch_offset - token
+            for block in self.blocks():
+                if try_offset <= block.get_start_offset() < (try_offset + try_length):
+                    block.add_exception_handler((exc_flags, self.get_block_by_start_offset(try_offset)))
+                if catch_offset <= block.get_start_offset() < (catch_offset + catch_length):
+                    block.add_exception_handler((exc_flags, self.get_block_by_start_offset(catch_offset)))
+                if filter_offset > 0:
+                    if filter_offset <= block.get_start_offset() < (filter_offset + filter_length):
+                        block.add_exception_handler((exc_flags, self.get_block_by_start_offset(filter_offset)))
 
-    def __parse_block(self, start_offset, max_end_offset=-1, is_try=False, is_catch=False, is_finally=False, is_filter=False, exc_clause=None):
+    def __parse_block(self, start_offset, clause_start=-1, max_end_offset=-1, is_try=False, is_catch=False, is_finally=False, is_filter=False):
         usable_offset = start_offset
         x = self.__instr_offsets[start_offset].get_instr_index()
         if start_offset in self.__blocks_start:
             blk =  self.__blocks_start[start_offset]
+            if is_try:
+                blk.mark_block_try()
+            if is_catch:
+                blk.mark_block_catch()
+            if is_finally:
+                blk.mark_block_finally()
+            if is_filter:
+                blk.mark_block_filter()
             return blk
         else:
             block = self.get_block_by_offset(start_offset)
@@ -837,43 +858,37 @@ class FunctionGraph:
                 block = FunctionBlock(self.__method_object, self.__disasm_object, self)
                 self.__blocks_start[start_offset] = block
             else:
-                block = block.split_block(start_offset)
-                block.set_exception_handler(exc_clause)
+                new_block = block.split_block(start_offset)
                 if is_try:
-                    block.mark_block_try()
+                    new_block.mark_block_try()
                 if is_catch:
-                    block.mark_block_catch()
+                    new_block.mark_block_catch()
                 if is_finally:
-                    block.mark_block_finally()
+                    new_block.mark_block_finally()
                 if is_filter:
-                    block.mark_block_filter()
-                self.__blocks_start[start_offset] = block
-                return block
+                    new_block.mark_block_filter()
+                self.__blocks_start[start_offset] = new_block
+                return new_block
         
         if is_finally:
             block.mark_block_finally()
             if exc_clause is None:
                 exc_clause = block
-            block.set_exception_handler(exc_clause)
 
         if is_catch:
-            block.set_exception_handler(exc_clause)
             block.mark_block_catch()
             if exc_clause is None:
                 exc_clause = block
-            block.set_exception_handler(exc_clause)
 
         if is_try:
             block.mark_block_try()
             if exc_clause is None:
                 exc_clause = block
-            block.set_exception_handler(exc_clause)
 
         if is_filter:
             block.mark_block_filter()
             if exc_clause is None:
                 exc_clause = block
-            block.set_exception_handler(exc_clause)
 
         while x >= 0 and x < len(self.__instrs):
             if usable_offset in self.__blocks_start and usable_offset != start_offset:
@@ -891,14 +906,14 @@ class FunctionGraph:
                 if opcode == Opcodes.Br or opcode == Opcodes.Br_S or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S:
                     potential_offset = usable_offset + len(instr) + instr.get_argument()
                     if opcode == Opcodes.Br or opcode == Opcodes.Br_S:
-                        new_block = self.__parse_block(potential_offset, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                        new_block = self.__parse_block(potential_offset, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                     else:
-                        #check if it should be marked as filters etc.
-                        print(block, instr)
-                        if (exc_clause.get_start_offset() <= potential_offset < max_end_offset):
-                            new_block = self.__parse_block(potential_offset, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                        if clause_start == -1 or max_end_offset == -1:
+                            raise Exception()
+                        if not (clause_start <= potential_offset < max_end_offset):
+                            new_block = self.__parse_block(potential_offset, -1, -1, False, False, False, False)
                         else:
-                            break
+                            new_block = self.__parse_block(potential_offset, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
 
                     usable_block = self.get_block_by_offset(
                         usable_offset)
@@ -909,7 +924,7 @@ class FunctionGraph:
                     if opcode == Opcodes.Switch:
                         targets = instr.get_argument()
                         for target in targets:
-                            new_block = self.__parse_block(target, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                            new_block = self.__parse_block(target, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                             usable_block = self.get_block_by_offset(
                                 usable_offset)
                             usable_block.add_next(new_block)
@@ -917,7 +932,7 @@ class FunctionGraph:
 
                         fallthrough_offset = instr.get_instr_offset() + len(instr)
                         new_block = self.__parse_block(
-                            fallthrough_offset, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                            fallthrough_offset, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                         usable_block = self.get_block_by_offset(
                             usable_offset)
                         usable_block.add_next(new_block)
@@ -929,12 +944,12 @@ class FunctionGraph:
                             len(instr) + instr.get_argument()
                         potential_offset2 = usable_offset + len(instr)
                         new_block = self.__parse_block(
-                            potential_offset1, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                            potential_offset1, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                         usable_block = self.get_block_by_offset(
                             usable_offset)
                         usable_block.add_next(new_block)
                         new_block = self.__parse_block(
-                            potential_offset2, max_end_offset, is_try, is_catch, is_finally, is_filter, exc_clause)
+                            potential_offset2, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                         usable_block = self.get_block_by_offset(
                             usable_offset)
                         usable_block.add_next(new_block)
@@ -1049,24 +1064,32 @@ class FunctionGraph:
         if block.get_start_offset() not in already_printed:
             print((' ' * indent) + 'Printing block with offset {} size {} num_instrs {} (is junk: {}, is switch case: {}, is_try: {}, is_catch: {}, is_finally: {}, is_filter: {})'.format(
                 hex(block.get_start_offset()), hex(block.get_original_length()), len(block.get_instrs()), block.is_junk_block(), block.is_switch_case(), block.is_block_try(), block.is_block_catch(), block.is_block_finally(), block.is_block_filter()))
-            exc_handler = block.get_exception_handler()
+            exc_handlers = block.get_exception_handlers()
             if block.is_block_try():
-                if block.get_start_offset() == exc_handler.get_start_offset():
-                    is_block_try = True
-                    print((' ' * indent) + 'try:')
-                    indent += 4
+                for cl_flags, cl_blk in exc_handlers:
+                    if cl_blk == block:
+                        is_block_try = True
+                        print((' ' * indent) + 'try:')
+                        indent += 4
+                        break
             elif block.is_block_catch():
-                if block.get_start_offset() == exc_handler.get_start_offset():
-                    print((' ' * indent) + 'catch:')
-                    indent += 4
+                for cl_flags, cl_blk in exc_handlers:
+                    if cl_flags != net_structs.CorILExceptionClause.Finally and cl_blk == block:
+                        print((' ' * indent) + 'catch:')
+                        indent += 4
+                        break
             elif block.is_block_finally():
-                if block.get_start_offset() == exc_handler.get_start_offset():
-                    print((' ' * indent) + 'finally:')
-                    indent += 4
+                for cl_flags, cl_blk in exc_handlers:
+                    if cl_flags == net_structs.CorILExceptionClause.Finally and cl_blk == block:
+                        print((' ' * indent) + 'finally:')
+                        indent += 4
+                        break
             elif block.is_block_filter():
-                if block.get_start_offset() == exc_handler.get_start_offset():
-                    print((' ' * indent) + 'filter:')
-                    indent += 4
+                for cl_flags, cl_blk in exc_handlers:
+                    if cl_flags == net_structs.CorILExceptionClause.Filter and cl_blk == block:
+                        print((' ' * indent) + 'filter:')
+                        indent += 4
+                        break
 
             already_printed.add(block.get_start_offset())
             for instr in block.get_instrs():
@@ -1115,20 +1138,26 @@ class FunctionGraph:
                         elif instrs[-1].is_absolute_jmp() and instrs[-1].is_branch():
                             self.__print_block(block.get_next()[0], already_printed, indent)
             if is_block_try:
-                exc_block = self.get_exc_handler_for_block(net_structs.CorILExceptionClause.Exception, block)
-                
+                exc_block = None
+                for cl_flag, try_blk, catch_blk, token in self.__exception_blocks:
+                    if cl_flag == net_exceptions.CorILExceptionClause.Exception:
+                        if try_blk == block:
+                            exc_block = catch_blk
+                            break
                 if exc_block is None:
-                    print((' ' * indent) + 'could not find catch block at offset {}'.format(hex(exc_handler[3])))
+                    print((' ' * indent) + 'could not find catch block corresponding to try at offset {}'.format(block))
                 else:
-                    catch_block = exc_block[2]
+                    catch_block = exc_block
                     if not block.is_block_finally():
                         self.__print_block(catch_block, already_printed, indent - 4)
-                        exc_block = self.get_exc_handler_for_block(net_structs.CorILExceptionClause.Finally, block)
-                        if exc_block is None:
-                            print((' ' * indent) + 'Could not find finally block at offset {}'.format(hex(finally_offset)))
-                        else:
-                            finally_block = exc_block[2]
-
+                        exc_block = None
+                        for cl_flag, try_blk, catch_blk, token in self.__exception_blocks:
+                            if cl_flag == net_exceptions.CorILExceptionClause.Finally:
+                                if try_blk == block:
+                                    exc_block = catch_blk
+                                    break
+                        if exc_block is not None:
+                            finally_block = exc_block
                             self.__print_block(finally_block, already_printed, indent - 4)
             if is_leave:
                 next_block = block.get_next()[0]
@@ -1179,13 +1208,13 @@ class FunctionGraph:
             try_size = 0
             catch_size = 0
             for block in self.blocks():
-                if block.is_block_try() and block.get_exception_handler() == try_block:
-                    try_size += block.get_original_length()
-                if cl_flag == net_exceptions.CorILExceptionClause.Finally and block.is_block_finally() and block.get_exception_handler() == catch_block:
-                    catch_size += block.get_original_length()
-                elif block.is_block_catch() and block.get_exception_handler() == catch_block:
-                    catch_size += block.get_original_length()
-            result.append((cl_flag, try_offset, try_size, catch_offset, catch-size, token))
+                exc_clauses = block.get_exception_handlers()
+                for exc_flag, block in exc_clauses:
+                    if block == try_offset.get_start_offset() and cl_flag == exc_flag:
+                        try_size += block.get_original_length()
+                    elif block == catch_offset.get_start_offset() and cl_flag == exc_flag:
+                        catch_size += block.get_original_length()
+            result.append((cl_flag, try_offset, try_size, catch_offset, catch_size, token))
         return result
 
 class GraphAnalyzer:
