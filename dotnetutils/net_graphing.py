@@ -1499,7 +1499,7 @@ class GraphAnalyzer:
         already_handled[block.get_start_offset()].append(base_local_var.as_python_obj())
         if block.get_start_offset() in offsets_grouped:
             if debug:
-                print('handling switch block {}'.format(block))
+                print('handling switch block {} with base var {}'.format(block, hex(base_local_var.as_python_obj())))
             offsets = offsets_grouped[block.get_start_offset()]
             for offset in offsets:
                 #absolute jmp, it can only go one place.
@@ -1540,13 +1540,16 @@ class GraphAnalyzer:
                 if debug:
                     print('new start block {} new next {} new next block {}'.format(new_start_block, new_next, new_next_block))
                     print('new start block prev nexts {}'.format(new_start_block.get_next()))
-                new_start_block.remove_next(new_next)
-                new_start_block.add_next(new_next_block)
-                if debug:
-                    print('new start block new nexts {}'.format(new_start_block.get_next()))
+                if new_start_block.has_next(new_next):
+                    new_start_block.remove_next(new_next)
+                    new_start_block.add_next(new_next_block) #PROBLEM: because we removed the has_next() check in add_next() to allow for switch instrs to work properly, we need to make sure we arent adding duplicate nexts where they arent needed.
+                    if debug:
+                        print('new start block new nexts {}'.format(new_start_block.get_next()))
                 self.__switch_block_walker(self.__graph.get_block_by_offset(new_offset), switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, new_local_var, stloc_num)
             return
         for nxt in block.get_next():
+            if debug:
+                print('handling next {}'.format(nxt))
             self.__switch_block_walker(nxt, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num)
 
     
