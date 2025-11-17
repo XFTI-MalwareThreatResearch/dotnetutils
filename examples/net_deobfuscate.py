@@ -62,6 +62,8 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
+            if mobj.get_token() != 0x06000052:
+                continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
             fgraph.validate_blocks()
@@ -81,6 +83,7 @@ def main():
             mobj.set_method_data(data)
         mspecs_completed = set()
         for mspec in mspec_table:
+            continue
             method = mspec.get_method()
             if method.get_rid() in mspecs_completed:
                 continue
