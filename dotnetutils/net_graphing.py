@@ -57,8 +57,7 @@ class FunctionBlock:
             new_block.add_instr(instr.duplicate())
         for nxt in self.get_next():
             new_nxt = nxt.duplicate(new_graph, existing_blocks)
-            if not new_block.has_next(new_nxt):
-                new_block.add_next(new_nxt)
+            new_block.add_next(new_nxt)
         for prv in self.get_prev():
             new_prv = prv.duplicate(new_graph, existing_blocks)
             if not new_block.has_prev(new_prv):
@@ -485,6 +484,7 @@ class FunctionBlock:
         else:
             if opcode == Opcodes.Switch:
                 if len(self.__next) != (len(last_instr.get_argument()) + 1):
+                    print(len(self.__next), len(last_instr.get_argument()))
                     raise net_exceptions.InvalidBlockException(self)
             elif opcode == Opcodes.Br_S or opcode == Opcodes.Br or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S:
                 if len(self.__next) != 1:
@@ -1386,6 +1386,7 @@ class GraphAnalyzer:
         already_checked.append(block.get_start_offset())
         if debug:
             print('Checking block {} {}'.format(hex(block.get_start_offset()), needed))
+        need_local = False
         for x in range(len(instrs) - 1, -1, -1):
             instr = instrs[x]
             ins_op = instr.get_opcode()
@@ -1405,11 +1406,43 @@ class GraphAnalyzer:
                     needed -= 1
 
                     if needed == 0:
-                        bad_instr_offsets.add(instr.get_instr_offset())
-                        start_offsets.append((child_addr, instr.get_instr_offset()))
-                        if debug:
-                            print(2, hex(instr.get_instr_offset()))
-                        return True
+                        #Gate this off if theres a stloc above.
+                        skip = False
+                        if x > 0:
+                            if instrs[x-1].get_opcode() in (Opcodes.Stloc, Opcodes.Stloc_S):
+                                if instrs[x-1].get_argument() == stloc_instr.get_argument():
+                                    bad_instr_offsets.add(instr.get_instr_offset())
+                                    needs_local = True
+                                    continue
+                        elif x == 0:
+                            skip = True
+                            for prev_blk in block.get_prev():
+                                for y in range(len(prev_blk.get_instrs()) - 1, -1, -1):
+                                    instr2 = prev_blk.get_instrs()[y]
+                                    if instr2.is_absolute_jmp():
+                                        continue
+                                    if instr2.get_opcode() not in (Opcodes.Stloc, Opcodes.Stloc_S):
+                                        skip = False
+                                        break
+                                    if instr2.get_argument() != stloc_instr.get_argument():
+                                        skip = False
+                                        break
+                                    break
+                                        
+                                if not skip:
+                                    break
+
+                            if skip:
+                                needs_local = True
+                                bad_instr_offsets.add(instr.get_instr_offset())
+                                continue
+
+                        if not skip:
+                            bad_instr_offsets.add(instr.get_instr_offset())
+                            start_offsets.append((child_addr, instr.get_instr_offset()))
+                            if debug:
+                                print(2, hex(instr.get_instr_offset()))
+                            return True
                     needed += 1
             needed = needed - added + pulled
             if debug:
@@ -1425,7 +1458,7 @@ class GraphAnalyzer:
                     print(3, hex(instr.get_instr_offset()), hex(child_addr))
                 return True
             if ins_op in (Opcodes.Stloc, Opcodes.Stloc_S):
-                if instr.get_argument() == stloc_instr.get_argument() and x != (len(instrs) - 1):
+                if instr.get_argument() == stloc_instr.get_argument():
                     continue
                 elif instr.get_argument() != stloc_instr.get_argument():
                     if needed == 0:
@@ -1446,7 +1479,7 @@ class GraphAnalyzer:
                 return False
             bad_instr_offsets.add(instr.get_instr_offset())
             
-        if needed != 0:
+        if needed != 0 or needs_local:
             for prev in block.get_prev():
                 if debug:
                     print('Checking prev {} {}'.format(hex(prev.get_start_offset()), counter))
@@ -1540,7 +1573,7 @@ class GraphAnalyzer:
                 if debug:
                     print('new start block {} new next {} new next block {}'.format(new_start_block, new_next, new_next_block))
                     print('new start block prev nexts {}'.format(new_start_block.get_next()))
-                if new_start_block.has_next(new_next):
+                if new_start_block.has_next(new_next): #This line here might be an issue if the function has a legitimate switch statement.  Will need to be careful.
                     new_start_block.remove_next(new_next)
                     new_start_block.add_next(new_next_block) #PROBLEM: because we removed the has_next() check in add_next() to allow for switch instrs to work properly, we need to make sure we arent adding duplicate nexts where they arent needed.
                     if debug:
@@ -1548,8 +1581,8 @@ class GraphAnalyzer:
                 self.__switch_block_walker(self.__graph.get_block_by_offset(new_offset), switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, new_local_var, stloc_num)
             return
         for nxt in block.get_next():
-            if debug:
-                print('handling next {}'.format(nxt))
+            #if debug:
+            #    print('handling next {}'.format(nxt))
             self.__switch_block_walker(nxt, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num)
 
     
@@ -1593,8 +1626,10 @@ class GraphAnalyzer:
             needed = needed - added + pulled
             if needed == 0:
                 break
-        first_start_offset = -1
-        if needed == 0:
+        dont_use_first = False
+        if needed == 0 and block.get_instrs()[0].get_opcode() in (Opcodes.Ldloc, Opcodes.Ldloc_S) and block.get_instrs()[0].get_argument() == stloc_instr.get_argument():
+            dont_use_first = True
+        if needed == 0 and not dont_use_first:
             first_start_offset = block.get_start_offset()
         else:
             instrs = start_block.get_instrs()
@@ -1606,6 +1641,7 @@ class GraphAnalyzer:
                 if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch, Opcodes.Stloc, Opcodes.Stloc_S]):
                     raise Exception()
                 needed = needed - added + pulled
+                bad_instrs.add(instr.get_instr_offset())
                 if needed == 0:
                     first_start_offset = instr.get_instr_offset()
                     break
@@ -1640,6 +1676,7 @@ class GraphAnalyzer:
         new_initial_block = new_graph.get_block_by_offset(starting_offset)
         initial_block = self.__graph.get_block_by_offset(starting_offset)
         if debug:
+            print('first start offset {}'.format(hex(first_start_offset)))
             print('new switch block {} new start block {}'.format(new_switch_block, new_start_block))
             print('PRE: new switch block next {} new start block next {}'.format(new_switch_block.get_next(), new_start_block.get_next()))
         new_switch_block.remove_prev(new_start_block)
@@ -1649,8 +1686,10 @@ class GraphAnalyzer:
         already_handled = {new_start_block.get_start_offset(): [base_local]}
         stloc_num = stloc_instr.get_argument()
         self.__switch_block_walker(initial_block, switch_instr, offsets_grouped, new_graph, already_handled, emu, orig_base_local, stloc_num)
+
         new_switch_block.clear_next()
         new_switch_block.clear_prev()
+
         for blk in list(new_graph.blocks()):
             if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
                 new_graph.unregister_block(blk.get_start_offset())
@@ -1729,7 +1768,13 @@ class GraphAnalyzer:
                 if last_instr.is_branch():
                     if last_instr.get_opcode() == Opcodes.Switch:
                         #TODO: Need to make some changes to FunctionBlock to properly support switches - get_next() is all messed up.
-                        raise Exception()
+                        args = list()
+                        nxts = blk.get_next()
+                        for x in range(len(nxts) - 1):
+                            target = nxts[x]
+                            argument = target.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                            args.append(argument)
+                        last_instr.setup_arguments_from_argslist(args)
                     else:
                         if len(blk.get_next()) != 2:
                             raise Exception()
@@ -1746,18 +1791,21 @@ class GraphAnalyzer:
         new_graph.validate_blocks()
 
     def simplify_control_flow(self):
-        already_done = set()
         out = self.__graph.duplicate()
         block = self.__graph.get_block_by_offset(0)
+        is_obfuscated = False
         for block in self.__graph.blocks():
             #print('checking block {}'.format(hex(block.get_start_offset())))
             start_offsets = list()
             bad_instrs = set()
             if self.__is_target_switch(block, start_offsets, bad_instrs):
+                is_obfuscated = True
                 self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
             else:
                 pass
                 #print('Block {} is not target switch'.format(hex(block.get_start_offset())))
+        if not is_obfuscated:
+            return None
         return out
     
     def __emit_small_instr_for_big(self, instr):

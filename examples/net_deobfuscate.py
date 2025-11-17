@@ -62,20 +62,22 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            #if mobj.get_token() != 0x06000052:
-            #    continue
+            if mobj.get_token() != 0x06000052:
+                continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
             fgraph.validate_blocks()
             fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
             try:
                 new_graph = fanalyzer.simplify_control_flow()
+                if new_graph is None:
+                    print('function is not obfuscated.')
+                    continue
             except net_exceptions.EmulatorExecutionException:
                 print('emulation failed due to error')
                 continue
             #new_graph.print_root()
             instrs = new_graph.emit_instructions_as_list()
-            blk = new_graph.get_block_by_offset(0x323)
             localsigtok = mobj.disassemble_method().get_local_var_sig_token()
             exc = list()
             recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
