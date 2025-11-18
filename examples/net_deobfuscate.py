@@ -63,7 +63,7 @@ def main():
             if mobj.disassemble_method() is None:
                 continue
             #if mobj.get_token() != 0x6000055 and mobj.get_token() != 0x6000053:
-            if mobj.get_token() != 0x600053:
+            if mobj.get_token() != 0x6000055:
                 continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)

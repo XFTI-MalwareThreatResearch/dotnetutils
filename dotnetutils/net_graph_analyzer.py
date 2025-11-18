@@ -4,11 +4,12 @@ from dotnetutils.net_opcodes import Opcodes
 class GraphAnalyzer:
 
     MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
-    ALLOWED_STACK_OPS = [Opcodes.Br, Opcodes.Pop, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
+    ALLOWED_STACK_OPS = [Opcodes.Br, Opcodes.Pop, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
     BRANCHES = [Opcodes.Brtrue, Opcodes.Brtrue_S, Opcodes.Brfalse, Opcodes.Brfalse_S, Opcodes.Beq, Opcodes.Beq_S, Opcodes.Bne_Un, Opcodes.Bne_Un_S, \
                 Opcodes.Bge, Opcodes.Bge_S, Opcodes.Bge_Un, Opcodes.Bge_Un_S, Opcodes.Bgt, Opcodes.Bgt_S, Opcodes.Bgt_Un, Opcodes.Bgt_Un_S, \
                 Opcodes.Ble, Opcodes.Ble_S, Opcodes.Ble_Un, Opcodes.Ble_Un_S, Opcodes.Blt, Opcodes.Blt_S, Opcodes.Blt_Un, Opcodes.Blt_Un_S]
-    
+    STLOC = [Opcodes.Stloc_S, Opcodes.Stloc, Opcodes.Stloc_0, Opcodes.Stloc_1, Opcodes.Stloc_2, Opcodes.Stloc_3]
+    LDLOC = [Opcodes.Ldloc_S, Opcodes.Ldloc, Opcodes.Ldloc_0, Opcodes.Ldloc_1, Opcodes.Ldloc_2, Opcodes.Ldloc_3]
     def __init__(self, method_obj: net_row_objects.MethodDefOrRef, func_graph: net_graphing.FunctionGraph):
         self.__graph = func_graph
         self.__disasm = self.__graph.get_disassembler()
@@ -184,12 +185,12 @@ class GraphAnalyzer:
                 continue
             if debug:
                 print('Checking instr {} {} {} {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(), needed, added, pulled))
-            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch, Opcodes.Stloc, Opcodes.Stloc_S]):
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch] + self.STLOC):
                 if pulled > 0 or added > 0:
                     if debug:
                         print(1, hex(instr.get_instr_offset()))
                     return False
-            if ins_op in (Opcodes.Ldloc_S, Opcodes.Ldloc):
+            if ins_op in self.LDLOC:
                 if instr.get_argument() == stloc_instr.get_argument():
                     if needed <= 0:
                         raise Exception()
@@ -199,7 +200,7 @@ class GraphAnalyzer:
                         #Gate this off if theres a stloc above.
                         skip = False
                         if x > 0:
-                            if instrs[x-1].get_opcode() in (Opcodes.Stloc, Opcodes.Stloc_S):
+                            if instrs[x-1].get_opcode() in self.STLOC:
                                 if instrs[x-1].get_argument() == stloc_instr.get_argument():
                                     bad_instr_offsets.add(instr.get_instr_offset())
                                     need_local = True
@@ -211,7 +212,7 @@ class GraphAnalyzer:
                                     instr2 = prev_blk.get_instrs()[y]
                                     if instr2.is_absolute_jmp():
                                         continue
-                                    if instr2.get_opcode() not in (Opcodes.Stloc, Opcodes.Stloc_S):
+                                    if instr2.get_opcode() not in self.STLOC:
                                         skip = False
                                         break
                                     if instr2.get_argument() != stloc_instr.get_argument():
@@ -247,7 +248,7 @@ class GraphAnalyzer:
                 if debug:
                     print(3, hex(instr.get_instr_offset()), hex(child_addr))
                 return True
-            if ins_op in (Opcodes.Stloc, Opcodes.Stloc_S):
+            if ins_op in self.STLOC:
                 if instr.get_argument() == stloc_instr.get_argument():
                     bad_instr_offsets.add(instr.get_instr_offset())
                     continue
@@ -280,7 +281,7 @@ class GraphAnalyzer:
                     result = not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, child_addr, bad_instr_offsets, counter=counter+1)
                 if result:
                     if debug:
-                        print(7, hex(instr.get_instr_offset()))
+                        print(7, prev)
                     return False
         if debug:
             print(8, hex(block.get_start_offset()), hex(child_addr))
@@ -302,7 +303,7 @@ class GraphAnalyzer:
         for x in range(len(instrs) - 1, -1, -1):
             ins_op = instrs[x].get_opcode()
             bad_instr_offsets.add(instrs[x].get_instr_offset())
-            if ins_op == Opcodes.Stloc or ins_op == Opcodes.Stloc_S:
+            if ins_op in self.STLOC:
                 stloc_instr = instrs[x]
                 break
         if stloc_instr is None:
@@ -312,7 +313,7 @@ class GraphAnalyzer:
                     for x in range(len(instrs) - 1, -1, -1):
                         ins_op = instrs[x].get_opcode()
                         bad_instr_offsets.add(instrs[x].get_instr_offset())
-                        if ins_op == Opcodes.Stloc or ins_op == Opcodes.Stloc_S:
+                        if ins_op in self.STLOC:
                             stloc_instr = instrs[x]
                             break
             if stloc_instr is None:
@@ -366,7 +367,6 @@ class GraphAnalyzer:
                 old_start_block = self.__graph.get_block_by_offset(start_offset)
                 new_next_block = new_graph.get_block_by_offset(new_offset)
                 if len(old_start_block.get_next()) != 1:
-                    print(old_start_block, old_start_block.get_next())
                     raise Exception()
                 old_next = old_start_block.get_next()[0]
                 new_next = new_graph.get_block_by_offset(old_next.get_start_offset())
@@ -443,7 +443,7 @@ class GraphAnalyzer:
             raise Exception('Could not determine start block.  Contact devs.')
         stloc_instr = None
         for instr in reversed(block.get_instrs()):
-            if instr.get_opcode() in (Opcodes.Stloc, Opcodes.Stloc_S):
+            if instr.get_opcode() in self.STLOC:
                 stloc_instr = instr
                 break
 
@@ -454,7 +454,7 @@ class GraphAnalyzer:
                     for x in range(len(instrs) - 1, -1, -1):
                         ins_op = instrs[x].get_opcode()
                         bad_instrs.add(instrs[x].get_instr_offset())
-                        if ins_op == Opcodes.Stloc or ins_op == Opcodes.Stloc_S:
+                        if ins_op in self.STLOC:
                             bad_instrs.add(instrs[x].get_instr_offset())
                             stloc_instr = instrs[x]
                             break
@@ -471,30 +471,46 @@ class GraphAnalyzer:
             ins_op = instr.get_opcode()
             pulled = instr.get_pstack()
             added = instr.get_astack()
-            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch, Opcodes.Stloc, Opcodes.Stloc_S]):
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch] + self.STLOC):
                 raise Exception()
             needed = needed - added + pulled
             if needed == 0:
                 break
         dont_use_first = False
-        if needed == 0 and block.get_instrs()[0].get_opcode() in (Opcodes.Ldloc, Opcodes.Ldloc_S) and block.get_instrs()[0].get_argument() == stloc_instr.get_argument():
+        if needed == 0 and block.get_instrs()[0].get_opcode() in self.LDLOC and block.get_instrs()[0].get_argument() == stloc_instr.get_argument():
             dont_use_first = True
         if needed == 0 and not dont_use_first:
             first_start_offset = block.get_start_offset()
         else:
-            instrs = start_block.get_instrs()
-            for x in range(len(instrs) - 1, -1, -1):
-                instr = instrs[x]
-                ins_op = instr.get_opcode()
-                pulled = instr.get_pstack()
-                added = instr.get_astack()
-                if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch, Opcodes.Stloc, Opcodes.Stloc_S]):
-                    raise Exception()
-                needed = needed - added + pulled
-                bad_instrs.add(instr.get_instr_offset())
-                if needed == 0 and not instr.is_absolute_jmp():
-                    first_start_offset = instr.get_instr_offset()
-                    break
+            usable_start = start_block
+            while usable_start is not None:
+                instrs = usable_start.get_instrs()
+                for x in range(len(instrs) - 1, -1, -1):
+                    instr = instrs[x]
+                    ins_op = instr.get_opcode()
+                    pulled = instr.get_pstack()
+                    added = instr.get_astack()
+                    if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch] + self.STLOC):
+                        raise Exception()
+                    needed = needed - added + pulled
+                    bad_instrs.add(instr.get_instr_offset())
+                    if needed == 0 and not instr.is_absolute_jmp():
+                        first_start_offset = instr.get_instr_offset()
+                        break
+                if needed == 0:
+                    if instrs[0].get_opcode() in self.LDLOC:
+                        new_start = None
+                        for prev in usable_start.get_prev():
+                            if len(prev.get_next()) == 1 and (prev.get_start_offset() + prev.get_original_length()) == usable_start.get_start_offset():
+                                if not prev.get_last_instr().is_branch() and not prev.get_last_instr().is_absolute_jmp():
+                                    prev_last = prev.get_last_instr()
+                                    if prev_last.get_opcode() in self.STLOC and prev_last.get_argument() == instrs[0].get_argument():
+                                        new_start = prev
+                                        break
+
+                        usable_start = new_start
+                    else:
+                        usable_start = None
         #get the initial feed value.
         if first_start_offset == -1:
             raise Exception()
@@ -542,13 +558,13 @@ class GraphAnalyzer:
         already_handled = {new_start_block.get_start_offset(): [base_local]}
         stloc_num = stloc_instr.get_argument()
         self.__switch_block_walker(initial_block, switch_instr, offsets_grouped, new_graph, already_handled, emu, orig_base_local, stloc_num)
-
         new_switch_block.clear_next()
         new_switch_block.clear_prev()
 
         for blk in list(new_graph.blocks()):
             if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
                 new_graph.unregister_block(blk.get_start_offset())
+
         #now remove any instructions that we know are junk.
         new_graph.validate_blocks()
         for blk in new_graph.blocks():
@@ -562,8 +578,11 @@ class GraphAnalyzer:
         #First remove any useless blocks.
         new_graph.validate_blocks()
         blocks = list(new_graph.blocks())
+        removed_blocks = list()
         #if a block only has one next block and no jump, merge them.
         for blk in blocks:
+            if blk.get_start_offset() in removed_blocks:
+                continue
             last_instr = blk.get_last_instr()
             if last_instr is not None:
                 last_op = last_instr.get_opcode()
@@ -577,6 +596,7 @@ class GraphAnalyzer:
                     continue
             if len(blk.get_next()) == len(blk.get_prev()) == len(blk.get_instrs()) == 0:
                 if new_graph.has_block(blk.get_start_offset()):
+                    removed_blocks.append(blk.get_start_offset())
                     new_graph.unregister_block(blk.get_start_offset())
                 continue
             nxts = blk.get_next()
@@ -591,6 +611,7 @@ class GraphAnalyzer:
                 for n in blk_nxts:
                     blk.add_next(n)
                     n.add_prev(blk)
+                removed_blocks.append(nxt.get_start_offset())
                 new_graph.unregister_block(nxt.get_start_offset())
             else:
                 if (blk.get_start_offset() + blk.get_original_length()) == nxt.get_start_offset():
@@ -678,6 +699,8 @@ class GraphAnalyzer:
                 self.__graph = out
                 self.__disasm = self.__method.disassemble_method()
                 graph = out
+                if x == 1:
+                    break
             elif not is_obfuscated_at_all:
                 return None
             else:
@@ -851,6 +874,15 @@ class GraphAnalyzer:
             current_index += len(block.get_instrs())
         self.__graph.update_offsets()
 
+        #remove any dead blocks.
+        new_blocks = list()
+        for block in blocks_order:
+            if len(block.get_prev()) == 0 and len(block.get_next()) == 0 and block.get_start_offset() != 0:
+                continue
+            new_blocks.append(block)
+        blocks_order = new_blocks
+        total_compiled = len(blocks_order)
+
         for x in range(total_compiled):
             #check if any jumps need to be added.
             blk = blocks_order[x]
@@ -862,6 +894,9 @@ class GraphAnalyzer:
                     is_valid_last = False
             if not is_valid_last:
                 if len(blk.get_next()) != 1:
+                    print(blk.get_prev())
+                    print(blk.get_next())
+                    print(blk.get_instrs())
                     raise Exception()
                 nxt = blk.get_next()[0]
                 if nxt.get_start_offset() != (last_instr.get_instr_offset() + len(last_instr)):
@@ -881,9 +916,9 @@ class GraphAnalyzer:
                 if instr.get_opcode() in (Opcodes.Ldc_I4_0, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S):
                     if instr.get_argument() == 0:
                         instr2 = instrs[x+1]
-                        if instr2.get_opcode() in (Opcodes.Stloc, Opcodes.Stloc_S, Opcodes.Stloc_0, Opcodes.Stloc_1, Opcodes.Stloc_2, Opcodes.Stloc_3):
+                        if instr2.get_opcode() in self.STLOC:
                             instr3 = instrs[x+2]
-                            if instr3.get_opcode() in (Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Ldloc_0, Opcodes.Ldloc_1, Opcodes.Ldloc_2, Opcodes.Ldloc_3):
+                            if instr3.get_opcode() in self.LDLOC:
                                 if instr3.get_argument() == instr2.get_argument():
                                     instr4 = instrs[x+3]
                                     if instr4.get_opcode() in (Opcodes.Brfalse, Opcodes.Brfalse_S):

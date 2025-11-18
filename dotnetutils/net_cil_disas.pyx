@@ -414,10 +414,22 @@ cdef class Instruction:
         self.instr_size = instr_size
 
     def __str__(self):
-        return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), str(self.get_argument()))
+        cdef str result = ''
+        cdef int arg = 0
+        if self.get_opcode() == net_opcodes.Opcodes.Switch:
+            result = 'Offset={}, Name={}, Argument=['.format(hex(self.get_instr_offset()), self.get_name())
+            for arg in result.get_argument():
+                result += hex(arg) + ', '
+            result.rstrip(', ')
+            result += ']'
+            return result
+        elif self.is_branch() or self.is_absolute_jmp():
+            return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), self.get_argument() + len(self) + self.get_instr_offset())
+        else:
+            return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), str(self.get_argument()))
 
     def __repr__(self):
-        return self.__str__(self)
+        return self.__str__()
 
     def __len__(self):
         """ Obtains the length in bytes of the instruction
