@@ -1,5 +1,5 @@
 import sys
-from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing
+from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer
 
 def main():
     if len(sys.argv) < 4:
@@ -66,23 +66,26 @@ def main():
                 continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
+            print()
             fgraph.validate_blocks()
-            fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+            fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
             try:
                 new_graph = fanalyzer.simplify_control_flow()
                 if new_graph is None:
                     print('function is not obfuscated.')
                     continue
-            except net_exceptions.EmulatorExecutionException:
+            except net_exceptions.EmulatorExecutionException as e:
                 print('emulation failed due to error')
+                raise e
                 continue
             #new_graph.print_root()
-            instrs = new_graph.emit_instructions_as_list()
+            """instrs = new_graph.emit_instructions_as_list()
             localsigtok = mobj.disassemble_method().get_local_var_sig_token()
             exc = list()
-            recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
+            recompiler = net_graph_analyzer.MethodRecompiler(instrs, exc, localsigtok)
             data = recompiler.compile_method()
-            mobj.set_method_data(data)
+            mobj.set_method_data(data)"""
+            print('Done with flow check')
         mspecs_completed = set()
         for mspec in mspec_table:
             continue

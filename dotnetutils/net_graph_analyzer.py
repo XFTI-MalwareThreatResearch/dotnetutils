@@ -1,0 +1,1035 @@
+from dotnetutils import net_row_objects, net_graphing, net_exceptions, net_emu_types, net_emulator
+from dotnetutils.net_opcodes import Opcodes
+
+class GraphAnalyzer:
+
+    MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+    ALLOWED_STACK_OPS = [Opcodes.Br, Opcodes.Pop, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
+    BRANCHES = [Opcodes.Brtrue, Opcodes.Brtrue_S, Opcodes.Brfalse, Opcodes.Brfalse_S, Opcodes.Beq, Opcodes.Beq_S, Opcodes.Bne_Un, Opcodes.Bne_Un_S, \
+                Opcodes.Bge, Opcodes.Bge_S, Opcodes.Bge_Un, Opcodes.Bge_Un_S, Opcodes.Bgt, Opcodes.Bgt_S, Opcodes.Bgt_Un, Opcodes.Bgt_Un_S, \
+                Opcodes.Ble, Opcodes.Ble_S, Opcodes.Ble_Un, Opcodes.Ble_Un_S, Opcodes.Blt, Opcodes.Blt_S, Opcodes.Blt_Un, Opcodes.Blt_Un_S]
+    
+    def __init__(self, method_obj: net_row_objects.MethodDefOrRef, func_graph: net_graphing.FunctionGraph):
+        self.__graph = func_graph
+        self.__disasm = self.__graph.get_disassembler()
+        self.__method = method_obj
+
+
+    def __are_additional_instrs_needed(self, block, instrs, start, end):
+        if len(instrs) <= 1:
+            raise net_exceptions.InvalidArgumentsException()
+        #dont allow single instrs blocks, dont allow only checking one instruction.
+        amt_on_stack = 0
+        first_instr = instrs[start]
+        if first_instr.get_pstack() != amt_on_stack:
+            return True
+        amt_on_stack = first_instr.get_nstack()
+        second_instr = instrs[start + 1]
+        if second_instr.get_pstack() > amt_on_stack:
+            return True
+        
+        return False
+    
+    """
+    Eventually going to want to move instruction generation out of here but for the prototype
+    """
+    def emit_branch_instr(self, opcode, offset, target, small):
+        #target = argument + instr.size + instr.offset
+        #target - instr.size - instr.offset = argument
+        instr_one = self.__disasm.emit_instruction(opcode)
+
+        encoded_target = target - offset
+        if small:
+            if not -126 <= encoded_target <= 129:
+                raise net_exceptions.InvalidArgumentsException()
+            instr_one.setup_instr_size(2)
+            encoded_target -= 2
+            instr_one.setup_argument_from_int8(encoded_target)
+        else:
+            encoded_target -= 5
+            instr_one.setup_argument_from_int32(encoded_target)
+            instr_one.setup_instr_size(5)
+        return instr_one
+
+    def emit_ldc_num(self, number):
+        instrs = list()
+        use_ldc_i4 = False
+        if not isinstance(number, net_emu_types.DotNetNumber):
+            raise net_exceptions.InvalidArgumentsException()
+        pobj = number.as_python_obj()
+        if isinstance(number, net_emu_types.DotNetSingle):
+            instr_one = self.__disasm.emit_instruction(0x22)
+            instr_one.setup_arguments_from_float(pobj)
+            instr_one.setup_instr_size(5)
+            instrs.append(instr_one)
+        elif isinstance(number, net_emu_types.DotNetDouble):
+            instr_one = self.__disasm.emit_instruction(0x23)
+            instr_one.setup_instr_size(9)
+            instr_one.setup_arguments_from_double(pobj)
+            instrs.append(instr_one)
+        elif isinstance(number, net_emu_types.DotNetBoolean):
+            if pobj:
+                instr_one = self.__disasm.emit_instruction(0x17)
+            else:
+                instr_one = self.__disasm.emit_instruction(0x16)
+            instr_one.setup_instr_size(1)
+            instrs.append(instr_one)
+        else:
+            if number.is_signed():
+                if pobj == -1:
+                    use_ldc_i4 = True
+                    instr_one = self.__disasm.emit_instruction(0x15)
+                    instr_one.setup_instr_size(1)
+                    instrs.append(instr_one)
+        if len(instrs) == 0:
+            amt_needed = (pobj.bit_length() + 7) // 8
+            if amt_needed <= 4 and -2147483648 <= pobj <= 2147483647:
+                if 0 <= pobj <= 8:
+                    opcode = 0x16 + pobj
+                    instr_one = self.__disasm.emit_instruction(opcode)
+                    instr_one.setup_instr_size(1)
+                    instrs.append(instr_one)
+                    use_ldc_i4 = True
+                else:
+                    if amt_needed == 1 and -128 <= pobj <= 127:
+                        instr_one = self.__disasm.emit_instruction(0x1F)
+                        instr_one.setup_arguments_from_int8(pobj)
+                        instr_one.setup_instr_size(2)
+                        instrs.append(instr_one)
+                        use_ldc_i4 = True
+                    elif amt_needed <= 4:
+                        instr_one = self.__disasm.emit_instruction(0x20)
+                        instr_one.setup_arguments_from_int32(pobj)
+                        instr_one.setup_instr_size(5)
+                        instrs.append(instr_one)
+                        use_ldc_i4 = True
+                    else:
+                        raise net_exceptions.InvalidArgumentsException()
+            elif amt_needed <= 8:
+                instr_one = self.__disasm.emit_instruction(0x1E)
+                instr_one.setup_arguments_from_int64(pobj)
+                instr_one.setup_instr_size(9)
+                instrs.append(instr_one)
+            else:
+                raise net_exceptions.InvalidArgumentsException()
+            
+            if isinstance(number, net_emu_types.DotNetUInt32):
+                instr_one = self.__disasm.emit_instruction(0x6D)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+            elif isinstance(number, net_emu_types.DotNetIntPtr):
+                instr_one = self.__disasm.emit_instruction(0xD3)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+            elif isinstance(number, net_emu_types.DotNetUIntPtr):
+                instr_one = self.__disasm.emit_instruction(0xE0)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+            elif isinstance(number, net_emu_types.DotNetInt64) and use_ldc_i4:
+                instr_one = self.__disasm.emit_instruction(0x6A)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+            elif isinstance(number, net_emu_types.DotNetUInt64):
+                instr_one = self.__disasm.emit_instruction(0x6E)
+                instr_one.setup_instr_size(1)
+                instrs.append(instr_one)
+        return instrs
+    
+    def __handle_math_instrs(self, block, instrs, start_index, end_index, amt_deleted):
+        instr = instrs[end_index]
+        start_instr = instrs[start_index]
+        start_offset = start_instr.get_instr_offset()
+        end_offset = instr.get_instr_offset()
+        emu_obj = net_emulator.DotNetEmulator(self.__method, start_offset=start_offset, end_offset=end_offset, dont_execute_cctor=True)
+        try:
+            emu_obj.run_function()
+        except net_exceptions.EmulatorEndExecutionException:
+            pass
+        instrs_result = list()
+        for x in range(len(emu_obj.get_stack())):
+            result = emu_obj.get_stack().pop_obj()
+            instrs_result = self.emit_ldc_num(result) + instrs_result
+        amt_instrs = end_index - start_index
+
+        block.remove_instrs(start_index + amt_deleted, end_index + amt_deleted)
+        for x in range(len(instrs_result)):
+            block.insert_instr(start_index + x + amt_deleted, instrs_result[x])
+        return len(instrs_result) - amt_instrs
+
+    """
+    An attempt at control flow deobfuscation.
+    """
+
+    def __target_walker(self, block, needed, already_checked, stloc_instr, start_offsets, child_addr, bad_instr_offsets, counter=0):
+        """
+        This method is definitely going to need some testing and work but I mean its okay for now.
+        """
+
+        instrs = block.get_instrs()
+        debug = True
+        if block.get_start_offset() in already_checked:
+            if debug:
+                print(hex(instr.get_instr_offset()), 0)
+            return False
+        already_checked.append(block.get_start_offset())
+        if debug:
+            print('Checking block {} {} {}'.format(hex(block.get_start_offset()), needed, stloc_instr.get_argument()))
+        need_local = False
+        for x in range(len(instrs) - 1, -1, -1):
+            instr = instrs[x]
+            ins_op = instr.get_opcode()
+            pulled = instr.get_pstack()
+            added = instr.get_astack()
+            if instr.is_absolute_jmp():
+                continue
+            if debug:
+                print('Checking instr {} {} {} {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(), needed, added, pulled))
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch, Opcodes.Stloc, Opcodes.Stloc_S]):
+                if pulled > 0 or added > 0:
+                    if debug:
+                        print(1, hex(instr.get_instr_offset()))
+                    return False
+            if ins_op in (Opcodes.Ldloc_S, Opcodes.Ldloc):
+                if instr.get_argument() == stloc_instr.get_argument():
+                    if needed <= 0:
+                        raise Exception()
+                    needed -= 1
+
+                    if needed == 0:
+                        #Gate this off if theres a stloc above.
+                        skip = False
+                        if x > 0:
+                            if instrs[x-1].get_opcode() in (Opcodes.Stloc, Opcodes.Stloc_S):
+                                if instrs[x-1].get_argument() == stloc_instr.get_argument():
+                                    bad_instr_offsets.add(instr.get_instr_offset())
+                                    need_local = True
+                                    continue
+                        elif x == 0:
+                            skip = True
+                            for prev_blk in block.get_prev():
+                                for y in range(len(prev_blk.get_instrs()) - 1, -1, -1):
+                                    instr2 = prev_blk.get_instrs()[y]
+                                    if instr2.is_absolute_jmp():
+                                        continue
+                                    if instr2.get_opcode() not in (Opcodes.Stloc, Opcodes.Stloc_S):
+                                        skip = False
+                                        break
+                                    if instr2.get_argument() != stloc_instr.get_argument():
+                                        skip = False
+                                        break
+                                    break
+                                        
+                                if not skip:
+                                    break
+
+                            if skip:
+                                need_local = True
+                                bad_instr_offsets.add(instr.get_instr_offset())
+                                continue
+
+                        if not skip:
+                            bad_instr_offsets.add(instr.get_instr_offset())
+                            start_offsets.append((child_addr, instr.get_instr_offset()))
+                            if debug:
+                                print(2, hex(instr.get_instr_offset()))
+                            return True
+                    needed += 1
+            needed = needed - added + pulled
+            if debug:
+                print('needed is now 1 {} {} {}'.format(needed, added, pulled))
+            if needed < 0:
+                needed = 0
+            if debug:
+                print('needed is now 2 {}'.format(needed))
+            if needed == 0:
+                bad_instr_offsets.add(instr.get_instr_offset())
+                start_offsets.append((child_addr, instr.get_instr_offset()))
+                if debug:
+                    print(3, hex(instr.get_instr_offset()), hex(child_addr))
+                return True
+            if ins_op in (Opcodes.Stloc, Opcodes.Stloc_S):
+                if instr.get_argument() == stloc_instr.get_argument():
+                    bad_instr_offsets.add(instr.get_instr_offset())
+                    continue
+                elif instr.get_argument() != stloc_instr.get_argument():
+                    if needed == 0:
+                        bad_instr_offsets.add(instr.get_instr_offset())
+                        start_offsets.append((child_addr, instr.get_instr_offset()))
+                        if debug:
+                            print(4, hex(instr.get_instr_offset()))
+                        return True
+                    else:
+                        if debug:
+                            print(5, hex(instr.get_instr_offset()))
+                        return False
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS):
+                if counter == 0 and ins_op == Opcodes.Switch:
+                    continue
+                if debug:
+                    print(6, hex(instr.get_instr_offset()))
+                return False
+            bad_instr_offsets.add(instr.get_instr_offset())
+            
+        if needed != 0 or need_local:
+            for prev in block.get_prev():
+                if debug:
+                    print('Checking prev {} {}'.format(hex(prev.get_start_offset()), counter))
+                if counter == 0:
+                    result = not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, prev.get_start_offset(), bad_instr_offsets, counter=counter+1)
+                else:
+                    result = not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, child_addr, bad_instr_offsets, counter=counter+1)
+                if result:
+                    if debug:
+                        print(7, hex(instr.get_instr_offset()))
+                    return False
+        if debug:
+            print(8, hex(block.get_start_offset()), hex(child_addr))
+        return True
+
+    def __is_target_switch(self, block, start_offsets, bad_instr_offsets):
+        #check if all paths have a relatively constant value.
+        print('is target switch {}'.format(block))
+        instrs = block.get_instrs()
+        MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        if len(instrs) < 2:
+            return False
+        if instrs[-2].get_opcode() not in MATH_OPS:
+            return False
+        if block.get_last_instr().get_opcode() != Opcodes.Switch:
+            return False
+        #make sure theres at least one branch thats a fall through or a 1-1 ration
+        already_checked = list()
+        stloc_instr = None
+        for x in range(len(instrs) - 1, -1, -1):
+            ins_op = instrs[x].get_opcode()
+            bad_instr_offsets.add(instrs[x].get_instr_offset())
+            if ins_op == Opcodes.Stloc or ins_op == Opcodes.Stloc_S:
+                stloc_instr = instrs[x]
+                break
+        if stloc_instr is None:
+            for prv in block.get_prev():
+                if (prv.get_start_offset() + prv.get_original_length()) == block.get_start_offset():
+                    instrs = prv.get_instrs()
+                    for x in range(len(instrs) - 1, -1, -1):
+                        ins_op = instrs[x].get_opcode()
+                        bad_instr_offsets.add(instrs[x].get_instr_offset())
+                        if ins_op == Opcodes.Stloc or ins_op == Opcodes.Stloc_S:
+                            stloc_instr = instrs[x]
+                            break
+            if stloc_instr is None:
+                return False
+        start_offsets.clear()
+        print('checking if is target switch {}'.format(block))
+        return self.__target_walker(block, 0, already_checked, stloc_instr, start_offsets, block.get_start_offset(), bad_instr_offsets)
+    
+
+    def __switch_block_walker(self, block, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num):
+        debug = False
+        if block.get_start_offset() in already_handled:
+            base_vars = already_handled[block.get_start_offset()]
+            if base_local_var.as_python_obj() in base_vars:
+                return
+        else:
+            already_handled[block.get_start_offset()] = list()
+        already_handled[block.get_start_offset()].append(base_local_var.as_python_obj())
+        if block.get_start_offset() in offsets_grouped:
+            if debug:
+                print('handling switch block {} with base var {}'.format(block, hex(base_local_var.as_python_obj())))
+            offsets = offsets_grouped[block.get_start_offset()]
+            for offset in offsets:
+                #absolute jmp, it can only go one place.
+                if debug:
+                    print('Handling offset {}'.format(hex(offset)))
+                start_offset = offset
+                end_offset = switch_instr.get_instr_offset()
+                emu = initial_emu.spawn_new_emulator(self.__method, start_offset=start_offset, end_offset=end_offset)
+                emu.set_local_obj(stloc_num, base_local_var)
+                emu.setup_method_params([])
+                worked = False
+                try:
+                    emu.run_function()
+                except net_exceptions.EmulatorEndExecutionException:
+                    worked = True
+                if not worked:
+                    raise Exception()
+                new_target = emu.get_stack().pop_obj()
+                if not isinstance(new_target, net_emu_types.DotNetNumber):
+                    raise Exception()
+                new_local_var = emu.get_local_obj(stloc_num)
+                switch_targets = switch_instr.get_argument()
+                new_target = new_target.as_python_obj()
+                if new_target < 0 or new_target >= len(switch_targets):
+                    new_offset = len(switch_instr) + switch_instr.get_instr_offset() 
+                else:
+                    new_offset = switch_targets[new_target]
+                if debug:
+                    print('new target {}'.format(hex(new_offset)))
+                new_start_block = new_graph.get_block_by_offset(start_offset)
+                old_start_block = self.__graph.get_block_by_offset(start_offset)
+                new_next_block = new_graph.get_block_by_offset(new_offset)
+                if len(old_start_block.get_next()) != 1:
+                    print(old_start_block, old_start_block.get_next())
+                    raise Exception()
+                old_next = old_start_block.get_next()[0]
+                new_next = new_graph.get_block_by_offset(old_next.get_start_offset())
+                if debug:
+                    print('new start block {} new next {} new next block {}'.format(new_start_block, new_next, new_next_block))
+                    print('new start block prev nexts {}'.format(new_start_block.get_next()))
+                if new_start_block.has_next(new_next): #This line here might be an issue if the function has a legitimate switch statement.  Will need to be careful.
+                    new_start_block.remove_next(new_next)
+                    new_start_block.add_next(new_next_block) #PROBLEM: because we removed the has_next() check in add_next() to allow for switch instrs to work properly, we need to make sure we arent adding duplicate nexts where they arent needed.
+                    new_next_block.add_prev(new_start_block)
+                    if debug:
+                        print('new start block new nexts {}'.format(new_start_block.get_next()))
+                self.__switch_block_walker(self.__graph.get_block_by_offset(new_offset), switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, new_local_var, stloc_num)
+            return
+        for nxt in block.get_next():
+            #if debug:
+            #    print('handling next {}'.format(nxt))
+            self.__switch_block_walker(nxt, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num)
+
+    
+    def __deobfuscate_switch(self, block, offsets, switch_instr, new_graph, bad_instrs):
+        #first group the offsets together.
+        print('deobfuscating switch {}'.format(block))
+        offsets_grouped = dict()
+        for block_offset, offset in offsets:
+            if block_offset not in offsets_grouped:
+                offsets_grouped[block_offset] = list()
+            offsets_grouped[block_offset].append(offset)
+
+        debug = True
+        if debug:
+            for block_offset, offsets in offsets_grouped.items():
+                for offset in offsets:
+                    print('block offset {} -> start {}'.format(hex(block_offset), hex(offset)))
+        start_block = None
+        for prev in block.get_prev():
+            if (prev.get_start_offset() + prev.get_original_length()) == block.get_start_offset():
+                start_block = prev
+                break
+        if start_block is None:
+            raise Exception()
+        stloc_instr = None
+        for instr in reversed(block.get_instrs()):
+            if instr.get_opcode() in (Opcodes.Stloc, Opcodes.Stloc_S):
+                stloc_instr = instr
+                break
+
+        if stloc_instr is None:
+            for prv in block.get_prev():
+                if (prv.get_start_offset() + prv.get_original_length()) == block.get_start_offset():
+                    instrs = prv.get_instrs()
+                    for x in range(len(instrs) - 1, -1, -1):
+                        ins_op = instrs[x].get_opcode()
+                        bad_instrs.add(instrs[x].get_instr_offset())
+                        if ins_op == Opcodes.Stloc or ins_op == Opcodes.Stloc_S:
+                            bad_instrs.add(instrs[x].get_instr_offset())
+                            stloc_instr = instrs[x]
+                            break
+                if stloc_instr is not None:
+                    break
+            if stloc_instr is None:
+                raise Exception()
+        needed = 0
+        instrs = block.get_instrs()
+        for x in range(len(instrs) - 1, -1, -1):
+            instr = instrs[x]
+            ins_op = instr.get_opcode()
+            pulled = instr.get_pstack()
+            added = instr.get_astack()
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch, Opcodes.Stloc, Opcodes.Stloc_S]):
+                raise Exception()
+            needed = needed - added + pulled
+            if needed == 0:
+                break
+        dont_use_first = False
+        if needed == 0 and block.get_instrs()[0].get_opcode() in (Opcodes.Ldloc, Opcodes.Ldloc_S) and block.get_instrs()[0].get_argument() == stloc_instr.get_argument():
+            dont_use_first = True
+        if needed == 0 and not dont_use_first:
+            first_start_offset = block.get_start_offset()
+        else:
+            instrs = start_block.get_instrs()
+            for x in range(len(instrs) - 1, -1, -1):
+                instr = instrs[x]
+                ins_op = instr.get_opcode()
+                pulled = instr.get_pstack()
+                added = instr.get_astack()
+                if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch, Opcodes.Stloc, Opcodes.Stloc_S]):
+                    raise Exception()
+                needed = needed - added + pulled
+                bad_instrs.add(instr.get_instr_offset())
+                if needed == 0:
+                    first_start_offset = instr.get_instr_offset()
+                    break
+        #get the initial feed value.
+        if first_start_offset == -1:
+            raise Exception()
+        if debug:
+            print('first start offset {} {}'.format(hex(first_start_offset), hex(switch_instr.get_instr_offset())))
+        emu = net_emulator.DotNetEmulator(self.__method, start_offset=first_start_offset, end_offset=switch_instr.get_instr_offset(), dont_execute_cctor=True)
+        emu.setup_method_params([])
+        worked = False
+        try:
+            emu.run_function()
+        except net_exceptions.EmulatorEndExecutionException as e:
+            print(str(e))
+            worked = True
+        if not worked:
+            raise Exception()
+        worked = False
+        result = emu.get_stack().pop_obj()
+        base_local = emu.get_local_obj(stloc_instr.get_argument())
+        if not isinstance(result, net_emu_types.DotNetNumber) or not isinstance(base_local, net_emu_types.DotNetNumber):
+            raise Exception()
+        result = result.as_python_obj()
+        orig_base_local = base_local
+        base_local = base_local.as_python_obj()
+        switch_targets = switch_instr.get_argument()
+        if result < 0 or result >= len(switch_targets):
+            starting_offset = switch_instr.get_instr_offset() + len(switch_instr)
+        else:
+            starting_offset = switch_targets[result]
+        #unlink the switch block
+        new_switch_block = new_graph.get_block_by_offset(block.get_start_offset())
+        new_start_block = new_graph.get_block_by_offset(start_block.get_start_offset())
+        new_initial_block = new_graph.get_block_by_offset(starting_offset)
+        initial_block = self.__graph.get_block_by_offset(starting_offset)
+        if debug:
+            print('first start offset {}'.format(hex(first_start_offset)))
+            print('new switch block {} new start block {}'.format(new_switch_block, new_start_block))
+            print('PRE: new switch block next {} new start block next {}'.format(new_switch_block.get_next(), new_start_block.get_next()))
+        new_switch_block.remove_prev(new_start_block)
+        new_start_block.add_next(new_initial_block)
+        new_initial_block.add_prev(new_start_block)
+        if debug:
+            print('POST: new switch block next {} new start block next {}'.format(new_switch_block.get_next(), new_start_block.get_next()))
+        already_handled = {new_start_block.get_start_offset(): [base_local]}
+        stloc_num = stloc_instr.get_argument()
+        self.__switch_block_walker(initial_block, switch_instr, offsets_grouped, new_graph, already_handled, emu, orig_base_local, stloc_num)
+
+        new_switch_block.clear_next()
+        new_switch_block.clear_prev()
+
+        for blk in list(new_graph.blocks()):
+            if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
+                new_graph.unregister_block(blk.get_start_offset())
+        #now remove any instructions that we know are junk.
+        new_graph.validate_blocks()
+        for blk in new_graph.blocks():
+            amt_deleted = 0
+            instrs = list(blk.get_instrs())
+            for x in range(len(instrs)):
+                instr = instrs[x]
+                if instr.get_instr_offset() in bad_instrs and not instr.is_branch() and not instr.is_absolute_jmp():
+                    blk.remove_instrs(x - amt_deleted, x - amt_deleted + 1)
+                    amt_deleted += 1
+        #First remove any useless blocks.
+        new_graph.validate_blocks()
+        blocks = list(new_graph.blocks())
+        #if a block only has one next block and no jump, merge them.
+        for blk in blocks:
+            last_instr = blk.get_last_instr()
+            if last_instr is not None:
+                last_op = last_instr.get_opcode()
+                instrs = blk.get_instrs()
+                if last_op == Opcodes.Ret:
+                    continue
+                if last_instr.is_branch():
+                    continue
+
+                if last_instr.is_absolute_jmp():
+                    continue
+            if len(blk.get_next()) == len(blk.get_prev()) == len(blk.get_instrs()) == 0:
+                if new_graph.has_block(blk.get_start_offset()):
+                    new_graph.unregister_block(blk.get_start_offset())
+                continue
+            nxts = blk.get_next()
+            if len(nxts) != 1:
+                raise Exception()
+            nxt = nxts[0]
+            if len(nxt.get_prev()) == 1:
+                blk.remove_next(nxt)
+                blk.merge_block(nxt)
+                blk_nxts = list(nxt.get_next())
+                nxt.clear_next()
+                for n in blk_nxts:
+                    blk.add_next(n)
+                    n.add_prev(blk)
+                new_graph.unregister_block(nxt.get_start_offset())
+            else:
+                if not blk.is_block_try() and not blk.is_block_catch() and not blk.is_block_finally() and not blk.is_block_filter():
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                else:
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Leave)
+                target = nxt.get_start_offset() - (blk.get_start_offset() + blk.get_current_size()) - 5
+                new_instr.setup_instr_size(5)
+                ins_index = blk.get_start_index()
+                if last_instr is not None:
+                    ins_index = last_instr.get_instr_index() + 1
+                new_instr.setup_instr_offset(blk.get_start_offset() + blk.get_current_size(), ins_index)
+                new_instr.setup_arguments_from_int32(target)
+                blk.add_instr(new_instr)
+
+        new_graph.validate_blocks()
+
+        #lastly update all the offsets for branches
+        for blk in new_graph.blocks():
+            last_instr = blk.get_last_instr()
+            if last_instr is None:
+                continue
+            last_op = last_instr.get_opcode()
+            if last_instr.is_absolute_jmp():
+                if len(blk.get_next()) != 1:
+                    raise Exception()
+                nxt = blk.get_next()[0]
+                argument = nxt.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                last_instr.setup_arguments_from_int32(argument)
+            else:
+                if last_instr.is_branch():
+                    if last_instr.get_opcode() == Opcodes.Switch:
+                        args = list()
+                        nxts = blk.get_next()
+                        for x in range(len(nxts) - 1): #last case is fallthrough
+                            target = nxts[x]
+                            argument = target.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                            args.append(argument)
+                        last_instr.setup_arguments_from_argslist(args)
+                    else:
+                        if len(blk.get_next()) != 2:
+                            raise Exception()
+                        nxt = blk.get_next()[1]
+                        argument = nxt.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                        last_instr.setup_arguments_from_int32(argument)
+        new_graph.validate_blocks()
+        new_graph.sort_blocks()
+
+        new_analyzer = GraphAnalyzer(self.__method, new_graph)
+        new_analyzer.repair_blocks()
+        new_graph.update_offsets()
+        new_graph.sort_blocks()
+        new_graph.validate_blocks()
+
+    def simplify_control_flow(self):
+        graph = self.__graph
+        is_obfuscated_at_all = False
+        x = 0
+        while True:
+            blocks = graph.blocks()
+            is_obfuscated = False
+            for block in blocks:
+                start_offsets = list()
+                bad_instrs = set()
+
+                if self.__is_target_switch(block, start_offsets, bad_instrs):
+                    out = graph.duplicate()
+
+                    is_obfuscated = True
+                    is_obfuscated_at_all = True
+                    self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
+                    out.validate_blocks()
+                    #out.print_root()
+                    x += 1
+                    break
+            if is_obfuscated:
+                instrs = out.emit_instructions_as_list()
+                localsigtok = self.__method.disassemble_method().get_local_var_sig_token()
+                exc = list()
+                recompiler = MethodRecompiler(instrs, exc, localsigtok)
+                data = recompiler.compile_method()
+                self.__method.set_method_data(data)
+                self.__graph = out
+                self.__disasm = self.__method.disassemble_method()
+                graph = out
+            elif not is_obfuscated_at_all:
+                return None
+            else:
+                break
+        return graph
+    
+    def __emit_small_instr_for_big(self, instr):
+        if not instr.is_branch() and not instr.is_absolute_jmp():
+            return None
+        ins_op = instr.get_opcode()
+        new_instr = None
+        if ins_op == Opcodes.Br:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Br_S)
+        elif ins_op == Opcodes.Brfalse:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Brfalse_S)
+        elif ins_op == Opcodes.Brtrue:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Brtrue_S)
+        elif ins_op == Opcodes.Beq:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Beq_S)
+        elif ins_op == Opcodes.Bge:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bge_S)
+        elif ins_op == Opcodes.Bgt:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bgt_S)
+        elif ins_op == Opcodes.Ble:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Ble_S)
+        elif ins_op == Opcodes.Blt:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Blt_S)
+        elif ins_op == Opcodes.Bne_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bne_Un_S)
+        elif ins_op == Opcodes.Bge_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bge_Un_S)
+        elif ins_op == Opcodes.Bgt_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bgt_Un_S)
+        elif ins_op == Opcodes.Ble_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Ble_Un_S)
+        elif ins_op == Opcodes.Blt_Un:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Blt_Un_S)
+        elif ins_op == Opcodes.Leave:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Leave_S)
+        
+        if new_instr is None:
+            return None
+        new_instr.setup_instr_size(2)
+        return new_instr
+    
+    def __emit_big_instr_for_small(self, instr):
+        if not instr.is_branch() and not instr.is_absolute_jmp():
+            return None
+        ins_op = instr.get_opcode()
+        new_instr = None
+        if ins_op == Opcodes.Br_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+        elif ins_op == Opcodes.Brfalse_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Brfalse)
+        elif ins_op == Opcodes.Brtrue_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Brtrue)
+        elif ins_op == Opcodes.Beq_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Beq)
+        elif ins_op == Opcodes.Bge_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bge)
+        elif ins_op == Opcodes.Bgt_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bgt)
+        elif ins_op == Opcodes.Ble_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Ble)
+        elif ins_op == Opcodes.Blt_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Blt)
+        elif ins_op == Opcodes.Bne_Un_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bne_Un)
+        elif ins_op == Opcodes.Bge_Un_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bge_Un)
+        elif ins_op == Opcodes.Bgt_Un_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Bgt_Un)
+        elif ins_op == Opcodes.Ble_Un_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Ble_Un)
+        elif ins_op == Opcodes.Blt_Un_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Blt_Un)
+        elif ins_op == Opcodes.Leave_S:
+            new_instr = self.__disasm.emit_instruction(Opcodes.Leave)
+        
+        if new_instr is None:
+            return None
+        new_instr.setup_instr_size(5)
+        return new_instr
+        
+    
+    def __block_walker(self, block, handled, exc_handlers):
+        if block not in handled:
+            #The block hasnt been laid out yet.
+            handled.append(block) #Goal is to get the layout of blocks in order, then recalculate offsets.
+            last_instr = block.get_last_instr()
+            last_op = last_instr.get_opcode()
+            new_last_instr = self.__emit_big_instr_for_small(last_instr)
+            if new_last_instr is not None: #for now normalize all jumps to their big counterparts.
+                last_index = len(block.get_instrs()) - 1
+                new_last_instr.setup_arguments_from_int32(0)
+                new_last_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
+                block.replace_instr(last_index, new_last_instr)
+            
+            last_instr = block.get_last_instr()
+            last_op = last_instr.get_opcode()
+            #the fallthrough case is always the last one in the nexts, so theres that.
+            blk_next = block.get_next()
+            if len(blk_next) > 0:
+                self.__block_walker(blk_next[-1], handled, exc_handlers)
+            
+            if last_instr.is_branch():
+                if last_op == Opcodes.Switch:
+                    for x in range(0, len(blk_next) - 1):
+                        self.__block_walker(blk_next[x], handled, exc_handlers)
+                else:
+                    self.__block_walker(blk_next[0], handled, exc_handlers)
+
+    def repair_blocks(self):
+        #TODO: When stiching together blocks try blocks need to be together, filter clause needs to follow the rules etc.
+        self.__graph.validate_blocks()
+        was_unregistered = list()
+        for block in list(self.__graph.blocks()):
+            if block.get_start_offset() in was_unregistered:
+                continue
+            block_prev = list(block.get_prev())
+            block_next = list(block.get_next())
+            if len(block_prev) == 1:
+                prev = block_prev[0]
+                prev_last = prev.get_last_instr()
+                if prev_last.get_opcode() in (Opcodes.Br, Opcodes.Br_S):
+                    #Remove the jmp on the prev
+                    prev_index = len(prev.get_instrs()) - 1
+                    prev.remove_instrs(prev_index, prev_index + 1)
+                    prev.remove_next(block)
+                    prev.merge_block(block)
+                    prev.clear_next_raw()
+                    for n in block_next:
+                        prev.add_next(n)
+                        n.add_prev(prev)
+                    was_unregistered.append(block.get_start_offset())
+                    self.__graph.unregister_block(block.get_start_offset())
+
+        self.__graph.validate_blocks()
+
+        blocks_order = list()
+        exc_handlers = list()
+        for block in self.__graph.blocks():
+            self.__block_walker(block, blocks_order, exc_handlers)
+
+        #check over the blocks, make sure theres a jmp if its needed.
+        total_compiled = len(blocks_order)
+        #Do an initial offset update to ensure the next loop works.
+        current_offset = 0
+        current_index = 0
+        #lay out the offsets
+        for x in range(total_compiled):
+            block = blocks_order[x]
+            if len(block.get_instrs()) == 0:
+                print('dead block')
+                self.__graph.unregister_block(block.get_instr_offset())
+                continue
+            block.update_start_offset(current_offset, current_index)
+            block.update_size(block.get_current_size())
+            current_offset += block.get_original_length()
+            current_index += len(block.get_instrs())
+        self.__graph.update_offsets()
+
+        for x in range(total_compiled):
+            #check if any jumps need to be added.
+            blk = blocks_order[x]
+            is_valid_last = True
+            last_instr = blk.get_last_instr()
+            #I think this should work for try clauses as well but not sure yet.
+            if not last_instr.is_absolute_jmp() and not last_instr.is_branch():
+                if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Endfinally):
+                    is_valid_last = False
+            if not is_valid_last:
+                if len(blk.get_next()) != 1:
+                    raise Exception()
+                nxt = blk.get_next()[0]
+                if nxt.get_start_offset() != (last_instr.get_instr_offset() + len(last_instr)):
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                    new_instr.setup_instr_size(5)
+                    new_instr.setup_instr_offset(last_instr.get_instr_offset() + len(last_instr), last_instr.get_instr_index() + 1)
+                    new_instr.setup_arguments_from_int32(nxt.get_start_offset() - len(new_instr) - new_instr.get_instr_offset())
+                    blk.add_instr(new_instr)
+
+        current_offset = 0
+        current_index = 0
+        #lay out the offsets
+        for x in range(total_compiled):
+            block = blocks_order[x]
+            orig_offset = block.get_start_offset()
+            block.update_start_offset(current_offset, current_index)
+            block.update_size(block.get_current_size())
+            y = 0
+            for instr in block.get_instrs():
+                ins_op = instr.get_opcode()
+                if ins_op in (Opcodes.Br, Opcodes.Br_S) and x < (total_compiled - 1):
+                    if block.get_next()[0] == blocks_order[x+1]:
+                        block.remove_instrs(y, y+1)
+                        if len(block.get_instrs()) == 0:
+                            self.__graph.unregister_block(orig_offset)
+                        continue
+                instr.setup_instr_offset(current_offset, current_index)
+                current_offset += len(instr)
+                current_index += 1
+                y += 1
+
+        
+
+        self.__graph.update_offsets()
+        #fixup the branches of any blocks
+        for block in list(self.__graph.blocks()):
+            last_instr = block.get_last_instr()
+            last_op = last_instr.get_opcode()
+            blk_next = block.get_next()
+            if last_op == Opcodes.Switch:
+                args = list()
+                for x in range(len(blk_next) - 1):
+                    target = blk_next[x].get_start_offset()
+                    argument = target - len(last_instr) - last_instr.get_instr_offset()
+                    args.append(argument)
+                last_instr.setup_arguments_from_argslist(args)
+            elif last_instr.is_absolute_jmp() or last_instr.is_branch():
+                target = blk_next[0].get_start_offset()
+                argument = target - len(last_instr) - last_instr.get_instr_offset()
+                last_instr.setup_arguments_from_int32(argument)
+            block.update_size(block.get_current_size())
+        self.__graph.sort_blocks()
+
+    def remove_useless_math(self):
+        """ Remove math expressions that compute to a constant value.
+        """
+
+        MATH_INSTRS = [Opcodes.Nop, Opcodes.Not, Opcodes.Ldc_I4, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, \
+                       Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_S, Opcodes.Ldc_I8, Opcodes.Ldc_R4, Opcodes.Ldc_R8, \
+                        Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, \
+                            Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, \
+                                Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        was_anything_changed = False
+        block: FunctionBlock
+        for block in self.__graph.blocks():
+            start_index = -1
+            end_index = -1
+            nstack = 0
+            orig_block_instrs = list(block.get_instrs())
+            amt_deleted = 0
+            for x in range(len(orig_block_instrs)):
+                instr = orig_block_instrs[x]
+                opcode = instr.get_opcode()
+                if opcode not in MATH_INSTRS:
+                    y = x
+                    end_index = y 
+                    nstack = 0
+                    if start_index >= 0 and end_index > 0 and (end_index - start_index) > 1:
+                        has_math_op = False
+                        for z in range(start_index, end_index):
+                            instr2 = orig_block_instrs[z]
+                            if instr2.get_opcode() in MATH_OPS:
+                                has_math_op = True
+                                break
+                        if has_math_op and not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
+                            was_anything_changed = True
+                            amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
+                    start_index = -1
+                    end_index = -1
+                else:
+                    if start_index < 0:
+                        if instr.get_pstack() > nstack:
+                            nstack = 0
+                            continue
+                        start_index = x
+                    else:
+                        #Test the instruction for stack consistency.
+                        if nstack < instr.get_pstack():
+                            y = x
+                            end_index = y 
+                            nstack = 0
+                            if start_index > 0 and (end_index - start_index) > 1 and not self.__are_additional_instrs_needed(block, orig_block_instrs, start_index, end_index):
+                                has_math_op = False
+                                for z in range(start_index, end_index):
+                                    instr2 = orig_block_instrs[z]
+                                    if instr2.get_opcode() in MATH_OPS:
+                                        has_math_op = True
+                                        break
+                                if has_math_op:
+                                    was_anything_changed = True
+                                    amt_deleted += self.__handle_math_instrs(block, orig_block_instrs, start_index, end_index, amt_deleted)
+                            start_index = -1
+                            end_index = -1
+                    nstack += instr.get_nstack()
+        return was_anything_changed
+
+class MethodRecompiler:
+
+    def __init__(self, instrs: list, exception_blocks: list=list(), local_var_sig_tok: int=0):
+        self.__localvarsigtok = local_var_sig_tok
+        self.__exception_blocks = exception_blocks
+        self.__instrs = instrs
+        self.__code_size = 0
+        for instr in self.__instrs:
+            self.__code_size += len(instr)
+
+    def compile_method(self):
+        use_fat = False
+        if self.__code_size > 63:
+            use_fat = True
+        if self.__localvarsigtok != 0:
+            use_fat = True
+        if len(self.__exception_blocks) != 0:
+            raise Exception()
+            use_fat = True
+
+        fgraph = net_graphing.FunctionGraph(None, self.__instrs, self.__exception_blocks)
+        calculated_max_stack = fgraph.calculate_max_stack_size()
+        if calculated_max_stack > 8:
+            use_fat = True
+        result = bytearray()
+        if not use_fat:
+            result.extend(int.to_bytes((self.__code_size << 2) | 0x2, 1, 'little'))
+            for instr in self.__instrs:
+                result.extend(instr.to_bytes())
+            return bytes(result)
+        else:
+            flags = 0x0003
+            if len(self.__exception_blocks) != 0:
+                flags |= 0x0008
+            
+            if self.__localvarsigtok != 0:
+                flags |= 0x0010
+            flags |= (3 << 12)
+            #we need a function graph to calculate the max stack size.
+            import binascii
+            result.extend(int.to_bytes(flags, 2, 'little'))
+            result.extend(int.to_bytes(calculated_max_stack, 2, 'little'))
+            result.extend(int.to_bytes(self.__code_size, 4, 'little'))
+            result.extend(int.to_bytes(self.__localvarsigtok, 4, 'little'))
+
+            for instr in self.__instrs:
+                b = instr.to_bytes()
+                result.extend(b)
+
+            if len(self.__exception_blocks) == 0:
+                return bytes(result)
+            def calc_int_size(num: int):
+                return (num.bit_length() + 7) // 8
+            
+            while len(result) % 4 != 0: 
+                result.append(0)
+            
+            use_fat_exceptions = False
+
+            if len(self.__exception_blocks) > 20:
+                use_fat_exceptions = True
+
+            if not use_fat_exceptions:
+                for x in range(len(self.__exception_blocks)):
+                    clause_flags, try_offset, try_length, handler_offset, handler_length, token = self.__exception_blocks[x]
+                    cflags_size = calc_int_size(clause_flags)
+                    tryoff_size = calc_int_size(try_offset)
+                    trylen_size = calc_int_size(try_length)
+                    handleroff_size = calc_int_size(handler_offset)
+                    handlerlen_size = calc_int_size(handler_length)
+
+                    if not (cflags_size <= 2 and tryoff_size <= 2 and trylen_size <= 1 and handleroff_size <= 2 and handlerlen_size <= 1):
+                        use_fat_exceptions = True
+                        break
+
+            if not use_fat_exceptions:
+                result.append(net_structs.CorILMethod.Sect_EHTable)
+                data_size = (len(self.__exception_blocks) * 12) + 4
+                result.extend(int.to_bytes(data_size, 1, 'little'))
+                result.append(0)
+                result.append(0)
+                for exc in self.__exception_blocks:
+                    clause_flags, try_offset, try_length, handler_offset, handler_length, token = exc
+                    result.extend(int.to_bytes(clause_flags, 2, 'little'))
+                    result.extend(int.to_bytes(try_offset, 2, 'little'))
+                    result.extend(int.to_bytes(try_length, 1, 'little'))
+                    result.extend(int.to_bytes(handler_offset, 2, 'little'))
+                    result.extend(int.to_bytes(handler_length, 1, 'little'))
+                    result.extend(int.to_bytes(token, 4, 'little'))
+            else:
+                result.append(net_structs.CorILMethod.Sect_FatFormat | net_structs.CorILMethod.Sect_EHTable)
+                data_size = (len(self.__exception_blocks) * 24) + 4
+                result.extend(int.to_bytes(data_size, 3, 'little'))
+                for exc in self.__exception_blocks:
+                    clause_flags, try_offset, try_length, handler_offset, handler_length, token = exc
+                    result.extend(int.to_bytes(clause_flags, 4, 'little'))
+                    result.extend(int.to_bytes(try_offset, 4, 'little'))
+                    result.extend(int.to_bytes(try_length, 4, 'little'))
+                    result.extend(int.to_bytes(handler_offset, 4, 'little'))
+                    result.extend(int.to_bytes(handler_length, 4, 'little'))
+                    result.extend(int.to_bytes(token, 4, 'little'))
+            return bytes(result)
