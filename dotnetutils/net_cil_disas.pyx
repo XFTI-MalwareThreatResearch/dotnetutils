@@ -414,10 +414,10 @@ cdef class Instruction:
         self.instr_size = instr_size
 
     def __str__(self):
-        """
-        :return: A string representing the instruction
-        """
         return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), str(self.get_argument()))
+
+    def __repr__(self):
+        return self.__str__(self)
 
     def __len__(self):
         """ Obtains the length in bytes of the instruction

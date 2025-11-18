@@ -1110,8 +1110,8 @@ class FunctionGraph:
                 if instr.is_branch() and not instr.is_absolute_jmp():
                     break
                 if instr.is_absolute_jmp():
-                    print((' ' * indent) + '{}: jump to {}'.format(hex(instr.get_instr_offset()),
-                                                  hex(instr.get_instr_offset() + len(instr) + instr.get_argument())))
+                    print((' ' * indent) + '{}: jump to {} ({})'.format(hex(instr.get_instr_offset()),
+                                                  hex(instr.get_instr_offset() + len(instr) + instr.get_argument()), instr.get_name()))
                 else:
                     print((' ' * indent) + '{}: {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(),
                                              instr.get_argument()))
