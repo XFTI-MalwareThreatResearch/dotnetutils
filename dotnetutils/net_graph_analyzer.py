@@ -167,10 +167,10 @@ class GraphAnalyzer:
         """
 
         instrs = block.get_instrs()
-        debug = False
+        debug = True
         if block.get_start_offset() in already_checked:
             if debug:
-                print(hex(instr.get_instr_offset()), 0)
+                print(0, block)
             return False
         already_checked.append(block.get_start_offset())
         if debug:
@@ -376,7 +376,6 @@ class GraphAnalyzer:
                 if new_start_block.has_next(new_next): #This line here might be an issue if the function has a legitimate switch statement.  Will need to be careful.
                     new_start_block.remove_next(new_next)
                     new_start_block.add_next(new_next_block) #PROBLEM: because we removed the has_next() check in add_next() to allow for switch instrs to work properly, we need to make sure we arent adding duplicate nexts where they arent needed.
-                    new_next_block.add_prev(new_start_block)
                     if debug:
                         print('new start block new nexts {}'.format(new_start_block.get_next()))
                 self.__switch_block_walker(self.__graph.get_block_by_offset(new_offset), switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, new_local_var, stloc_num)
@@ -404,7 +403,10 @@ class GraphAnalyzer:
     
     def __determine_start_block(self, switch_block):
         start_block = None
+        debug = True
         for prev in switch_block.get_prev():
+            if debug:
+                print('Checking start block {} {} {} {}'.format(prev, prev.get_original_length(), prev.get_current_size(), switch_block))
             if (prev.get_start_offset() + prev.get_original_length()) == switch_block.get_start_offset():
                 start_block = prev
                 break
@@ -433,19 +435,28 @@ class GraphAnalyzer:
                 offsets_grouped[block_offset] = list()
             offsets_grouped[block_offset].append(offset)
 
-        debug = False
+        debug = True
+        if debug:
+            print('deobfuscating switch {}'.format(block))
         if debug:
             for block_offset, offsets in offsets_grouped.items():
                 for offset in offsets:
                     print('block offset {} -> start {}'.format(hex(block_offset), hex(offset)))
+        if debug:
+            print('switch prevs {}'.format(block.get_prev()))
         start_block = self.__determine_start_block(block)
         if start_block is None:
             raise Exception('Could not determine start block.  Contact devs.')
+        if debug:
+            print('determined start block {}'.format(start_block))
         stloc_instr = None
         for instr in reversed(block.get_instrs()):
             if instr.get_opcode() in self.STLOC:
                 stloc_instr = instr
                 break
+        
+        if debug:
+            print('stloc instr', stloc_instr)
 
         if stloc_instr is None:
             for prv in block.get_prev():
@@ -462,6 +473,9 @@ class GraphAnalyzer:
                     break
             if stloc_instr is None:
                 raise Exception()
+            
+        if debug:
+            print('stloc instr 2', stloc_instr)
         needed = 0
         instrs = block.get_instrs()
         for x in range(len(instrs) - 1, -1, -1):
@@ -479,6 +493,8 @@ class GraphAnalyzer:
         dont_use_first = False
         if needed == 0 and block.get_instrs()[0].get_opcode() in self.LDLOC and block.get_instrs()[0].get_argument() == stloc_instr.get_argument():
             dont_use_first = True
+        if debug:
+            print('dont use first {} {}'.format(dont_use_first, start_block))
         if needed == 0 and not dont_use_first:
             first_start_offset = block.get_start_offset()
         else:
@@ -498,7 +514,7 @@ class GraphAnalyzer:
                         first_start_offset = instr.get_instr_offset()
                         break
                 if needed == 0:
-                    if instrs[0].get_opcode() in self.LDLOC:
+                    if instrs[0].get_opcode() in self.LDLOC and instrs[0].get_argument() == stloc_instr.get_argument():
                         new_start = None
                         for prev in usable_start.get_prev():
                             if len(prev.get_next()) == 1 and (prev.get_start_offset() + prev.get_original_length()) == usable_start.get_start_offset():
@@ -525,7 +541,6 @@ class GraphAnalyzer:
             worked = True
         if not worked:
             raise Exception()
-        worked = False
         result = emu.get_stack().pop_obj()
         base_local = emu.get_local_obj(stloc_instr.get_argument())
         if debug:
@@ -543,16 +558,22 @@ class GraphAnalyzer:
             starting_offset = switch_targets[result]
         #unlink the switch block
         new_switch_block = new_graph.get_block_by_offset(block.get_start_offset())
-        new_start_block = new_graph.get_block_by_offset(start_block.get_start_offset())
+        new_start_block = new_graph.get_block_by_offset(first_start_offset)
         new_initial_block = new_graph.get_block_by_offset(starting_offset)
         initial_block = self.__graph.get_block_by_offset(starting_offset)
         if debug:
             print('first start offset {}'.format(hex(first_start_offset)))
             print('new switch block {} new start block {}'.format(new_switch_block, new_start_block))
             print('PRE: new switch block next {} new start block next {}'.format(new_switch_block.get_next(), new_start_block.get_next()))
-        new_switch_block.remove_prev(new_start_block)
-        new_start_block.add_next(new_initial_block)
-        new_initial_block.add_prev(new_start_block)
+        potential_start_block = new_graph.get_block_by_offset(start_block.get_start_offset())
+        if debug:
+            print('first start offset in potential start block {}'.format(potential_start_block.has_offset(first_start_offset)))
+        #if not potential_start_block.has_offset(first_start_offset):
+        #    print('removing')
+        #    new_start_block.remove_next(potential_start_block)
+        #TODO: we need some checks here for if our start block isnt actually our start block etc etc.
+        new_switch_block.remove_prev(potential_start_block)
+        potential_start_block.add_next(new_initial_block)
         if debug:
             print('POST: new switch block next {} new start block next {}'.format(new_switch_block.get_next(), new_start_block.get_next()))
         already_handled = {new_start_block.get_start_offset(): [base_local]}
@@ -610,7 +631,6 @@ class GraphAnalyzer:
                 nxt.clear_next()
                 for n in blk_nxts:
                     blk.add_next(n)
-                    n.add_prev(blk)
                 removed_blocks.append(nxt.get_start_offset())
                 new_graph.unregister_block(nxt.get_start_offset())
             else:
@@ -666,9 +686,17 @@ class GraphAnalyzer:
         new_analyzer.repair_blocks()
         new_graph.update_offsets()
         new_graph.sort_blocks()
+        new_graph.populate_prev() #TODO: this has to be fixed.  Theres clearly some sort of larger issue here.
         new_graph.validate_blocks()
+        #print('dumping final blocks')
+        #for block in new_graph.blocks():
+        #    print('block {}'.format(block))
+        #    print('next {}'.format(block.get_next()))
+        #    print('prev {}'.format(block.get_prev()))
+        #    print('instrs', block.get_instrs())
 
-    def simplify_control_flow(self):
+
+    def simplify_control_flow(self, max_attempts=-1):
         graph = self.__graph
         is_obfuscated_at_all = False
         x = 0
@@ -678,17 +706,23 @@ class GraphAnalyzer:
             for block in blocks:
                 start_offsets = list()
                 bad_instrs = set()
-
+                if block.get_last_instr().get_opcode() == Opcodes.Switch:
+                    print('has switch in block {}'.format(block))
                 if self.__is_target_switch(block, start_offsets, bad_instrs):
+                    graph.validate_blocks()
                     out = graph.duplicate()
 
                     is_obfuscated = True
                     is_obfuscated_at_all = True
+                    print('removing switch number {}'.format(x))
+                    out.validate_blocks()
                     self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
                     out.validate_blocks()
                     #out.print_root()
                     x += 1
                     break
+                elif block.get_last_instr().get_opcode() == Opcodes.Switch:
+                    print('block is not switch')
             if is_obfuscated:
                 instrs = out.emit_instructions_as_list()
                 localsigtok = self.__method.disassemble_method().get_local_var_sig_token()
@@ -699,7 +733,7 @@ class GraphAnalyzer:
                 self.__graph = out
                 self.__disasm = self.__method.disassemble_method()
                 graph = out
-                if x == 1:
+                if max_attempts > 0 and x == max_attempts:
                     break
             elif not is_obfuscated_at_all:
                 return None
@@ -834,10 +868,12 @@ class GraphAnalyzer:
                     prev.remove_instrs(prev_index, prev_index + 1)
                     prev.remove_next(block)
                     prev.merge_block(block)
+                    assert len(prev.get_next()) == 0
                     prev.clear_next_raw()
                     for n in block_next:
                         prev.add_next(n)
-                        n.add_prev(prev)
+                        if n.has_prev(block):
+                            n.remove_prev(block)
                     was_unregistered.append(block.get_start_offset())
                     self.__graph.unregister_block(block.get_start_offset())
 
@@ -937,6 +973,7 @@ class GraphAnalyzer:
 
         current_offset = 0
         current_index = 0
+        self.__graph.validate_blocks()
         #lay out the offsets
         for x in range(total_compiled):
             block = blocks_order[x]
@@ -958,6 +995,7 @@ class GraphAnalyzer:
                 y += 1
 
         self.__graph.update_offsets()
+        self.__graph.validate_blocks()
         #fixup the branches of any blocks
         for block in list(self.__graph.blocks()):
             last_instr = block.get_last_instr()
@@ -976,6 +1014,7 @@ class GraphAnalyzer:
                 last_instr.setup_arguments_from_int32(argument)
             block.update_size(block.get_current_size())
         self.__graph.sort_blocks()
+        self.__graph.validate_blocks()
 
     def remove_useless_math(self):
         """ Remove math expressions that compute to a constant value.

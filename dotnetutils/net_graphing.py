@@ -58,10 +58,6 @@ class FunctionBlock:
         for nxt in self.get_next():
             new_nxt = nxt.duplicate(new_graph, existing_blocks)
             new_block.add_next(new_nxt)
-        for prv in self.get_prev():
-            new_prv = prv.duplicate(new_graph, existing_blocks)
-            if not new_block.has_prev(new_prv):
-                new_block.__previous.append(new_prv)
         new_block.__was_cleared = self.__was_cleared
         new_block.__original_cleared = self.__original_cleared
         new_block.__is_junk_block = self.__is_junk_block
@@ -76,6 +72,7 @@ class FunctionBlock:
         new_block.__catch_block_offset = self.__catch_block_offset
         new_block.__finally_block_offset = self.__finally_block_offset
         new_block.__filter_block_offset = self.__filter_block_offset
+        new_block.update_start_offset(self.get_start_offset(), self.get_start_index())
         for exc_block in self.__exception_handlers:
             new_block.__exception_handlers.add((exc_block[0], exc_block[1].duplicate(new_graph, existing_blocks)))
         new_block.__new_offset = self.__new_offset
@@ -394,8 +391,8 @@ class FunctionBlock:
     def add_next(self, block):
         if block is None:
             raise Exception()
-        if block:
-            self.__next.append(block)
+        self.__next.append(block)
+        block.add_prev(self)
 
     def add_prev(self, block):
         if not self.has_prev(block):
@@ -523,6 +520,7 @@ class FunctionBlock:
         self.__original_length = new_size
 
         new_block = FunctionBlock(self.__method_object, self.__disasm_object, self.__graph)
+        print('Creating new block at {} because split'.format(hex(split_offset)))
         if self.__is_block_try:
             new_block.mark_block_try()
         
@@ -542,7 +540,7 @@ class FunctionBlock:
             new_block.add_instr(instr)
 
         new_next = list(self.__next)
-        for nxt in self.__next:
+        for nxt in list(self.__next):
             self.remove_next(nxt)
 
         for nxt in new_next:
@@ -643,6 +641,7 @@ class FunctionGraph:
         self.populate_prev()
 
     def populate_prev(self):
+        return
         for block in self.blocks():
             block.clear_prev_raw()
         for block in self.blocks(): #TODO: can we get around calling this method every time a block is merged etc?
@@ -673,6 +672,7 @@ class FunctionGraph:
             else:
                 new_graph.__exception_blocks.append((clause_flags, try_block.duplicate(new_graph, already_duplicated), catch_block.duplicate(new_graph, already_duplicated), filter_block))
         new_graph.__raw_exception_blocks = list(self.__raw_exception_blocks)
+        new_graph.populate_prev() #TODO: I want to eventually remove populate_prev(), its a hack thats used to solve a larger issue.
         return new_graph
 
     def register_block(self, offset, block):
@@ -847,6 +847,9 @@ class FunctionGraph:
 
     def __parse_block(self, start_offset, clause_start=-1, max_end_offset=-1, is_try=False, is_catch=False, is_finally=False, is_filter=False):
         usable_offset = start_offset
+        debug = False
+        if debug:
+            print('calling __parse_block {}'.format(hex(start_offset)))
         x = self.__instr_offsets[start_offset].get_instr_index()
         if start_offset in self.__blocks_start:
             blk =  self.__blocks_start[start_offset]
@@ -866,6 +869,7 @@ class FunctionGraph:
         else:
             block = self.get_block_by_offset(start_offset)
             if block is None:
+                print('Creating new block at {} because no block'.format(hex(start_offset)))
                 block = FunctionBlock(self.__method_object, self.__disasm_object, self)
                 self.__blocks_start[start_offset] = block
             else:
@@ -985,7 +989,17 @@ class FunctionGraph:
 
             for prv in blk.get_prev():
                 if prv not in self.blocks() or blk not in prv.get_next():
+                    if blk not in prv.get_next():
+                        print('block {} is a previous of {} but is not in {}'.format(prv, blk, prv.get_next()))
                     raise net_exceptions.InvalidBlockException(prv)
+            if blk.get_start_offset() < 0:
+                raise net_exceptions.InvalidBlockException(blk)
+            
+    def dump_block_relations(self):
+        for block in self.blocks():
+            print('block {} {}'.format(block, block.get_last_instr()))
+            print('block nexts {}'.format(block.get_next()))
+            print('block prevs {}'.format(block.get_next()))
 
     def print_root(self):
         dont_print_again = set()

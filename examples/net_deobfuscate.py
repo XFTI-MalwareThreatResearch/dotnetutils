@@ -63,10 +63,12 @@ def main():
             if mobj.disassemble_method() is None:
                 continue
             #if mobj.get_token() != 0x6000055 and mobj.get_token() != 0x6000053:
-            if mobj.get_token() != 0x6000055:
+            if mobj.get_token() != 0x6000053 and mobj.get_token() != 0x6000052 and mobj.get_token() != 0x06000055:
+            #if mobj.get_token() != 0x6000052:
                 continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
+            #fgraph.dump_block_relations()
             fgraph.validate_blocks()
             fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
             try:
