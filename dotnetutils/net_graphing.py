@@ -601,8 +601,12 @@ class FunctionGraph:
         if force_instrs is None:
             if init_blocks:
                 if not self.__method_object.has_body():
-                    raise net_exceptions.OperationNotSupportedException
-                self.__disasm_object = method_object.disassemble_method()
+                    if not isinstance(self.__method_object, net_row_objects.MethodSpec) or not self.__method_object.get_method().has_body():
+                        raise net_exceptions.OperationNotSupportedException
+                if not isinstance(self.__method_object, net_row_objects.MethodSpec):
+                    self.__disasm_object = method_object.disassemble_method()
+                else:
+                    self.__disasm_object = method_object.get_method().disassemble_method()
                 self.__instrs = self.__disasm_object.get_list_of_instrs()
                 self.__raw_exception_blocks = self.__disasm_object.get_exception_blocks()
                 for instr in self.__instrs:
@@ -634,16 +638,6 @@ class FunctionGraph:
                 block.mark_block_finished() #Tell each block that we are done with our initial setup, anything else is a modification.
         self.update_block_handlers()
         self.sort_blocks()
-        self.populate_prev()
-
-    def populate_prev(self):
-        return
-        for block in self.blocks():
-            block.clear_prev_raw()
-        for block in self.blocks(): #TODO: can we get around calling this method every time a block is merged etc?
-            nxts = block.get_next()
-            for nxt in nxts:
-                nxt.add_prev(block)
 
     def update_exc_handlers(self):
         self.__raw_exception_blocks = self.get_raw_exception_clauses()
@@ -668,7 +662,6 @@ class FunctionGraph:
             else:
                 new_graph.__exception_blocks.append((clause_flags, try_block.duplicate(new_graph, already_duplicated), catch_block.duplicate(new_graph, already_duplicated), filter_block))
         new_graph.__raw_exception_blocks = list(self.__raw_exception_blocks)
-        new_graph.populate_prev() #TODO: I want to eventually remove populate_prev(), its a hack thats used to solve a larger issue.
         return new_graph
 
     def register_block(self, offset, block):
@@ -1032,8 +1025,6 @@ class FunctionGraph:
             if try_block.get_start_offset() == offset or catch_block.get_start_offset() == offset or (isinstance(token, FunctionBlock) and token.get_start_offset() == offset):
                 raise Exception()
         del self.__blocks_start[offset]
-        self.populate_prev()
-
 
     def get_block_offsets(self):
         return self.__blocks_start

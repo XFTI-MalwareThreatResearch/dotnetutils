@@ -86,6 +86,8 @@ def main():
             mspecs_completed.add(method.get_rid())
             if method.disassemble_method() is None:
                 continue
+            if not method.has_body():
+                continue
             print('doing method', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mspec)
             fgraph.validate_blocks()

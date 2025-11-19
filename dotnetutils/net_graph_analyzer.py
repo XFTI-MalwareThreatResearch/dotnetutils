@@ -703,14 +703,7 @@ class GraphAnalyzer:
         new_analyzer.repair_blocks()
         new_graph.update_offsets()
         new_graph.sort_blocks()
-        new_graph.populate_prev() #TODO: this has to be fixed.  Theres clearly some sort of larger issue here.
         new_graph.validate_blocks()
-        #print('dumping final blocks')
-        #for block in new_graph.blocks():
-        #    print('block {}'.format(block))
-        #    print('next {}'.format(block.get_next()))
-        #    print('prev {}'.format(block.get_prev()))
-        #    print('instrs', block.get_instrs())
 
 
     def simplify_control_flow(self, max_attempts=-1):
