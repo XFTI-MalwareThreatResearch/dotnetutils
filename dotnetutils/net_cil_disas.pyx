@@ -424,7 +424,7 @@ cdef class Instruction:
             result += ']'
             return result
         elif self.is_branch() or self.is_absolute_jmp():
-            return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), self.get_argument() + len(self) + self.get_instr_offset())
+            return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), hex(self.get_argument() + len(self) + self.get_instr_offset()))
         else:
             return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), str(self.get_argument()))
 

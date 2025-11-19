@@ -477,7 +477,6 @@ class FunctionBlock:
                     raise net_exceptions.InvalidBlockException(self)
             else:
                 if opcode == Opcodes.Throw or opcode == Opcodes.Endfinally:
-                    #TODO: I think this is correct for endfinally since it doesnt really have a hard transfer, thats handled internally.
                     if len(self.__next) != 0:
                         raise net_exceptions.InvalidBlockException(self)
                 else:
@@ -520,7 +519,6 @@ class FunctionBlock:
         self.__original_length = new_size
 
         new_block = FunctionBlock(self.__method_object, self.__disasm_object, self.__graph)
-        print('Creating new block at {} because split'.format(hex(split_offset)))
         if self.__is_block_try:
             new_block.mark_block_try()
         
@@ -556,20 +554,18 @@ class FunctionBlock:
                 block.__previous.remove(self)
     
     def replace_next(self, block, new_block):
-        if self.has_next(block):
-            current_index = self.__next.index(block)
-            if current_index == -1:
-                raise net_exceptions.InvalidBlockException(self)
-            self.remove_next(block)
-            if self.has_next(new_block):
-                #if the block is already there, in order to preserve order remove it.
-                self.remove_next(new_block)
-
-            if not self.has_next(new_block):
-                if new_block and not self.has_next(new_block):
-                    self.__next.insert(current_index, new_block)
-                if new_block and not new_block.has_prev(self):
+        found = False
+        nxts = list(self.__next)
+        for x in range(len(nxts)):
+            if self.__next[x] == block:
+                if block.has_prev(self):
+                    block.__previous.remove(self)
+                self.__next[x] = new_block
+                if not new_block.has_prev(self):
                     new_block.__previous.append(self)
+                found = True
+        if not found:
+            raise Exception()
 
     def get_nstack(self):
         result = 0
@@ -584,7 +580,7 @@ class FunctionBlock:
         return self.__str__()
 
     def __eq__(self, other):
-        return isinstance(other, FunctionBlock) and self.get_start_offset() == other.get_start_offset()
+        return isinstance(other, FunctionBlock) and self.get_start_offset() == other.get_start_offset() and self.get_instrs() == other.get_instrs()
 """
 For exception blocks:
 - Function blocks need to be allowed to take multiple try blocks for handlers - nested handlers.
@@ -850,6 +846,8 @@ class FunctionGraph:
         debug = False
         if debug:
             print('calling __parse_block {}'.format(hex(start_offset)))
+        #if start_offset == 0x11c:
+        #    raise Exception()
         x = self.__instr_offsets[start_offset].get_instr_index()
         if start_offset in self.__blocks_start:
             blk =  self.__blocks_start[start_offset]
@@ -869,7 +867,6 @@ class FunctionGraph:
         else:
             block = self.get_block_by_offset(start_offset)
             if block is None:
-                print('Creating new block at {} because no block'.format(hex(start_offset)))
                 block = FunctionBlock(self.__method_object, self.__disasm_object, self)
                 self.__blocks_start[start_offset] = block
             else:
@@ -929,7 +926,6 @@ class FunctionGraph:
                     if opcode == Opcodes.Switch:
                         targets = instr.get_argument()
                         for target in targets:
-
                             new_block = self.__parse_block(target, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                             usable_block = self.get_block_by_offset(
                                 usable_offset)
@@ -948,10 +944,12 @@ class FunctionGraph:
                         potential_offset1 = usable_offset + \
                             len(instr) + instr.get_argument()
                         potential_offset2 = usable_offset + len(instr)
+
                         new_block = self.__parse_block(
                             potential_offset1, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                         usable_block = self.get_block_by_offset(
                             usable_offset)
+
                         usable_block.add_next(new_block)
                         new_block = self.__parse_block(
                             potential_offset2, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
@@ -970,12 +968,7 @@ class FunctionGraph:
 
             if instr.is_branch():
                 break
-            try:
-                x = self.__instr_offsets[usable_offset].get_instr_index()
-            except:
-                print(instr)
-                print('error getting index {} {}'.format(hex(usable_offset), block))
-                raise Exception
+            x = self.__instr_offsets[usable_offset].get_instr_index()
         if block is None:
             raise net_exceptions.InvalidBlockException(None)
         return block
@@ -999,7 +992,7 @@ class FunctionGraph:
         for block in self.blocks():
             print('block {} {}'.format(block, block.get_last_instr()))
             print('block nexts {}'.format(block.get_next()))
-            print('block prevs {}'.format(block.get_next()))
+            print('block prevs {}'.format(block.get_prev()))
 
     def print_root(self):
         dont_print_again = set()

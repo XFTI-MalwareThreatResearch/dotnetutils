@@ -62,13 +62,10 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            #if mobj.get_token() != 0x6000055 and mobj.get_token() != 0x6000053:
-            if mobj.get_token() != 0x6000053 and mobj.get_token() != 0x6000052 and mobj.get_token() != 0x06000055:
-            #if mobj.get_token() != 0x6000052:
+            if mobj.get_token() != 0x600006d:
                 continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
-            #fgraph.dump_block_relations()
             fgraph.validate_blocks()
             fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
             try:
@@ -83,7 +80,6 @@ def main():
             print('Done with flow check')
         mspecs_completed = set()
         for mspec in mspec_table:
-            continue
             method = mspec.get_method()
             if method.get_rid() in mspecs_completed:
                 continue
@@ -93,16 +89,15 @@ def main():
             print('doing method', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mspec)
             fgraph.validate_blocks()
-            fanalyzer = net_graphing.GraphAnalyzer(mspec, fgraph)
-            new_graph = fanalyzer.simplify_control_flow()
-            #new_graph.print_root()
-            instrs = new_graph.emit_instructions_as_list()
-            localsigtok = mobj.disassemble_method().get_local_var_sig_token()
-            exc = list()
-            recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
-            data = recompiler.compile_method()
-            mobj.get_method().set_method_data(data)
-
+            fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
+            try:
+                new_graph = fanalyzer.simplify_control_flow()
+                if new_graph is None:
+                    print('function is not obfuscated.')
+                    continue
+            except net_exceptions.EmulatorExecutionException as e:
+                print('emulation failed due to error')
+                continue
     elif deob_type == 'dumbmath':
         #Remove useless math expressions.
         """
