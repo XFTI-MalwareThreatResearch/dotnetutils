@@ -533,7 +533,7 @@ class GraphAnalyzer:
                 offsets_grouped[block_offset] = list()
             offsets_grouped[block_offset].append(offset)
 
-        debug = False
+        debug = True
         if debug:
             print('deobfuscating switch {}'.format(block))
         if debug: #NEED TO FIX OFFSETS AS WELL.
@@ -678,9 +678,11 @@ class GraphAnalyzer:
         for new_end_block, block_to_change, old_next, new_next_block in nexts_added:
             start_blocks = start_mappings[new_end_block]
             if len(start_blocks) > 0:
-                block_after_switch = start_blocks.pop()
-                new_switch_block.remove_next(block_after_switch)
-
+                start_blocks = start_mappings[new_end_block]
+                start_blocks = [b for b in start_blocks if new_switch_block in b.get_prev()]
+                for block_after_switch in start_blocks:
+                    if new_switch_block.has_next(block_after_switch):
+                        new_switch_block.remove_next(block_after_switch)
             if block_to_change.has_next(old_next):
                 block_to_change.replace_next(old_next, new_next_block)
             
@@ -688,17 +690,31 @@ class GraphAnalyzer:
             if new_switch_block.has_prev(new_end_block):
                 new_switch_block.remove_prev(new_end_block)
 
+
         for end_block, start_blocks in start_mappings.items():
-            if end_block not in end_block_handled:
-                for start in start_blocks:
-                    if new_switch_block.has_next(start):
-                        new_switch_block.remove_next(start)
-                if new_switch_block.has_prev(end_block):
-                    new_switch_block.remove_prev(end_block)
-        
+            while len(start_blocks) > 0:
+                start_block = start_blocks.pop()
+                if new_switch_block not in start_block.get_prev():
+                    continue
+                last_instr = start_block.get_last_instr()
+                if last_instr.get_opcode() in (Opcodes.Ret, Opcodes.Endfinally, Opcodes.Throw):
+                    new_switch_block.remove_next(start_block)
+                usable_block = start_block
+                while len(usable_block.get_next()) == 1:
+                    usable_block = usable_block.get_next()[0]
+                    last_instr = usable_block.get_last_instr()
+                    if last_instr.get_opcode() in (Opcodes.Ret, Opcodes.Endfinally, Opcodes.Throw):
+                        new_switch_block.remove_next(start_block)
+
+
+            
         for blk in list(new_graph.blocks()):
             if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
                 new_graph.unregister_block(blk.get_start_offset())
+
+
+
+        print(start_mappings)
         new_graph.validate_blocks()
         #clean off the old switch block.
 
