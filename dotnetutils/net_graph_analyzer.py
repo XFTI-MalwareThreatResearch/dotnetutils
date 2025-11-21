@@ -438,10 +438,13 @@ class GraphAnalyzer:
                 if debug:
                     print('start block is the switch block.', instr)
                 results.append(switch_block)
+                return results
         for prev in switch_block.get_prev():
             if debug:
                 print('Checking start block {} {} {} {}'.format(prev, prev.get_original_length(), prev.get_current_size(), switch_block))
             if (prev.get_start_offset() + prev.get_original_length()) == switch_block.get_start_offset():
+                if debug:
+                    print('adding prev', prev)
                 results.append(prev)
                 break
         if start_block is not None and (not start_block.get_last_instr().is_absolute_jmp() and not start_block.get_last_instr().is_branch()):
@@ -454,6 +457,8 @@ class GraphAnalyzer:
             #check if the previous block has a way to get to the switch statement that doesnt start from the switch statement.\
             handled = list()
             res = self.__start_block_walker(self.__graph.get_block_by_start_offset(0), prev, switch_block.get_next(), handled)
+            if debug:
+                print('adding res', res)
             results.extend(res)
         return results
     
@@ -533,7 +538,7 @@ class GraphAnalyzer:
                 offsets_grouped[block_offset] = list()
             offsets_grouped[block_offset].append(offset)
 
-        debug = True
+        debug = False
         if debug:
             print('deobfuscating switch {}'.format(block))
         if debug: #NEED TO FIX OFFSETS AS WELL.
@@ -682,6 +687,8 @@ class GraphAnalyzer:
                 start_blocks = [b for b in start_blocks if new_switch_block in b.get_prev()]
                 for block_after_switch in start_blocks:
                     if new_switch_block.has_next(block_after_switch):
+                        if block_to_change == new_switch_block and block_after_switch == old_next:
+                            continue
                         new_switch_block.remove_next(block_after_switch)
             if block_to_change.has_next(old_next):
                 block_to_change.replace_next(old_next, new_next_block)
@@ -714,8 +721,6 @@ class GraphAnalyzer:
 
 
 
-        print(start_mappings)
-        new_graph.validate_blocks()
         #clean off the old switch block.
 
         #now remove any instructions that we know are junk.
