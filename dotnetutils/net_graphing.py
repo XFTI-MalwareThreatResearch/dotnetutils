@@ -467,7 +467,7 @@ class FunctionBlock:
     def validate_block(self):
         last_instr = self.get_last_instr()
         if last_instr is None:
-            if len(self.__next) != 1:
+            if len(self.__next) > 1:
                 raise net_exceptions.InvalidBlockException(self)
             return
         opcode = last_instr.get_opcode()
@@ -1230,3 +1230,10 @@ class FunctionGraph:
             result.append((cl_flag, try_offset, try_size, catch_offset, catch_size, token))
         return result
 
+    def repopulate_prevs(self):
+        for block in self.blocks():
+            block.clear_prev_raw()
+        for block in self.blocks():
+            nxts = block.get_next()
+            for nxt in nxts:
+                nxt.add_prev(block)

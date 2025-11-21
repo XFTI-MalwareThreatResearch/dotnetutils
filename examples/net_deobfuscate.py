@@ -62,7 +62,7 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            if mobj.get_token() !=  0x06000045:
+            if mobj.get_token() !=  0x6000007:
                 continue
             #Check the following methods (e2f0)
             #0x6000005, doesnt recognize one of the switches as obfuscated.
