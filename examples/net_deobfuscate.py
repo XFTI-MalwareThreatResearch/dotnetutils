@@ -62,7 +62,7 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            if mobj.get_token() != 0x600006d:
+            if mobj.get_token() != 0x06000041:
                 continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
@@ -80,6 +80,7 @@ def main():
             print('Done with flow check')
         mspecs_completed = set()
         for mspec in mspec_table:
+            continue
             method = mspec.get_method()
             if method.get_rid() in mspecs_completed:
                 continue
@@ -88,10 +89,10 @@ def main():
                 continue
             if not method.has_body():
                 continue
-            print('doing method', hex(mobj.get_token()))
+            print('doing method', hex(method.get_token()))
             fgraph = net_graphing.FunctionGraph(mspec)
             fgraph.validate_blocks()
-            fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
+            fanalyzer = net_graph_analyzer.GraphAnalyzer(method, fgraph)
             try:
                 new_graph = fanalyzer.simplify_control_flow()
                 if new_graph is None:

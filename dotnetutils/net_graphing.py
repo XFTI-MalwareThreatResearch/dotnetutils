@@ -485,7 +485,6 @@ class FunctionBlock:
         else:
             if opcode == Opcodes.Switch:
                 if len(self.__next) != (len(last_instr.get_argument()) + 1):
-                    print(len(self.__next), len(last_instr.get_argument()))
                     raise net_exceptions.InvalidBlockException(self)
             elif opcode == Opcodes.Br_S or opcode == Opcodes.Br or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S:
                 if len(self.__next) != 1:
