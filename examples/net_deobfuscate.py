@@ -62,8 +62,17 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            if mobj.get_token() != 0x06000041:
-                continue
+            #Check the following methods (e2f0)
+            #0x6000005, doesnt recognize one of the switches as obfuscated.
+            #0x6000007, same as above
+            #0x0600003B , same as above
+            #0x0600003C, same as above
+            #0x0600003D, same as above
+            #0x0600003E, same as above
+            #0x0600003F, same as above
+            #0x06000009, the control flow looks a bit weird but the method MIGHT be correct.
+            #if mobj.get_token() != 0x6000001:
+            #    continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
             fgraph.validate_blocks()

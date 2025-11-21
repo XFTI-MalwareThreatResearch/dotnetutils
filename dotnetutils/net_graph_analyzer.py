@@ -358,10 +358,18 @@ class GraphAnalyzer:
                 return False
         start_offsets.clear()
         in_loop_blocks = self.__determine_loop_blocks(block)
+        #calculate needed for switch:
+        needed = 0
+        for x in range(len(block.get_instrs()) - 1, -1, -1):
+            instr = block.get_instrs()[x]
+            added = instr.get_astack()
+            pulled = instr.get_pstack()
+            needed = needed - added + pulled
+            
         for prev in block.get_prev():
             if prev not in in_loop_blocks:
                 continue
-            if not self.__target_walker(prev, 0, already_checked, stloc_instr, start_offsets, block.get_start_offset(), bad_instr_offsets, counter=1):
+            if not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, prev.get_start_offset(), bad_instr_offsets, counter=1):
                 return False
         return True
     
@@ -385,6 +393,8 @@ class GraphAnalyzer:
                 start_offset = offset
                 new_block = new_graph.get_block_by_start_offset(block.get_start_offset())
                 end_offset = switch_instr.get_instr_offset()
+                if debug:
+                    print('Running emulator from {} to {}'.format(hex(start_offset), hex(end_offset)))
                 emu = initial_emu.spawn_new_emulator(self.__method, start_offset=start_offset, end_offset=end_offset)
                 emu.set_local_obj(stloc_num, base_local_var)
                 emu.setup_method_params([])
@@ -461,17 +471,15 @@ class GraphAnalyzer:
             instr = instrs[x]
             ins_op = instr.get_opcode()
             added = instr.get_astack()
-            pulled = instr.get_astack()
-
+            pulled = instr.get_pstack()
             needed = needed - added + pulled
-            if switch_block.get_last_instr().get_instr_offset() == instr.get_instr_offset():
-                continue
-
+            if debug:
+                print('instr {} needed {}'.format(instr, needed))
             if ins_op in self.LDLOC:
                 break
             if needed == 0:
                 if debug:
-                    print('start block is the switch block.')
+                    print('start block is the switch block.', instr)
                 return switch_block
         for prev in switch_block.get_prev():
             if debug:
@@ -564,7 +572,7 @@ class GraphAnalyzer:
         if needed == 0 and block.get_instrs()[0].get_opcode() in self.LDLOC and block.get_instrs()[0].get_argument() == stloc_instr.get_argument():
             dont_use_first = True
         if debug:
-            print('dont use first {} {}'.format(dont_use_first, start_block))
+            print('dont use first {} {} {}'.format(dont_use_first, start_block, needed))
         first_start_offset = -1
         if needed == 0 and not dont_use_first:
             first_start_offset = block.get_start_offset()
@@ -584,6 +592,8 @@ class GraphAnalyzer:
                     if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch] + self.STLOC):
                         raise Exception()
                     needed = needed - added + pulled
+                    if debug:
+                        print('instr {} needed {}'.format(instr, needed))
                     bad_instrs.add(instr.get_instr_offset())
                     if needed == 0 and not instr.is_absolute_jmp():
                         first_start_offset = instr.get_instr_offset()
