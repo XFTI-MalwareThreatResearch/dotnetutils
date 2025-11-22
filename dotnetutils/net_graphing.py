@@ -467,34 +467,34 @@ class FunctionBlock:
     def validate_block(self):
         last_instr = self.get_last_instr()
         if last_instr is None:
-            if len(self.__next) > 1:
+            if len(self.__next) != len(self.__previous):
                 raise net_exceptions.InvalidBlockException(self)
-            return
-        opcode = last_instr.get_opcode()
-        if not last_instr.is_branch():
-            if opcode == Opcodes.Ret:
-                if not len(self.__next) == 0:
-                    raise net_exceptions.InvalidBlockException(self)
-            else:
-                if opcode == Opcodes.Throw or opcode == Opcodes.Endfinally:
-                    if len(self.__next) != 0:
+        else:
+            opcode = last_instr.get_opcode()
+            if not last_instr.is_branch():
+                if opcode == Opcodes.Ret:
+                    if not len(self.__next) == 0:
                         raise net_exceptions.InvalidBlockException(self)
                 else:
+                    if opcode == Opcodes.Throw or opcode == Opcodes.Endfinally:
+                        if len(self.__next) != 0:
+                            raise net_exceptions.InvalidBlockException(self)
+                    else:
+                        if len(self.__next) != 1:
+                            raise net_exceptions.InvalidBlockException(self)
+            else:
+                if opcode == Opcodes.Switch:
+                    if len(self.__next) != (len(last_instr.get_argument()) + 1):
+                        raise net_exceptions.InvalidBlockException(self)
+                elif opcode == Opcodes.Br_S or opcode == Opcodes.Br or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S:
                     if len(self.__next) != 1:
                         raise net_exceptions.InvalidBlockException(self)
-        else:
-            if opcode == Opcodes.Switch:
-                if len(self.__next) != (len(last_instr.get_argument()) + 1):
-                    raise net_exceptions.InvalidBlockException(self)
-            elif opcode == Opcodes.Br_S or opcode == Opcodes.Br or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S:
-                if len(self.__next) != 1:
-                    raise net_exceptions.InvalidBlockException(self)
-            else:
-                if len(self.__next) != 2:
-                    raise net_exceptions.InvalidBlockException(self)
-                
-                if self.__next[0] == self.__next[1]:
-                    raise net_exceptions.InvalidBlockException(self)
+                else:
+                    if len(self.__next) != 2:
+                        raise net_exceptions.InvalidBlockException(self)
+                    
+                    if self.__next[0] == self.__next[1]:
+                        raise net_exceptions.InvalidBlockException(self)
                 
         for nxt in self.__next:
             if self not in nxt.get_prev():
