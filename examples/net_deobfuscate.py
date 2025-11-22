@@ -62,18 +62,8 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            #if mobj.get_token() !=  0x600005d:
-            #    continue
-            #Check the following methods (e2f0)
-            #0x6000005, doesnt recognize one of the switches as obfuscated.
-            #0x6000007, same as above
-            #0x0600003B , same as above
-            #0x0600003C, same as above
-            #0x0600003D, same as above
-            #0x0600003E, same as above
-            #0x0600003F, same as above
-            #0x06000045, same as above
-            #0x06000009, the control flow looks a bit weird but the method MIGHT be correct.
+            #Check  0x06000009  for e2f0 - weird output TODO
+            #TODO: 0x0600003B has nonremoved switches, same with the similar methods.
             #if mobj.get_token() != 0x6000001:
             #    continue
             print('doing method 1', hex(mobj.get_token()))
@@ -92,7 +82,6 @@ def main():
             print('Done with flow check')
         mspecs_completed = set()
         for mspec in mspec_table:
-            continue
             method = mspec.get_method()
             if method.get_rid() in mspecs_completed:
                 continue
@@ -104,14 +93,14 @@ def main():
             print('doing method', hex(method.get_token()))
             fgraph = net_graphing.FunctionGraph(mspec)
             fgraph.validate_blocks()
-            fanalyzer = net_graph_analyzer.GraphAnalyzer(method, fgraph)
+            fanalyzer = net_graph_analyzer.GraphAnalyzer(mspec, fgraph)
             try:
                 new_graph = fanalyzer.simplify_control_flow()
                 if new_graph is None:
                     print('function is not obfuscated.')
                     continue
             except net_exceptions.EmulatorExecutionException as e:
-                print('emulation failed due to error')
+                print('emulation failed due to error', str(e))
                 continue
     elif deob_type == 'dumbmath':
         #Remove useless math expressions.

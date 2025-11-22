@@ -631,8 +631,6 @@ class GraphAnalyzer:
             print('Our switch state stloc instruction is {}'.format(stloc_instr))
         nexts_added = list()
 
-        print(start_blocks)
-
         for start_block, math_block in start_blocks:
             #we already have the first start offset somewhere in offsets grouped
             first_start_offset = -1
@@ -649,7 +647,6 @@ class GraphAnalyzer:
             if first_start_offset == -1:
                 raise Exception()
             self.__add_to_bad_instrs(math_block, first_start_offset, block, bad_instrs)
-
             emu = net_emulator.DotNetEmulator(self.__method, start_offset=first_start_offset, end_offset=switch_instr.get_instr_offset(), dont_execute_cctor=True)
             emu.setup_method_params([])
             worked = False
@@ -750,8 +747,10 @@ class GraphAnalyzer:
         for blk in list(new_graph.blocks()):
             if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
                 new_graph.unregister_block(blk.get_start_offset())
+
+            elif len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
+                new_graph.unregister_block(blk.get_start_offset())
         new_graph.repopulate_prevs()
-        #new_graph.dump_block_relations()
         new_graph.validate_blocks()
         #For the switch block, prune any previous that are illegal.
         #new_graph.validate_blocks()

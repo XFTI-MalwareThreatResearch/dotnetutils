@@ -7787,7 +7787,7 @@ cdef class DotNetEmulator:
             try:
                 ref = self._get_default_value(tsig, self.method_obj.get_parent_type())
             except Exception as e:
-                raise net_exceptions.EmulatorExecutionException(self, 'Error initializing local {}.  Likely an unsupported signature {}'.format(index, tsig))
+                raise net_exceptions.EmulatorExecutionException(self, 'Error initializing local {}.  Likely an unsupported signature {}: {}'.format(index, tsig, str(e)))
             Py_INCREF(tsig)
             self.ref_cell(ref)
             self.local_var_sigs.push_back(<PyObject*>tsig)
