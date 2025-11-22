@@ -63,7 +63,7 @@ def main():
             if mobj.disassemble_method() is None:
                 continue
             #Check  0x06000009  for e2f0 - weird output TODO
-            #TODO: 0x0600003B has nonremoved switches, same with the similar methods.
+            #TODO: 0x0600003d has nonremoved switches, my guess is because its a methodspec that isnt referenced.
             #if mobj.get_token() != 0x6000001:
             #    continue
             print('doing method 1', hex(mobj.get_token()))
@@ -90,7 +90,6 @@ def main():
                 continue
             if not method.has_body():
                 continue
-            print('doing method', hex(method.get_token()))
             fgraph = net_graphing.FunctionGraph(mspec)
             fgraph.validate_blocks()
             fanalyzer = net_graph_analyzer.GraphAnalyzer(mspec, fgraph)

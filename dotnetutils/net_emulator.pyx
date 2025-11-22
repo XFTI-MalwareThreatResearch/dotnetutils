@@ -4477,6 +4477,7 @@ cdef class DotNetEmulator:
             net_exceptions.DisassemblyFailedException: could not disassemble the method.
         
         """
+        self.spec_obj = None
         self.is_destroyed = False
         if isinstance(method_obj, net_row_objects.MethodSpec):
             self.spec_obj = method_obj
@@ -4495,7 +4496,8 @@ cdef class DotNetEmulator:
         self.end_offset = end_offset
         self.stack = DotNetStack(self, self.disasm_obj.max_stack)
         self.end_method_rid = end_method_rid
-        self.spec_obj = spec_obj
+        if self.spec_obj is None and self.spec_obj is not None:
+            self.spec_obj = spec_obj
         self.executed_cctors = CctorRegistry()
         if start_offset > -1:
             self.current_eip = self.disasm_obj.get_instr_index_by_offset(start_offset)

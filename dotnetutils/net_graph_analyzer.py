@@ -891,13 +891,22 @@ class GraphAnalyzer:
                     print('block is not switch')
             if is_obfuscated:
                 instrs = out.emit_instructions_as_list()
-                localsigtok = self.__method.disassemble_method().get_local_var_sig_token()
+                if isinstance(self.__method, net_row_objects.MethodSpec):
+                    localsigtok = self.__method.get_method().disassemble_method().get_local_var_sig_token()
+                else:
+                    localsigtok = self.__method.disassemble_method().get_local_var_sig_token()
                 exc = list()
                 recompiler = MethodRecompiler(instrs, exc, localsigtok)
                 data = recompiler.compile_method()
-                self.__method.set_method_data(data)
+                if isinstance(self.__method, net_row_objects.MethodSpec):
+                    self.__method.get_method().set_method_data(data)
+                else:
+                    self.__method.set_method_data(data)
                 self.__graph = out
-                self.__disasm = self.__method.disassemble_method()
+                if isinstance(self.__method, net_row_objects.MethodSpec):
+                    self.__disasm = self.__method.get_method().disassemble_method()
+                else:
+                    self.__disasm = self.__method.disassemble_method()
                 graph = out
                 if max_attempts > 0 and x == max_attempts:
                     break
