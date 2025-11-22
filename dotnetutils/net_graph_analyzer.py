@@ -292,7 +292,6 @@ class GraphAnalyzer:
         return True
     
     def __determine_loop_blocks(self, switch_block):
-        
         forward = set()
         blocks = [switch_block]
         while blocks:
@@ -313,6 +312,19 @@ class GraphAnalyzer:
             for prv in blk.get_prev():
                 blocks.append(prv)
         return forward & backwards
+
+    def __collect_preswitch_chain(self, switch_block):
+        blocks = set()
+        work = list(switch_block.get_prev())
+
+        while work:
+            blk = work.pop()
+            if blk in blocks:
+                continue
+            if len(blk.get_next()) == 1:
+                blocks.add(blk)
+                work.extend(blk.get_prev())
+        return blocks
 
     def __is_target_switch(self, block, start_offsets, bad_instr_offsets):
         #check if all paths have a relatively constant value.
@@ -357,7 +369,7 @@ class GraphAnalyzer:
                     print('no stloc instr')
                 return False
         start_offsets.clear()
-        in_loop_blocks = self.__determine_loop_blocks(block)
+        in_loop_blocks = self.__determine_loop_blocks(block) | self.__collect_preswitch_chain(block)
         #calculate needed for switch:
         needed = 0
         for x in range(len(block.get_instrs()) - 1, -1, -1):
@@ -365,6 +377,9 @@ class GraphAnalyzer:
             added = instr.get_astack()
             pulled = instr.get_pstack()
             needed = needed - added + pulled
+
+        if debug:
+            print('determined loop blocks', in_loop_blocks)
             
         for prev in block.get_prev():
             if prev not in in_loop_blocks:
@@ -382,6 +397,7 @@ class GraphAnalyzer:
             return [block]
         if block in already_done:
             return list()
+        already_done.add(block)
         res = list()
         for nxt in block.get_next():
             res.extend(self.__find_switch_case_mappings_internal(nxt, switch_block, offsets_grouped, already_done))
@@ -396,7 +412,12 @@ class GraphAnalyzer:
             for end_block in end_blocks:
                 if end_block not in result:
                     result[end_block] = list()
-
+                result[end_block].append(nxt)
+        for prv in switch_block.get_prev():
+            end_blocks = self.__find_switch_case_mappings_internal(prv, switch_block, offsets_grouped, set())
+            for end_block in end_blocks:
+                if end_block not in result:
+                    result[end_block] = list()
                 result[end_block].append(nxt)
         return result
 
@@ -460,12 +481,15 @@ class GraphAnalyzer:
                 results.add(prev)        
         #at this point, we need to search a bit for the start block.  We need to find the block that the switch will execute from FIRST.
         #If the order is messed up, deobfuscation will be incorrect.
-        print('running walker')
+        if debug:
+            print('running walker')
         for prev in switch_block.get_prev():
             #check if the previous block has a way to get to the switch statement that doesnt start from the switch statement.\
             handled = list()
             res = self.__start_block_walker(self.__graph.get_block_by_start_offset(0), prev, switch_block.get_prev(), handled)
             results |= res
+        if debug:
+            print('results of determine start block', results)
         return self.__find_math_blocks(results)
     
     def __math_block_walker(self, block, start_block, needed, handled=set()):
@@ -478,6 +502,7 @@ class GraphAnalyzer:
             added = instr.get_astack()
             pulled = instr.get_pstack()
             needed = needed - added + pulled
+
         
         if needed <= 0:
             return {(start_block, block)}
@@ -496,6 +521,7 @@ class GraphAnalyzer:
                 added = instr.get_astack()
                 pulled = instr.get_pstack()
                 needed = needed - added + pulled
+            
             if needed <= 0:
                 result.add((start_block, start_block))
             else:
@@ -561,12 +587,11 @@ class GraphAnalyzer:
         for nxt in block.get_next():
             self.__switch_block_walker(nxt, new_switch_block, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num, nexts_added)
 
-    
     def __add_to_bad_instrs(self, block, start_offset, switch_block, bad_instrs, handled=set()):
         if block in handled:
             return
         handled.add(block)
-        is_first = len(handled) == 1
+        is_first = block.has_offset(start_offset)
         past_start = not is_first
         for instr in block.get_instrs():
             if instr.is_absolute_jmp() or instr.is_branch():
@@ -602,7 +627,7 @@ class GraphAnalyzer:
                     print('block offset {} -> start {}'.format(hex(block_offset), hex(offset)))
         start_blocks = self.__determine_start_block(block)
         if len(start_blocks) == 0:
-            raise Exception('Could not determine start block.  Contact devs.')
+            raise net_exceptions.ControlFlowDeobfuscationMisidentify('Could not determine start blocks.  Its possible a legitimate switch was misidentified.  Contact devs if wrong.')
         if debug:
             print('Start blocks {}'.format(start_blocks))
         stloc_instr = None
@@ -635,6 +660,7 @@ class GraphAnalyzer:
             #we already have the first start offset somewhere in offsets grouped
             first_start_offset = -1
             end_block_offset = -1
+            print('Checking offsets for {} {}'.format(start_block, math_block))
             for end, start_offsets in offsets_grouped.items():
                 for start_offset in start_offsets:
                     if math_block.has_offset(start_offset):
@@ -644,6 +670,16 @@ class GraphAnalyzer:
             if debug:
                 print('Determined the start offset for the first case to be {}'.format(hex(first_start_offset)))
             #get the initial feed value.
+            if first_start_offset == -1:
+                #This case happens if the switch doesnt have a reference back to the start math block.
+                #See if we can pull it from here.
+                for x in range(len(math_block.get_instrs()) - 1, - 1, - 1):
+                    instr = math_block.get_instrs()[x]
+                    if instr.get_opcode() not in self.MATH_OPS:
+                        first_start_offset = instr.get_instr_offset() + len(instr)
+                        break
+                #at this point its kinda a guess - some refinement could probably be used here.
+
             if first_start_offset == -1:
                 raise Exception()
             self.__add_to_bad_instrs(math_block, first_start_offset, block, bad_instrs)
@@ -700,6 +736,15 @@ class GraphAnalyzer:
             if new_end_block not in nexts_grouped:
                 nexts_grouped[new_end_block] = list()
             nexts_grouped[new_end_block].append((block_to_change, new_next_block))
+
+        if debug:
+            print('Bad instruction dump:')
+            for bad_instr in bad_instrs:
+                print(hex(bad_instr))
+        if debug:
+            print('Start mappings')
+            for end_blk, start_blocks in start_mappings.items():
+                print('end blk {} maps to start blocks {}'.format(end_blk, start_blocks))
 
         for new_end_block, block_to_change, old_next, new_next_block in nexts_added:
             start_blocks = start_mappings[new_end_block]
@@ -882,7 +927,6 @@ class GraphAnalyzer:
                     print('removing switch number {} {} {}'.format(x, block, block.get_instrs()))
                     out.validate_blocks()
                     self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
-
                     out.validate_blocks()
                     #out.print_root()
                     x += 1

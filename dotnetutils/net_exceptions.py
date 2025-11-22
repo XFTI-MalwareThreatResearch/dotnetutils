@@ -2,6 +2,10 @@ class DotNetUtilsException(Exception):
     def __init__(self):
         Exception.__init__(self, "Generic Dotnetutils Exception")
 
+class ControlFlowDeobfuscationMisidentify(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self, msg)
+
 class EmulatorExecutionException(DotNetUtilsException):
     def __init__(self, emu_obj, msg):
         self.__emu_obj = emu_obj

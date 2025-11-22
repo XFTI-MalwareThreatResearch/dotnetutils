@@ -467,7 +467,7 @@ class FunctionBlock:
     def validate_block(self):
         last_instr = self.get_last_instr()
         if last_instr is None:
-            if len(self.__next) != len(self.__previous):
+            if len(self.__next) != 1 and len(self.__next) != 0:
                 raise net_exceptions.InvalidBlockException(self)
         else:
             opcode = last_instr.get_opcode()

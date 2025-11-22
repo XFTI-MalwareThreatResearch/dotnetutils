@@ -64,8 +64,6 @@ def main():
                 continue
             #Check  0x06000009  for e2f0 - weird output TODO
             #TODO: 0x0600003d has nonremoved switches, my guess is because its a methodspec that isnt referenced.
-            #if mobj.get_token() != 0x6000001:
-            #    continue
             print('doing method 1', hex(mobj.get_token()))
             fgraph = net_graphing.FunctionGraph(mobj)
             fgraph.validate_blocks()
@@ -77,6 +75,9 @@ def main():
                     continue
             except net_exceptions.EmulatorExecutionException as e:
                 print('emulation failed due to error')
+                continue
+            except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
+                print('Possible control flow misidentification:', str(e))
                 continue
             #new_graph.print_root()
             print('Done with flow check')
@@ -101,6 +102,9 @@ def main():
             except net_exceptions.EmulatorExecutionException as e:
                 print('emulation failed due to error', str(e))
                 continue
+            except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
+                print('Possible control flow misidentification:', str(e))
+                continue
     elif deob_type == 'dumbmath':
         #Remove useless math expressions.
         """
@@ -120,7 +124,7 @@ def main():
             fgraph = net_graphing.FunctionGraph(mobj)
             #fgraph.print_root()
             fgraph.validate_blocks()
-            fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+            fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
             has_math = fanalyzer.remove_useless_math()
             if has_math:
                 fanalyzer.repair_blocks()
@@ -128,7 +132,7 @@ def main():
                 localvartok = mobj.disassemble_method().get_local_var_sig_token()
                 instrs = fgraph.emit_instructions_as_list()
                 exc_blocks = fgraph.get_raw_exception_clauses()
-                recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
+                recompiler = net_graph_analyzer.MethodRecompiler(instrs, exc_blocks, localvartok)
                 data = recompiler.compile_method()
                 mobj.set_method_data(data)
                 print('patched method {}'.format(hex(mobj.get_token())))
