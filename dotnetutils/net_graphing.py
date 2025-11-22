@@ -885,7 +885,6 @@ class FunctionGraph:
 
         if is_filter:
             block.mark_block_filter()
-
         while x >= 0 and x < len(self.__instrs):
             if usable_offset in self.__blocks_start and usable_offset != start_offset:
                 new_block = self.__blocks_start[usable_offset]

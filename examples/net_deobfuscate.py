@@ -62,6 +62,8 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
+            if mobj.get_token() != 0x06000036:
+                continue
             #Check  0x06000009  for e2f0 - weird output TODO
             #TODO: 0x0600003d has nonremoved switches, my guess is because its a methodspec that isnt referenced.
             print('doing method 1', hex(mobj.get_token()))

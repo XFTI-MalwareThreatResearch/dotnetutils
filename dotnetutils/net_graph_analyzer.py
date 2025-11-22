@@ -167,7 +167,7 @@ class GraphAnalyzer:
         """
 
         instrs = block.get_instrs()
-        debug = False
+        debug = True
         if block.get_start_offset() in already_checked:
             if debug:
                 print(0, block, needed)
@@ -185,10 +185,10 @@ class GraphAnalyzer:
                 continue
             if debug:
                 print('Checking instr {} {} {} {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(), needed, added, pulled))
-            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch] + self.STLOC + self.LDLOC):
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch] + self.STLOC + self.LDLOC + self.BRANCHES):
                 if pulled > 0 or added > 0:
                     if debug:
-                        print(1, hex(instr.get_instr_offset()))
+                        print(1, hex(instr.get_instr_offset()), instr)
                     return False
             if ins_op in self.LDLOC:
                 if instr.get_argument() == stloc_instr.get_argument():
@@ -265,7 +265,7 @@ class GraphAnalyzer:
                         if debug:
                             print(5, hex(instr.get_instr_offset()))
                         return False
-            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch]):
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch] + self.BRANCHES):
                 if debug:
                     print(6, hex(instr.get_instr_offset()))
                 return False
@@ -330,17 +330,17 @@ class GraphAnalyzer:
         #check if all paths have a relatively constant value.
         instrs = block.get_instrs()
         MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
-        debug = False
+        debug = True
         if debug:
             print('Checking {} {}'.format(block, block.get_instrs()))
-        if len(instrs) < 2:
+        """if len(instrs) < 2:
             if debug:
                 print('instr len')
             return False
         if instrs[-2].get_opcode() not in MATH_OPS:
             if debug:
                 print('not math ops')
-            return False
+            return False"""
         if block.get_last_instr().get_opcode() != Opcodes.Switch:
             if debug:
                 print('not switch')
@@ -364,6 +364,16 @@ class GraphAnalyzer:
                         if ins_op in self.STLOC:
                             stloc_instr = instrs[x]
                             break
+                    #Just to be safe check for DotNetReactor style
+                    for prv2 in prv.get_prev():
+                        if len(prv2.get_next()) == 1:
+                            instrs = prv2.get_instrs()
+                            for x in range(len(instrs) - 1, -1, -1):
+                                ins_op = instrs[x].get_opcode()
+                                bad_instr_offsets.add(instrs[x].get_instr_offset())
+                                if ins_op in self.STLOC:
+                                    stloc_instr = instrs[x]
+                                    break
             if stloc_instr is None:
                 if debug:
                     print('no stloc instr')
