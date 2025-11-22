@@ -931,8 +931,6 @@ class GraphAnalyzer:
                     #out.print_root()
                     x += 1
                     break
-                elif block.get_last_instr().get_opcode() == Opcodes.Switch:
-                    print('block is not switch')
             if is_obfuscated:
                 instrs = out.emit_instructions_as_list()
                 if isinstance(self.__method, net_row_objects.MethodSpec):
