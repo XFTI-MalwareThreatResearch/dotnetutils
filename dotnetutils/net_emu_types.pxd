@@ -135,27 +135,27 @@ cdef class DotNetNumber(DotNetObject):
 
     cdef DotNetNumber convert_unsigned(self)
 
-    cdef void from_long(self, int64_t num)
+    cpdef void from_long(self, int64_t num)
 
-    cdef void from_int(self, int num)
+    cpdef void from_int(self, int num)
 
-    cdef void from_uchar(self, unsigned char num)
+    cpdef void from_uchar(self, unsigned char num)
 
-    cdef void from_uint(self, unsigned int num)
+    cpdef void from_uint(self, unsigned int num)
     
-    cdef void from_ulong(self, uint64_t num)
+    cpdef void from_ulong(self, uint64_t num)
 
-    cdef void from_bool(self, bint num)
+    cpdef void from_bool(self, bint num)
 
-    cdef void from_char(self, char num)
+    cpdef void from_char(self, char num)
 
-    cdef void from_float(self, float num)
+    cpdef void from_float(self, float num)
 
-    cdef void from_double(self, double num)
+    cpdef void from_double(self, double num)
 
-    cdef void from_short(self, short num)
+    cpdef void from_short(self, short num)
 
-    cdef void from_ushort(self, unsigned short num)
+    cpdef void from_ushort(self, unsigned short num)
 
     cdef void init_from_ptr(self, unsigned char * ptr, int ptr_size) except *
     

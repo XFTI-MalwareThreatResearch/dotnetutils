@@ -877,6 +877,8 @@ cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.Me
             inner_method_params = list(inner_method_sig.get_parameters())
 
             if inner_method.method_has_this():
+                if len(outer_method_params) == 0:
+                    return bytes()
                 if inner_method.get_column('Name').get_value_as_bytes() != b'.ctor':
                     inner_method_params.insert(0, outer_method_params[0])
 

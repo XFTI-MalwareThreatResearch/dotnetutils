@@ -1,4 +1,5 @@
 import lzma
+import numpy
 from dotnetutils import dotnetpefile
 from dotnetutils import net_graphing
 from dotnetutils import net_graph_analyzer
@@ -8,14 +9,17 @@ from dotnetutils import net_row_objects
 from dotnetutils import net_sigs
 from dotnetutils import net_structs
 from dotnetutils import net_emulator
-from dotnetutils.net_opcodes import Opcodes
+from dotnetutils import net_deobfuscate_funcs
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
+from dotnetutils.net_opcodes import Opcodes
 
-class ConfuserExDeobfuscator:
+
+class ConfuserExDeobfuscator(Deobfuscator):
 
     NAME = 'confuserex'
 
     decrypt_method = None
+    code_decrypt_method = None
     string_methods = list()
 
     identifiers = [b'ConfusedByAttribute\x00', b'Confused by ConfuserEx\x00']
@@ -31,6 +35,8 @@ class ConfuserExDeobfuscator:
         has_ldc_16 = False
         has_ldc_24 = False
         ep_disasm = ep_method.disassemble_method()
+        if ep_disasm is None:
+            return False
         has_unbox_any = False
         has_isinst = False
         for instr in ep_disasm:
@@ -63,10 +69,61 @@ class ConfuserExDeobfuscator:
             if has_decrypt_call and has_isinst and has_unbox_any and has_ldc_16 and has_ldc_24:
                 return True
         return False
+    
+    def __identify_code_decryption_method(self, dotnet):
+        for method in dotnet.get_metadata_table('MethodDef'):
+            if not method.has_body() or not method.is_static_method():
+                continue
+            msig = method.get_method_signature()
+            if not isinstance(msig.get_return_type(), net_sigs.CorLibTypeSig) or method.has_return_value():
+                continue
+            if len(msig.get_parameters()) != 0:
+                continue
+            if method.disassemble_method() is None:
+                continue
+
+            disasm = method.disassemble_method()
+            local_types = disasm.get_local_types()
+            has_uint32_ptrsig = False
+            has_uint8_ptrsig = False
+            if len(disasm) > 0:
+                if disasm[0].get_opcode() != Opcodes.Ldtoken:
+                    continue
+
+            for local_type in local_types:
+                if isinstance(local_type, net_sigs.PtrSig):
+                    if isinstance(local_type.get_next(), net_sigs.CorLibTypeSig):
+                        etype = local_type.get_next().get_element_type()
+                        if etype == net_structs.CorElementType.ELEMENT_TYPE_U4:
+                            has_uint32_ptrsig = True
+                        elif etype == net_structs.CorElementType.ELEMENT_TYPE_U1:
+                            has_uint8_ptrsig = True
+
+                if has_uint8_ptrsig and has_uint32_ptrsig:
+                    break
+
+            if not has_uint32_ptrsig or not has_uint32_ptrsig:
+                continue
+            
+            is_ctor_method = True
+            for xref_rid, xref_offset in method.get_xrefs():
+                xmethod = dotnet.get_method_by_rid(xref_rid)
+                if not xmethod.is_static_constructor():
+                    is_ctor_method = False
+                    break
+
+            if not is_ctor_method:
+                continue
+
+            self.code_decrypt_method = method
+            break
+        return self.code_decrypt_method
 
     def identify_deobfuscate(self, dotnet):
         #TODO: we dont want to only identify based on strings
         #A binary can be confuserex obfuscated and simply not have any strings.
+        if dotnet.has_string(b'DNU_CEX_WATERMARK'):
+            return False
         mspec_table = dotnet.get_metadata_table('MethodSpec')
         if mspec_table is None:
             return False
@@ -95,6 +152,8 @@ class ConfuserExDeobfuscator:
             has_newarr = False
             has_ldc_16 = False
             has_ldc_24 = False
+            if mobj.disassemble_method() is None:
+                continue
             for instr in mobj.disassemble_method():
                 ins_op = instr.get_opcode()
                 if ins_op == Opcodes.Initobj:
@@ -110,7 +169,8 @@ class ConfuserExDeobfuscator:
                     break
             if has_ldc_16 and has_ldc_24 and has_newarr and has_initobj:
                 self.string_methods.append(mspec)
-        return len(self.string_methods) != 0
+        self.__identify_code_decryption_method(dotnet)
+        return len(self.string_methods) != 0 or self.code_decrypt_method is not None
 
     def unpack(self, dotnet):
         #find the decompress method.
@@ -231,5 +291,195 @@ class ConfuserExDeobfuscator:
 
         return [new_dpe.get_exe_data()]
     
+    def __deobfuscate_strings(self, dotnet):
+        pass
+
+    def __obtain_code_encrypt_key(self, dotnet):
+        expected_value = None
+        dis = self.code_decrypt_method.disassemble_method()
+        for x in range(len(dis)):
+            instr = dis[x]
+            if instr.get_opcode() in (Opcodes.Bne_Un, Opcodes.Bne_Un_S):
+                prev_instr = dis[x-1]
+                if prev_instr.get_name().startswith('ldc.i4'):
+                    expected_value = numpy.int32(prev_instr.get_argument()).astype(numpy.uint32)
+                    break
+        if expected_value is None:
+            print('expected value none')
+            return None
+        
+        target_section = None
+        encrypted_data_start = None #This is just the Physical address of target section.
+        encrypted_data_size = None #this is just the physical size of target section.
+        #for now lets assume the module doesnt start with a > character.
+        #find seed values:
+        numbers = list()
+        past_ldc_24 = False
+        for x in range(len(dis)):
+            instr = dis[x]
+            if instr.get_name().startswith('ldc.i4'):
+                if instr.get_argument() == 24:
+                    past_ldc_24 = True
+            if past_ldc_24:
+                if instr.get_name().startswith('stloc'):
+                    prev_instr = dis[x-1]
+                    if prev_instr.get_name().startswith('ldc.i4'):
+                        numbers.append((numpy.int32(prev_instr.get_argument()).astype(numpy.uint32), instr.get_argument()))
+                if instr.is_branch() or instr.is_absolute_jmp() or instr.get_opcode() in (Opcodes.Ret, Opcodes.Throw, Opcodes.Endfinally):
+                    break
+        if len(numbers) < 4:
+            return None
+        
+        num4, num4_id = numbers[-4]
+        num5, num5_id = numbers[-3]
+        num6, num6_id = numbers[-2]
+        num7, num7_id = numbers[-1]
+        exe_data = dotnet.get_exe_data()
+        for section in dotnet.get_pe().get_sections():
+            name_data = section['Name']
+            result_value = numpy.uint32(int.from_bytes(name_data[:4], 'little')) * numpy.uint32(int.from_bytes(name_data[4:], 'little'))
+            print('checking section {} {} {}'.format(name_data, hex(result_value), hex(expected_value)))
+            if result_value == expected_value:
+                target_section = section
+            elif result_value != 0:
+                section_size = section['SizeOfRawData'] >> 2
+                section_data = exe_data[section['PointerToRawData']: section['PointerToRawData'] + section['SizeOfRawData']]
+                sec_data_index = 0
+                for x in range(0, section_size):
+                    new_number = (num4 ^ numpy.uint32(int.from_bytes(section_data[sec_data_index:sec_data_index+4]))) + num5 + num6 * num7
+                    num4 = num5
+                    num5 = num7
+                    num7 = new_number
+                    sec_data_index += 4
+        if target_section is None:
+            print('target section is None')
+            return None
+        
+        start_mixing_offset = None
+        end_mixing_offset = None
+        array_vars = list()
+        prev_call = None
+        for x in range(len(dis)):
+            instr = dis[x]
+            if instr.get_name() == 'newarr' and start_mixing_offset is None:
+                if instr.get_argument().get_full_name() == b'System.UInt32':
+                    start_mixing_offset = dis[x-1].get_instr_offset()
+            if instr.get_name() == 'newarr':
+                next_instr = dis[x+1]
+                if next_instr.get_name().startswith('stloc'):
+                    array_vars.append(next_instr.get_argument())
+            
+            if instr.get_name() in ('call', 'callvirt'):
+                instr_arg = instr.get_argument()
+                if not isinstance(instr_arg, net_row_objects.MethodDef):
+                    prev_call = instr
+                    continue
+                msig = instr_arg.get_method_signature()
+                if msig.get_return_type() == net_sigs.get_CorSig_Boolean():
+                    end_mixing_offset = prev_call.get_instr_offset()
+                prev_call = instr
+            if end_mixing_offset is not None and start_mixing_offset is not None:
+                break
+
+        if end_mixing_offset is None or start_mixing_offset is None:
+            return None
+        
+        emu = net_emulator.DotNetEmulator(self.code_decrypt_method, start_offset=start_mixing_offset, end_offset=end_mixing_offset, dont_execute_cctor=True)
+        emu.setup_method_params([])
+        num4_obj = net_emu_types.DotNetUInt32(emu, None)
+        num4_obj.from_uint(num4)
+        num5_obj = net_emu_types.DotNetUInt32(emu, None)
+        num5_obj.from_uint(num5)
+        num6_obj = net_emu_types.DotNetUInt32(emu, None)
+        num6_obj.from_uint(num6)
+        num7_obj = net_emu_types.DotNetUInt32(emu, None)
+        num7_obj.from_uint(num7)
+        emu.set_local_obj(num4_id, num4_obj)
+        emu.set_local_obj(num5_id, num5_obj)
+        emu.set_local_obj(num6_id, num6_obj)
+        emu.set_local_obj(num7_id, num7_obj)
+        worked = False
+        print('running emulator from {} to {}'.format(hex(start_mixing_offset), hex(end_mixing_offset)))
+        try:
+            emu.run_function()
+        except net_exceptions.EmulatorEndExecutionException:
+            worked = True
+        if not worked:
+            return None
+        array = emu.get_local_obj(array_vars[0]).as_python_obj()
+        usable_array = list()
+        for item in array:
+            val = numpy.uint32(item.as_python_obj() & 0xFFFFFFFF)
+            usable_array.append(val)
+
+        add_val = None
+        is_in_block = False
+        for x in range(len(dis)):
+            instr = dis[x]
+            op = instr.get_opcode()
+            if instr.get_name().startswith('ldloc') and instr.get_argument() == array_vars[0]:
+                is_in_block = True
+
+            if is_in_block:
+                ops = (dis[x-1].get_opcode(), op, dis[x+1].get_opcode(), dis[x+2].get_opcode(), dis[x+3].get_opcode())
+                if ops == (Opcodes.Ldind_U4, Opcodes.Xor, Opcodes.Ldc_I4, Opcodes.Add, Opcodes.Stelem_I4):
+                    add_val = numpy.int32(dis[x+1].get_argument()).astype(numpy.uint32)
+                    break
+                
+            
+            if instr.is_branch() or instr.is_absolute_jmp() or op in (Opcodes.Throw, Opcodes.Ret, Opcodes.Endfinally):
+                is_in_block = False
+
+        if add_val is None:
+            return None
+        num_index = 0
+        new_exe_data = bytearray(exe_data)
+        for x in range(target_section['SizeOfRawData'] >> 2):
+            index = target_section['PointerToRawData'] + num_index
+            current_num = numpy.uint32(int.from_bytes(new_exe_data[index:index+4], 'little'))
+            current_num ^= usable_array[x % 16]
+            usable_array[x % 16] = (usable_array[x % 16] ^ current_num) + add_val
+            new_exe_data = new_exe_data[:index] + current_num.tobytes() + new_exe_data[index + 4:]
+            num_index += 4
+        xrefs = self.code_decrypt_method.get_xrefs()
+        dotnet.set_exe_data(bytes(new_exe_data))
+        dotnet.reinit_dpe(False)
+        #Lastly blank out the xrefs to prevent re code decryption.
+        for xref_id, xref_offset in xrefs:
+            m = dotnet.get_method_by_rid(xref_id)
+            d = m.disassemble_method()
+            if d is None:
+                continue
+            instr = d.get_instr_at_offset(xref_offset)
+            dotnet.patch_instruction(m, b'\x00' * len(instr), xref_offset, len(instr))
+
+    def __decrypt_method_code(self, dotnet):
+        if self.code_decrypt_method is None:
+            print('Did not find code decrypt method.  Code is likely not encrypted.')
+            return
+        if len(self.code_decrypt_method.get_xrefs()) == 0:
+            print('Code decryption method found but not used.  Code is likely not encrypted.')
+            return
+        #first deobfuscate the control flow of the encryption method to make parsing easier.
+        fgraph = net_graphing.FunctionGraph(self.code_decrypt_method)
+        fanalyzer = net_graph_analyzer.GraphAnalyzer(self.code_decrypt_method, fgraph)
+        fanalyzer.simplify_control_flow()
+
+        self.__obtain_code_encrypt_key(dotnet)
+        
+    def __clean_names(self, dotnet):
+        #TODO: maybe add some detection here so we arent just renaming the whole binary.
+        net_deobfuscate_funcs.cleanup_names(dotnet)
+
+    def __clean_code(self, dotnet):
+        net_deobfuscate_funcs.remove_useless_functions(dotnet)
+    
     def deobfuscate(self, dotnet):
-        return False
+        self.__decrypt_method_code(dotnet)
+        self.__deobfuscate_strings(dotnet)
+        self.__clean_code(dotnet)
+        self.__clean_names(dotnet)
+        dotnet.add_string('DNU_CEX_WATERMARK')
+        return True
+    
+    

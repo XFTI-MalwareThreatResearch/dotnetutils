@@ -693,57 +693,57 @@ cdef class DotNetNumber(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result):
         DotNetObject.duplicate_into(self, result)
 
-    cdef void from_bool(self, bint num):
+    cpdef void from_bool(self, bint num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_long(self, int64_t num):
+    cpdef void from_long(self, int64_t num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_int(self, int num):
+    cpdef void from_int(self, int num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_uchar(self, unsigned char num):
+    cpdef void from_uchar(self, unsigned char num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_uint(self, unsigned int num):
+    cpdef void from_uint(self, unsigned int num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
     
-    cdef void from_ulong(self, uint64_t num):
+    cpdef void from_ulong(self, uint64_t num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_char(self, char num):
+    cpdef void from_char(self, char num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_float(self, float num):
+    cpdef void from_float(self, float num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_double(self, double num):
+    cpdef void from_double(self, double num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_short(self, short num):
+    cpdef void from_short(self, short num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
 
-    cdef void from_ushort(self, unsigned short num):
+    cpdef void from_ushort(self, unsigned short num):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         self.init_from_ptr(<unsigned char *>&num, sizeof(num))
