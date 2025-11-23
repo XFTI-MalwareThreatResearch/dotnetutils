@@ -2337,6 +2337,8 @@ cdef class DotNetGCHandle(DotNetObject):
 
     cdef StackCell get_Target(self, StackCell * params, int nparams)
 
+    cpdef DotNetObject get_target(self)
+
     cdef void duplicate_into(self, DotNetObject obj)
 
     cdef StackCell ctor(self, StackCell * params, int nparams)

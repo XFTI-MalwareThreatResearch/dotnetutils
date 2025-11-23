@@ -2,6 +2,7 @@ import lzma
 from dotnetutils import dotnetpefile
 from dotnetutils import net_graphing
 from dotnetutils import net_graph_analyzer
+from dotnetutils import net_emu_types
 from dotnetutils import net_exceptions
 from dotnetutils import net_row_objects
 from dotnetutils import net_sigs
@@ -23,7 +24,6 @@ class ConfuserExDeobfuscator:
     def identify_unpack(self, dotnet: dotnetpefile.DotNetPeFile):
         ep_method = dotnet.get_entry_point()
         if ep_method is None:
-            print('ep none')
             return False
         
         #Check the entrypoint method for signs of this being a cex compressed executable.
@@ -92,10 +92,12 @@ class ConfuserExDeobfuscator:
         
         emu = net_emulator.DotNetEmulator(dotnet.get_entry_point(), end_offset=decompress_method_offset, end_method_rid=self.decrypt_method.get_rid(), dont_execute_cctor=True)
         emu.setup_method_params([])
+        old_emu = None
         worked = False
         try:
             emu.run_function()
         except net_exceptions.EmulatorEndExecutionException as e:
+            old_emu = emu
             emu = e.get_emu_obj()
             worked = True
         
@@ -124,7 +126,42 @@ class ConfuserExDeobfuscator:
         }]
         d = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=filters)
         decompressed_buffer = d.decompress(compressed_data, max_length=sz_unc)
-        return [decompressed_buffer]
+        #inject the decompressed buffer back into the mulator.
+        buffer = net_emu_types.DotNetArray(emu, len(decompressed_buffer), dotnet.get_typeref_by_full_name(b'System.Byte'))
+        buffer.from_python_obj(list(decompressed_buffer))
+        emu.current_offset += 5
+        emu.current_eip += 1
+        emu.get_stack().append_obj(buffer)
+        emu.run_function()
+        gc_handler = old_emu.get_stack().pop_obj()
+        dn_array = gc_handler.get_target()
+        #now find the entry point
+        #First find the call that looks like the ResolveSIgnature call.
+        new_data = dn_array.as_bytes()
+        new_dpe = dotnetpefile.try_get_dotnetpe(pe_data=new_data)
+        if new_dpe is None:
+            return [new_data]
+        ep_disasm = dotnet.get_entry_point().disassemble_method()
+        sig_obj = None
+        for x in range(len(ep_disasm)):
+            instr = ep_disasm[x]
+            if instr.get_opcode() in (Opcodes.Call, Opcodes.Callvirt):
+                instr_arg = instr.get_argument()
+                if isinstance(instr_arg, net_row_objects.MemberRef):
+                    if instr_arg.get_full_name() == b'System.Reflection.Module.ResolveSignature':
+                        prev_instr = ep_disasm[x-1]
+                        if not prev_instr.get_name().startswith('ldc.i4'):
+                            raise net_exceptions.CantUnpackException('Cant find CEX compressed entrypoint')
+                        sig_token = prev_instr.get_argument()
+                        sig_obj = dotnet.get_token_value(sig_token)
+                        break
+        if sig_obj is None:
+            raise net_exceptions.CantUnpackException("Cant find CEX compressed entrypoint.")
+        
+        ep_token = int.from_bytes(sig_obj.get_column('Signature').get_value(), 'little')
+        new_dpe.set_entry_point(ep_token)
+
+        return [new_dpe.get_exe_data()]
     
     def deobfuscate(self, dotnet):
         pass

@@ -6429,7 +6429,8 @@ cdef class DotNetArray(DotNetObject):
         return result
 
     cpdef void from_python_obj(self, list obj):
-        """ Initialize an array from a list of DotNetObjects
+        """ Initialize an array from a list of integers.  
+            Currently meant for byte arrays only, although may eventually be expanded.
         """
         cdef StackCell cell
         cdef int64_t x = 0
@@ -10472,6 +10473,9 @@ cdef class DotNetGCHandle(DotNetObject):
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.GCHandle'
+
+    cpdef DotNetObject get_target(self):
+        return self.__target
 
     cdef DotNetObject duplicate(self):
         cdef DotNetGCHandle gcHandle = DotNetGCHandle(self.get_emulator_obj())
