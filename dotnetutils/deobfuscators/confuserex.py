@@ -16,7 +16,7 @@ class ConfuserExDeobfuscator:
     NAME = 'confuserex'
 
     decrypt_method = None
-    string_method = None
+    string_methods = list()
 
     identifiers = [b'ConfusedByAttribute\x00', b'Confused by ConfuserEx\x00']
     
@@ -65,7 +65,52 @@ class ConfuserExDeobfuscator:
         return False
 
     def identify_deobfuscate(self, dotnet):
-        pass
+        #TODO: we dont want to only identify based on strings
+        #A binary can be confuserex obfuscated and simply not have any strings.
+        mspec_table = dotnet.get_metadata_table('MethodSpec')
+        if mspec_table is None:
+            return False
+        potential_string_methods = set()
+        for mspec in mspec_table:
+            sig_obj = mspec.get_sig_obj()
+            gen_args = sig_obj.get_generic_args()
+            if len(gen_args) == 1:
+                if isinstance(gen_args[0], net_sigs.CorLibTypeSig) and gen_args[0].get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_STRING:
+                    method_obj = mspec.get_method()
+                    if not method_obj.is_static_method():
+                        continue
+                    msig = method_obj.get_method_signature()
+                    if isinstance(msig.get_return_type(), net_sigs.GenericMVar):
+                        params = msig.get_parameters()
+                        if len(params) != 1:
+                            continue
+                        if not isinstance(params[0], net_sigs.CorLibTypeSig):
+                            continue
+                        if params[0].get_element_type() not in (net_structs.CorElementType.ELEMENT_TYPE_I4, net_structs.CorElementType.ELEMENT_TYPE_U4):
+                            continue
+                        potential_string_methods.add(mspec)
+        for mspec in potential_string_methods:
+            mobj = mspec.get_method()
+            has_initobj = False
+            has_newarr = False
+            has_ldc_16 = False
+            has_ldc_24 = False
+            for instr in mobj.disassemble_method():
+                ins_op = instr.get_opcode()
+                if ins_op == Opcodes.Initobj:
+                    has_initobj = True
+                if ins_op == Opcodes.Newarr:
+                    has_newarr = True
+                if instr.get_name().startswith('ldc.i4'):
+                    if instr.get_argument() == 16:
+                        has_ldc_16 = True
+                    if instr.get_argument() == 24:
+                        has_ldc_24 = True
+                if has_ldc_16 and has_ldc_24 and has_newarr and has_initobj:
+                    break
+            if has_ldc_16 and has_ldc_24 and has_newarr and has_initobj:
+                self.string_methods.append(mspec)
+        return len(self.string_methods) != 0
 
     def unpack(self, dotnet):
         #find the decompress method.
@@ -109,7 +154,7 @@ class ConfuserExDeobfuscator:
         props = compressed_buffer[:5]
         sz_unc = int.from_bytes(compressed_buffer[5:5+8], 'little')
         compressed_data = compressed_buffer[5 + 8:]
-
+        #parse the cex compressed data blob header.
         lc = props[0] % 9
         remainder = props[0] // 9
         lp = remainder % 5
@@ -175,6 +220,7 @@ class ConfuserExDeobfuscator:
                     if not prev_instr.get_name().startswith('ldc.i4'):
                         raise net_exceptions.CantUnpackException('Cant find CEX compressed entrypoint')
                     sig_token = prev_instr.get_argument()
+                    #entry point is hidden behind this StandAloneSig's blob data.
                     sig_obj = dotnet.get_token_value(sig_token)
                     break
         if sig_obj is None:
@@ -186,4 +232,4 @@ class ConfuserExDeobfuscator:
         return [new_dpe.get_exe_data()]
     
     def deobfuscate(self, dotnet):
-        pass
+        return False

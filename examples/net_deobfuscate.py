@@ -185,15 +185,21 @@ def main():
 
                 if deob.identify_deobfuscate(current_dotnet):
                     print('Executable recognized as {} obfuscated executable.'.format(deob.NAME))
-                    deob.deobfuscate(current_dotnet)
-                    results.add(current_dotnet.get_exe_data())
+                    if deob.deobfuscate(current_dotnet):
+                        print('Deobfuscation completed for {}'.format(deob.NAME))
+                        results.add(current_dotnet.get_exe_data())
+                    else:
+                        print('Deobfuscation failed for {}'.format(deob.NAME))
+
                     #Files can use multiple obfuscators.
         print('Outputting {} files to directory {}'.format(len(results), output_exe))
         for data in results:
             sha_obj = hashlib.sha256()
             sha_obj.update(data)
             filename = sha_obj.hexdigest()
-            fd = open(os.path.join(output_exe, filename), 'wb')
+            result_path = os.path.join(output_exe, filename)
+            print('Saving outputted file to {}'.format(result_path))
+            fd = open(result_path, 'wb')
             fd.write(data)
             fd.close()
         print('Done')
