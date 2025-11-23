@@ -155,6 +155,28 @@ class ConfuserExDeobfuscator:
                         sig_token = prev_instr.get_argument()
                         sig_obj = dotnet.get_token_value(sig_token)
                         break
+                elif isinstance(instr_arg, net_row_objects.MethodDef):
+                    #can be hidden behind method def.
+                    msig = instr_arg.get_method_signature()
+                    ret_type = msig.get_return_type()
+                    if not isinstance(ret_type, net_sigs.SZArraySig):
+                        continue
+                    ret_next = ret_type.get_next()
+                    if not isinstance(ret_next, net_sigs.CorLibTypeSig) or ret_next.get_element_type() != net_structs.CorElementType.ELEMENT_TYPE_U1:
+                        continue
+                    params = msig.get_parameters()
+                    if len(params) != 2:
+                        continue
+                    if not isinstance(params[1], net_sigs.CorLibTypeSig):
+                        continue
+                    if params[1].get_element_type() != net_structs.CorElementType.ELEMENT_TYPE_I4:
+                        continue
+                    prev_instr = ep_disasm[x-1]
+                    if not prev_instr.get_name().startswith('ldc.i4'):
+                        raise net_exceptions.CantUnpackException('Cant find CEX compressed entrypoint')
+                    sig_token = prev_instr.get_argument()
+                    sig_obj = dotnet.get_token_value(sig_token)
+                    break
         if sig_obj is None:
             raise net_exceptions.CantUnpackException("Cant find CEX compressed entrypoint.")
         
