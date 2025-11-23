@@ -6,6 +6,14 @@ class ControlFlowDeobfuscationMisidentify(Exception):
     def __init__(self, msg):
         Exception.__init__(self, msg)
 
+class CantUnpackException(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self, msg)
+
+class CantDeobfuscateException(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self, msg)
+
 class EmulatorExecutionException(DotNetUtilsException):
     def __init__(self, emu_obj, msg):
         self.__emu_obj = emu_obj

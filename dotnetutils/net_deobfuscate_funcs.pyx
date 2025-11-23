@@ -1903,77 +1903,60 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
         target_rids (list[int]): Rids of methods to target.  None for all.
         
     """
+    cdef net_table_objects.TableObject mspec_table = dotnet.get_metadata_table('MethodSpec')
+    cdef set mspec_methods = set()
     cdef net_row_objects.MethodSpec mspec = None
-    cdef list already_completed = list()
-    cdef net_row_objects.MethodDef mdef = None
+    cdef net_row_objects.MethodDef mobj = None
     cdef object fgraph = None
     cdef object fanalyzer = None
-    cdef int localvartok = 0
-    cdef list instrs = None
-    cdef list exc_blocks = None
-    cdef net_cil_disas.MethodDisassembler disasm = None
-    cdef object recompiler = None
-    cdef bytes data = None
-    cdef bint has_math = False
-    for mspec in dotnet.get_metadata_table('MethodSpec'):
-        mdef = mspec.get_method()
-        if target_rids is not None and mdef.get_rid() not in target_rids:
+    cdef object new_graph = None
+    cdef set mspecs_completed = set()
+    for mspec in mspec_table:
+        mspec_methods.add(mspec.get_method().get_rid())
+    for mobj in dotnet.get_metadata_table('MethodDef'):
+        if not mobj.has_body():
             continue
-        if mdef.get_rid() in already_completed:
+        if mobj.get_rid() in mspec_methods:
             continue
-        already_completed.append(mdef.get_rid())
-        disasm = mdef.disassemble_method()
-        if disasm is None:
+        if mobj.disassemble_method() is None:
             continue
-        if len(disasm.get_exception_blocks()) > 0:
-            print('Exception blocks are currently not supported.  Skipping method {}'.format(hex(mdef.get_token())))
-            continue
+        print('Deobfuscating control flow for method', hex(mobj.get_token()))
+        fgraph = net_graphing.FunctionGraph(mobj)
+        fgraph.validate_blocks()
+        fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
         try:
-            fgraph = net_graphing.FunctionGraph(mdef)
-            fanalyzer = net_graphing.GraphAnalyzer(mdef, fgraph)
-            fanalyzer.repair_blocks()
-            has_math = fanalyzer.remove_useless_math()
-            if has_math:
-                fanalyzer.repair_blocks()
-                localvartok = disasm.get_local_var_sig_token()
-                instrs = fgraph.emit_instructions_as_list()
-                exc_blocks = fgraph.get_exception_blocks()
-                recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
-                data = recompiler.compile_method()
-                mdef.set_method_data(data)
-                print('Deobfuscated control flow from method {}'.format(hex(mdef.get_token())))
-            else:
-                print('method {} has no useless math.'.format(hex(mdef.get_token())))
-        except Exception as e:
-            print('Error deobfuscating method {}. Its probably an issue with the control flow deobfuscator, as its still buggy.'.format(hex(mdef.get_token())))
-
-    for mdef in dotnet.get_metadata_table('MethodDef'):
-        if target_rids is not None and mdef.get_rid() not in target_rids:
+            new_graph = fanalyzer.simplify_control_flow()
+            if new_graph is None:
+                print('function is not obfuscated.')
+                continue
+        except net_exceptions.EmulatorExecutionException as e:
+            print('emulation failed due to error')
             continue
-        if mdef.get_rid() in already_completed:
+        except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
+            print('Possible control flow misidentification:', str(e))
             continue
-        already_completed.append(mdef.get_rid())
-        disasm = mdef.disassemble_method()
-        if disasm is None:
+        #new_graph.print_root()
+        print('Done with control flow check')
+    for mspec in mspec_table:
+        method = mspec.get_method()
+        if method.get_rid() in mspecs_completed:
             continue
-        if len(disasm.get_exception_blocks()) > 0:
-            print('Exception blocks are currently not supported.  Skipping method {}'.format(hex(mdef.get_token())))
+        mspecs_completed.add(method.get_rid())
+        if method.disassemble_method() is None:
             continue
+        if not method.has_body():
+            continue
+        fgraph = net_graphing.FunctionGraph(mspec)
+        fgraph.validate_blocks()
+        fanalyzer = net_graph_analyzer.GraphAnalyzer(mspec, fgraph)
         try:
-            fgraph = net_graphing.FunctionGraph(mdef)
-            fanalyzer = net_graphing.GraphAnalyzer(mdef, fgraph)
-            fanalyzer.repair_blocks()
-            has_math = fanalyzer.remove_useless_math()
-            if has_math:
-                fanalyzer.repair_blocks()
-                localvartok = disasm.get_local_var_sig_token()
-                instrs = fgraph.emit_instructions_as_list()
-                exc_blocks = fgraph.get_raw_exception_clauses()
-                recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
-                data = recompiler.compile_method()
-                mdef.set_method_data(data)
-                print('Deobfuscated control flow from method {}'.format(hex(mdef.get_token())))
-            else:
-                print('method {} has no useless math.'.format(hex(mdef.get_token())))
-        except Exception as e:
-            print('Error deobfuscating method {}. Its probably an issue with the control flow deobfuscator, as its still buggy.'.format(hex(mdef.get_token())))
+            new_graph = fanalyzer.simplify_control_flow()
+            if new_graph is None:
+                print('function is not obfuscated.')
+                continue
+        except net_exceptions.EmulatorExecutionException as e:
+            print('emulation failed due to error', str(e))
+            continue
+        except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
+            print('Possible control flow misidentification:', str(e))
+            continue

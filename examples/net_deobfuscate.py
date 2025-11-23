@@ -1,4 +1,7 @@
 import sys
+import os
+import hashlib
+from dotnetutils.deobfuscators.confuserex import ConfuserExDeobfuscator
 from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer
 
 def main():
@@ -14,6 +17,7 @@ def main():
         print(
             'unk_obf_1: a currently unknown obfuscator.  Example hash: e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb')
         print('dumbmath: Removes redundant math expressions.  Example: 7005baba5671e99eb677bc7dff5b2e15527cb196668ad0340e9f015903430625')
+        print('deob:: Runs a file against a list of deobfuscators.')
         exit()
     deob_type = sys.argv[1]
     obf_exe = sys.argv[2]
@@ -157,6 +161,44 @@ def main():
         net_deobfuscate_funcs.remove_useless_bytearray_conditionals(dotnet)
         net_deobfuscate_funcs.cleanup_names(dotnet)
         net_deobfuscate_funcs.remove_unk_obf_1_obfuscation(dotnet)
+    elif deob_type == 'deob':
+        deobfuscators = [ConfuserExDeobfuscator]
+        results = set()
+        work = [dotnet]
+        if not os.path.isdir(output_exe):
+            print('error: invalid directory for results')
+            exit(0)
+        while work:
+            current_dotnet = work.pop()
+            for deob_type in deobfuscators:
+                deob = deob_type()
+                if deob.identify_unpack(current_dotnet):
+                    print('Executable recognized as {} packed executable.'.format(deob.NAME))
+                    unpacked_exes = deob.unpack(current_dotnet)
+                    for unpacked_exe in unpacked_exes:
+                        results.add(unpacked_exe)
+                        dpe = dotnetpefile.try_get_dotnetpe(pe_data=unpacked_exe)
+                        if dpe is not None:
+                            work.append(dpe)
+                    print('Extracted {} files'.format(len(unpacked_exes)))
+                    break
+
+                if deob.identify_deobfuscate(current_dotnet):
+                    print('Executable recognized as {} obfuscated executable.'.format(deob.NAME))
+                    deob.deobfuscate(current_dotnet)
+                    results.add(current_dotnet.get_exe_data())
+                    #Files can use multiple obfuscators.
+        print('Outputting {} files to directory {}'.format(len(results), output_exe))
+        for data in results:
+            sha_obj = hashlib.sha256()
+            sha_obj.update(data)
+            filename = sha_obj.hexdigest()
+            fd = open(os.path.join(output_exe, filename), 'wb')
+            fd.write(data)
+            fd.close()
+        print('Done')
+        exit(0)
+                    
     else:
         print('invalid mode')
         exit()
