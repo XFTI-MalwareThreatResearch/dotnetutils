@@ -66,7 +66,9 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            if mobj.get_token() != 0x0600002C:
+            if mobj.get_token() != 0x06000060:
+                #TODO: so far it works for one try block but its omitting a bunch of other ones.
+                #Might be a compiler issue
                 continue
             #Check  0x06000009  for e2f0 - weird output TODO
             #TODO: 0x0600003d has nonremoved switches, my guess is because its a methodspec that isnt referenced.

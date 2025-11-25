@@ -9,10 +9,31 @@ from dotnetutils import net_row_objects
 from dotnetutils import net_sigs
 from dotnetutils import net_structs
 from dotnetutils import net_emulator
+from dotnetutils import net_patch
 from dotnetutils import net_deobfuscate_funcs
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils.net_opcodes import Opcodes
 
+def decompress_cex_blob(compressed_buffer):
+    props = compressed_buffer[0:5]
+    sz_unc = int.from_bytes(compressed_buffer[5:13], 'little')
+    compressed_data = compressed_buffer[13:]
+    #parse the cex compressed data blob header.
+    lc = props[0] % 9
+    remainder = props[0] // 9
+    lp = remainder % 5
+    pb = remainder // 5
+    dict_size = props[1] | (props[2] << 8) | (props[3] << 16) | (props[4] << 24)
+    filters = [{
+        "id": lzma.FILTER_LZMA1,
+        "lc": lc,
+        "lp": lp,
+        "pb": pb,
+        "dict_size": dict_size
+    }]
+    d = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=filters)
+    decompressed_buffer = d.decompress(compressed_data, max_length=sz_unc)
+    return decompressed_buffer
 
 class ConfuserExDeobfuscator(Deobfuscator):
 
@@ -127,6 +148,13 @@ class ConfuserExDeobfuscator(Deobfuscator):
         mspec_table = dotnet.get_metadata_table('MethodSpec')
         if mspec_table is None:
             return False
+        self.__identify_string_methods(dotnet)
+        self.__identify_code_decryption_method(dotnet)
+        return len(self.string_methods) != 0 or self.code_decrypt_method is not None
+    
+    def __identify_string_methods(self, dotnet):
+        self.string_methods.clear()
+        mspec_table = dotnet.get_metadata_table('MethodSpec')
         potential_string_methods = set()
         for mspec in mspec_table:
             sig_obj = mspec.get_sig_obj()
@@ -169,8 +197,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
                     break
             if has_ldc_16 and has_ldc_24 and has_newarr and has_initobj:
                 self.string_methods.append(mspec)
-        self.__identify_code_decryption_method(dotnet)
-        return len(self.string_methods) != 0 or self.code_decrypt_method is not None
 
     def unpack(self, dotnet):
         #find the decompress method.
@@ -211,26 +237,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         
         compressed_buffer = emu.get_stack().pop_obj().as_bytes()
 
-        props = compressed_buffer[:5]
-        sz_unc = int.from_bytes(compressed_buffer[5:5+8], 'little')
-        compressed_data = compressed_buffer[5 + 8:]
-        #parse the cex compressed data blob header.
-        lc = props[0] % 9
-        remainder = props[0] // 9
-        lp = remainder % 5
-        pb = remainder // 5
-        dict_size = 0
-        for x in range(4):
-            dict_size += ((props[1 + x] << x * 8))
-        filters = [{
-            "id": lzma.FILTER_LZMA1,
-            "lc": lc,
-            "lp": lp,
-            "pb": pb,
-            "dict_size": dict_size
-        }]
-        d = lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=filters)
-        decompressed_buffer = d.decompress(compressed_data, max_length=sz_unc)
+        decompressed_buffer = decompress_cex_blob(compressed_buffer)
         #inject the decompressed buffer back into the mulator.
         buffer = net_emu_types.DotNetArray(emu, len(decompressed_buffer), dotnet.get_typeref_by_full_name(b'System.Byte'))
         buffer.from_python_obj(list(decompressed_buffer))
@@ -292,7 +299,107 @@ class ConfuserExDeobfuscator(Deobfuscator):
         return [new_dpe.get_exe_data()]
     
     def __deobfuscate_strings(self, dotnet):
-        pass
+        self.__identify_string_methods(dotnet)
+        if len(self.string_methods) == 0:
+            print('Could not find string methods to deobfuscate strings.')
+            return
+        if not dotnet.has_heap('#US'):
+            net_patch.insert_blank_userstrings(dotnet)
+            self.__identify_string_methods(dotnet)
+        us_heap = dotnet.get_heap('#US')
+        string_defs = list()
+        for mspec in self.string_methods:
+            if mspec.get_method() not in string_defs:
+                string_defs.append(mspec.get_method())
+
+        #first identify which constructor methods need to be executed.
+
+        string_data_field = None
+        for instr in string_defs[0].disassemble_method():
+            if instr.get_opcode() == Opcodes.Ldsfld:
+                string_data_field = instr.get_argument()
+                break
+
+        if string_data_field is None:
+            print('Could not find string data field.')
+            return
+        
+        string_data_instr = None
+        string_data_disasm = None
+        string_data_method = None
+        for xref_rid, xref_offset in string_data_field.get_xrefs():
+            xfm = dotnet.get_method_by_rid(xref_rid)
+            if xfm in string_defs:
+                continue
+            dis = xfm.disassemble_method()
+            instr = dis.get_instr_at_offset(xref_offset)
+            if instr.get_opcode() == Opcodes.Stsfld:
+                prev_instr = dis[instr.get_instr_index()-1]
+                if prev_instr.get_opcode() == Opcodes.Call:
+                    string_data_instr = prev_instr
+                    string_data_disasm = dis
+                    string_data_method = xfm
+                    break
+
+        if string_data_instr is None or string_data_method is None or string_data_disasm is None:
+            print('Could not find where data is set.')
+            return
+        print('Emulating string constructor {} {}'.format(hex(string_data_method.get_token()), hex(string_data_instr.get_instr_offset())))
+        emu = net_emulator.DotNetEmulator(string_data_method, start_offset=0, end_offset=string_data_instr.get_instr_offset(), dont_execute_cctor=True)
+        #TODO: there appears to be an error when decrypting the strings for e2fo.  encrypted data might be off.
+        #Maybe its some sort of constant protection?  Look in dnspy.
+        emu.setup_method_params([])
+        worked = False
+        try:
+            emu.run_function()
+        except net_exceptions.EmulatorEndExecutionException:
+            worked = True
+
+        if not worked:
+            print('initial static constructor emulation failed.')
+            return
+        
+        compressed_buffer = emu.get_stack().pop_obj()
+        compressed_buffer = compressed_buffer.as_bytes()
+        try:
+            decomp_buffer = decompress_cex_blob(compressed_buffer)
+        except:
+            print('error decompressing initial data.')
+            return
+        new_arr = net_emu_types.DotNetArray(emu, len(decomp_buffer), dotnet.get_typeref_by_full_name(b'System.Byte'))
+        new_arr.from_python_obj(list(decomp_buffer))
+        emu.set_static_field_obj(string_data_field.get_rid(), new_arr)
+        appended_strings = dict()
+        us_heap.begin_append_tx()
+        for mspec in self.string_methods:
+            for xref_rid, xref_offset in mspec.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                dis = xfm.disassemble_method()
+                instr = dis.get_instr_at_offset(xref_offset)
+                prev_instr = dis[instr.get_instr_index() - 1]
+                if not prev_instr.get_name().startswith('ldc.i4'):
+                    raise Exception()
+                
+                assert mspec.get_method().get_param_types()[0] == net_sigs.get_CorSig_UInt32()
+                child_emu = emu.spawn_new_emulator(mspec)
+
+                arg = net_emu_types.DotNetUInt32(emu, None)
+                arg.from_uint(prev_instr.get_argument())
+                child_emu.setup_method_params([arg])
+                child_emu.run_function()
+                result_string = child_emu.get_stack().pop_obj()
+                result_data = result_string.get_str_data_as_str().encode('utf-16le')
+                if result_data in appended_strings:
+                    new_index = appended_strings[result_data]
+                else:
+                    new_index = us_heap.append_tx(result_data)
+                    appended_strings[result_data] = new_index
+                
+                new_instr = b'\x72' + int.to_bytes(new_index, 3, 'little') + b'\x70'
+                patch_buf = (b'\x00' * len(prev_instr)) + new_instr
+                dotnet.patch_instruction(xfm, patch_buf, prev_instr.get_instr_offset(), len(patch_buf))
+                #For now just nop it + replace the call with ldstr.
+        us_heap.end_append_tx()
 
     def __obtain_code_encrypt_key(self, dotnet):
         expected_value = None
@@ -309,9 +416,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
             return None
         
         target_section = None
-        encrypted_data_start = None #This is just the Physical address of target section.
-        encrypted_data_size = None #this is just the physical size of target section.
-        #for now lets assume the module doesnt start with a > character.
         #find seed values:
         numbers = list()
         past_ldc_24 = False
@@ -338,7 +442,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
         for section in dotnet.get_pe().get_sections():
             name_data = section['Name']
             result_value = numpy.uint32(int.from_bytes(name_data[:4], 'little')) * numpy.uint32(int.from_bytes(name_data[4:], 'little'))
-            print('checking section {} {} {}'.format(name_data, hex(result_value), hex(expected_value)))
             if result_value == expected_value:
                 target_section = section
             elif result_value != 0:
@@ -468,11 +571,11 @@ class ConfuserExDeobfuscator(Deobfuscator):
         self.__obtain_code_encrypt_key(dotnet)
         
     def __clean_names(self, dotnet):
-        #TODO: maybe add some detection here so we arent just renaming the whole binary.
         net_deobfuscate_funcs.cleanup_names(dotnet)
 
     def __clean_code(self, dotnet):
         net_deobfuscate_funcs.remove_useless_functions(dotnet)
+        net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
     
     def deobfuscate(self, dotnet):
         self.__decrypt_method_code(dotnet)

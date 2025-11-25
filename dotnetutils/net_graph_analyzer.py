@@ -1,4 +1,4 @@
-from dotnetutils import net_row_objects, net_graphing, net_exceptions, net_emu_types, net_emulator
+from dotnetutils import net_row_objects, net_graphing, net_exceptions, net_emu_types, net_emulator, net_structs
 from dotnetutils.net_opcodes import Opcodes
 
 class GraphAnalyzer:
@@ -793,7 +793,7 @@ class GraphAnalyzer:
             if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
                 new_graph.unregister_block(blk.get_start_offset())
 
-            elif len(blk.get_prev()) == 0 and blk.get_start_offset() != 0:
+            elif len(blk.get_prev()) == 0 and not blk.is_block_start():
                 new_graph.unregister_block(blk.get_start_offset())
         new_graph.repopulate_prevs()
         new_graph.validate_blocks()
@@ -811,7 +811,7 @@ class GraphAnalyzer:
             if last_instr is not None:
                 last_op = last_instr.get_opcode()
                 instrs = blk.get_instrs()
-                if last_op == Opcodes.Ret:
+                if last_op in (Opcodes.Ret, Opcodes.Throw, Opcodes.Endfinally):
                     continue
                 if last_instr.is_branch():
                     continue
@@ -831,6 +831,14 @@ class GraphAnalyzer:
             if len(nxts) != 1:
                 raise Exception()
             nxt = nxts[0]
+            if nxt.is_block_try() or nxt.is_block_catch() or nxt.is_block_finally() or nxt.is_block_filter():
+                shouldnt_remove = False
+                for cl_flags, cl_blk in nxt.get_exception_handlers():
+                    if cl_blk == nxt:
+                        shouldnt_remove = True
+                        break 
+                if shouldnt_remove:
+                    continue
             if len(nxt.get_prev()) == 1:
                 if debug:
                     print(1)
@@ -928,16 +936,12 @@ class GraphAnalyzer:
                     out.validate_blocks()
                     self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
                     out.validate_blocks()
-                    #out.print_root()
                     x += 1
                     break
             if is_obfuscated:
                 instrs = out.emit_instructions_as_list()
-                if isinstance(self.__method, net_row_objects.MethodSpec):
-                    localsigtok = self.__method.get_method().disassemble_method().get_local_var_sig_token()
-                else:
-                    localsigtok = self.__method.disassemble_method().get_local_var_sig_token()
-                exc = list()
+                localsigtok = self.__disasm.get_local_var_sig_token()
+                exc = out.get_raw_exception_clauses()
                 recompiler = MethodRecompiler(instrs, exc, localsigtok)
                 data = recompiler.compile_method()
                 if isinstance(self.__method, net_row_objects.MethodSpec):
@@ -1037,7 +1041,7 @@ class GraphAnalyzer:
         return new_instr
         
     
-    def __block_walker(self, block, handled, exc_handlers):
+    def __block_walker(self, block, handled):
         if block not in handled:
             #The block hasnt been laid out yet.
             handled.append(block) #Goal is to get the layout of blocks in order, then recalculate offsets.
@@ -1056,19 +1060,29 @@ class GraphAnalyzer:
             last_op = last_instr.get_opcode()
             #the fallthrough case is always the last one in the nexts, so theres that.
             blk_next = block.get_next()
-            if len(blk_next) > 0:
-                self.__block_walker(blk_next[-1], handled, exc_handlers)
+            if len(blk_next) > 0 and not block.get_last_instr().get_opcode() in (Opcodes.Leave, Opcodes.Leave_S):
+                self.__block_walker(blk_next[-1], handled)
             
-            if last_instr.is_branch():
+            if last_instr.is_branch() and not last_instr.is_absolute_jmp():
                 if last_op == Opcodes.Switch:
                     for x in range(0, len(blk_next) - 1):
-                        self.__block_walker(blk_next[x], handled, exc_handlers)
+                        self.__block_walker(blk_next[x], handled)
                 else:
-                    self.__block_walker(blk_next[0], handled, exc_handlers)
+                    #For try context switches, dont output the leave instructions block yet.  That should be after all tries are finished.
+                    self.__block_walker(blk_next[0], handled)
+            if block.is_block_start() and block.get_start_offset() != 0 and block.is_block_try():
+                #its the start of an exception block.  Walk those blocks next.
+                for exc_flag, try_block, catch_block, token in self.__graph.get_exception_blocks():
+                    for exc_flag2, clause_block in block.get_exception_handlers():
+                        if exc_flag == exc_flag2 and clause_block == try_block:
+                            self.__block_walker(catch_block, handled)
+                            if exc_flag == net_structs.CorILExceptionClause.Filter:
+                                self.__block_walker(token, handled)
 
     def repair_blocks(self):
         #Goal of this method is to fixup block relationships and make it look pretty.
         #TODO: When stiching together blocks try blocks need to be together, filter clause needs to follow the rules etc.
+        #TODO: need to test this with filter clause I think block ordering is off.
         self.__graph.validate_blocks()
         was_unregistered = list()
         for block in list(self.__graph.blocks()):
@@ -1097,9 +1111,10 @@ class GraphAnalyzer:
         self.__graph.validate_blocks()
 
         blocks_order = list()
-        exc_handlers = list()
         for block in self.__graph.blocks():
-            self.__block_walker(block, blocks_order, exc_handlers)
+            self.__block_walker(block, blocks_order)
+        #self.__graph.print_root()
+
 
         #check over the blocks, make sure theres a jmp if its needed.
         total_compiled = len(blocks_order)
@@ -1112,7 +1127,7 @@ class GraphAnalyzer:
             if len(block.get_instrs()) == 0:
                 self.__graph.unregister_block(block.get_instr_offset())
                 continue
-            if len(block.get_prev()) == 0 and current_offset != 0:
+            if len(block.get_prev()) == 0 and current_offset != 0 and (block.get_start_offset() != 0 and not block.is_block_start()):
                 #dead block.
                 for nxt in list(block.get_next()):
                     block.remove_next(nxt)
@@ -1120,7 +1135,6 @@ class GraphAnalyzer:
                         nxt.remove_prev(block)
                 self.__graph.unregister_block(block.get_start_offset())
                 continue
-                    
             block.update_start_offset(current_offset, current_index)
             block.update_size(block.get_current_size())
             current_offset += block.get_original_length()
@@ -1131,12 +1145,12 @@ class GraphAnalyzer:
         #remove any dead blocks.
         new_blocks = list()
         for block in blocks_order:
-            if len(block.get_prev()) == 0 and len(block.get_next()) == 0 and block.get_start_offset() != 0:
+            if len(block.get_prev()) == 0 and len(block.get_next()) == 0 and not block.is_block_start():
                 continue
-            new_blocks.append(block)
+            new_blocks.append(block) #TODO: something here seems to be messing up exception blocks maybe - not entirely sure yet.
         blocks_order = new_blocks
         total_compiled = len(blocks_order)
-
+        #Here is where it gets messed up
         for x in range(total_compiled):
             #check if any jumps need to be added.
             blk = blocks_order[x]
@@ -1156,7 +1170,6 @@ class GraphAnalyzer:
                     new_instr.setup_instr_offset(last_instr.get_instr_offset() + len(last_instr), last_instr.get_instr_index() + 1)
                     new_instr.setup_arguments_from_int32(nxt.get_start_offset() - len(new_instr) - new_instr.get_instr_offset())
                     blk.add_instr(new_instr)
-
         self.__graph.validate_blocks()
 
         #Before we finish, do any cleanups to make it pretty.
@@ -1232,7 +1245,6 @@ class GraphAnalyzer:
                     blk.remove_instrs(index, index+1)
                     blk.add_instr(new_instr)
                     blk.remove_next(blk.get_next()[0])
-
         self.__graph.update_offsets()
         self.__graph.validate_blocks()
         #fixup the branches of any blocks
@@ -1254,6 +1266,7 @@ class GraphAnalyzer:
             block.update_size(block.get_current_size())
         self.__graph.sort_blocks()
         self.__graph.validate_blocks()
+        self.__graph.update_exc_handlers()
 
     def remove_useless_math(self):
         """ Remove math expressions that compute to a constant value.
@@ -1335,9 +1348,6 @@ class MethodRecompiler:
         if self.__code_size > 63:
             use_fat = True
         if self.__localvarsigtok != 0:
-            use_fat = True
-        if len(self.__exception_blocks) != 0:
-            raise Exception()
             use_fat = True
 
         fgraph = net_graphing.FunctionGraph(None, self.__instrs, self.__exception_blocks)
