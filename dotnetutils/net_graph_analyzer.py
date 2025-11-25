@@ -621,7 +621,7 @@ class GraphAnalyzer:
         debug = False
         if debug:
             print('deobfuscating switch {}'.format(block))
-        if debug: #NEED TO FIX OFFSETS AS WELL.
+        if debug:
             for block_offset, offsets in offsets_grouped.items():
                 for offset in offsets:
                     print('block offset {} -> start {}'.format(hex(block_offset), hex(offset)))
@@ -660,7 +660,6 @@ class GraphAnalyzer:
             #we already have the first start offset somewhere in offsets grouped
             first_start_offset = -1
             end_block_offset = -1
-            print('Checking offsets for {} {}'.format(start_block, math_block))
             for end, start_offsets in offsets_grouped.items():
                 for start_offset in start_offsets:
                     if math_block.has_offset(start_offset):
@@ -773,8 +772,12 @@ class GraphAnalyzer:
                 if last_instr.get_opcode() in (Opcodes.Ret, Opcodes.Endfinally, Opcodes.Throw):
                     new_switch_block.remove_next(start_block)
                 usable_block = start_block
+                already_checked = set()
                 while len(usable_block.get_next()) == 1:
                     usable_block = usable_block.get_next()[0]
+                    if usable_block in already_checked:
+                        break
+                    already_checked.add(usable_block)
                     last_instr = usable_block.get_last_instr()
                     if last_instr.get_opcode() in (Opcodes.Ret, Opcodes.Endfinally, Opcodes.Throw):
                         new_switch_block.remove_next(start_block)
@@ -915,7 +918,6 @@ class GraphAnalyzer:
         new_graph.update_offsets()
         new_graph.sort_blocks()
         new_graph.validate_blocks()
-
 
     def simplify_control_flow(self, max_attempts=-1):
         graph = self.__graph
@@ -1164,7 +1166,7 @@ class GraphAnalyzer:
                 if len(blk.get_next()) != 1:
                     raise Exception()
                 nxt = blk.get_next()[0]
-                if nxt.get_start_offset() != (last_instr.get_instr_offset() + len(last_instr)):
+                if x == (total_compiled - 1) or blocks_order[x+1].get_start_offset() != nxt.get_start_offset():
                     new_instr = self.__disasm.emit_instruction(Opcodes.Br)
                     new_instr.setup_instr_size(5)
                     new_instr.setup_instr_offset(last_instr.get_instr_offset() + len(last_instr), last_instr.get_instr_index() + 1)

@@ -293,7 +293,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         if sig_obj is None:
             raise net_exceptions.CantUnpackException("Cant find CEX compressed entrypoint.")
         
-        ep_token = int.from_bytes(sig_obj.get_column('Signature').get_value(), 'little')
+        ep_token = int.from_bytes(sig_obj.get_column('Signature').get_value()[:4], 'little')
         new_dpe.set_entry_point(ep_token)
 
         return [new_dpe.get_exe_data()]
@@ -364,7 +364,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         try:
             decomp_buffer = decompress_cex_blob(compressed_buffer)
         except:
-            print('error decompressing initial data.')
+            print('error decompressing initial data.  Its possible the string blob is corrupted.')
             return
         new_arr = net_emu_types.DotNetArray(emu, len(decomp_buffer), dotnet.get_typeref_by_full_name(b'System.Byte'))
         new_arr.from_python_obj(list(decomp_buffer))
@@ -384,7 +384,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 child_emu = emu.spawn_new_emulator(mspec)
 
                 arg = net_emu_types.DotNetUInt32(emu, None)
-                arg.from_uint(prev_instr.get_argument())
+                arg.from_uint(prev_instr.get_argument() & 0xFFFFFFFF)
                 child_emu.setup_method_params([arg])
                 child_emu.run_function()
                 result_string = child_emu.get_stack().pop_obj()

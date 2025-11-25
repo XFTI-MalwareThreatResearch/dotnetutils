@@ -66,10 +66,6 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            if mobj.get_token() != 0x06000060:
-                #TODO: so far it works for one try block but its omitting a bunch of other ones.
-                #Might be a compiler issue
-                continue
             #Check  0x06000009  for e2f0 - weird output TODO
             #TODO: 0x0600003d has nonremoved switches, my guess is because its a methodspec that isnt referenced.
             print('doing method 1', hex(mobj.get_token()))
@@ -91,7 +87,6 @@ def main():
             print('Done with flow check')
         mspecs_completed = set()
         for mspec in mspec_table:
-            continue
             method = mspec.get_method()
             if method.get_rid() in mspecs_completed:
                 continue
