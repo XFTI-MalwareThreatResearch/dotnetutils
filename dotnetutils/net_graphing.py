@@ -1216,7 +1216,7 @@ class FunctionGraph:
         result = list()
         current_index = 0
         for offset, block in self.__blocks_start.items():
-            if offset > current_offset:
+            if offset > current_offset and False:
                 amt_pad = offset - current_offset
                 for x in range(amt_pad):
                     #If a branch is just not used, the graph will ignore it.  Account for that here.
@@ -1227,6 +1227,7 @@ class FunctionGraph:
                     current_index += 1
                     current_offset += 1
             if current_offset != offset:
+                print(hex(current_offset), hex(offset))
                 raise Exception()
             for instr in block.get_instrs():
                 instr.setup_instr_offset(current_offset, current_index)
@@ -1254,8 +1255,8 @@ class FunctionGraph:
                     if blk == try_block and cl_flag == exc_flag:
                         try_size += block.get_original_length()
                     elif blk == catch_block and cl_flag == exc_flag:
-
                         catch_size += block.get_original_length()
+                assert block.get_original_length() == block.get_current_size()
             result.append((cl_flag, try_offset, try_size, catch_offset, catch_size, token))
         return result
 

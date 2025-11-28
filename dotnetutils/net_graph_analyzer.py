@@ -225,7 +225,6 @@ class GraphAnalyzer:
                                     break
 
                             if skip:
-                                print('setting needs local 2', hex(instr.get_instr_offset()))
                                 need_local = True
                                 bad_instr_offsets.add(instr.get_instr_offset())
                                 continue
@@ -1041,13 +1040,55 @@ class GraphAnalyzer:
             return None
         new_instr.setup_instr_size(5)
         return new_instr
-        
     
-    def __block_walker(self, block, handled):
+    def __is_context_switch(self, old_block, new_block):
+        #TODO: I believe the issue here is with context switching.
+        old_exc = old_block.get_exception_handlers()
+        new_exc = new_block.get_exception_handlers()
+        if old_exc != new_exc:
+           if (len(new_exc) - 1) == len(old_exc) and set(old_exc).issubset(set(new_exc)) and self.__is_block_try_start(new_block):
+               return False
+           return True
+        return False
+    
+    def get_all_handler_blocks(self, initial_handler_block):
+        results = set()
+        for block in self.__graph.blocks():
+            is_in_handler = True
+            for exc1 in initial_handler_block.get_exception_handlers():
+                if exc1 not in block.get_exception_handlers():
+                    is_in_handler = False
+                    break
+            if is_in_handler:
+                results.add(block)
+        return results
+    
+    def __is_block_try_start(self, block): #TODO: remove this.
+        for cl_flag, try_block, handler_blk, token in self.__graph.get_exception_blocks():
+            if block == try_block:
+                return True
+        return False
+    
+    def get_full_handler_for_block_handler(self, handler):
+        for exc_handler in self.__graph.get_exception_blocks():
+            if exc_handler[0] == handler[0] and exc_handler[1] == handler[1]:
+                return exc_handler
+            if exc_handler[0] == handler[0]:
+                if exc_handler[2] == handler[1] or exc_handler[3] == handler[1]:
+                    return exc_handler
+        return None
+
+    def __block_walker(self, block, handled, deferred_blocks, must_finish_first=None):
         if block not in handled:
+            current_offset = 0
+            for blk in handled:
+                current_offset += blk.get_current_size()
+            new_must_finish_first = must_finish_first
             #The block hasnt been laid out yet.
             handled.append(block) #Goal is to get the layout of blocks in order, then recalculate offsets.
             last_instr = block.get_last_instr()
+            if self.__is_block_try_start(block):
+                new_must_finish_first = self.get_all_handler_blocks(block)
                 
             last_op = last_instr.get_opcode()
             new_last_instr = self.__emit_big_instr_for_small(last_instr)
@@ -1057,29 +1098,47 @@ class GraphAnalyzer:
                 new_last_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
                 block.replace_instr(last_index, new_last_instr)
 
-            
             last_instr = block.get_last_instr()
             last_op = last_instr.get_opcode()
             #the fallthrough case is always the last one in the nexts, so theres that.
             blk_next = block.get_next()
-            if len(blk_next) > 0 and not block.get_last_instr().get_opcode() in (Opcodes.Leave, Opcodes.Leave_S):
-                self.__block_walker(blk_next[-1], handled)
+            if len(blk_next) > 0:
+                target = blk_next[-1]
+                if new_must_finish_first is None or target in new_must_finish_first:
+                    self.__block_walker(target, handled, deferred_blocks, new_must_finish_first)
+                elif target not in deferred_blocks and target not in handled:
+                    deferred_blocks.append(target)
             
             if last_instr.is_branch() and not last_instr.is_absolute_jmp():
                 if last_op == Opcodes.Switch:
                     for x in range(0, len(blk_next) - 1):
-                        self.__block_walker(blk_next[x], handled)
+                        target = blk_next[x]
+                        if new_must_finish_first is None or target in new_must_finish_first:
+                            self.__block_walker(target, handled, deferred_blocks, new_must_finish_first)
+                        elif target not in deferred_blocks and target not in handled:
+                            deferred_blocks.append(target)
                 else:
                     #For try context switches, dont output the leave instructions block yet.  That should be after all tries are finished.
-                    self.__block_walker(blk_next[0], handled)
-            if block.is_block_start() and block.get_start_offset() != 0 and block.is_block_try():
-                #its the start of an exception block.  Walk those blocks next.
-                for exc_flag, try_block, catch_block, token in self.__graph.get_exception_blocks():
-                    for exc_flag2, clause_block in block.get_exception_handlers():
-                        if exc_flag == exc_flag2 and clause_block == try_block:
-                            self.__block_walker(catch_block, handled)
-                            if exc_flag == net_structs.CorILExceptionClause.Filter:
-                                self.__block_walker(token, handled)
+                    target = blk_next[0]
+                    if new_must_finish_first is None or target in new_must_finish_first:
+                        self.__block_walker(target, handled, deferred_blocks, new_must_finish_first)
+                    elif target not in deferred_blocks and target not in handled:
+                        deferred_blocks.append(target)
+
+            if self.__is_block_try_start(block):
+                for dblock in deferred_blocks:
+                    if dblock in new_must_finish_first:
+                        self.__block_walker(dblock, handled, deferred_blocks, new_must_finish_first)
+                for exc_handler in block.get_exception_handlers():
+                    if exc_handler[1] == block:
+                        full_handler = self.get_full_handler_for_block_handler(exc_handler)
+                        catch_blocks = self.get_all_handler_blocks(full_handler[2])
+                        self.__block_walker(full_handler[2], handled, deferred_blocks, catch_blocks)
+                        if isinstance(full_handler[3], net_graphing.FunctionBlock):
+                            catch_blocks = self.get_all_handler_blocks(full_handler[3])
+                            self.__block_walker(full_handler[3], handled, deferred_blocks, catch_blocks)
+                
+
 
     def repair_blocks(self):
         #Goal of this method is to fixup block relationships and make it look pretty.
@@ -1113,11 +1172,27 @@ class GraphAnalyzer:
         self.__graph.validate_blocks()
 
         blocks_order = list()
-        for block in self.__graph.blocks():
-            self.__block_walker(block, blocks_order)
-        #self.__graph.print_root()
+        deferred_blocks = list()
+        self.__block_walker(self.__graph.get_block_by_start_offset(0), blocks_order, deferred_blocks)
+        while deferred_blocks:
+            block = deferred_blocks.pop()
+            if len(block.get_exception_handlers()) != 0 and block not in blocks_order:
+                raise Exception(str(block))
+            self.__block_walker(block, blocks_order, deferred_blocks)
 
+        """for exc_flag, exc_try, exc_catch, exc_token in self.__graph.get_exception_blocks():
+            deferred_blocks = list()
+            self.__block_walker(exc_catch, blocks_order, deferred_blocks)
+            while deferred_blocks:
+                block = deferred_blocks.pop()
+                self.__block_walker(block, blocks_order, deferred_blocks)
 
+            if isinstance(exc_token, net_graphing.FunctionBlock):
+                deferred_blocks = list()
+                self.__block_walker(exc_token, blocks_order, deferred_blocks)
+                while deferred_blocks:
+                    block = deferred_blocks.pop()
+                    self.__block_walker(block, blocks_order, deferred_blocks)"""
         #check over the blocks, make sure theres a jmp if its needed.
         total_compiled = len(blocks_order)
         #Do an initial offset update to ensure the next loop works.
@@ -1266,7 +1341,26 @@ class GraphAnalyzer:
                 argument = target - len(last_instr) - last_instr.get_instr_offset()
                 last_instr.setup_arguments_from_int32(argument)
             block.update_size(block.get_current_size())
+        #Do one final pass to make sure instr and block offsets are  good.
+        current_offset = 0
+        current_index = 0
+        for block in blocks_order:
+            if block not in self.__graph.blocks():
+                continue
+            block.update_start_offset(current_offset, current_index)
+            block.update_size(block.get_current_size())
+            for instr in block.get_instrs():
+                instr.setup_instr_offset(current_offset, current_index)
+                current_index += 1
+                current_offset += len(instr)
+
+        for block in self.__graph.blocks():
+            if block not in blocks_order:
+                raise Exception()
+
+        self.__graph.update_offsets()
         self.__graph.sort_blocks()
+
         self.__graph.validate_blocks()
         self.__graph.update_exc_handlers()
 
