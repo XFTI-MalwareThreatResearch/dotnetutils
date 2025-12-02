@@ -66,9 +66,9 @@ def main():
                 continue
             if mobj.disassemble_method() is None:
                 continue
-            if mobj.get_token() != 0x6000358:
+            #if mobj.get_token() != 0x060004C8:
                 #Seems to be deleting a try catch block which is a no go.
-                continue
+            #    continue
             #Check  0x06000009  for e2f0 - weird output TODO
             #TODO: 0x0600003d has nonremoved switches, my guess is because its a methodspec that isnt referenced.
             print('doing method 1', hex(mobj.get_token()), mobj.get_full_name())
@@ -76,7 +76,7 @@ def main():
             fgraph.validate_blocks()
             fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
             try:
-                new_graph = fanalyzer.simplify_control_flow(4)
+                new_graph = fanalyzer.simplify_control_flow()
                 if new_graph is None:
                     print('function is not obfuscated.')
                     continue

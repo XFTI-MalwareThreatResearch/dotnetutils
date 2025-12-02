@@ -492,7 +492,7 @@ class FunctionBlock:
                     if not len(self.__next) == 0:
                         raise net_exceptions.InvalidBlockException(self)
                 else:
-                    if opcode == Opcodes.Throw or opcode == Opcodes.Endfinally:
+                    if opcode == Opcodes.Throw or opcode == Opcodes.Endfinally or opcode == Opcodes.Rethrow:
                         if len(self.__next) != 0:
                             raise net_exceptions.InvalidBlockException(self)
                     else:
@@ -978,7 +978,7 @@ class FunctionGraph:
                         usable_block.add_next(new_block)
                 break
             else:
-                if opcode == Opcodes.Throw:
+                if opcode == Opcodes.Throw or opcode == Opcodes.Rethrow:
                     break
 
             usable_offset += len(instr)
