@@ -4449,7 +4449,7 @@ cdef class DotNetEmulator:
         is_destroyed (bint): has the emulator already been deallocated?
     """
 
-    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), EmulatorAppDomain app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False):
+    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), EmulatorAppDomain app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False, bint init_open_generics_as_object=False):
         """ Constructor for Emulator objects.
 
         Params:
@@ -4471,7 +4471,8 @@ cdef class DotNetEmulator:
             timeout_seconds (int): the timeout in seconds.  Once the timeout is hit, net_emulator.EmulatorTimeoutException is thrown.  -1 for no timeout.
             spec_obj (net_row_objects.MethodSpec): the methodSpec object, if it exists. Not really used, may be removed.
             strict_typing (bool): Currently default is to use NULL on ctors for TypeRefs that we cant handle.  If true, it will throw an exception instead.
-        
+            init_open_generics_as_object (bool): Initializes all open generics as a NULL object.  Used for emulations where you dont expect to actually use the generics.
+
         Raises:
             net_exceptions.InvalidArgumentsException: The method object is invalid.
             net_exceptions.DisassemblyFailedException: could not disassemble the method.
@@ -4479,6 +4480,7 @@ cdef class DotNetEmulator:
         """
         self.spec_obj = None
         self.is_destroyed = False
+        self.__init_open_generics_as_object = init_open_generics_as_object
         if isinstance(method_obj, net_row_objects.MethodSpec):
             self.spec_obj = method_obj
             method_obj = (<net_row_objects.MethodSpec>method_obj).get_method()
@@ -7384,6 +7386,7 @@ cdef class DotNetEmulator:
         cdef net_sigs.GenericInstMethodSig msig = None
         cdef net_row_objects.RowObject param_obj = None
         cdef net_sigs.GenericInstSig tsig = None
+        cdef net_sigs.TypeSig rsig = None
         memset(&result, 0, sizeof(result))
         if isinstance(type_sig, net_sigs.CorLibTypeSig):
             element_type = type_sig.get_element_type()
@@ -7429,17 +7432,33 @@ cdef class DotNetEmulator:
         elif isinstance(type_sig, net_sigs.GenericMVar):
             number = (<net_sigs.GenericMVar>type_sig).get_number()
             if self.spec_obj is None:
+                if self.__init_open_generics_as_object:
+                    return self.pack_null()
                 raise net_exceptions.OperationNotSupportedException()
             msig = <net_sigs.GenericInstMethodSig>self.spec_obj.get_sig_obj()
-            return self._get_default_value(msig.get_generic_args()[number], tref)
+            rsig = msig.get_generic_args()[number]
+            if rsig == type_sig:
+                raise net_exceptions.EmulatorExecutionException(self, 'preventing a GenericMVar infinite loop')
+            if isinstance(rsig, net_sigs.GenericMVar):
+                if self.__init_open_generics_as_object:
+                    return self.pack_null()
+            return self._get_default_value(rsig, tref)
         elif isinstance(type_sig, net_sigs.GenericVar):
             number = (<net_sigs.GenericVar>type_sig).get_number()
             if not isinstance(tref, net_row_objects.TypeSpec):
+                if self.__init_open_generics_as_object:
+                    return self.pack_null()
                 raise net_exceptions.InvalidArgumentsException()
             if not isinstance((<net_row_objects.TypeSpec>tref).get_sig_obj(), net_sigs.GenericInstSig):
                 raise net_exceptions.InvalidArgumentsException()
             tsig = <net_sigs.GenericInstSig>(<net_row_objects.TypeSpec>tref).get_sig_obj()
-            return self._get_default_value(tsig.get_generic_args()[number], tref)
+            rsig = tsig.get_generic_args()[number]
+            if rsig == type_sig:
+                raise net_exceptions.EmulatorExecutionException(self, 'preventing a GenericVar infinite loop')
+            if isinstance(rsig, net_sigs.GenericVar):
+                if self.__init_open_generics_as_object:
+                    return self.pack_null()
+            return self._get_default_value(rsig, tref)
         else:
             raise net_exceptions.EmulatorExecutionException(self, 'weird sig {}'.format(type(type_sig)))
         return self.pack_null()
@@ -7492,7 +7511,7 @@ cdef class DotNetEmulator:
         Returns:
             net_emulator.DotNetEmulator: The newly allocated emulator object for the method.
         """
-        cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset, end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj, strict_typing=strict_typing)
+        cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset, end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj, strict_typing=strict_typing, init_open_generics_as_object=self.__init_open_generics_as_object)
         cdef net_row_objects.MethodDef cctor_method = None
         new_emu.executed_cctors = self.executed_cctors
         if end_method_rid == -1:

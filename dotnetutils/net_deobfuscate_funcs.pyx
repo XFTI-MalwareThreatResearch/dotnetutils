@@ -1905,20 +1905,13 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
         target_rids (list[int]): Rids of methods to target.  None for all.
         
     """
-    cdef net_table_objects.TableObject mspec_table = dotnet.get_metadata_table('MethodSpec')
-    cdef set mspec_methods = set()
-    cdef net_row_objects.MethodSpec mspec = None
     cdef net_row_objects.MethodDef mobj = None
     cdef object fgraph = None
     cdef object fanalyzer = None
     cdef object new_graph = None
-    cdef set mspecs_completed = set()
-    for mspec in mspec_table:
-        mspec_methods.add(mspec.get_method().get_rid())
+    print('deobfuscating control flow for methods.')
     for mobj in dotnet.get_metadata_table('MethodDef'):
         if not mobj.has_body():
-            continue
-        if mobj.get_rid() in mspec_methods:
             continue
         if mobj.disassemble_method() is None:
             continue
@@ -1938,27 +1931,4 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
             print('Possible control flow misidentification:', str(e))
             continue
         #new_graph.print_root()
-        print('Done with control flow check')
-    for mspec in mspec_table:
-        method = mspec.get_method()
-        if method.get_rid() in mspecs_completed:
-            continue
-        mspecs_completed.add(method.get_rid())
-        if method.disassemble_method() is None:
-            continue
-        if not method.has_body():
-            continue
-        fgraph = net_graphing.FunctionGraph(mspec)
-        fgraph.validate_blocks()
-        fanalyzer = net_graph_analyzer.GraphAnalyzer(mspec, fgraph)
-        try:
-            new_graph = fanalyzer.simplify_control_flow()
-            if new_graph is None:
-                print('function is not obfuscated.')
-                continue
-        except net_exceptions.EmulatorExecutionException as e:
-            print('emulation failed due to error', str(e))
-            continue
-        except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
-            print('Possible control flow misidentification:', str(e))
-            continue
+    print('Done with control flow check')

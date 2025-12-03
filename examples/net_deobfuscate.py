@@ -2,7 +2,7 @@ import sys
 import os
 import hashlib
 from dotnetutils.deobfuscators.confuserex import ConfuserExDeobfuscator
-from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer
+from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer, net_sigs
 
 def main():
     if len(sys.argv) < 4:
@@ -55,22 +55,12 @@ def main():
         Adds a useless br instruction after every block though.  Need to fix that.
         Currently need to fix stuff for try catch finally to work.
         """
-        mspec_table = dotnet.get_metadata_table('MethodSpec')
-        mspec_methods = set()
-        for mspec in mspec_table:
-            mspec_methods.add(mspec.get_method().get_rid())
+        misidentified = set()
         for mobj in dotnet.get_metadata_table('MethodDef'):
             if not mobj.has_body():
                 continue
-            if mobj.get_rid() in mspec_methods:
-                continue
             if mobj.disassemble_method() is None:
                 continue
-            #if mobj.get_token() != 0x060004C8:
-                #Seems to be deleting a try catch block which is a no go.
-            #    continue
-            #Check  0x06000009  for e2f0 - weird output TODO
-            #TODO: 0x0600003d has nonremoved switches, my guess is because its a methodspec that isnt referenced.
             print('doing method 1', hex(mobj.get_token()), mobj.get_full_name())
             fgraph = net_graphing.FunctionGraph(mobj)
             fgraph.validate_blocks()
@@ -85,35 +75,12 @@ def main():
                 continue
             except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
                 print('Possible control flow misidentification:', str(e))
+                misidentified.add((mobj.get_token(), e))
                 continue
-            #new_graph.print_root()
-            print('Done with flow check')
-        mspecs_completed = set()
-        for mspec in mspec_table:
-            continue
-            method = mspec.get_method()
-            if method.get_rid() in mspecs_completed:
-                continue
-            mspecs_completed.add(method.get_rid())
-            if method.disassemble_method() is None:
-                continue
-            if not method.has_body():
-                continue
-
-            fgraph = net_graphing.FunctionGraph(mspec)
-            fgraph.validate_blocks()
-            fanalyzer = net_graph_analyzer.GraphAnalyzer(mspec, fgraph)
-            try:
-                new_graph = fanalyzer.simplify_control_flow()
-                if new_graph is None:
-                    print('function is not obfuscated.')
-                    continue
-            except net_exceptions.EmulatorExecutionException as e:
-                print('emulation failed due to error', str(e))
-                continue
-            except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
-                print('Possible control flow misidentification:', str(e))
-                continue
+        print('Done with flow check')
+        print('Misidentified methods dump')
+        for mtoken, exc in misidentified:
+            print('Token: {} error: {}'.format(hex(mtoken), str(exc)))
     elif deob_type == 'dumbmath':
         #Remove useless math expressions.
         """

@@ -189,6 +189,7 @@ cdef class DotNetEmulator:
     cdef bint __is_64bit
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
+    cdef bint __init_open_generics_as_object
 
     cpdef void set_local_obj(self, int idx, net_emu_types.DotNetObject obj)
 

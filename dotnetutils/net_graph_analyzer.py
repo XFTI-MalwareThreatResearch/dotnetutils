@@ -6,10 +6,12 @@ class GraphAnalyzer:
     MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
     BRANCHES = [Opcodes.Brtrue, Opcodes.Brtrue_S, Opcodes.Brfalse, Opcodes.Brfalse_S, Opcodes.Beq, Opcodes.Beq_S, Opcodes.Bne_Un, Opcodes.Bne_Un_S, \
                 Opcodes.Bge, Opcodes.Bge_S, Opcodes.Bge_Un, Opcodes.Bge_Un_S, Opcodes.Bgt, Opcodes.Bgt_S, Opcodes.Bgt_Un, Opcodes.Bgt_Un_S, \
-                Opcodes.Ble, Opcodes.Ble_S, Opcodes.Ble_Un, Opcodes.Ble_Un_S, Opcodes.Blt, Opcodes.Blt_S, Opcodes.Blt_Un, Opcodes.Blt_Un_S]
+                Opcodes.Ble, Opcodes.Ble_S, Opcodes.Ble_Un, Opcodes.Ble_Un_S, Opcodes.Blt, Opcodes.Blt_S, Opcodes.Blt_Un, Opcodes.Blt_Un_S, Opcodes.Switch]
     STLOC = [Opcodes.Stloc_S, Opcodes.Stloc, Opcodes.Stloc_0, Opcodes.Stloc_1, Opcodes.Stloc_2, Opcodes.Stloc_3]
     LDLOC = [Opcodes.Ldloc_S, Opcodes.Ldloc, Opcodes.Ldloc_0, Opcodes.Ldloc_1, Opcodes.Ldloc_2, Opcodes.Ldloc_3]
     ALLOWED_STACK_OPS = LDLOC + [Opcodes.Br, Opcodes.Pop, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
+    ALLOWED_SWITCH_LOOP_INSTRS = LDLOC + STLOC + BRANCHES + MATH_OPS + ALLOWED_STACK_OPS
+    
     def __init__(self, method_obj: net_row_objects.MethodDefOrRef, func_graph: net_graphing.FunctionGraph):
         self.__graph = func_graph
         self.__disasm = self.__graph.get_disassembler()
@@ -331,6 +333,10 @@ class GraphAnalyzer:
         debug = False
         if debug:
             print('Checking {} {}'.format(block, block.get_instrs()))
+        if block.get_last_instr().get_opcode() != Opcodes.Switch:
+            if debug:
+                print('not switch')
+            return False
         if len(instrs) < 2:
             if debug:
                 print('instr len')
@@ -339,9 +345,10 @@ class GraphAnalyzer:
             if debug:
                 print('not math ops')
             return False
-        if block.get_last_instr().get_opcode() != Opcodes.Switch:
+        
+        if len(block.get_prev()) <= 1:
             if debug:
-                print('not switch')
+                print('Not enough previous blocks for a loop.')
             return False
         #make sure theres at least one branch thats a fall through or a 1-1 ration
         already_checked = list()
@@ -376,9 +383,15 @@ class GraphAnalyzer:
         needed = 0
         for x in range(len(block.get_instrs()) - 1, -1, -1):
             instr = block.get_instrs()[x]
+            if debug:
+                print('getting needed loop: checking instr {}'.format(instr))
             added = instr.get_astack()
             pulled = instr.get_pstack()
             needed = needed - added + pulled
+            if instr.get_opcode() not in self.ALLOWED_SWITCH_LOOP_INSTRS:
+                if debug:
+                    print('Returning false because instruction isnt allowed.')
+                return False
 
         if debug:
             print('determined loop blocks', in_loop_blocks)
@@ -392,6 +405,8 @@ class GraphAnalyzer:
                 if debug:
                     print('prev is false')
                 return False
+        if debug:
+            print('Returning true due to fallthrough.')
         return True
     
     def __find_switch_case_mappings_internal(self, block, switch_block, offsets_grouped, already_done):
@@ -691,7 +706,7 @@ class GraphAnalyzer:
             if first_start_offset == -1:
                 raise Exception()
             self.__add_to_bad_instrs(math_block, first_start_offset, block, bad_instrs)
-            emu = net_emulator.DotNetEmulator(self.__method, start_offset=first_start_offset, end_offset=switch_instr.get_instr_offset(), dont_execute_cctor=True)
+            emu = net_emulator.DotNetEmulator(self.__method, start_offset=first_start_offset, end_offset=switch_instr.get_instr_offset(), dont_execute_cctor=True, init_open_generics_as_object=True)
             emu.setup_method_params([])
             worked = False
             try:
@@ -976,7 +991,7 @@ class GraphAnalyzer:
                     out = graph.duplicate()
                     is_obfuscated = True
                     is_obfuscated_at_all = True
-                    print('removing switch number {} {} {}'.format(x, block, block.get_instrs()))
+                    print('removing switch number {} {} {}'.format(x, block, block.get_last_instr()))
                     out.validate_blocks()
                     self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
                     out.validate_blocks()
