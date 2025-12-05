@@ -67,6 +67,9 @@ cdef class HeapObject:
             self.size = size
         self.read()
 
+    cpdef bytes get_raw_data(self):
+        return bytes(self.raw_data)
+
     cdef void update_bitmask(self, int new_size):
         raise net_exceptions.FeatureNotImplementedException()
 

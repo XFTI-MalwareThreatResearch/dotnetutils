@@ -338,7 +338,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
             return
         
         string_data_instr = None
-        string_data_disasm = None
         string_data_method = None
         string_compress_method = None
         for xref_rid, xref_offset in string_data_field.get_xrefs():
@@ -351,19 +350,63 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 prev_instr = dis[instr.get_instr_index()-1]
                 if prev_instr.get_opcode() == Opcodes.Call:
                     string_data_instr = prev_instr
-                    string_data_disasm = dis
                     string_data_method = xfm
                     string_compress_method = prev_instr.get_argument()
                     break
 
-        if string_data_instr is None or string_data_method is None or string_data_disasm is None or string_compress_method is None:
+        if string_data_instr is None or string_data_method is None or string_compress_method is None:
             print('Could not find where data is set.')
             return
-        start_offset = 0
+                
+        #first deobfuscate the control flow of the string encryption method to make parsing easier.
+        fgraph = net_graphing.FunctionGraph(string_data_method)
+        fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
+        fanalyzer.simplify_control_flow()
+        #we need to rerun so that the end offset is updated for the new control flow.
+        start_offset = -1
         #In some older versions of CEX, theres a call to a method that decrypts the resource assembly first, then the string decoding.
         string_disasm = string_data_method.disassemble_method()
-        if len(string_disasm) > 0 and string_disasm[0].get_opcode() == Opcodes.Call:
-            start_offset += len(string_disasm[0])
+        string_data_instr = None
+        for x in range(len(string_disasm)):
+            instr = string_disasm[x]
+            if instr.get_opcode() == Opcodes.Call and instr.get_argument() == string_compress_method:
+                string_data_instr = instr
+                break
+        if string_data_instr is None:
+            print('Could not find end offset.')
+            return
+        array_size = -1
+        for x in range(1, len(string_disasm) - 4):
+            instr = string_disasm[x]
+            if instr.get_opcode() == Opcodes.Newarr:
+                instr2 = string_disasm[x+1]
+                if instr2.get_opcode() == Opcodes.Dup:
+                    instr3 = string_disasm[x+2]
+                    if instr3.get_opcode() == Opcodes.Ldtoken:
+                        instr4 = string_disasm[x+3]
+                        if instr4.get_opcode() == Opcodes.Call:
+                            prev_instr = string_disasm[x-1]
+                            if not prev_instr.get_name().startswith('ldc.i4'):
+                                print('error: Could not find array size.')
+                                return
+                            array_size = prev_instr.get_argument()
+                            break
+        if array_size == -1:
+            print('Could not find array size.')
+            return
+        
+        for x in range(len(string_disasm) - 1):
+            instr = string_disasm[x]
+            if instr.get_name().startswith('ldc.i4'):
+                if instr.get_argument() == array_size:
+                    next_instr = string_disasm[x+1]
+                    if next_instr.get_name().startswith('stloc'):
+                        start_offset = instr.get_instr_offset()
+                        break
+
+        if start_offset == -1:
+            print('Could not find start offset.')
+            return
         print('Emulating string constructor {} {} {}'.format(hex(string_data_method.get_token()), hex(start_offset), hex(string_data_instr.get_instr_offset())))
 
         emu = net_emulator.DotNetEmulator(string_data_method, start_offset=start_offset, end_offset=string_data_instr.get_instr_offset(), dont_execute_cctor=True)
@@ -384,7 +427,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         compressed_buffer = compressed_buffer.as_bytes()
         try:
             decomp_buffer = decompress_cex_blob(compressed_buffer, self.__is_old_version(string_compress_method))
-        except:
+        except Exception as e:
             print('error decompressing initial data.  Its possible the string blob is corrupted.')
             return
         new_arr = net_emu_types.DotNetArray(emu, len(decomp_buffer), dotnet.get_typeref_by_full_name(b'System.Byte'))
@@ -442,17 +485,21 @@ class ConfuserExDeobfuscator(Deobfuscator):
     def __obtain_code_encrypt_key(self, dotnet):
         expected_value = None
         dis = self.code_decrypt_method.disassemble_method()
-        for x in range(len(dis)):
+        for x in range(3, len(dis)):
             instr = dis[x]
             if instr.get_opcode() in (Opcodes.Bne_Un, Opcodes.Bne_Un_S):
                 prev_instr = dis[x-1]
                 if prev_instr.get_name().startswith('ldc.i4'):
-                    expected_value = numpy.int32(prev_instr.get_argument()).astype(numpy.uint32)
-                    break
+                    prev_instr2 = dis[x-2]
+                    if prev_instr2.get_name().startswith('ldloc'):
+                        prev_instr3 = dis[x-3]
+                        if prev_instr3.get_name().startswith('stloc'):
+                            expected_value = numpy.int32(prev_instr.get_argument()).astype(numpy.uint32)
+                            break
         if expected_value is None:
             print('expected value none')
-            return None
-        
+            return False
+                
         target_section = None
         #find seed values:
         numbers = list()
@@ -470,7 +517,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 if instr.is_branch() or instr.is_absolute_jmp() or instr.get_opcode() in (Opcodes.Ret, Opcodes.Throw, Opcodes.Endfinally):
                     break
         if len(numbers) < 4:
-            return None
+            return False
         
         num4, num4_id = numbers[-4]
         num5, num5_id = numbers[-3]
@@ -494,7 +541,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
                     sec_data_index += 4
         if target_section is None:
             print('target section is None')
-            return None
+            return False
         
         start_mixing_offset = None
         end_mixing_offset = None
@@ -523,7 +570,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 break
 
         if end_mixing_offset is None or start_mixing_offset is None:
-            return None
+            return False
         
         emu = net_emulator.DotNetEmulator(self.code_decrypt_method, start_offset=start_mixing_offset, end_offset=end_mixing_offset, dont_execute_cctor=True)
         emu.setup_method_params([])
@@ -546,7 +593,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         except net_exceptions.EmulatorEndExecutionException:
             worked = True
         if not worked:
-            return None
+            return False
         array = emu.get_local_obj(array_vars[0]).as_python_obj()
         usable_array = list()
         for item in array:
@@ -572,7 +619,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 is_in_block = False
 
         if add_val is None:
-            return None
+            return False
         num_index = 0
         new_exe_data = bytearray(exe_data)
         for x in range(target_section['SizeOfRawData'] >> 2):
@@ -593,6 +640,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 continue
             instr = d.get_instr_at_offset(xref_offset)
             dotnet.patch_instruction(m, b'\x00' * len(instr), xref_offset, len(instr))
+        return True
 
     def __decrypt_method_code(self, dotnet):
         if self.code_decrypt_method is None:
@@ -606,7 +654,9 @@ class ConfuserExDeobfuscator(Deobfuscator):
         fanalyzer = net_graph_analyzer.GraphAnalyzer(self.code_decrypt_method, fgraph)
         fanalyzer.simplify_control_flow()
 
-        self.__obtain_code_encrypt_key(dotnet)
+        worked = self.__obtain_code_encrypt_key(dotnet)
+        if not worked:
+            raise net_exceptions.CantDeobfuscateException('Code decryption failed.  Cannot continue with deobfuscator.')
         
     def __clean_names(self, dotnet):
         net_deobfuscate_funcs.cleanup_names(dotnet)
@@ -618,7 +668,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
     def deobfuscate(self, dotnet):
         self.__decrypt_method_code(dotnet)
         self.__deobfuscate_strings(dotnet)
-        self.__clean_code(dotnet)
+        #self.__clean_code(dotnet)
         self.__clean_names(dotnet)
         dotnet.add_string('DNU_CEX_WATERMARK')
         return True

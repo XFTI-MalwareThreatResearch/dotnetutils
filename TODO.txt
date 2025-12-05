@@ -13,3 +13,4 @@ Control Flow Deobfuscation:
 - for babel sample 7005baba5671e99eb677bc7dff5b2e15527cb196668ad0340e9f015903430625 method 0x0600008C:
     - loop constants are protected by a method.  Babel deobfuscator would likely have to remove this separately
     - Additional changes are needed beyond that to support the scheme that method's control flow obfuscation uses.
+- after control flow deobfuscation is complete, update relevant xrefs.

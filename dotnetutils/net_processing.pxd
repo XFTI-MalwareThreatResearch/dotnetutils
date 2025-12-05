@@ -45,6 +45,8 @@ cdef class HeapObject:
 
     cpdef bytes to_bytes(self)
 
+    cpdef bytes get_raw_data(self)
+
     cdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
     
     cpdef bytes get_name(self)

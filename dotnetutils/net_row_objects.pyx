@@ -252,7 +252,8 @@ cdef class ColumnValue:
             stream.append_item(new_value)
             self.cached_value = None
             self.__has_no_value = False #Reset everything for next grab.
-            if orig_value != 0: #Stream.del_item() already handles references checks.  It will warn for now but thats fine.
+            if orig_value != 0 and stream.has_offset(orig_value): #Stream.del_item() already handles references checks.  It will warn for now but thats fine.
+                #If the stream doesnt have the offset, its probably an invalid row.  Allow the change but dont delete original.
                 stream.del_item(orig_value)
         elif self.col_type.is_fixed_value():
             self.raw_value = new_value

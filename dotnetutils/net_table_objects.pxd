@@ -26,6 +26,10 @@ cdef class TableObject:
 
     cpdef bytes to_bytes(self)
 
+    cpdef str get_name(self)
+    
+    cpdef int get_tid(self)
+
 cdef class MetadataTableHeader:
     cdef int start_offset
     cdef int reserved
@@ -38,6 +42,7 @@ cdef class MetadataTableHeader:
     cdef unsigned long long __sorted
     cdef list table_amt_rows
     cdef int end_offset
+    cdef unsigned int extra_data_size
     cdef dotnetpefile.DotNetPeFile dotnetpe
 
     cdef void parse_table_header(self, bytes file_data)
