@@ -663,7 +663,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
 
     def __clean_code(self, dotnet):
         net_deobfuscate_funcs.remove_useless_functions(dotnet)
-        net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
+        #net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
     
     def deobfuscate(self, dotnet):
         self.__decrypt_method_code(dotnet)

@@ -820,7 +820,17 @@ class GraphAnalyzer:
             print('Start mappings dump')
             print(start_mappings)
             print('before new switch block', new_switch_block, new_switch_block.get_prev(), new_switch_block.get_next())
-        for end_block, start_blocks in start_mappings.items():
+        #clean off the old switch block.
+        #now remove any instructions that we know are junk.
+        for blk in new_graph.blocks():
+            amt_deleted = 0
+            instrs = list(blk.get_instrs())
+            for x in range(len(instrs)):
+                instr = instrs[x]
+                if instr.get_instr_offset() in bad_instrs and ((not instr.is_branch() and not instr.is_absolute_jmp()) or instr.get_opcode() == Opcodes.Switch):
+                    blk.remove_instrs(x - amt_deleted, x - amt_deleted + 1)
+                    amt_deleted += 1
+        """for end_block, start_blocks in start_mappings.items():
             if debug:
                 print('Checking start blocks', start_blocks)
             while len(start_blocks) > 0:
@@ -832,6 +842,8 @@ class GraphAnalyzer:
                         print('Not in get_prev()')
                     continue
                 last_instr = start_block.get_last_instr()
+                if debug:
+                    print('last instr is ', last_instr)
                 if last_instr.get_opcode() in (Opcodes.Ret, Opcodes.Endfinally, Opcodes.Throw, Opcodes.Leave, Opcodes.Leave_S, Opcodes.Rethrow):
                     if debug:
                         print('has instrs {} {}'.format(new_switch_block, start_block))
@@ -840,6 +852,8 @@ class GraphAnalyzer:
                 already_checked = set()
                 if debug:
                     print('Starting to check next blocks')
+                    #TODO: this logic is no good it needs to be rewritten.
+
                 while len(usable_block.get_next()) == 1:
                     usable_block = usable_block.get_next()[0]
                     if debug:
@@ -860,19 +874,20 @@ class GraphAnalyzer:
                         
                         if debug:
                             print('removing next for switch block {} {}'.format(new_switch_block, start_block))
-                        new_switch_block.remove_next(start_block)
+                        new_switch_block.remove_next(start_block)"""
+        switch_nexts = list()
+        for new_end_block, block_to_change, old_next, new_next in nexts_added:
+            if block_to_change == new_switch_block:
+                switch_nexts.append(new_next)
+
+        for nxt in list(new_switch_block.get_next()):
+            if nxt in switch_nexts:
+                switch_nexts.remove(nxt)
+            else:
+                new_switch_block.remove_next(nxt)
+        
         if debug:
             print('after new switch block', new_switch_block, new_switch_block.get_prev(), new_switch_block.get_next())
-        #clean off the old switch block.
-        #now remove any instructions that we know are junk.
-        for blk in new_graph.blocks():
-            amt_deleted = 0
-            instrs = list(blk.get_instrs())
-            for x in range(len(instrs)):
-                instr = instrs[x]
-                if instr.get_instr_offset() in bad_instrs and ((not instr.is_branch() and not instr.is_absolute_jmp()) or instr.get_opcode() == Opcodes.Switch):
-                    blk.remove_instrs(x - amt_deleted, x - amt_deleted + 1)
-                    amt_deleted += 1
 
         for blk in list(new_graph.blocks()):
             if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and not blk.is_block_start():
@@ -1274,20 +1289,8 @@ class GraphAnalyzer:
             if len(block.get_exception_handlers()) != 0 and block not in blocks_order and not block.is_block_start():
                 raise Exception(str(block))
             self.__block_walker(block, blocks_order, deferred_blocks)
-
-        """for exc_flag, exc_try, exc_catch, exc_token in self.__graph.get_exception_blocks():
-            deferred_blocks = list()
-            self.__block_walker(exc_catch, blocks_order, deferred_blocks)
-            while deferred_blocks:
-                block = deferred_blocks.pop()
-                self.__block_walker(block, blocks_order, deferred_blocks)
-
-            if isinstance(exc_token, net_graphing.FunctionBlock):
-                deferred_blocks = list()
-                self.__block_walker(exc_token, blocks_order, deferred_blocks)
-                while deferred_blocks:
-                    block = deferred_blocks.pop()
-                    self.__block_walker(block, blocks_order, deferred_blocks)"""
+                
+        
         #check over the blocks, make sure theres a jmp if its needed.
         total_compiled = len(blocks_order)
         #Do an initial offset update to ensure the next loop works.
@@ -1315,12 +1318,48 @@ class GraphAnalyzer:
             current_offset += block.get_original_length()
             current_index += len(block.get_instrs())
         self.__graph.update_offsets()
-        self.__graph.validate_blocks()
-
         for block in remove_from_ordered:
             if block in blocks_order:
                 blocks_order.remove(block)
         remove_from_ordered.clear()
+        self.__graph.sort_blocks()
+        #do a check to make sure all blocks have a fallthrough if needed.
+        new_blocks_offset = list(self.__graph.blocks())[-1]
+        new_blocks_index = new_blocks_offset.get_start_index() + len(new_blocks_offset.get_instrs())
+        new_blocks_offset = new_blocks_offset.get_start_offset() + new_blocks_offset.get_original_length()
+        total_compiled = len(blocks_order)
+        new_blocks = list()
+        for x in range(total_compiled):
+            block = blocks_order[x]
+            last_instr = block.get_last_instr()
+            new_blocks.append(block)
+            if last_instr is None:
+                continue
+            if not last_instr.is_absolute_jmp() and last_instr.is_branch():
+                if x == (total_compiled - 1) or blocks_order[x+1] != block.get_next()[-1]:
+                    new_block = net_graphing.FunctionBlock(self.__method, self.__disasm, self.__graph)
+                    new_block.update_start_offset(new_blocks_offset, new_blocks_index)
+                    for exc in block.get_exception_handlers():
+                        new_block.add_exception_handler(exc)
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                    new_instr.setup_instr_size(5)
+                    new_instr.setup_instr_offset(new_blocks_offset, new_blocks_index)
+
+                    target = block.get_next()[-1].get_start_offset() - new_blocks_offset - 5
+                    new_instr.setup_arguments_from_int32(target)
+                    new_block.add_instr(new_instr)
+                    orig_next = block.get_next()[-1]
+                    block.replace_next_index(-1, new_block)
+                    new_block.add_next(orig_next)
+
+                    new_blocks.append(new_block)
+                    self.__graph.register_block(new_blocks_offset, new_block)
+                    new_blocks_offset += 5
+                    new_blocks_index += 1
+        self.__graph.update_offsets()
+        self.__graph.repopulate_prevs()
+        blocks_order = new_blocks
+        self.__graph.validate_blocks()
 
         total_compiled = len(blocks_order)
         #remove any dead blocks.
@@ -1371,6 +1410,7 @@ class GraphAnalyzer:
                                     instr4 = instrs[x+3]
                                     if instr4.get_opcode() in (Opcodes.Brfalse, Opcodes.Brfalse_S):
                                         #replace with ldc.i4.0, stloc, no ldloc, br
+                                        print('removing brfalse at instruction {}'.format(instr4))
                                         new_instr = self.__disasm.emit_instruction(Opcodes.Br)
                                         new_instr.setup_instr_size(5)
                                         new_instr.setup_instr_offset(instr3.get_instr_offset(), instr3.get_instr_index())

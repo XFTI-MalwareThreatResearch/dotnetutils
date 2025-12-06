@@ -581,6 +581,15 @@ class FunctionBlock:
                 found = True
         if not found:
             raise Exception()
+        
+    def replace_next_index(self, index, new_block):
+        old_next = self.__next[index]
+        self.__next[index] = new_block
+        if old_next not in self.__next:
+            if old_next.has_prev(self):
+                old_next.__previous.remove(self)
+        if not new_block.has_prev(self):
+            new_block.__previous.append(self)
 
     def get_nstack(self):
         result = 0
@@ -1215,21 +1224,15 @@ class FunctionGraph:
         current_offset = 0
         result = list()
         current_index = 0
+        debug = False
         for offset, block in self.__blocks_start.items():
-            if offset > current_offset and False:
-                amt_pad = offset - current_offset
-                for x in range(amt_pad):
-                    #If a branch is just not used, the graph will ignore it.  Account for that here.
-                    instr = self.__disasm_object.emit_instruction(0x0)
-                    instr.setup_instr_size(1)
-                    instr.setup_instr_offset(current_offset, current_index)
-                    result.append(instr)
-                    current_index += 1
-                    current_offset += 1
+            if debug:
+                print('emitting block {} {} {} {}'.format(hex(offset), block, block.get_prev(), block.get_next()))
             if current_offset != offset:
-                print(hex(current_offset), hex(offset))
-                raise Exception()
+                raise Exception('Offset mismatch when emitting instrs {} {}'.format(hex(current_offset), hex(offset)))
             for instr in block.get_instrs():
+                if debug:
+                    print('emitting instr', instr)
                 instr.setup_instr_offset(current_offset, current_index)
                 result.append(instr)
                 current_offset += len(instr)
