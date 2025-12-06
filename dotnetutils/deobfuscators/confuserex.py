@@ -668,7 +668,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
     def deobfuscate(self, dotnet):
         self.__decrypt_method_code(dotnet)
         self.__deobfuscate_strings(dotnet)
-        #self.__clean_code(dotnet)
+        self.__clean_code(dotnet)
         self.__clean_names(dotnet)
         dotnet.add_string('DNU_CEX_WATERMARK')
         return True
