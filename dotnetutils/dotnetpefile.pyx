@@ -22,6 +22,9 @@ from cpython.bytes cimport PyBytes_FromStringAndSize
 
 logger = getLogger(__name__)
 
+def method_rva_sort(method):
+    return method.get_column('RVA').get_value()
+
 cdef class PeFile:
     """Small custom PeFile implementation.
     Designed to ensure less python dependencies.
@@ -273,7 +276,7 @@ cdef class PeFile:
         else:
             self.__update_va32(va_addr, difference, dpe, stream_name, target_addr)
 
-    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference):
+    cdef void __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference):
         """ Handles the .NET Portions of patching.  Checks over the metadata tables, rvas etc.
 
         Args:
@@ -903,6 +906,56 @@ cdef class DotNetPeFile:
         if not self.metadata_dir.is_valid_directory:
             return
         self.metadata_dir.process_metadata_heap(no_processing)
+
+    cpdef void finish_patching(self):
+        self.align_method_rvas()
+
+    cpdef void align_method_rvas(self):
+        cdef PeFile pe = self.get_pe()
+        cdef net_table_objects.MethodDefTable mdef_table = self.get_metadata_table('MethodDef')
+        cdef int amt_added = 0
+        cdef unsigned int rva = 0
+        cdef unsigned int current_rva = 0
+        cdef Py_ssize_t x = 0
+        cdef net_row_objects.MethodDef mdef = None
+        cdef list methods_sorted = None
+        cdef net_row_objects.ColumnValue cobj = None
+        cdef unsigned int new_rva = 0
+        cdef dict add_mapping = dict()
+        cdef uint64_t current_offset = 0
+        cdef uint64_t offset = 0
+        cdef int amt_to_pad = 0
+        cdef bytes exe_data = None
+        cdef unsigned int orig_last_rva = 0
+        if mdef_table is None:
+            return
+        methods_sorted = list(mdef_table)
+        methods_sorted.sort(key=method_rva_sort)
+        orig_last_rva = methods_sorted[-1].get_column('RVA').get_value()
+        for mdef in methods_sorted:
+            cobj = mdef.get_column('RVA')
+            rva = cobj.get_value()
+            if rva == 0:
+                continue
+            current_offset = pe.get_offset_from_rva(rva)
+            current_rva = rva + amt_added
+            cobj.set_raw_value(current_rva)
+            if current_rva % 4 == 0:
+                continue
+            new_rva = (current_rva + 3) & ~3
+            amt_added += (new_rva - current_rva)
+            add_mapping[current_offset] = (new_rva - current_rva)
+            cobj.set_raw_value(new_rva)
+        if amt_added != 0:
+            new_rva = orig_last_rva + 1
+            pe.update_va(new_rva, amt_added, self, None, new_rva)
+            exe_data = self.get_exe_data()
+            current_offset = 0
+            for offset in sorted(add_mapping.keys()):
+                amt_to_pad = add_mapping[offset]
+                exe_data = exe_data[:offset + current_offset] + (b'\x00' * amt_to_pad) + exe_data[offset + current_offset:]
+                current_offset += amt_to_pad
+            self.set_exe_data(exe_data)
 
     cpdef uint64_t get_cor_header_offset(self):
         """ Obtain the file offset of the IMAGE_COR20_HEADER structure.

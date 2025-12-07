@@ -513,6 +513,7 @@ cpdef void remove_useless_bytearray_conditionals(dotnetpefile.DotNetPeFile dotne
                                                                         dotnet.patch_instruction(method_obj, nop_buffer,
                                                                                                  start_offset,
                                                                                                  end_offset - start_offset)
+    dotnet.finish_patching()
 
 cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list target_method_rids=[]):
     """Removes conditionals that will either always be true or always false
@@ -813,6 +814,7 @@ cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list ta
                                                  int.to_bytes(
                                                      num_instrs, 4, 'little', signed=True),
                                                  instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+    dotnet.finish_patching()
 
 cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj):
     """ A useless method is defined as a method that for instance just pulls all arguments off the stack then does either newobj, callvirt or call then returns
@@ -1153,6 +1155,7 @@ cpdef void remove_useless_functions(dotnetpefile.DotNetPeFile dotnet) except *:
                                          * b'\x00') + patch
                                 dotnet.patch_instruction(
                                     method, patch, instr.get_instr_offset(), instr.get_instr_size())
+    dotnet.finish_patching()
 
 cdef bint has_prefix(bytes type_name):
     """ Does the provided name include a prefix that we set?
@@ -1894,6 +1897,7 @@ cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
                                 col_val.set_raw_value(new_index)
             strings_heap.end_append_tx()
             count = 0
+    dotnet.finish_patching()
 
 
 cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list target_rids=None):
@@ -1931,4 +1935,5 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
             print('Possible control flow misidentification:', str(e))
             continue
         #new_graph.print_root()
+    dotnet.finish_patching()
     print('Done with control flow check')

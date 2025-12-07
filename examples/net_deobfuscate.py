@@ -159,6 +159,7 @@ def main():
                     print('Executable recognized as {} obfuscated executable.'.format(deob.NAME))
                     if deob.deobfuscate(current_dotnet):
                         print('Deobfuscation completed for {}'.format(deob.NAME))
+                        current_dotnet.finish_patching()
                         results.add(current_dotnet.get_exe_data())
                     else:
                         print('Deobfuscation failed for {}'.format(deob.NAME))
@@ -180,6 +181,7 @@ def main():
     else:
         print('invalid mode')
         exit()
+    dotnet.finish_patching()
     new_data = dotnet.get_exe_data()
     if new_data != None:
         with open(output_exe, 'wb') as outfile:

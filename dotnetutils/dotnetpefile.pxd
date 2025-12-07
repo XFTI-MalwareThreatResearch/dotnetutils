@@ -45,7 +45,7 @@ cdef class PeFile:
 
     cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
 
-    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference)
+    cdef void __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference)
 
     cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
 
@@ -64,6 +64,10 @@ cdef class DotNetPeFile:
     cdef net_metadata.MetaDataDirectory metadata_dir
     cdef bytes original_exe_data
     cdef PeFile pe
+
+    cpdef void align_method_rvas(self)
+
+    cpdef void finish_patching(self)
 
     cpdef void reinit_dpe(self, bint no_processing)
 

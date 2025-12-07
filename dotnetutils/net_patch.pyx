@@ -83,6 +83,7 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
     dotnetpe.set_exe_data(bytes(new_exe_data))
     dotnetpe.reinit_dpe(False)
+    dotnetpe.finish_patching()
 
 cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):
     """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.

@@ -1622,7 +1622,6 @@ class MethodRecompiler:
                 flags |= 0x0010
             flags |= (3 << 12)
             #we need a function graph to calculate the max stack size.
-            import binascii
             result.extend(int.to_bytes(flags, 2, 'little'))
             result.extend(int.to_bytes(calculated_max_stack, 2, 'little'))
             result.extend(int.to_bytes(self.__code_size, 4, 'little'))
@@ -1631,15 +1630,14 @@ class MethodRecompiler:
             for instr in self.__instrs:
                 b = instr.to_bytes()
                 result.extend(b)
-
             if len(self.__exception_blocks) == 0:
                 return bytes(result)
             def calc_int_size(num: int):
                 return (num.bit_length() + 7) // 8
             
-            while len(result) % 4 != 0: 
+            new_length = (len(result) + 3) & ~3
+            while len(result) != new_length:
                 result.append(0)
-            
             use_fat_exceptions = False
 
             if len(self.__exception_blocks) > 20:
