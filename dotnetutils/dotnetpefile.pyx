@@ -272,11 +272,11 @@ cdef class PeFile:
             target_addr (uint64_t): An address within the block of data that you are attempting to modify.
         """
         if self.is_64bit():
-            self.__update_va64(va_addr, difference, dpe, stream_name, target_addr)
+            self._update_va64(va_addr, difference, dpe, stream_name, target_addr, False)
         else:
-            self.__update_va32(va_addr, difference, dpe, stream_name, target_addr)
+            self._update_va32(va_addr, difference, dpe, stream_name, target_addr, False)
 
-    cdef void __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference):
+    cdef void __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference, bint dont_update_methods):
         """ Handles the .NET Portions of patching.  Checks over the metadata tables, rvas etc.
 
         Args:
@@ -371,7 +371,7 @@ cdef class PeFile:
 
         #Let reconstruct executable handle updating heap offsets and sizes internally.
         tobj = dpe.get_metadata_table('MethodDef')
-        if tobj is not None:
+        if tobj is not None and not dont_update_methods:
             for x in range(1, len(tobj) + 1):
                 mdef_obj = tobj.get(<int>x)
                 cobj = mdef_obj.get_column('RVA')
@@ -421,7 +421,7 @@ cdef class PeFile:
         result = bytes(new_exe_data)
         dpe.set_exe_data(result)
 
-    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr):
+    cdef void _update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint dont_update_methods):
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
         cdef Py_buffer new_exe_view
         cdef IMAGE_DOS_HEADER * dos_header = NULL
@@ -627,9 +627,9 @@ cdef class PeFile:
                     resource_rva = resource_offset
                     resource_offset = self.get_offset_from_rva(resource_offset)
                     net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, self, new_exe_view, va_addr, difference, target_addr)
-            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference)
+            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference, dont_update_methods)
 
-    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr):
+    cdef void _update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint dont_update_methods):
         cdef bytearray new_exe_data = bytearray(dpe.get_exe_data())
         cdef Py_buffer new_exe_view
         cdef IMAGE_DOS_HEADER * dos_header = NULL
@@ -725,7 +725,6 @@ cdef class PeFile:
                     if data_dir.VirtualAddress <= target_addr < (data_dir.VirtualAddress + data_dir.Size):
                         data_dir.Size += difference
                     data_dir.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, data_dir.VirtualAddress, va_addr, difference, target_addr)
-            
             optional_header.SizeOfCode = size_of_code
             optional_header.SizeOfInitializedData = size_of_initialized_data
             optional_header.SizeOfUninitializedData = size_of_uninitialized_data
@@ -737,7 +736,7 @@ cdef class PeFile:
             cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>new_exe_view.buf + net_header_offset)
             if target_addr < cor_header.MetaData.VirtualAddress:
                 before_streams = True
-
+            
             if cor_header.MetaData.VirtualAddress <= target_addr < (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
                 #FIXME: while this fixes the issue regarding inserting blank strings stream,
                 #I think it may hypothetically cause other issues.  Not sure.  Might need to remove <= and replace with < again.
@@ -833,7 +832,7 @@ cdef class PeFile:
                     resource_rva = resource_offset
                     resource_offset = self.get_offset_from_rva(resource_offset)
                     net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, self, new_exe_view, va_addr, difference, target_addr)
-            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference)
+            self.__update_va(va_addr, difference, dpe, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference, dont_update_methods)
 
     cpdef IMAGE_COR20_HEADER get_net_header(self):
         """ Obtain the IMAGE_COR20_HEADER associated with the executable.
@@ -931,12 +930,14 @@ cdef class DotNetPeFile:
             return
         methods_sorted = list(mdef_table)
         methods_sorted.sort(key=method_rva_sort)
-        orig_last_rva = methods_sorted[-1].get_column('RVA').get_value()
+        orig_last_rva = 0
         for mdef in methods_sorted:
             cobj = mdef.get_column('RVA')
             rva = cobj.get_value()
             if rva == 0:
                 continue
+            if orig_last_rva == 0:
+                orig_last_rva = rva
             current_offset = pe.get_offset_from_rva(rva)
             current_rva = rva + amt_added
             cobj.set_raw_value(current_rva)
@@ -946,9 +947,14 @@ cdef class DotNetPeFile:
             amt_added += (new_rva - current_rva)
             add_mapping[current_offset] = (new_rva - current_rva)
             cobj.set_raw_value(new_rva)
+        if orig_last_rva == 0:
+            raise Exception()
         if amt_added != 0:
-            new_rva = orig_last_rva + 1
-            pe.update_va(new_rva, amt_added, self, None, new_rva)
+            if pe.is_64bit():
+                pe._update_va64(orig_last_rva, amt_added, self, None, orig_last_rva, True)
+            else:
+                pe._update_va32(orig_last_rva, amt_added, self, None, orig_last_rva, True)
+
             exe_data = self.get_exe_data()
             current_offset = 0
             for offset in sorted(add_mapping.keys()):

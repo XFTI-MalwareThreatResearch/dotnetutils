@@ -163,7 +163,6 @@ def main():
                         results.add(current_dotnet.get_exe_data())
                     else:
                         print('Deobfuscation failed for {}'.format(deob.NAME))
-
                     #Files can use multiple obfuscators.
         print('Outputting {} files to directory {}'.format(len(results), output_exe))
         for data in results:

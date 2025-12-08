@@ -597,6 +597,42 @@ cdef class DotNetObject:
     cdef StackCell ToString(self, StackCell * params, int nparams):
         raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Called ToString() where it wasnt implemented {}'.format(type(self)))
 
+cdef class BoxedReference(DotNetObject):
+    """ Used in order to allow users to interact with references.
+    """
+    def __init__(self, net_emulator.DotNetEmulator emu_obj):
+        DotNetObject.__init__(self, emu_obj)
+        memset(&self.__internal_cell, 0x0, sizeof(StackCell))
+
+    cdef void init_internal_cell(self, StackCell cell):
+        self.__internal_cell = self.get_emulator_obj().duplicate_cell(cell)
+    
+    def __dealloc__(self):
+        self.get_emulator_obj().dealloc_cell(self.__internal_cell)
+
+    cpdef DotNetObject get_val(self):
+        cdef StackCell val = self.get_emulator_obj().get_ref(self.__internal_cell)
+        cdef StackCell boxed = self.get_emulator_obj().box_value(val, None)
+        cdef DotNetObject result = None
+        if boxed.tag != CorElementType.ELEMENT_TYPE_OBJECT and boxed.tag != CorElementType.ELEMENT_TYPE_STRING or boxed.is_slim_object:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Unable to box value requested.')
+        self.get_emulator_obj().dealloc_cell(val)
+        result = <DotNetObject>boxed.item.ref
+        self.get_emulator_obj().dealloc_cell(boxed)
+        return result
+
+    cpdef void set_val(self, DotNetObject dnObj):
+        cdef StackCell obj_cell
+        cdef StackCell unboxed_cell
+        if isinstance(dnObj, BoxedReference):
+            raise net_exceptions.FeatureNotImplementedException()
+        if isinstance(dnObj, DotNetString):
+            obj_cell = self.get_emulator_obj().pack_string(dnObj)
+        else:
+            obj_cell = self.get_emulator_obj().pack_object(dnObj)
+        unboxed_cell = self.get_emulator_obj().unbox_value(obj_cell)
+        self.get_emulator_obj().set_ref(self.__internal_cell, unboxed_cell)
+
 cdef class DotNetNumber(DotNetObject):
     """ As of now, DotNetNumber isnt really used anymore and is likely to have a significant amount of methods removed.
 
@@ -893,7 +929,7 @@ cdef class DotNetNumber(DotNetObject):
     cdef CorElementType get_num_type(self):
         return self.__num_type
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         """ Generally this method isnt used anymore and will probably be removed soon.
             Replaced with StackCell representations.
         """
@@ -1108,6 +1144,17 @@ cdef class DotNetIntPtr(DotNetNumber):
     cdef StackCell Zero(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
         return app_domain.get_emulator_obj().pack_i(0)
 
+    @staticmethod
+    cdef StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        if nparams <= 0:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell arg_obj = params[0]
+        if arg_obj.tag == CorElementType.ELEMENT_TYPE_I4:
+            return app_domain.get_emulator_obj().cast_cell(arg_obj, net_sigs.get_CorSig_IntPtr())
+        elif arg_obj.tag == CorElementType.ELEMENT_TYPE_I:
+            return app_domain.get_emulator_obj().cast_cell(arg_obj, net_sigs.get_CorSig_IntPtr())
+        raise net_exceptions.EmulatorExecutionException(app_domain.get_emulator_obj(), 'invalid op_Explicit type for IntPtr')
+
     cdef DotNetObject duplicate(self):
         cdef DotNetIntPtr num = DotNetIntPtr(self.get_emulator_obj(), None)
         if self.get_emulator_obj().is_64bit():
@@ -1120,7 +1167,7 @@ cdef class DotNetIntPtr(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_I:
@@ -1711,7 +1758,7 @@ cdef class DotNetUIntPtr(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_U:
@@ -2285,7 +2332,7 @@ cdef class DotNetInt8(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_I1:
@@ -2415,7 +2462,7 @@ cdef class DotNetInt16(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_I2:
@@ -2581,7 +2628,7 @@ cdef class DotNetInt32(DotNetNumber):
         
         return self.get_emulator_obj().pack_i4(self.as_int() - other.item.i4)
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_I4:
@@ -3100,7 +3147,7 @@ cdef class DotNetInt64(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_I8:
@@ -3648,7 +3695,7 @@ cdef class DotNetUInt8(DotNetNumber):
             return result
         raise Exception('orop {}'.format(net_utils.get_cor_type_name(other_type)))
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_U1:
@@ -3796,7 +3843,7 @@ cdef class DotNetUInt16(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_U2:
@@ -3931,7 +3978,7 @@ cdef class DotNetUInt32(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if self._ptr == NULL:
@@ -4453,7 +4500,7 @@ cdef class DotNetUInt64(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_U8:
@@ -4920,7 +4967,7 @@ cdef class DotNetSingle(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_R4:
@@ -5099,7 +5146,7 @@ cdef class DotNetDouble(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_R8:
@@ -5282,7 +5329,7 @@ cdef class DotNetBoolean(DotNetNumber):
         cdef DotNetBoolean bobj = other.cast(CorElementType.ELEMENT_TYPE_BOOLEAN)
         return bobj.as_bool() == self.as_bool()
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         if new_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
             return self
         raise Exception()
@@ -5303,7 +5350,7 @@ cdef class DotNetVoid(DotNetNumber):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         raise Exception()
 
 cdef class DotNetChar(DotNetUInt16):
@@ -5319,7 +5366,7 @@ cdef class DotNetChar(DotNetUInt16):
     cdef void duplicate_into(self, DotNetObject result):
         pass
 
-    cdef DotNetNumber cast(self, CorElementType new_type):
+    cpdef DotNetNumber cast(self, CorElementType new_type):
         cdef DotNetNumber res_obj = None
         cdef bint native_64 = self.get_emulator_obj().is_64bit()
         if new_type == CorElementType.ELEMENT_TYPE_CHAR:
@@ -7563,6 +7610,7 @@ cdef class DotNetModule(DotNetObject):
         self.add_function(b'ResolveMethod', <emu_func_type>self.ResolveMethod)
         self.add_function(b'ResolveType', <emu_func_type>self.ResolveType)
         self.add_function(b'ResolveField', <emu_func_type>self.ResolveField)
+        self.add_function(b'get_FullyQualifiedName', <emu_func_type>self.get_FullyQualifiedName)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.Module' or DotNetObject.isinst(self, tdef)
@@ -7574,6 +7622,10 @@ cdef class DotNetModule(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result):
         pass
+
+    cdef StackCell get_FullyQualifiedName(self, StackCell * params, int nparams):
+        cdef bytes data = self.internal_module.get_column('Name').get_value()
+        return self.get_emulator_obj().pack_string(DotNetString(self.get_emulator_obj(), data, 'utf-8'))
 
     cdef StackCell get_ModuleHandle(self, StackCell * params, int nparams):
         return self.get_emulator_obj().pack_object(DotNetModuleHandle(self.get_emulator_obj(), self.internal_module))
@@ -10738,3 +10790,5 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[49].name = 'System.Reflection.Emit.OpCodes
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[49].func_ptr = <static_func_type>&DotNetOpCodes.Call
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[50].name = 'System.Reflection.Emit.OpCodes.Ret'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[50].func_ptr = <static_func_type>&DotNetOpCodes.Ret
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51].name = 'System.IntPtr.op_Explicit'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51].func_ptr = <static_func_type>&DotNetIntPtr.op_Explicit

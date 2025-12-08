@@ -1936,4 +1936,5 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
             continue
         #new_graph.print_root()
     dotnet.finish_patching()
+    dotnet.reinit_dpe(False) #xrefs
     print('Done with control flow check')

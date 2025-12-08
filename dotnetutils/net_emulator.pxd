@@ -10,6 +10,7 @@ from cpython.object cimport PyObject
 from libc.stdint cimport uint64_t, uint16_t, int64_t, int32_t, uint32_t
 from dotnetutils.net_structs cimport CorElementType
 from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell, SlimObject
+from dotnetutils.net_opcodes cimport Opcodes
 
 ctypedef StackCell (*emu_func_type)(net_emu_types.DotNetObject, StackCell * params, int nparams) #Sig for emulated thiscalls.
 ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator) #Sig for creating new objects - NOT THE ctor func.
@@ -55,9 +56,14 @@ cdef class EmulatorAppDomain:
     cdef unordered_map[int, static_func_type] __static_functions
     cdef unordered_map[int, newobj_func_type] __newobj_ctors
     cdef unordered_map[int, int] __static_field_mappings
+    cdef dict __user_instr_handlers
     cdef dict __field_index_registrations
     cdef dict __field_counter_registrations
     cdef vector[StackCell] __static_fields
+
+    cpdef void register_instr_handler(self, Opcodes opcode, object instrFn, object param)
+
+    cdef tuple get_instr_handler(self, Opcodes opcode)
 
     cdef void _initialize(self)
 
@@ -190,6 +196,8 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
     cdef bint __init_open_generics_as_object
+
+    cpdef net_cil_disas.Instruction get_instr(self)
 
     cpdef void set_local_obj(self, int idx, net_emu_types.DotNetObject obj)
 
@@ -343,7 +351,7 @@ cdef class DotNetEmulator:
 
     cdef StackCell unbox_value(self, StackCell cell)
 
-    cdef bint is_64bit(self)
+    cpdef bint is_64bit(self)
 
     cpdef net_emu_types.DotNetThread get_current_thread(self)
 

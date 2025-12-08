@@ -1,4 +1,5 @@
 import lzma
+import pefile
 import numpy
 from dotnetutils import dotnetpefile
 from dotnetutils import net_graphing
@@ -39,6 +40,128 @@ def decompress_cex_blob(compressed_buffer, old_version):
     decompressed_buffer = d.decompress(compressed_data, max_length=sz_unc)
     return decompressed_buffer
 
+"""
+This section has some good examples on how to use emulator callbacks
+The gist is:
+- They are applied to the app domain so exist across all function calls made by an emulator.
+- Return False if you dont want the emulator to process the instruction normally, True otherwise.
+- You can modify the stack, locals and other emulator state related items.
+- Utilize the pop_obj(), append_obj(), set_local_obj(), set_static_obj() etc.
+"""
+
+def cex_decrypt_ldind_u4_handler(emulator, argument):
+    address_obj = emulator.get_stack().pop_obj()
+    if not isinstance(address_obj, net_emu_types.DotNetIntPtr):
+        raise Exception()
+    address_val = address_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U).as_python_obj()
+    resulting_value = net_emu_types.DotNetInt32(emulator, None)
+    resulting_value.from_int(argument.read_int32(address_val))
+    emulator.get_stack().append_obj(resulting_value)
+    return False
+
+def cex_decrypt_stind_i4_handler(emulator, argument):
+    value_obj = emulator.get_stack().pop_obj()
+    address_obj = emulator.get_stack().pop_obj()
+    if not isinstance(address_obj, net_emu_types.DotNetIntPtr) or not isinstance(value_obj, net_emu_types.DotNetInt32):
+        raise Exception()
+    address_val = address_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U).as_python_obj()
+    argument.write_int32(address_val, value_obj.as_python_obj())
+    return False
+
+def cex_decrypt_ldind_u2_handler(emulator, argument):
+    address_obj = emulator.get_stack().pop_obj()
+    if not isinstance(address_obj, net_emu_types.DotNetIntPtr):
+        raise Exception()
+    address_val = address_obj.cast(net_structs.CorElementType.ELEMENT_TYPE_U).as_python_obj()
+    resulting_value = net_emu_types.DotNetUInt16(emulator, None)
+    resulting_value.from_ushort(argument.read_uint16(address_val))
+    emulator.get_stack().append_obj(resulting_value.cast(net_structs.CorElementType.ELEMENT_TYPE_I4))
+    return False
+
+def cex_decrypt_call_handler(emulator, argument):
+    method_obj = emulator.get_instr().get_argument()
+    if isinstance(method_obj, net_row_objects.MemberRef):
+        full_name = method_obj.get_full_name()
+        if full_name == b'System.Runtime.InteropServices.Marshal.GetHINSTANCE':
+            module = emulator.get_stack().pop_obj()
+            result = net_emu_types.DotNetIntPtr(emulator, None)
+            if emulator.is_64bit():
+                result.from_long(argument.get_imagebase())
+            else:
+                result.from_int(argument.get_imagebase())
+            emulator.get_stack().append_obj(result)
+            return False
+    elif isinstance(method_obj, net_row_objects.MethodDef):
+        implmap_table = emulator.get_method_obj().get_dotnetpe().get_metadata_table('ImplMap')
+        is_virtprot = False
+        if implmap_table is not None:
+            for impl in implmap_table:
+                if impl.get_column('MemberForwarded').get_value() == method_obj:
+                    if impl.get_column('ImportName').get_value() == b'VirtualProtect':
+                        is_virtprot = True
+                        break
+            if is_virtprot:
+                oldprot_addr = emulator.get_stack().pop_obj()
+                if not isinstance(oldprot_addr, net_emu_types.BoxedReference):
+                    raise Exception()
+                emulator.get_stack().remove_obj()
+                emulator.get_stack().remove_obj()
+                emulator.get_stack().remove_obj()
+                #no op the VirtualProtect call.
+                result = net_emu_types.DotNetBoolean(emulator, None)
+                result.from_bool(True)
+                emulator.get_stack().append_obj(result)
+                #make sure the var isnt 64 to trick cex into decrypting.
+                new_prot = net_emu_types.DotNetUInt32(emulator, None)
+                new_prot.from_uint(0) #Can be anything that isnt 64, just to trick the check.
+                oldprot_addr.set_val(new_prot)
+                return False
+
+    return True
+
+class MemoryMappedExecutable:
+    def __init__(self, dotnet):
+        self.__buffer = None
+        self.__imagebase = None
+        self.__sizeofimage = None
+        self.__last_rva_written = None
+        self.__map_executable(dotnet)
+        if self.__buffer is None or self.__imagebase is None or self.__sizeofimage is None:
+            raise Exception()
+        
+    def get_last_rva_written(self):
+        return self.__last_rva_written
+
+    def __map_executable(self, dotnet):
+        pe = pefile.PE(data=dotnet.get_exe_data())
+        self.__buffer = bytearray(pe.get_memory_mapped_image())
+        self.__imagebase = pe.OPTIONAL_HEADER.ImageBase
+        self.__sizeofimage = pe.OPTIONAL_HEADER.SizeOfImage
+
+    def get_imagebase(self):
+        return self.__imagebase
+    
+    def get_buffer(self):
+        return self.__buffer
+    
+    def read_uint32(self, address):
+        rva = address - self.__imagebase
+        return int.from_bytes(self.__buffer[rva:rva+4], 'little')
+    
+    def read_int32(self, address):
+        rva = address - self.__imagebase
+        return int.from_bytes(self.__buffer[rva:rva+4], 'little', signed=True)
+
+    def read_uint16(self, address):
+        rva = address - self.__imagebase
+        return int.from_bytes(self.__buffer[rva:rva+2], 'little')
+    
+    def write_int32(self, address, value):
+        rva = address - self.__imagebase
+        self.__last_rva_written = rva
+        val_b = int.to_bytes(value, 4, 'little', signed=True)
+        self.__buffer = self.__buffer[:rva] + val_b + self.__buffer[rva + 4:]
+        
 class ConfuserExDeobfuscator(Deobfuscator):
 
     NAME = 'confuserex'
@@ -434,6 +557,8 @@ class ConfuserExDeobfuscator(Deobfuscator):
         new_arr.from_python_obj(list(decomp_buffer))
         emu.set_static_field_obj(string_data_field.get_rid(), new_arr)
         appended_strings = dict()
+        dotnet.reinit_dpe(False)
+        self.__identify_string_methods(dotnet)
         us_heap.begin_append_tx()
         for mspec in self.string_methods:
             for xref_rid, xref_offset in mspec.get_xrefs():
@@ -482,165 +607,50 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 #For now just nop it + replace the call with ldstr.
         us_heap.end_append_tx()
 
-    def __obtain_code_encrypt_key(self, dotnet):
-        expected_value = None
-        dis = self.code_decrypt_method.disassemble_method()
-        for x in range(3, len(dis)):
-            instr = dis[x]
-            if instr.get_opcode() in (Opcodes.Bne_Un, Opcodes.Bne_Un_S):
-                prev_instr = dis[x-1]
-                if prev_instr.get_name().startswith('ldc.i4'):
-                    prev_instr2 = dis[x-2]
-                    if prev_instr2.get_name().startswith('ldloc'):
-                        prev_instr3 = dis[x-3]
-                        if prev_instr3.get_name().startswith('stloc'):
-                            expected_value = numpy.int32(prev_instr.get_argument()).astype(numpy.uint32)
-                            break
-        if expected_value is None:
-            print('expected value none')
-            return False
-                
-        target_section = None
-        #find seed values:
-        numbers = list()
-        past_ldc_24 = False
-        for x in range(len(dis)):
-            instr = dis[x]
-            if instr.get_name().startswith('ldc.i4'):
-                if instr.get_argument() == 24:
-                    past_ldc_24 = True
-            if past_ldc_24:
-                if instr.get_name().startswith('stloc'):
-                    prev_instr = dis[x-1]
-                    if prev_instr.get_name().startswith('ldc.i4'):
-                        numbers.append((numpy.int32(prev_instr.get_argument()).astype(numpy.uint32), instr.get_argument()))
-                if instr.is_branch() or instr.is_absolute_jmp() or instr.get_opcode() in (Opcodes.Ret, Opcodes.Throw, Opcodes.Endfinally):
-                    break
-        if len(numbers) < 4:
-            return False
-        
-        num4, num4_id = numbers[-4]
-        num5, num5_id = numbers[-3]
-        num6, num6_id = numbers[-2]
-        num7, num7_id = numbers[-1]
+    def __do_code_decrypt(self, dotnet):
+        emulator = net_emulator.DotNetEmulator(self.code_decrypt_method, dont_execute_cctor=True)
+        emulator.setup_method_params([])
+        mapped = MemoryMappedExecutable(dotnet)
+        app_domain = emulator.get_appdomain()
+        app_domain.register_instr_handler(Opcodes.Ldind_U4, cex_decrypt_ldind_u4_handler, mapped)
+        app_domain.register_instr_handler(Opcodes.Ldind_U2, cex_decrypt_ldind_u2_handler, mapped)
+        app_domain.register_instr_handler(Opcodes.Stind_I4, cex_decrypt_stind_i4_handler, mapped)
+        app_domain.register_instr_handler(Opcodes.Call, cex_decrypt_call_handler, mapped)
+        orig_buffer = bytearray(mapped.get_buffer())
+        emulator.run_function()
+        new_buffer = mapped.get_buffer()
         exe_data = dotnet.get_exe_data()
-        for section in dotnet.get_pe().get_sections():
-            name_data = section['Name']
-            result_value = numpy.uint32(int.from_bytes(name_data[:4], 'little')) * numpy.uint32(int.from_bytes(name_data[4:], 'little'))
-            if result_value == expected_value:
-                target_section = section
-            elif result_value != 0:
-                section_size = section['SizeOfRawData'] >> 2
-                section_data = exe_data[section['PointerToRawData']: section['PointerToRawData'] + section['SizeOfRawData']]
-                sec_data_index = 0
-                for x in range(0, section_size):
-                    new_number = (num4 ^ numpy.uint32(int.from_bytes(section_data[sec_data_index:sec_data_index+4]))) + num5 + num6 * num7
-                    num4 = num5
-                    num5 = num7
-                    num7 = new_number
-                    sec_data_index += 4
-        if target_section is None:
-            print('target section is None')
-            return False
-        
-        start_mixing_offset = None
-        end_mixing_offset = None
-        array_vars = list()
-        prev_call = None
-        for x in range(len(dis)):
-            instr = dis[x]
-            if instr.get_name() == 'newarr' and start_mixing_offset is None:
-                if instr.get_argument().get_full_name() == b'System.UInt32':
-                    start_mixing_offset = dis[x-1].get_instr_offset()
-            if instr.get_name() == 'newarr':
-                next_instr = dis[x+1]
-                if next_instr.get_name().startswith('stloc'):
-                    array_vars.append(next_instr.get_argument())
-            
-            if instr.get_name() in ('call', 'callvirt'):
-                instr_arg = instr.get_argument()
-                if not isinstance(instr_arg, net_row_objects.MethodDef):
-                    prev_call = instr
-                    continue
-                msig = instr_arg.get_method_signature()
-                if msig.get_return_type() == net_sigs.get_CorSig_Boolean():
-                    end_mixing_offset = prev_call.get_instr_offset()
-                prev_call = instr
-            if end_mixing_offset is not None and start_mixing_offset is not None:
-                break
-
-        if end_mixing_offset is None or start_mixing_offset is None:
-            return False
-        
-        emu = net_emulator.DotNetEmulator(self.code_decrypt_method, start_offset=start_mixing_offset, end_offset=end_mixing_offset, dont_execute_cctor=True)
-        emu.setup_method_params([])
-        num4_obj = net_emu_types.DotNetUInt32(emu, None)
-        num4_obj.from_uint(num4)
-        num5_obj = net_emu_types.DotNetUInt32(emu, None)
-        num5_obj.from_uint(num5)
-        num6_obj = net_emu_types.DotNetUInt32(emu, None)
-        num6_obj.from_uint(num6)
-        num7_obj = net_emu_types.DotNetUInt32(emu, None)
-        num7_obj.from_uint(num7)
-        emu.set_local_obj(num4_id, num4_obj)
-        emu.set_local_obj(num5_id, num5_obj)
-        emu.set_local_obj(num6_id, num6_obj)
-        emu.set_local_obj(num7_id, num7_obj)
-        worked = False
-        print('running emulator from {} to {}'.format(hex(start_mixing_offset), hex(end_mixing_offset)))
-        try:
-            emu.run_function()
-        except net_exceptions.EmulatorEndExecutionException:
-            worked = True
-        if not worked:
-            return False
-        array = emu.get_local_obj(array_vars[0]).as_python_obj()
-        usable_array = list()
-        for item in array:
-            val = numpy.uint32(item.as_python_obj() & 0xFFFFFFFF)
-            usable_array.append(val)
-
-        add_val = None
-        is_in_block = False
-        for x in range(len(dis)):
-            instr = dis[x]
-            op = instr.get_opcode()
-            if instr.get_name().startswith('ldloc') and instr.get_argument() == array_vars[0]:
-                is_in_block = True
-
-            if is_in_block:
-                ops = (dis[x-1].get_opcode(), op, dis[x+1].get_opcode(), dis[x+2].get_opcode(), dis[x+3].get_opcode())
-                if ops == (Opcodes.Ldind_U4, Opcodes.Xor, Opcodes.Ldc_I4, Opcodes.Add, Opcodes.Stelem_I4):
-                    add_val = numpy.int32(dis[x+1].get_argument()).astype(numpy.uint32)
+        if orig_buffer != new_buffer and mapped.get_last_rva_written() is not None:
+            #copy over just the encrypted section.
+            encr_rva = mapped.get_last_rva_written()
+            target_section = None
+            pe = pefile.PE(data=exe_data)
+            for section in pe.sections:
+                if section.VirtualAddress <= encr_rva < (section.VirtualAddress + section.Misc_VirtualSize):
+                    target_section = section
                     break
-                
+            if target_section is None:
+                print('Could not find encrypted section.')
+                return False
             
-            if instr.is_branch() or instr.is_absolute_jmp() or op in (Opcodes.Throw, Opcodes.Ret, Opcodes.Endfinally):
-                is_in_block = False
-
-        if add_val is None:
+            amt_to_copy = min(target_section.SizeOfRawData, target_section.Misc_VirtualSize)
+            exe_data = exe_data[:target_section.PointerToRawData] + new_buffer[target_section.VirtualAddress:target_section.VirtualAddress+amt_to_copy] + exe_data[target_section.PointerToRawData + amt_to_copy:]
+            exe_data = bytes(exe_data)
+            xrefs = self.code_decrypt_method.get_xrefs()
+            dotnet.set_exe_data(bytes(exe_data))
+            dotnet.reinit_dpe(False)
+            #Lastly blank out the xrefs to prevent re code decryption.
+            for xref_id, xref_offset in xrefs:
+                m = dotnet.get_method_by_rid(xref_id)
+                d = m.disassemble_method()
+                if d is None:
+                    continue
+                instr = d.get_instr_at_offset(xref_offset)
+                dotnet.patch_instruction(m, b'\x00' * len(instr), xref_offset, len(instr))
+            return True
+        else:
             return False
-        num_index = 0
-        new_exe_data = bytearray(exe_data)
-        for x in range(target_section['SizeOfRawData'] >> 2):
-            index = target_section['PointerToRawData'] + num_index
-            current_num = numpy.uint32(int.from_bytes(new_exe_data[index:index+4], 'little'))
-            current_num ^= usable_array[x % 16]
-            usable_array[x % 16] = (usable_array[x % 16] ^ current_num) + add_val
-            new_exe_data = new_exe_data[:index] + current_num.tobytes() + new_exe_data[index + 4:]
-            num_index += 4
-        xrefs = self.code_decrypt_method.get_xrefs()
-        dotnet.set_exe_data(bytes(new_exe_data))
-        dotnet.reinit_dpe(False)
-        #Lastly blank out the xrefs to prevent re code decryption.
-        for xref_id, xref_offset in xrefs:
-            m = dotnet.get_method_by_rid(xref_id)
-            d = m.disassemble_method()
-            if d is None:
-                continue
-            instr = d.get_instr_at_offset(xref_offset)
-            dotnet.patch_instruction(m, b'\x00' * len(instr), xref_offset, len(instr))
-        return True
+
 
     def __decrypt_method_code(self, dotnet):
         if self.code_decrypt_method is None:
@@ -649,12 +659,8 @@ class ConfuserExDeobfuscator(Deobfuscator):
         if len(self.code_decrypt_method.get_xrefs()) == 0:
             print('Code decryption method found but not used.  Code is likely not encrypted.')
             return
-        #first deobfuscate the control flow of the encryption method to make parsing easier.
-        fgraph = net_graphing.FunctionGraph(self.code_decrypt_method)
-        fanalyzer = net_graph_analyzer.GraphAnalyzer(self.code_decrypt_method, fgraph)
-        fanalyzer.simplify_control_flow()
 
-        worked = self.__obtain_code_encrypt_key(dotnet)
+        worked = self.__do_code_decrypt(dotnet)
         if not worked:
             raise net_exceptions.CantDeobfuscateException('Code decryption failed.  Cannot continue with deobfuscator.')
         
@@ -666,10 +672,19 @@ class ConfuserExDeobfuscator(Deobfuscator):
         net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
     
     def deobfuscate(self, dotnet):
+        print('Starting ConfuserEx deobfuscator')
+        print('Attempting to deobfuscate encrypted code.')
         self.__decrypt_method_code(dotnet)
+        print('Completed deobfuscate encrypted code.')
+        print('Attempting to deobfuscate encrypted strings.')
         self.__deobfuscate_strings(dotnet)
-        self.__clean_code(dotnet)
+        print('Deobfuscated encrypted strings.')
+        print('Cleaning control flow obfuscation.')
+        self.__clean_code(dotnet) 
+        print('Finished running code cleanups.')
+        print('Cleaning up metadata names.')
         self.__clean_names(dotnet)
+        print('Finished cleaning names, watermarking executable.')
         dotnet.add_string('DNU_CEX_WATERMARK')
         return True
     

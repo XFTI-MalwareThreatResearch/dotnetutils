@@ -8,6 +8,7 @@ from libc.string cimport strlen, strcmp, memset, memcpy
 from libc.stdlib cimport free, malloc
 from dotnetutils cimport net_sigs, net_tokens, net_utils, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
 from dotnetutils.net_structs cimport CorElementType
+from dotnetutils.net_opcodes cimport Opcodes
 from cpython.ref cimport Py_INCREF, Py_XDECREF
 from libcpp.utility cimport pair
 from cpython.exc cimport PyErr_CheckSignals
@@ -3729,6 +3730,15 @@ cdef class EmulatorAppDomain:
         self.__current_emulator = None
         self.__field_index_registrations = dict()
         self.__field_counter_registrations = dict()
+        self.__user_instr_handlers = dict()
+
+    cpdef void register_instr_handler(self, Opcodes opcode, object instrFn, object param):
+        self.__user_instr_handlers[opcode] = (instrFn, param)
+
+    cdef tuple get_instr_handler(self, Opcodes opcode):
+        if opcode not in self.__user_instr_handlers:
+            return None
+        return self.__user_instr_handlers[opcode]
 
     cdef void _initialize(self):
         """ Initialize the AppDomain.  Must be called once only.
@@ -4449,7 +4459,7 @@ cdef class DotNetEmulator:
         is_destroyed (bint): has the emulator already been deallocated?
     """
 
-    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), EmulatorAppDomain app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False, bint init_open_generics_as_object=False):
+    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False, bint init_open_generics_as_object=False):
         """ Constructor for Emulator objects.
 
         Params:
@@ -4551,6 +4561,9 @@ cdef class DotNetEmulator:
             self.timeout_ns = 0
         self.start_time = 0
         self.initialize_locals() #So that locals can be set before everything is set up.
+
+    cpdef net_cil_disas.Instruction get_instr(self):
+        return self.instr
 
     cdef StackCell convert_unsigned(self, StackCell cell):
         """ For numbers, this will convert a StackCell to its unsigned counterpart and return a duplicate.
@@ -7100,17 +7113,25 @@ cdef class DotNetEmulator:
             net_exceptions.OperationNotSupportedException: the operation cant be done on the provided args.
             net_exceptions.FeatureNotImplementedException: Ability to box this item has not been implemented.
         """
-        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
-            return self.duplicate_cell(cell)
-        if cell.tag == CorElementType.ELEMENT_TYPE_END or cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
-            raise net_exceptions.OperationNotSupportedException()
-        if cell.is_slim_object:
-            raise net_exceptions.OperationNotSupportedException()
         cdef net_emu_types.DotNetObject dobj = None
         cdef net_emu_types.DotNetNumber dnum = None
         cdef net_sigs.CorLibTypeSig cor_sig = None
         cdef CorElementType cor_type
         cdef net_sigs.TypeSig usable_sig = type_sig
+        cdef net_emu_types.BoxedReference box_ref = None
+        if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
+            return self.duplicate_cell(cell)
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            raise net_exceptions.OperationNotSupportedException()
+            
+        if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
+            box_ref = net_emu_types.BoxedReference(self)
+            box_ref.init_internal_cell(cell)
+            return self.pack_object(box_ref)
+            
+        if cell.is_slim_object:
+            raise net_exceptions.OperationNotSupportedException()
+
         if usable_sig is None:
             usable_sig = net_sigs.CorLibTypeSig(cell.tag, None, None)
         if isinstance(usable_sig, net_sigs.CorLibTypeSig):
@@ -7251,7 +7272,7 @@ cdef class DotNetEmulator:
     def __dealloc__(self):
         self.cleanup()
 
-    cdef bint is_64bit(self):
+    cpdef bint is_64bit(self):
         """ Is the emulator running as 64 bit.
         """
         return self.__is_64bit
@@ -7702,12 +7723,12 @@ cdef class DotNetEmulator:
                 state_str += '{}: {} - {}\n'.format(x, self.cell_to_str(obj), str(param_sigs[x - 1]))
             else:
                 state_str += '{}: {} - {}\n'.format(x, self.cell_to_str(obj), str(param_sigs[x]))
-        state_str += 'Printing static variables:\n'
+        """state_str += 'Printing static variables:\n'
         if field_table is not None:
             for idno in range(self.get_appdomain().get_amt_static_fields()):
                 obj = self.get_appdomain().get_static_field_idx(idno)
                 field_sig = (<net_row_objects.Field>field_table.get(obj.rid)).get_field_signature()
-                state_str += '{}: {} - {}\n'.format(hex(obj.rid), self.cell_to_str(obj), str(field_sig.get_type_sig()))
+                state_str += '{}: {} - {}\n'.format(hex(obj.rid), self.cell_to_str(obj), str(field_sig.get_type_sig()))"""
         state_str += 'Printing local vars:\n'
         for key in range(self.localvars.size()):
             value = self.localvars[key]
@@ -7828,6 +7849,9 @@ cdef class DotNetEmulator:
         cdef StackCell cell
         cdef bint should_check_offset = False
         cdef unsigned int end_offset = 0
+        cdef EmulatorAppDomain app_domain = self.get_appdomain()
+        cdef bint should_do_normal_handler = False
+        cdef tuple instr_handler = None
         if self.end_method_rid > 0:
             if isinstance(self.method_obj, net_row_objects.MethodDef) and self.method_obj.get_rid() == self.end_method_rid:
                 should_check_offset = True
@@ -7884,11 +7908,20 @@ cdef class DotNetEmulator:
             try:
                 if self.print_debug:
                     self.__last_instr_start = _perf_counter_ns()
-                emu_instr_handler = emu_func_handlers[<uint16_t>self.instr.get_opcode()]
-                if emu_instr_handler == NULL:
-                    raise net_exceptions.InstructionNotSupportedException(self.instr.get_name())
+                should_do_normal_handler = False
+                instr_handler = app_domain.get_instr_handler(self.instr.get_opcode())
+                if instr_handler is None:
+                    should_do_normal_handler = True
+                else:
+                    should_do_normal_handler = instr_handler[0](self, instr_handler[1])
+                    do_normal_offsets = True
                 
-                do_normal_offsets = not emu_instr_handler(self)
+                if should_do_normal_handler:
+                    emu_instr_handler = emu_func_handlers[<uint16_t>self.instr.get_opcode()]
+                    if emu_instr_handler == NULL:
+                        raise net_exceptions.InstructionNotSupportedException(self.instr.get_name())
+                    
+                    do_normal_offsets = not emu_instr_handler(self)
 
                 if do_normal_offsets:
                     self.current_eip += 1

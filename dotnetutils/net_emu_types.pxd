@@ -104,6 +104,18 @@ cdef class DotNetObject:
 
     cdef bint greaterthanequals(self, DotNetNumber other)
 
+cdef class BoxedReference(DotNetObject):
+    """ Used in order to allow users to interact with references.
+    """
+
+    cdef StackCell __internal_cell
+
+    cdef void init_internal_cell(self, StackCell cell)
+
+    cpdef DotNetObject get_val(self)
+
+    cpdef void set_val(self, DotNetObject dnObj)
+
 cdef class DotNetNumber(DotNetObject):
     cdef unsigned char * _ptr
     cdef int __amt_bytes
@@ -163,7 +175,7 @@ cdef class DotNetNumber(DotNetObject):
 
     cdef bint __check_size(self, int amt_bytes, CorElementType num_type)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -232,11 +244,14 @@ cdef class DotNetIntPtr(DotNetNumber):
     @staticmethod
     cdef StackCell Zero(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
+    @staticmethod
+    cdef StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -279,7 +294,7 @@ cdef class DotNetUIntPtr(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -326,7 +341,7 @@ cdef class DotNetInt8(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -345,7 +360,7 @@ cdef class DotNetInt16(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -366,7 +381,7 @@ cdef class DotNetInt32(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -409,7 +424,7 @@ cdef class DotNetInt64(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -452,7 +467,7 @@ cdef class DotNetUInt8(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -471,7 +486,7 @@ cdef class DotNetUInt16(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -490,7 +505,7 @@ cdef class DotNetUInt32(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -533,7 +548,7 @@ cdef class DotNetUInt64(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -576,7 +591,7 @@ cdef class DotNetSingle(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -619,7 +634,7 @@ cdef class DotNetDouble(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -662,21 +677,21 @@ cdef class DotNetBoolean(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
 cdef class DotNetVoid(DotNetNumber):
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
 cdef class DotNetChar(DotNetUInt16):
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
 cdef class DotNetType(DotNetObject):
     cdef net_row_objects.TypeDefOrRef type_handle
@@ -1158,6 +1173,8 @@ cdef class DotNetModule(DotNetObject):
     cdef net_row_objects.RowObject internal_module
 
     cdef StackCell get_ModuleHandle(self, StackCell * params, int nparams)
+
+    cdef StackCell get_FullyQualifiedName(self, StackCell * params, int nparams)
 
     cdef StackCell ResolveType(self, StackCell * params, int nparams)
     
