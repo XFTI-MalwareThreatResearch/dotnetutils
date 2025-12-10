@@ -2,7 +2,8 @@ import sys
 import os
 import hashlib
 from dotnetutils.deobfuscators.confuserex import ConfuserExDeobfuscator
-from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer, net_sigs
+from dotnetutils.deobfuscators import deobfuscator
+from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer
 
 def main():
     if len(sys.argv) < 4:
@@ -137,6 +138,7 @@ def main():
         deobfuscators = [ConfuserExDeobfuscator]
         results = set()
         work = [dotnet]
+        ctx = deobfuscator.DeobfuscatorContext()
         if not os.path.isdir(output_exe):
             print('error: invalid directory for results')
             exit(0)
@@ -144,26 +146,31 @@ def main():
             current_dotnet = work.pop()
             for deob_type in deobfuscators:
                 deob = deob_type()
-                if deob.identify_unpack(current_dotnet):
+                if deob.identify_unpack(current_dotnet, ctx):
                     print('Executable recognized as {} packed executable.'.format(deob.NAME))
-                    unpacked_exes = deob.unpack(current_dotnet)
+                    unpacked_exes = deob.unpack(current_dotnet, ctx)
                     for unpacked_exe in unpacked_exes:
                         results.add(unpacked_exe)
                         dpe = dotnetpefile.try_get_dotnetpe(pe_data=unpacked_exe)
                         if dpe is not None:
+                            sha_obj = hashlib.sha256()
+                            sha_obj.update(dpe.get_exe_data())
+                            print('{} unpacker outputted file with hash {}'.format(deob.NAME, sha_obj.hexdigest()))
                             work.append(dpe)
                     print('Extracted {} files'.format(len(unpacked_exes)))
                     break
 
-                if deob.identify_deobfuscate(current_dotnet):
+                if deob.identify_deobfuscate(current_dotnet, ctx):
                     print('Executable recognized as {} obfuscated executable.'.format(deob.NAME))
-                    if deob.deobfuscate(current_dotnet):
+                    if deob.deobfuscate(current_dotnet, ctx):
                         print('Deobfuscation completed for {}'.format(deob.NAME))
                         current_dotnet.finish_patching()
+                        sha_obj = hashlib.sha256()
+                        sha_obj.update(current_dotnet.get_exe_data())
+                        print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
                         results.add(current_dotnet.get_exe_data())
                     else:
                         print('Deobfuscation failed for {}'.format(deob.NAME))
-                    #Files can use multiple obfuscators.
         print('Outputting {} files to directory {}'.format(len(results), output_exe))
         for data in results:
             sha_obj = hashlib.sha256()

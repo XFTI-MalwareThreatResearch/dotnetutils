@@ -475,7 +475,6 @@ cdef class PeFile:
             for x in range(nt_headers.FileHeader.NumberOfSections):
                 section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
                 if section_header.VirtualAddress <= target_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
-
                     old_rawsize = section_header.SizeOfRawData
                     new_rawsize = old_rawsize + difference
                     new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
@@ -535,7 +534,10 @@ cdef class PeFile:
                 #FIXME: while this fixes the issue regarding inserting blank strings stream,
                 #I think it may hypothetically cause other issues.  Not sure.  Might need to remove <= and replace with < again.
                 in_streams = True
-                cor_header.MetaData.Size += difference       
+                cor_header.MetaData.Size += difference
+            if cor_header.Resources.VirtualAddress <= target_addr < (cor_header.Resources.VirtualAddress + cor_header.Resources.Size):
+                cor_header.Resources.Size += difference
+
             cor_header.MetaData.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.MetaData.VirtualAddress, va_addr, difference, target_addr)
 
             cor_header.Resources.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.Resources.VirtualAddress,
@@ -682,7 +684,6 @@ cdef class PeFile:
         if difference != 0:
             for x in range(nt_headers.FileHeader.NumberOfSections):
                 section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
-                #TODO: maybe look into how this code works when subtracting?
                 if section_header.VirtualAddress <= target_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
                     old_rawsize = section_header.SizeOfRawData
                     new_rawsize = old_rawsize + difference
@@ -738,10 +739,10 @@ cdef class PeFile:
                 before_streams = True
             
             if cor_header.MetaData.VirtualAddress <= target_addr < (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
-                #FIXME: while this fixes the issue regarding inserting blank strings stream,
-                #I think it may hypothetically cause other issues.  Not sure.  Might need to remove <= and replace with < again.
-                cor_header.MetaData.Size = cor_header.MetaData.Size + difference
+                cor_header.MetaData.Size += difference
                 in_streams = True
+            if cor_header.Resources.VirtualAddress <= target_addr < (cor_header.Resources.VirtualAddress + cor_header.Resources.Size):
+                cor_header.Resources.Size += difference
             cor_header.MetaData.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.MetaData.VirtualAddress, va_addr, difference, target_addr)
             cor_header.Resources.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(self, new_exe_view, cor_header.Resources.VirtualAddress,
                                                                 va_addr, difference, target_addr)
@@ -907,7 +908,8 @@ cdef class DotNetPeFile:
         self.metadata_dir.process_metadata_heap(no_processing)
 
     cpdef void finish_patching(self):
-        self.align_method_rvas()
+        return
+        #self.align_method_rvas()
 
     cpdef void align_method_rvas(self):
         cdef PeFile pe = self.get_pe()
@@ -930,38 +932,21 @@ cdef class DotNetPeFile:
             return
         methods_sorted = list(mdef_table)
         methods_sorted.sort(key=method_rva_sort)
-        orig_last_rva = 0
         for mdef in methods_sorted:
             cobj = mdef.get_column('RVA')
             rva = cobj.get_value()
             if rva == 0:
                 continue
-            if orig_last_rva == 0:
-                orig_last_rva = rva
             current_offset = pe.get_offset_from_rva(rva)
-            current_rva = rva + amt_added
-            cobj.set_raw_value(current_rva)
-            if current_rva % 4 == 0:
+            if rva % 4 == 0:
                 continue
-            new_rva = (current_rva + 3) & ~3
-            amt_added += (new_rva - current_rva)
-            add_mapping[current_offset] = (new_rva - current_rva)
-            cobj.set_raw_value(new_rva)
-        if orig_last_rva == 0:
-            raise Exception()
-        if amt_added != 0:
-            if pe.is_64bit():
-                pe._update_va64(orig_last_rva, amt_added, self, None, orig_last_rva, True)
-            else:
-                pe._update_va32(orig_last_rva, amt_added, self, None, orig_last_rva, True)
-
+            new_rva = (rva + 3) & ~3
+            amt_to_pad = new_rva - rva
+            pe.update_va(rva, amt_to_pad, self, None, rva)
             exe_data = self.get_exe_data()
-            current_offset = 0
-            for offset in sorted(add_mapping.keys()):
-                amt_to_pad = add_mapping[offset]
-                exe_data = exe_data[:offset + current_offset] + (b'\x00' * amt_to_pad) + exe_data[offset + current_offset:]
-                current_offset += amt_to_pad
+            exe_data = exe_data[:current_offset] + (b'\x00' * amt_to_pad) + exe_data[current_offset:]
             self.set_exe_data(exe_data)
+            pe = self.get_pe()
 
     cpdef uint64_t get_cor_header_offset(self):
         """ Obtain the file offset of the IMAGE_COR20_HEADER structure.

@@ -173,7 +173,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
     identifiers = [b'ConfusedByAttribute\x00', b'Confused by ConfuserEx\x00']
     
 
-    def identify_unpack(self, dotnet: dotnetpefile.DotNetPeFile):
+    def identify_unpack(self, dotnet: dotnetpefile.DotNetPeFile, ctx):
         ep_method = dotnet.get_entry_point()
         if ep_method is None:
             return False
@@ -267,7 +267,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             break
         return self.code_decrypt_method
 
-    def identify_deobfuscate(self, dotnet):
+    def identify_deobfuscate(self, dotnet, ctx):
         #TODO: we dont want to only identify based on strings
         #A binary can be confuserex obfuscated and simply not have any strings.
         if dotnet.has_string(b'DNU_CEX_WATERMARK'):
@@ -332,7 +332,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             if has_ldc_16 and has_ldc_24 and has_newarr and has_initobj:
                 self.string_methods.append(mspec)
 
-    def unpack(self, dotnet):
+    def unpack(self, dotnet, ctx):
         #find the decompress method.
         if self.decrypt_method is None:
             raise net_exceptions.CantUnpackException('Cant unpack due to internal error.')
@@ -430,9 +430,14 @@ class ConfuserExDeobfuscator(Deobfuscator):
             raise net_exceptions.CantUnpackException("Cant find CEX compressed entrypoint.")
         
         ep_token = int.from_bytes(sig_obj.get_column('Signature').get_value()[:4], 'little')
-        new_dpe.set_entry_point(ep_token)
-
-        return [new_dpe.get_exe_data()]
+        self.__identify_code_decryption_method(new_dpe)
+        if self.code_decrypt_method is None or len(self.code_decrypt_method.get_xrefs()) == 0:
+            new_dpe.set_entry_point(ep_token)
+            self.code_decrypt_method = None
+            return [new_dpe.get_exe_data()]
+        ctx.set_item('Entry', ep_token)
+        self.code_decrypt_method = None
+        return [new_data]
     
     def __deobfuscate_strings(self, dotnet):
         self.__identify_string_methods(dotnet)
@@ -482,6 +487,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             return
                 
         #first deobfuscate the control flow of the string encryption method to make parsing easier.
+        #instead of deobfuscating here, maybe just emulate with no op hooks for potential problematic instructions?  Also since we already identified the code decryption func earlier, we can proabably just reuse that for detection.
         fgraph = net_graphing.FunctionGraph(string_data_method)
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
         fanalyzer.simplify_control_flow()
@@ -506,6 +512,8 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 if instr2.get_opcode() == Opcodes.Dup:
                     instr3 = string_disasm[x+2]
                     if instr3.get_opcode() == Opcodes.Ldtoken:
+                        import binascii
+                        print('encoded data {}'.format(binascii.hexlify(instr3.get_argument().get_data())))
                         instr4 = string_disasm[x+3]
                         if instr4.get_opcode() == Opcodes.Call:
                             prev_instr = string_disasm[x-1]
@@ -557,8 +565,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
         new_arr.from_python_obj(list(decomp_buffer))
         emu.set_static_field_obj(string_data_field.get_rid(), new_arr)
         appended_strings = dict()
-        dotnet.reinit_dpe(False)
-        self.__identify_string_methods(dotnet)
         us_heap.begin_append_tx()
         for mspec in self.string_methods:
             for xref_rid, xref_offset in mspec.get_xrefs():
@@ -671,7 +677,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         net_deobfuscate_funcs.remove_useless_functions(dotnet)
         net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
     
-    def deobfuscate(self, dotnet):
+    def deobfuscate(self, dotnet, ctx):
         print('Starting ConfuserEx deobfuscator')
         print('Attempting to deobfuscate encrypted code.')
         self.__decrypt_method_code(dotnet)
@@ -680,12 +686,16 @@ class ConfuserExDeobfuscator(Deobfuscator):
         self.__deobfuscate_strings(dotnet)
         print('Deobfuscated encrypted strings.')
         print('Cleaning control flow obfuscation.')
-        self.__clean_code(dotnet) 
+        self.__clean_code(dotnet)
         print('Finished running code cleanups.')
         print('Cleaning up metadata names.')
         self.__clean_names(dotnet)
         print('Finished cleaning names, watermarking executable.')
+        if ctx.has_item('Entry'):
+            dotnet.set_entry_point(ctx.get_item('Entry'))
+
         dotnet.add_string('DNU_CEX_WATERMARK')
+        print('Finished!')
         return True
     
     
