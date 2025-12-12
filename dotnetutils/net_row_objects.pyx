@@ -1379,15 +1379,8 @@ cdef class MethodDef(MethodDefOrRef):
         cdef dotnetpefile.PeFile pe = self.get_dotnetpe().get_pe()
         cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
         cdef uint64_t file_offset = pe.get_offset_from_rva(rva)
-        cdef int amt_padding = 0
-        cdef bytes old_exe_data = self.get_dotnetpe().get_exe_data()
-        cdef bytes new_data = None
         difference = new_method_size - orig_method_size
-        if difference != 0:
-            pe.update_va(rva + 1, difference, self.get_dotnetpe(), None, rva) #make sure we dont patch out the current method.
-        new_data = self.get_dotnetpe().get_exe_data()
-        new_data = new_data[:file_offset] + data + new_data[file_offset + orig_method_size:]
-        self.get_dotnetpe().set_exe_data(new_data)
+        self.get_dotnetpe().patch_dpe(rva, difference, None, rva, data, file_offset + orig_method_size)
 
     cpdef bytes get_name(self):
         """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().

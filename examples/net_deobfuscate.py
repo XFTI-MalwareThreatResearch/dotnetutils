@@ -25,7 +25,9 @@ def main():
     output_exe = sys.argv[3]
     with open(obf_exe, 'rb') as infile:
         data = infile.read()
+    print('reading dotnet')
     dotnet = dotnetpefile.try_get_dotnetpe(pe_data=data)
+    print('done')
     if dotnet is None:
         print('Not a dotnet file.')
         exit(0)
@@ -164,7 +166,6 @@ def main():
                     print('Executable recognized as {} obfuscated executable.'.format(deob.NAME))
                     if deob.deobfuscate(current_dotnet, ctx):
                         print('Deobfuscation completed for {}'.format(deob.NAME))
-                        current_dotnet.finish_patching()
                         sha_obj = hashlib.sha256()
                         sha_obj.update(current_dotnet.get_exe_data())
                         print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
@@ -187,7 +188,6 @@ def main():
     else:
         print('invalid mode')
         exit()
-    dotnet.finish_patching()
     new_data = dotnet.get_exe_data()
     if new_data != None:
         with open(output_exe, 'wb') as outfile:
