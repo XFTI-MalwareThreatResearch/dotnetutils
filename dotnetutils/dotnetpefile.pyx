@@ -324,6 +324,18 @@ cdef class DotNetPeFile:
         else:
             self.__patch_dpe32(va, diff, stream_name, target_va, False, new_data, target_end)
 
+    cdef uint64_t __get_offset_from_memview(self, Py_buffer view_obj, uint64_t rva):
+        cdef IMAGE_DOS_HEADER * dos = <IMAGE_DOS_HEADER*>view_obj.buf
+        cdef IMAGE_NT_HEADERS32 * nt = <IMAGE_NT_HEADERS32*>(<char*>view_obj.buf + dos.e_lfanew)
+        cdef IMAGE_SECTION_HEADER * array = <IMAGE_SECTION_HEADER*>(<char*>view_obj.buf + dos.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt.FileHeader.SizeOfOptionalHeader)
+        cdef int x = 0
+        cdef IMAGE_SECTION_HEADER hdr
+        for x in range(nt.FileHeader.NumberOfSections):
+            hdr = array[x]
+            if hdr.VirtualAddress <= rva < (hdr.VirtualAddress + max(hdr.Misc.VirtualSize, hdr.SizeOfRawData)):
+                return hdr.PointerToRawData + (rva - hdr.VirtualAddress)
+        return 0
+
     cdef void __update_net_vas(self, uint64_t va_addr, int difference, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference, bint dont_update_methods, bytes new_data, uint64_t target_end):
         """ Handles the .NET Portions of patching.  Checks over the metadata tables, rvas etc.
 
@@ -439,19 +451,21 @@ cdef class DotNetPeFile:
                 if resource_offset == va_addr:
                     continue
                 resource_rva = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, resource_offset, va_addr, difference, target_addr)
-                method_offset = pe.get_offset_from_rva(resource_rva)
+                method_offset = self.__get_offset_from_memview(new_exe_view, resource_rva)
                 resource_rva += padding_counter
+                if method_offset == 0:
+                    raise net_exceptions.InvalidArgumentsException()
                 if resource_rva != resource_offset:
                     in_table = True
                     cobj.set_raw_value(<unsigned int>resource_rva)
                 if min_method_rva == 0:
                     min_method_rva = resource_rva
-                if resource_rva % 4 != 0 and False:
+                if resource_rva % 4 != 0:
                     new_rva = resource_rva
                     while new_rva % 4 != 0:
                         new_rva += 1
                     amt_method_padding = <uint32_t>(new_rva - resource_rva)
-                    method_padding[method_offset] = amt_method_padding
+                    method_padding[method_offset + padding_counter] = amt_method_padding
                     cobj.set_raw_value(<unsigned int>new_rva)
                     padding_counter += amt_method_padding
         tobj = self.get_metadata_table('FieldRVA')
@@ -496,7 +510,7 @@ cdef class DotNetPeFile:
         if new_data is not None:
             result = result[:patch_start] + new_data + result[target_end:]
             self.set_exe_data(result)
-            if difference != 0 and padding_counter > 0 and False:
+            if difference != 0 and padding_counter > 0:
                 if min_method_rva != 0:
                     if pe.is_64bit():
                         self.__patch_dpe64(min_method_rva, padding_counter, None, min_method_rva, True, None, 0)
@@ -504,10 +518,9 @@ cdef class DotNetPeFile:
                         self.__patch_dpe32(min_method_rva, padding_counter, None, min_method_rva, True, None, 0)
                     
                     result = self.get_exe_data()
-                    padding_counter = 0
-                    for resource_offset, amt_method_padding in method_padding.items():
-                        result = result[:resource_offset + padding_counter] + (b'\x00'*amt_method_padding) + result[resource_offset + padding_counter:]
-                        padding_counter += amt_method_padding
+                    for resource_offset in sorted(method_padding.keys()):
+                        amt_method_padding = method_padding[resource_offset]
+                        result = result[:resource_offset] + (b'\x00'*amt_method_padding) + result[resource_offset:]
                     self.set_exe_data(result)
         else:
             if not dont_update_methods and stream_name is None:
@@ -572,7 +585,8 @@ cdef class DotNetPeFile:
                 if section_header.VirtualAddress <= target_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
                     old_rawsize = section_header.SizeOfRawData
                     new_rawsize = old_rawsize + diff
-                    new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
+                    if new_rawsize % nt_headers.OptionalHeader.FileAlignment != 0:
+                        new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
                     amt_padding = new_rawsize - old_rawsize - diff
                     padding_offset = section_header.PointerToRawData + old_rawsize
                     section_header.SizeOfRawData = new_rawsize
@@ -793,7 +807,8 @@ cdef class DotNetPeFile:
                 if section_header.VirtualAddress <= target_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
                     old_rawsize = section_header.SizeOfRawData
                     new_rawsize = old_rawsize + diff
-                    new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
+                    if new_rawsize % nt_headers.OptionalHeader.FileAlignment != 0:
+                        new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
                     amt_padding = new_rawsize - old_rawsize - diff
                     padding_offset = section_header.PointerToRawData + old_rawsize
                     section_header.SizeOfRawData = new_rawsize

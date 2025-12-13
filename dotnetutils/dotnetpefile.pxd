@@ -65,6 +65,8 @@ cdef class DotNetPeFile:
 
     cpdef void __patch_dpe64(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bint dont_update_methods, bytes new_data, uint64_t target_end)
 
+    cdef uint64_t __get_offset_from_memview(self, Py_buffer view_obj, uint64_t rva)
+    
     cpdef void reinit_dpe(self, bint no_processing)
 
     cpdef void update_streams(self)
