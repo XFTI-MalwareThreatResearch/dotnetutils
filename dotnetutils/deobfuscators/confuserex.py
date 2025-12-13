@@ -686,14 +686,13 @@ class ConfuserExDeobfuscator(Deobfuscator):
         self.__deobfuscate_strings(dotnet)
         print('Deobfuscated encrypted strings.')
         print('Cleaning control flow obfuscation.')
-        #self.__clean_code(dotnet)
+        self.__clean_code(dotnet)
         print('Finished running code cleanups.')
         print('Cleaning up metadata names.')
         self.__clean_names(dotnet)
         print('Finished cleaning names, watermarking executable.')
         if ctx.has_item('Entry'):
             dotnet.set_entry_point(ctx.get_item('Entry'))
-
         dotnet.add_string('DNU_CEX_WATERMARK')
         print('Finished!')
         return True

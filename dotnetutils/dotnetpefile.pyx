@@ -436,6 +436,8 @@ cdef class DotNetPeFile:
                 resource_offset = cobj.get_raw_value()
                 if resource_offset == 0:
                     continue
+                if resource_offset == va_addr:
+                    continue
                 resource_rva = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, resource_offset, va_addr, difference, target_addr)
                 method_offset = pe.get_offset_from_rva(resource_rva)
                 resource_rva += padding_counter
@@ -459,6 +461,8 @@ cdef class DotNetPeFile:
                 cobj = rva_obj.get_column('RVA')
                 resource_offset = cobj.get_raw_value()
                 if resource_offset == 0:
+                    continue
+                if resource_offset == va_addr:
                     continue
                 resource_rva = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, resource_offset, va_addr, difference, target_addr)
                 if resource_offset != resource_rva:
@@ -490,9 +494,6 @@ cdef class DotNetPeFile:
                 last_difference += <int>len(new_stream_data) - old_size
         result = bytes(new_exe_data)
         if new_data is not None:
-            sha_obj = hashlib.sha256()
-            sha_obj.update(result)
-            print('Current hash: {}, Patch Start: {}, Patch End {}'.format(sha_obj.hexdigest(), hex(patch_start), hex(target_end)))
             result = result[:patch_start] + new_data + result[target_end:]
             self.set_exe_data(result)
             if difference != 0 and padding_counter > 0 and False:
