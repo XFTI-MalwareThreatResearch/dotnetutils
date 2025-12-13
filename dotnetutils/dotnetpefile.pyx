@@ -3,6 +3,7 @@
 
 import re
 import pefile
+import hashlib
 import traceback
 
 from dotnetutils.net_structs import DotNetResourceSet
@@ -489,6 +490,9 @@ cdef class DotNetPeFile:
                 last_difference += <int>len(new_stream_data) - old_size
         result = bytes(new_exe_data)
         if new_data is not None:
+            sha_obj = hashlib.sha256()
+            sha_obj.update(result)
+            print('Current hash: {}, Patch Start: {}, Patch End {}'.format(sha_obj.hexdigest(), hex(patch_start), hex(target_end)))
             result = result[:patch_start] + new_data + result[target_end:]
             self.set_exe_data(result)
             if difference != 0 and padding_counter > 0 and False:

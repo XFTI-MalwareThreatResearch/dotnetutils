@@ -686,7 +686,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         self.__deobfuscate_strings(dotnet)
         print('Deobfuscated encrypted strings.')
         print('Cleaning control flow obfuscation.')
-        self.__clean_code(dotnet)
+        #self.__clean_code(dotnet)
         print('Finished running code cleanups.')
         print('Cleaning up metadata names.')
         self.__clean_names(dotnet)
