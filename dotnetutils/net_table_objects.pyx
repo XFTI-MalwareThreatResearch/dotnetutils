@@ -2,6 +2,7 @@
 #distutils: language=c++
 
 import warnings
+import traceback
 
 from cpython.ref cimport Py_INCREF, PyObject, Py_XDECREF
 from dotnetutils cimport net_tokens
@@ -577,7 +578,10 @@ cdef class MethodDefTable(TableObject):
                 try:
                     disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
                 except Exception as e:
-                    warnings.warn('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
+                    if self.dotnetpe.should_raise_exc_on_invalid_method():
+                        raise e
+                    #traceback.print_exc()
+                    print('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
                     disasm_obj = None
                 if disasm_obj != None:
                     for x in range(len(disasm_obj)):

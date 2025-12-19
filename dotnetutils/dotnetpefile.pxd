@@ -56,6 +56,11 @@ cdef class DotNetPeFile:
     cdef net_metadata.MetaDataDirectory metadata_dir
     cdef bytes original_exe_data
     cdef PeFile pe
+    cdef bint raise_exc_on_invalid_method
+
+    cdef bint should_raise_exc_on_invalid_method(self)
+
+    cpdef void verify_dpe(self, bint dont_check_method_align) except *
 
     cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end)
 
@@ -66,6 +71,8 @@ cdef class DotNetPeFile:
     cpdef void __patch_dpe64(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bint dont_update_methods, bytes new_data, uint64_t target_end)
 
     cdef uint64_t __get_offset_from_memview(self, Py_buffer view_obj, uint64_t rva)
+
+    cdef uint64_t __get_rva_from_memview(self, Py_buffer view_obj, uint64_t offset)
     
     cpdef void reinit_dpe(self, bint no_processing)
 

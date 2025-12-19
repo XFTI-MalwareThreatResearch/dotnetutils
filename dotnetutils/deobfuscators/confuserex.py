@@ -644,7 +644,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
             exe_data = bytes(exe_data)
             xrefs = self.code_decrypt_method.get_xrefs()
             dotnet.set_exe_data(bytes(exe_data))
-            dotnet.reinit_dpe(False)
             #Lastly blank out the xrefs to prevent re code decryption.
             for xref_id, xref_offset in xrefs:
                 m = dotnet.get_method_by_rid(xref_id)

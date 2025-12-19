@@ -35,10 +35,10 @@ cpdef unsigned long get_total_method_size(bytes data):
 
     reader = net_structs.DotNetDataReader(data)
     start = reader.read_byte()
-    val = start & 7
+    val = start & 3
     header_size = 0
     code_size = 0
-    if val == 2 or val == 6:
+    if val == 2:
         header_size = 1
         code_size = (start >> 2)
     else:

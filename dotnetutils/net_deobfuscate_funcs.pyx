@@ -1909,8 +1909,12 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
     cdef object fgraph = None
     cdef object fanalyzer = None
     cdef object new_graph = None
+    cdef list method_tokens = list()
+    for mobj in dotnet.get_metadata_table("MethodDef"):
+        method_tokens.append(mobj.get_token())
     print('deobfuscating control flow for methods.')
-    for mobj in dotnet.get_metadata_table('MethodDef'):
+    for mobj_token in method_tokens:
+        mobj = dotnet.get_token_value(mobj_token)
         if not mobj.has_body():
             continue
         if mobj.disassemble_method() is None:
@@ -1930,6 +1934,5 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
         except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
             print('Possible control flow misidentification:', str(e))
             continue
-        #new_graph.print_root()
     dotnet.reinit_dpe(False) #xrefs
     print('Done with control flow check')
