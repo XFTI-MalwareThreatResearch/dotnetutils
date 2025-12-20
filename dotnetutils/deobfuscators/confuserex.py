@@ -292,6 +292,8 @@ class ConfuserExDeobfuscator(Deobfuscator):
         potential_string_methods = set()
         for mspec in mspec_table:
             sig_obj = mspec.get_sig_obj()
+            if not isinstance(sig_obj, net_sigs.GenericInstMethodSig):
+                continue
             gen_args = sig_obj.get_generic_args()
             if len(gen_args) == 1:
                 if isinstance(gen_args[0], net_sigs.CorLibTypeSig) and gen_args[0].get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_STRING:
@@ -447,6 +449,8 @@ class ConfuserExDeobfuscator(Deobfuscator):
         if not dotnet.has_heap('#US'):
             net_patch.insert_blank_userstrings(dotnet)
             self.__identify_string_methods(dotnet)
+            if not dotnet.has_heap('#US'):
+                raise Exception('Internal error adding #US stream')
         us_heap = dotnet.get_heap('#US')
         string_defs = list()
         for mspec in self.string_methods:

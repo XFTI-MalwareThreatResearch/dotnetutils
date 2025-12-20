@@ -323,11 +323,11 @@ cdef class DotNetPeFile:
     cdef bint should_raise_exc_on_invalid_method(self):
         return self.raise_exc_on_invalid_method
 
-    cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end):
+    cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end, bint dont_update_methods):
         if self.get_pe().is_64bit():
-            self.__patch_dpe64(va, diff, stream_name, target_va, False, new_data, target_end)
+            self.__patch_dpe64(va, diff, stream_name, target_va, dont_update_methods, new_data, target_end)
         else:
-            self.__patch_dpe32(va, diff, stream_name, target_va, False, new_data, target_end)
+            self.__patch_dpe32(va, diff, stream_name, target_va, dont_update_methods, new_data, target_end)
 
     cdef uint64_t __get_offset_from_memview(self, Py_buffer view_obj, uint64_t rva):
         cdef IMAGE_DOS_HEADER * dos = <IMAGE_DOS_HEADER*>view_obj.buf

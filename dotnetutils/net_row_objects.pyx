@@ -1380,7 +1380,7 @@ cdef class MethodDef(MethodDefOrRef):
         cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
         cdef uint64_t file_offset = pe.get_offset_from_rva(rva)
         difference = new_method_size - orig_method_size
-        self.get_dotnetpe().patch_dpe(rva, difference, None, rva, data, file_offset + orig_method_size)
+        self.get_dotnetpe().patch_dpe(rva, difference, None, rva, data, file_offset + orig_method_size, False)
 
     cpdef bytes get_name(self):
         """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().
