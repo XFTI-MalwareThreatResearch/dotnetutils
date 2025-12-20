@@ -566,6 +566,33 @@ cdef class DotNetPeFile:
                 if amt_method_padding == 0:
                     break
         self.verify_dpe(dont_update_methods)
+    
+    cdef void verify_resources(self, uint64_t rs_offset, Py_buffer new_exe_view) except *:
+        """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.
+        """
+        cdef IMAGE_RESOURCE_DIRECTORY * rsrc_dir = NULL
+        cdef uint64_t usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
+        cdef int x
+        cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * sub_entry = NULL
+        cdef uint64_t r_offset
+        cdef uint64_t rva
+        cdef uint64_t fixed_rva
+        cdef IMAGE_RESOURCE_DATA_ENTRY * data_struct = NULL
+        cdef uint64_t bad_value = <uint64_t>-1
+        rsrc_dir = <IMAGE_RESOURCE_DIRECTORY*>(<uintptr_t>new_exe_view.buf + <uintptr_t>rs_offset)
+        for x in range(rsrc_dir.NumberOfNamedEntries + rsrc_dir.NumberOfIdEntries):
+            sub_entry = <IMAGE_RESOURCE_DIRECTORY_ENTRY*> (<uintptr_t>new_exe_view.buf + <uintptr_t>usable_rs_offset)
+            if sub_entry.OffsetToData.OffsetToDirectory.DataIsDirectory:
+                r_offset = rs_offset + sub_entry.OffsetToData.OffsetToDirectory.OffsetToDirectory
+                self.verify_resources(r_offset, new_exe_view)
+            else:
+                r_offset = rs_offset + sub_entry.OffsetToData.OffsetToData
+                data_struct = <IMAGE_RESOURCE_DATA_ENTRY*>(<uintptr_t>new_exe_view.buf + <uintptr_t>r_offset)
+                rva = data_struct.OffsetToData
+                fixed_rva = self.get_pe().get_offset_from_rva(rva)
+                if fixed_rva == bad_value:
+                    raise Exception('error with resources RVA {}'.format(hex(rva)))
+            usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
 
     cpdef void verify_dpe(self, bint dont_check_method_align) except *:
         cdef bytes exe_data = self.get_exe_data()
@@ -585,6 +612,7 @@ cdef class DotNetPeFile:
         cdef net_row_objects.RowObject robj = None
         cdef net_table_objects.TableObject tobj = None
         cdef unsigned char first_byte = 0
+        cdef IMAGE_DATA_DIRECTORY resources
         PyObject_GetBuffer(exe_data, &exe_view, PyBUF_ANY_CONTIGUOUS)
         dos = <IMAGE_DOS_HEADER*>(<char*>exe_view.buf)
         if dos.e_magic != 0x5A4D:
@@ -710,7 +738,11 @@ cdef class DotNetPeFile:
                         raise Exception('Error invalid header start byte for method {}'.format(hex(robj.get_token())))
                     if robj.disassemble_method() is None:
                         raise Exception('For whatever reason, disassemble method failed on method {}'.format(hex(robj.get_token())))
-                
+        
+        resources = self.get_pe().get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_RESOURCE)
+        if resources.VirtualAddress != 0:
+            offset = self.get_pe().get_offset_from_rva(resources.VirtualAddress)
+            self.verify_resources(offset, exe_view)
         PyBuffer_Release(&exe_view)
 
     cpdef void __patch_dpe32(self, uint64_t va, int diff, bytes stream_name, uint64_t target_addr, bint dont_update_methods, bytes new_data, uint64_t target_end):

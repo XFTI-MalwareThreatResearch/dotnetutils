@@ -495,7 +495,11 @@ class ConfuserExDeobfuscator(Deobfuscator):
         fgraph = net_graphing.FunctionGraph(string_data_method)
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
         fanalyzer.simplify_control_flow()
+        
+        dotnet.reinit_dpe(False)
+        self.__identify_string_methods(dotnet)
         #we need to rerun so that the end offset is updated for the new control flow.
+        string_data_method = dotnet.get_token_value(string_data_method.get_token())
         start_offset = -1
         #In some older versions of CEX, theres a call to a method that decrypts the resource assembly first, then the string decoding.
         string_disasm = string_data_method.disassemble_method()
@@ -516,8 +520,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 if instr2.get_opcode() == Opcodes.Dup:
                     instr3 = string_disasm[x+2]
                     if instr3.get_opcode() == Opcodes.Ldtoken:
-                        import binascii
-                        print('encoded data {}'.format(binascii.hexlify(instr3.get_argument().get_data())))
                         instr4 = string_disasm[x+3]
                         if instr4.get_opcode() == Opcodes.Call:
                             prev_instr = string_disasm[x-1]
@@ -689,14 +691,14 @@ class ConfuserExDeobfuscator(Deobfuscator):
         self.__deobfuscate_strings(dotnet)
         print('Deobfuscated encrypted strings.')
         print('Cleaning control flow obfuscation.')
-        self.__clean_code(dotnet)
+        #self.__clean_code(dotnet)
         print('Finished running code cleanups.')
         print('Cleaning up metadata names.')
-        self.__clean_names(dotnet)
+        #self.__clean_names(dotnet)
         print('Finished cleaning names, watermarking executable.')
         if ctx.has_item('Entry'):
             dotnet.set_entry_point(ctx.get_item('Entry'))
-        dotnet.add_string('DNU_CEX_WATERMARK')
+        #dotnet.add_string('DNU_CEX_WATERMARK')
         print('Finished!')
         return True
     

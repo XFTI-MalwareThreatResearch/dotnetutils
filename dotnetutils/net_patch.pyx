@@ -59,7 +59,9 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
         while exe_data[current_offset] != 0:
             name += bytes([exe_data[current_offset]])
             current_offset += 1
-        current_offset += (4 - (current_offset % 4))
+        current_offset += 1
+        while current_offset % 4 != 0:
+            current_offset += 1
     #construct the new streamheader.
     us_size = 0
     new_header_offset = current_offset
@@ -134,7 +136,7 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
 
     if not found_target_section:
         #could not find target section.
-        raise net_exceptions.InvalidVirtualAddressException()
+        raise net_exceptions.InvalidVirtualAddressException(addr)
 
     for section in old_pe.get_sections():
         if section.VirtualAddress <= addr < (section.VirtualAddress + section.Misc.VirtualSize):
@@ -144,7 +146,7 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
         if memcmp(section.Name, target_section.Name, 8) == 0:
             passed_text = True
     if not found_old_section:
-        raise net_exceptions.InvalidVirtualAddressException
+        raise net_exceptions.InvalidVirtualAddressException(addr)
 
     if not passed_text and memcmp(old_section.Name, target_section.Name, 8) != 0:
         return addr  # we don't need to change it here
@@ -166,6 +168,6 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
         section_offset += sizeof(IMAGE_SECTION_HEADER)
     
     if not new_section:
-        raise net_exceptions.InvalidVirtualAddressException
+        raise net_exceptions.InvalidVirtualAddressException(addr)
     difference = new_section.VirtualAddress - old_section.VirtualAddress
     return addr + difference

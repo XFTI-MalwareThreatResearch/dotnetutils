@@ -192,6 +192,7 @@ def main():
                             sha_obj.update(current_dotnet.get_exe_data())
                             print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
                             results.add(current_dotnet.get_exe_data())
+                            break
                         else:
                             print('Deobfuscation failed for {}'.format(deob.NAME))
         except Exception as e:

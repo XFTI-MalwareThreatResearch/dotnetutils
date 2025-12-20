@@ -62,6 +62,8 @@ cdef class DotNetPeFile:
 
     cpdef void verify_dpe(self, bint dont_check_method_align) except *
 
+    cdef void verify_resources(self, uint64_t rs_offset, Py_buffer new_exe_view) except *
+
     cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end, bint dont_update_methods)
 
     cdef void __update_net_vas(self, uint64_t va_addr, int difference, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference, bint dont_update_methods, bytes new_data, uint64_t target_end)

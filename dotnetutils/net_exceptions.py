@@ -47,8 +47,8 @@ class InvalidPatchException(DotNetUtilsException):
         Exception.__init__(self, "attempted to patch a binary with an invalid value.")
 
 class InvalidVirtualAddressException(DotNetUtilsException):
-    def __init__(self):
-        Exception.__init__(self, "Attempted to supply an invalid virtual address")
+    def __init__(self, num=0):
+        Exception.__init__(self, "Attempted to supply an invalid virtual address: {}".format(hex(num)))
 
 class FeatureNotImplementedException(DotNetUtilsException):
     def __init__(self):
