@@ -62,7 +62,7 @@ cdef class DotNetPeFile:
 
     cpdef void verify_dpe(self, bint dont_check_method_align) except *
 
-    cdef void verify_resources(self, uint64_t rs_offset, Py_buffer new_exe_view) except *
+    cdef void verify_resources(self, uint64_t rs_offset, uint64_t orig_rs_offset, Py_buffer new_exe_view) except *
 
     cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end, bint dont_update_methods)
 
