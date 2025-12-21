@@ -324,11 +324,6 @@ cdef class DotNetPeFile:
         return self.raise_exc_on_invalid_method
 
     cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end, bint dont_update_methods):
-        if new_data is None:
-            print('calling patch_dpe(va={}, diff={}, stream_name={}, target_va={}, new_data=bytes({}), target_end={}, dont_update_methods={})'.format(hex(va), diff, stream_name, hex(target_va), None, hex(target_end), dont_update_methods))
-        else:
-            print('calling patch_dpe(va={}, diff={}, stream_name={}, target_va={}, new_data=bytes({}), target_end={}, dont_update_methods={})'.format(hex(va), diff, stream_name, hex(target_va), len(new_data), hex(target_end), dont_update_methods))
-
         if self.get_pe().is_64bit():
             self.__patch_dpe64(va, diff, stream_name, target_va, dont_update_methods, new_data, target_end)
         else:
@@ -496,7 +491,6 @@ cdef class DotNetPeFile:
                     in_table = True
                     cobj.set_raw_value(<unsigned int>resource_rva)
         PyBuffer_Release(&new_exe_view)
-        print('amt_padding = {}, padding_offset = {}'.format(hex(amt_padding), hex(padding_offset)))
         if amt_padding != 0 and padding_offset != 0 and difference != 0:
             padding = b'\x00' * amt_padding
             new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
@@ -571,9 +565,6 @@ cdef class DotNetPeFile:
                 if amt_method_padding == 0:
                     break
 
-        fd = open('C:\\Users\\Research\\Documents\\Malware\\test.bin', 'wb')
-        fd.write(self.get_exe_data())
-        fd.close()
         self.verify_dpe(dont_update_methods)
     
     cdef void verify_resources(self, uint64_t rs_offset, uint64_t orig_rs_offset, Py_buffer new_exe_view) except *:

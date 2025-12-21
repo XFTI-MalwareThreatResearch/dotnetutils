@@ -497,6 +497,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         fanalyzer.simplify_control_flow()
         
         dotnet.reinit_dpe(False)
+        us_heap = dotnet.get_heap('#US')
         self.__identify_string_methods(dotnet)
         #we need to rerun so that the end offset is updated for the new control flow.
         string_data_method = dotnet.get_token_value(string_data_method.get_token())
@@ -685,20 +686,33 @@ class ConfuserExDeobfuscator(Deobfuscator):
     def deobfuscate(self, dotnet, ctx):
         print('Starting ConfuserEx deobfuscator')
         print('Attempting to deobfuscate encrypted code.')
+        import hashlib
         self.__decrypt_method_code(dotnet)
+        sha_obj = hashlib.sha256()
+        sha_obj.update(dotnet.get_exe_data())
+        print('Current hash {}'.format(sha_obj.hexdigest()))
         print('Completed deobfuscate encrypted code.')
         print('Attempting to deobfuscate encrypted strings.')
         self.__deobfuscate_strings(dotnet)
+        sha_obj = hashlib.sha256()
+        sha_obj.update(dotnet.get_exe_data())
+        print('Current hash {}'.format(sha_obj.hexdigest()))
         print('Deobfuscated encrypted strings.')
         print('Cleaning control flow obfuscation.')
-        #self.__clean_code(dotnet)
+        self.__clean_code(dotnet)
         print('Finished running code cleanups.')
         print('Cleaning up metadata names.')
-        #self.__clean_names(dotnet)
+        self.__clean_names(dotnet)
+        sha_obj = hashlib.sha256()
+        sha_obj.update(dotnet.get_exe_data())
+        print('Current hash {}'.format(sha_obj.hexdigest()))
         print('Finished cleaning names, watermarking executable.')
         if ctx.has_item('Entry'):
             dotnet.set_entry_point(ctx.get_item('Entry'))
-        #dotnet.add_string('DNU_CEX_WATERMARK')
+        dotnet.add_string('DNU_CEX_WATERMARK')
+        sha_obj = hashlib.sha256()
+        sha_obj.update(dotnet.get_exe_data())
+        print('Current hash {}'.format(sha_obj.hexdigest()))
         print('Finished!')
         return True
     
