@@ -289,7 +289,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
     def __identify_string_methods(self, dotnet):
         self.string_methods.clear()
         mspec_table = dotnet.get_metadata_table('MethodSpec')
-        potential_string_methods = set()
+        potential_string_methods = list()
         for mspec in mspec_table:
             sig_obj = mspec.get_sig_obj()
             if not isinstance(sig_obj, net_sigs.GenericInstMethodSig):
@@ -309,7 +309,9 @@ class ConfuserExDeobfuscator(Deobfuscator):
                             continue
                         if params[0].get_element_type() not in (net_structs.CorElementType.ELEMENT_TYPE_I4, net_structs.CorElementType.ELEMENT_TYPE_U4):
                             continue
-                        potential_string_methods.add(mspec)
+                        if mspec in potential_string_methods:
+                            continue
+                        potential_string_methods.append(mspec)
         for mspec in potential_string_methods:
             mobj = mspec.get_method()
             has_initobj = False
@@ -494,8 +496,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         #instead of deobfuscating here, maybe just emulate with no op hooks for potential problematic instructions?  Also since we already identified the code decryption func earlier, we can proabably just reuse that for detection.
         fgraph = net_graphing.FunctionGraph(string_data_method)
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
-        fanalyzer.simplify_control_flow()
-        
+        fanalyzer.simplify_control_flow()        
         dotnet.reinit_dpe(False)
         us_heap = dotnet.get_heap('#US')
         self.__identify_string_methods(dotnet)
@@ -686,33 +687,20 @@ class ConfuserExDeobfuscator(Deobfuscator):
     def deobfuscate(self, dotnet, ctx):
         print('Starting ConfuserEx deobfuscator')
         print('Attempting to deobfuscate encrypted code.')
-        import hashlib
         self.__decrypt_method_code(dotnet)
-        sha_obj = hashlib.sha256()
-        sha_obj.update(dotnet.get_exe_data())
-        print('Current hash {}'.format(sha_obj.hexdigest()))
         print('Completed deobfuscate encrypted code.')
         print('Attempting to deobfuscate encrypted strings.')
         self.__deobfuscate_strings(dotnet)
-        sha_obj = hashlib.sha256()
-        sha_obj.update(dotnet.get_exe_data())
-        print('Current hash {}'.format(sha_obj.hexdigest()))
         print('Deobfuscated encrypted strings.')
         print('Cleaning control flow obfuscation.')
         self.__clean_code(dotnet)
         print('Finished running code cleanups.')
         print('Cleaning up metadata names.')
         self.__clean_names(dotnet)
-        sha_obj = hashlib.sha256()
-        sha_obj.update(dotnet.get_exe_data())
-        print('Current hash {}'.format(sha_obj.hexdigest()))
         print('Finished cleaning names, watermarking executable.')
         if ctx.has_item('Entry'):
             dotnet.set_entry_point(ctx.get_item('Entry'))
         dotnet.add_string('DNU_CEX_WATERMARK')
-        sha_obj = hashlib.sha256()
-        sha_obj.update(dotnet.get_exe_data())
-        print('Current hash {}'.format(sha_obj.hexdigest()))
         print('Finished!')
         return True
     

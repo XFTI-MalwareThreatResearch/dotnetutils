@@ -179,7 +179,6 @@ def main():
                                 print('{} unpacker outputted file with hash {}'.format(deob.NAME, sha_obj.hexdigest()))
                                 work.append(dpe)
                         print('Extracted {} files'.format(len(unpacked_exes)))
-                        break
 
                     if deob.identify_deobfuscate(current_dotnet, ctx):
                         exe_hash = hashlib.sha256()
@@ -192,7 +191,6 @@ def main():
                             sha_obj.update(current_dotnet.get_exe_data())
                             print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
                             results.add(current_dotnet.get_exe_data())
-                            break
                         else:
                             print('Deobfuscation failed for {}'.format(deob.NAME))
         except Exception as e:

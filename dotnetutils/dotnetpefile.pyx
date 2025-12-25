@@ -3,7 +3,6 @@
 
 import re
 import pefile
-import hashlib
 import traceback
 import binascii
 
