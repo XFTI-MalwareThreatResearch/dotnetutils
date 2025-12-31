@@ -144,7 +144,6 @@ def main():
         net_deobfuscate_funcs.remove_unk_obf_1_obfuscation(dotnet)
     elif deob_type == 'deob':
         deobfuscators = [ConfuserExDeobfuscator]
-        results = set()
         if not os.path.isdir(obf_exe):
             work = [dotnet]
         else:
@@ -155,65 +154,70 @@ def main():
                     dotnet = dotnetpefile.try_get_dotnetpe(file_path=fp)
                     if dotnet is not None:
                         work.append(dotnet)
-        ctx = deobfuscator.DeobfuscatorContext()
         if not os.path.isdir(output_exe):
             print('error: invalid directory for results')
             exit(0)
-        try:
-            while work:
-                current_dotnet = work.pop()
-                for deob_type in deobfuscators:
-                    deob = deob_type()
-                    if deob.identify_unpack(current_dotnet, ctx):
-                        exe_hash = hashlib.sha256()
-                        exe_hash.update(current_dotnet.get_exe_data())
-                        exe_hash = exe_hash.hexdigest()
-                        print('{}: Executable recognized as {} packed executable.'.format(exe_hash, deob.NAME))
-                        unpacked_exes = deob.unpack(current_dotnet, ctx)
-                        for unpacked_exe in unpacked_exes:
-                            results.add(unpacked_exe)
-                            dpe = dotnetpefile.try_get_dotnetpe(pe_data=unpacked_exe)
-                            if dpe is not None:
-                                sha_obj = hashlib.sha256()
-                                sha_obj.update(dpe.get_exe_data())
-                                print('{} unpacker outputted file with hash {}'.format(deob.NAME, sha_obj.hexdigest()))
-                                work.append(dpe)
-                        print('Extracted {} files'.format(len(unpacked_exes)))
+        for starting_dotnet in work:
+            ctx = deobfuscator.DeobfuscatorContext()
+            current_work = [starting_dotnet]
+            results = set()
+            try:
+                while current_work:
+                    current_dotnet = current_work.pop()
+                    for deob_type in deobfuscators:
+                        deob = deob_type()
+                        if deob.identify_unpack(current_dotnet, ctx):
+                            exe_hash = hashlib.sha256()
+                            exe_hash.update(current_dotnet.get_exe_data())
+                            exe_hash = exe_hash.hexdigest()
+                            print('{}: Executable recognized as {} packed executable.'.format(exe_hash, deob.NAME))
+                            unpacked_exes = deob.unpack(current_dotnet, ctx)
+                            for unpacked_exe in unpacked_exes:
+                                results.add(unpacked_exe)
+                                dpe = dotnetpefile.try_get_dotnetpe(pe_data=unpacked_exe)
+                                if dpe is not None:
+                                    sha_obj = hashlib.sha256()
+                                    sha_obj.update(dpe.get_exe_data())
+                                    print('{} unpacker outputted file with hash {}'.format(deob.NAME, sha_obj.hexdigest()))
+                                    current_work.append(dpe)
+                            print('Extracted {} files'.format(len(unpacked_exes)))
 
-                    if deob.identify_deobfuscate(current_dotnet, ctx):
-                        exe_hash = hashlib.sha256()
-                        exe_hash.update(current_dotnet.get_exe_data())
-                        exe_hash = exe_hash.hexdigest()
-                        print('{}: Executable recognized as {} obfuscated executable.'.format(exe_hash, deob.NAME))
-                        if deob.deobfuscate(current_dotnet, ctx):
-                            print('Deobfuscation completed for {}'.format(deob.NAME))
-                            sha_obj = hashlib.sha256()
-                            sha_obj.update(current_dotnet.get_exe_data())
-                            print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
-                            results.add(current_dotnet.get_exe_data())
-                        else:
-                            print('Deobfuscation failed for {}'.format(deob.NAME))
-        except Exception as e:
-            for data in results:
-                sha_obj = hashlib.sha256()
-                sha_obj.update(data)
-                filename = sha_obj.hexdigest()
-                result_path = os.path.join(output_exe, filename)
-                print('Saving outputted file to {}'.format(result_path))
-                fd = open(result_path, 'wb')
-                fd.write(data)
-                fd.close()
-            raise e
-        print('Outputting {} files to directory {}'.format(len(results), output_exe))
-        for data in results:
-            sha_obj = hashlib.sha256()
-            sha_obj.update(data)
-            filename = sha_obj.hexdigest()
-            result_path = os.path.join(output_exe, filename)
-            print('Saving outputted file to {}'.format(result_path))
-            fd = open(result_path, 'wb')
-            fd.write(data)
-            fd.close()
+                        if deob.identify_deobfuscate(current_dotnet, ctx):
+                            exe_hash = hashlib.sha256()
+                            exe_hash.update(current_dotnet.get_exe_data())
+                            exe_hash = exe_hash.hexdigest()
+                            print('{}: Executable recognized as {} obfuscated executable.'.format(exe_hash, deob.NAME))
+                            if deob.deobfuscate(current_dotnet, ctx):
+                                print('Deobfuscation completed for {}'.format(deob.NAME))
+                                sha_obj = hashlib.sha256()
+                                sha_obj.update(current_dotnet.get_exe_data())
+                                print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
+                                results.add(current_dotnet.get_exe_data())
+                                current_work.append(current_dotnet)
+                            else:
+                                print('Deobfuscation failed for {}'.format(deob.NAME))
+                print('Outputting {} files to directory {}'.format(len(results), output_exe))
+                for data in results:
+                    sha_obj = hashlib.sha256()
+                    sha_obj.update(data)
+                    filename = sha_obj.hexdigest()
+                    result_path = os.path.join(output_exe, filename)
+                    print('Saving outputted file to {}'.format(result_path))
+                    fd = open(result_path, 'wb')
+                    fd.write(data)
+                    fd.close()
+            except Exception as e:
+                print('deobfuscation of file failed.')
+                for data in results:
+                    sha_obj = hashlib.sha256()
+                    sha_obj.update(data)
+                    filename = sha_obj.hexdigest()
+                    result_path = os.path.join(output_exe, filename)
+                    print('Saving outputted file to {}'.format(result_path))
+                    fd = open(result_path, 'wb')
+                    fd.write(data)
+                    fd.close()
+                raise e
         print('Done')
         exit(0)
                     

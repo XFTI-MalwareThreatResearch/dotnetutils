@@ -685,6 +685,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
     
     def deobfuscate(self, dotnet, ctx):
+        orig_ep = dotnet.get_pe().get_net_header()['EntryPoint']['EntryPointToken']
         print('Starting ConfuserEx deobfuscator')
         print('Attempting to deobfuscate encrypted code.')
         self.__decrypt_method_code(dotnet)
