@@ -1,6 +1,6 @@
 import lzma
 import pefile
-import numpy
+import hashlib
 from dotnetutils import dotnetpefile
 from dotnetutils import net_graphing
 from dotnetutils import net_graph_analyzer
@@ -439,11 +439,17 @@ class ConfuserExDeobfuscator(Deobfuscator):
             new_dpe.set_entry_point(ep_token)
             self.code_decrypt_method = None
             return [new_dpe.get_exe_data()]
-        ctx.set_item('Entry', ep_token)
+        md5_hash = hashlib.md5()
+        md5_hash.update(new_data)
+        if not ctx.has_item('Entry'):
+            ctx.set_item('Entry', dict())
+        ep_dict = ctx.get_item('Entry')
+        ep_dict[md5_hash.digest()] = ep_token
         self.code_decrypt_method = None
         return [new_data]
     
     def __deobfuscate_strings(self, dotnet):
+        dotnet.reinit_dpe(False)
         self.__identify_string_methods(dotnet)
         if len(self.string_methods) == 0:
             print('Could not find string methods to deobfuscate strings.')
@@ -466,11 +472,10 @@ class ConfuserExDeobfuscator(Deobfuscator):
             if instr.get_opcode() == Opcodes.Ldsfld:
                 string_data_field = instr.get_argument()
                 break
-
         if string_data_field is None:
             print('Could not find string data field.')
             return
-        
+                
         string_data_instr = None
         string_data_method = None
         string_compress_method = None
@@ -685,7 +690,9 @@ class ConfuserExDeobfuscator(Deobfuscator):
         net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
     
     def deobfuscate(self, dotnet, ctx):
-        orig_ep = dotnet.get_pe().get_net_header()['EntryPoint']['EntryPointToken']
+        orig_md5 = hashlib.md5()
+        orig_md5.update(dotnet.get_exe_data())
+        orig_md5 = orig_md5.digest()
         print('Starting ConfuserEx deobfuscator')
         print('Attempting to deobfuscate encrypted code.')
         self.__decrypt_method_code(dotnet)
@@ -700,7 +707,9 @@ class ConfuserExDeobfuscator(Deobfuscator):
         self.__clean_names(dotnet)
         print('Finished cleaning names, watermarking executable.')
         if ctx.has_item('Entry'):
-            dotnet.set_entry_point(ctx.get_item('Entry'))
+            ep_dict = ctx.get_item('Entry')
+            if orig_md5 in ep_dict:
+                dotnet.set_entry_point(ep_dict[orig_md5])
         dotnet.add_string('DNU_CEX_WATERMARK')
         print('Finished!')
         return True

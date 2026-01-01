@@ -145,7 +145,7 @@ def main():
     elif deob_type == 'deob':
         deobfuscators = [ConfuserExDeobfuscator]
         if not os.path.isdir(obf_exe):
-            work = [dotnet]
+            work = [(dotnet, obf_exe)]
         else:
             work = []
             for item in os.listdir(obf_exe):
@@ -153,15 +153,16 @@ def main():
                 if os.path.isfile(fp):
                     dotnet = dotnetpefile.try_get_dotnetpe(file_path=fp)
                     if dotnet is not None:
-                        work.append(dotnet)
+                        work.append((dotnet, fp))
         if not os.path.isdir(output_exe):
             print('error: invalid directory for results')
             exit(0)
-        for starting_dotnet in work:
-            ctx = deobfuscator.DeobfuscatorContext()
+        for starting_dotnet, file_path in work:
             current_work = [starting_dotnet]
             results = set()
+            print('Attempting to deobfuscate executable located at {}'.format(file_path))
             try:
+                ctx = deobfuscator.DeobfuscatorContext()
                 while current_work:
                     current_dotnet = current_work.pop()
                     for deob_type in deobfuscators:
@@ -180,6 +181,7 @@ def main():
                                     sha_obj.update(dpe.get_exe_data())
                                     print('{} unpacker outputted file with hash {}'.format(deob.NAME, sha_obj.hexdigest()))
                                     current_work.append(dpe)
+
                             print('Extracted {} files'.format(len(unpacked_exes)))
 
                         if deob.identify_deobfuscate(current_dotnet, ctx):
