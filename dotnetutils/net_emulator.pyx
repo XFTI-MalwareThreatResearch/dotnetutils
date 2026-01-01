@@ -4323,6 +4323,27 @@ cdef class DotNetStack:
         self.__emulator.dealloc_cell(boxed_obj)
         return return_value
 
+    cpdef net_emu_types.DotNetObject peek_obj(self):
+        """ boxes the first value on the stack and returns it.  Inteded for users to obtain values off the stack.
+            For instance a StackCell of ELEMENT_TYPE_I4 will be translated to DotNetInt32() objects.
+
+        Returns:
+            net_emu_types.DotNetObject: A boxed representation of the top item on the stack.
+        Raises:
+            net_exceptions.EmulatorExecutionException: If the stack is empty.
+        """
+        if self.__internal_stack.empty():
+            raise net_exceptions.EmulatorExecutionException(self.__emulator, 'Attempted to pop an item off the stack when its empty')
+        cdef StackCell obj = self.__internal_stack.back()
+        cdef StackCell boxed_obj = self.__emulator.box_value(obj, None)
+        cdef net_emu_types.DotNetObject return_value = None
+        self.__emulator.deref_cell(obj)
+        self.__emulator.dealloc_cell(obj)
+        if boxed_obj.item.ref != NULL:
+            return_value = <net_emu_types.DotNetObject>boxed_obj.item.ref
+        self.__emulator.dealloc_cell(boxed_obj)
+        return return_value
+
     cpdef void remove_obj(self):
         """ Pops an item off the stack without returning it.
         """

@@ -1,5 +1,6 @@
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils import net_row_objects, net_sigs, net_emulator, net_exceptions, net_emu_types, net_opcodes
+from dotnetutils import net_structs
 
 def dnr_skip_obf_methods(emulator, argument):
     method_obj = emulator.get_method_obj()
@@ -10,6 +11,70 @@ def dnr_skip_obf_methods(emulator, argument):
             if msig.get_return_type() == net_sigs.get_CorSig_Void():
                 if len(msig.get_parameters()) == 0:
                     return False
+    return True
+
+def dnr_encrypt_skip_conv_u(emulator, argument):
+    obj = emulator.get_stack().peek_obj()
+    if isinstance(obj, net_emu_types.BoxedReference):
+        emulator.get_stack().remove_obj()
+        new_obj = net_emu_types.DotNetUIntPtr(emulator, None)
+        new_obj.init_zero()
+        emulator.get_stack().append_obj(new_obj)
+        return False
+    return True
+
+def dnr_encrypt_skip_intptr_newobjs(emulator, argument):
+    instr = emulator.get_instr()
+    arg = instr.get_argument()
+    if isinstance(arg, net_row_objects.MemberRef):
+        if arg.get_full_name() == b'System.IntPtr..ctor':
+            emulator.get_stack().remove_obj()
+            new_obj = net_emu_types.DotNetIntPtr(emulator, None)
+            new_obj.init_zero()
+            emulator.get_stack().append_obj(new_obj)
+            return False
+    return True
+
+def dnr_encrypt_skip_marshal_calls(emulator, argument):
+    instr = emulator.get_instr()
+    stack = emulator.get_stack()
+    method_obj = emulator.get_method_obj()
+    if method_obj['Name'].get_value() == b'.cctor':
+        if isinstance(instr.get_argument(), net_row_objects.MethodDef):
+            msig = instr.get_argument().get_method_signature()
+            if msig.get_return_type() == net_sigs.get_CorSig_Void():
+                if len(msig.get_parameters()) == 0:
+                    return False
+    if instr.get_name() == 'call':
+        instr_arg = instr.get_argument()
+        if isinstance(instr_arg, net_row_objects.MemberRef):
+            full_name = instr_arg.get_full_name()
+            if full_name.startswith(b'System.Runtime.InteropServices.Marshal.'):
+                full_name = full_name.replace(b'System.Runtime.InteropServices.Marshal.', b'', 1)
+                if full_name == b'Copy':
+                    stack.remove_obj()
+                    stack.remove_obj()
+                    stack.remove_obj()
+                    stack.remove_obj()
+                    return False
+                else:
+                    for x in range(len(instr_arg.get_param_types())):
+                        stack.remove_obj()
+                    intptr = net_emu_types.DotNetIntPtr(emulator, None)
+                    intptr.init_zero()
+                    stack.append_obj(intptr)
+                    return False
+            elif full_name == b'System.Type.GetType':
+                stack.remove_obj()
+                stack.remove_obj()
+                stack.append_obj(None) #Append a null to fool check.
+                return False
+    return True
+
+def dnr_encrypt_stop_ldelema(emulator, argument):
+    instr = emulator.get_instr()
+    if instr.get_opcode() == net_opcodes.Opcodes.Ldelema:
+        raise net_exceptions.EmulatorEndExecutionException(emulator, emulator.get_method_obj().get_rid(), 0, 0, 0)
     return True
 
 class NETReactor(Deobfuscator):
@@ -55,6 +120,37 @@ class NETReactor(Deobfuscator):
                                             return arg
         return None
     
+    def identify_encryption_method(self, dotnet):
+        m_pdata = 'm_pData'.encode('utf-16le')
+        m_ptr = 'm_ptr'.encode('utf-16le')
+        for method in dotnet.get_methods_by_name(b'.cctor'):
+            if method.has_body():
+                for instr in method.disassemble_method():
+                    if instr.get_name() == 'call':
+                        instr_arg = instr.get_argument()
+                        if not isinstance(instr_arg, net_row_objects.MethodDef):
+                            continue
+
+                        if not instr_arg.is_static_method():
+                            continue
+                        if instr_arg.has_return_value():
+                            continue
+                        if len(instr_arg.get_param_types()) != 0:
+                            continue
+                        has_pdata = False
+                        has_mptr = False
+                        for instr2 in instr_arg.disassemble_method():
+                            if instr2.get_name() == 'ldstr':
+                                instr2_arg = instr2.get_argument()
+                                if instr2_arg == m_pdata:
+                                    has_pdata = True
+                                if instr2_arg == m_ptr:
+                                    has_mptr = True
+                            if has_mptr and has_pdata:
+                                return instr_arg
+                            
+        return None         
+    
     def identify_string_method(self, dotnet):
         toint32 = dotnet.get_methods_by_full_name(b'System.BitConverter.ToInt32')
         if len(toint32) != 1:
@@ -96,7 +192,159 @@ class NETReactor(Deobfuscator):
             return
         
     def fix_encrypted_methods(self, dotnet):
-        pass
+        encryption_method = self.identify_encryption_method(dotnet)
+        print('Encryption method identified as {}'.format(encryption_method))
+        emu_obj = net_emulator.DotNetEmulator(encryption_method)
+        emu_obj.setup_method_params([])
+        appdomain = emu_obj.get_appdomain()
+        appdomain.register_instr_handler(net_opcodes.Opcodes.Ldelema, dnr_encrypt_stop_ldelema, None)
+        appdomain.register_instr_handler(net_opcodes.Opcodes.Call, dnr_encrypt_skip_marshal_calls, None)
+        appdomain.register_instr_handler(net_opcodes.Opcodes.Conv_U, dnr_encrypt_skip_conv_u, None)
+        appdomain.register_instr_handler(net_opcodes.Opcodes.Newobj, dnr_encrypt_skip_intptr_newobjs, None)
+        worked = False
+        try:
+            emu_obj.run_function()
+        except net_exceptions.EmulatorEndExecutionException:
+            worked = True
+        if not worked:
+            print('initial emulation failed.')
+            return
+        emu_obj.get_stack().remove_obj()
+        encrypted_data = emu_obj.get_stack().pop_obj()
+        if not isinstance(encrypted_data, net_emu_types.DotNetArray):
+            print('error with emulation')
+            return
+        last_ldc_i8 = None
+        prev_instr = None
+        for instr in encryption_method.disassemble_method():
+            if instr.get_opcode() == net_opcodes.Opcodes.Ldc_I8:
+                last_ldc_i8 = instr
+
+            if instr.get_opcode() == net_opcodes.Opcodes.Conv_I8:
+                if prev_instr.get_opcode() == net_opcodes.Opcodes.Ldc_I4:
+                    last_ldc_i8 = prev_instr
+            
+            if instr.get_opcode() == net_opcodes.Opcodes.Stind_I8:
+                break
+            prev_instr = instr
+        if last_ldc_i8 is None:
+            print('error cant get xor val')
+            return
+        import binascii
+        xor_val = last_ldc_i8.get_argument()
+        print('xor val {}'.format(xor_val))
+        encrypted_data = encrypted_data.as_bytes()
+        print('pre encrypted data {}'.format(binascii.hexlify(encrypted_data[:50])))
+        amt = len(encrypted_data) // 8
+        decrypted_data = bytearray()
+        index = 0
+        for _ in range(amt):
+            new_val = int.from_bytes(encrypted_data[index:index+8], 'little') ^ xor_val
+            index += 8
+            decrypted_data.extend(int.to_bytes(new_val, 8, 'little'))
+        print('post decrypted data', binascii.hexlify(decrypted_data[:50]))
+        reader = net_structs.DotNetDataReader(bytes(decrypted_data))
+        reader.read_int32()
+        reader.read_int32()
+        reader.read_int32()
+        num1 = reader.read_int32()
+        num2 = reader.read_int32()
+        if num2 == 4 or num2 == 1:
+            print('not supported yet')
+            return
+        initial_entries = dict()
+        rva_offset = -7680
+        exe_data = dotnet.get_exe_data()
+        for x in range(num1):
+            rva = reader.read_int32() + rva_offset
+            towrite = reader.read_int32()
+            initial_entries[rva] = towrite
+            offset = dotnet.get_pe().get_offset_from_rva(rva)
+            exe_data = exe_data[:offset] + int.to_bytes(towrite, 4, 'little') + exe_data[offset + 4:]
+        #dotnet.set_exe_data(exe_data)
+        dotnet.reinit_dpe(False)
+            
+        amt_entries = reader.read_int32()
+        second_entries = dict()
+        while not reader.is_end():
+            rva = reader.read_int32() + rva_offset
+            num = reader.read_int32() # we dont really care about this number its something for how the code is injected.
+            code_length = reader.read_int32()
+            code = reader.read(code_length)
+            second_entries[rva] = code
+        for method_obj in dotnet.get_metadata_table('MethodDef'):
+            rva = method_obj['RVA'].get_value()
+            if rva in second_entries:
+                print('found encrypted method {}'.format(hex(method_obj.get_token())))
+                code = second_entries[rva]
+                if rva in initial_entries:
+                    print('first entry for this rva:', hex(initial_entries[rva]))
+                print('setting code to {}'.format(binascii.hexlify(code[:50])))
+                method_data = method_obj.get_method_data()
+                start = method_data[0]
+                hdr_type = start & 0x3
+                eh_data = None
+                local_var_sig = None
+                max_stack = None
+                was_fat = False
+                if hdr_type == 2:
+                    #if the header type is 2, encode based off the code data.
+                    pass
+                else:
+                    was_fat = True
+                    max_stack_offset = 2
+                    code_size_offset = 4
+                    local_var_tok_offset = 8
+                    if rva + local_var_tok_offset in initial_entries:
+                        print("RVA IS IN INITIAL ENTRIES ")
+                        raise Exception()
+                    flags = int.from_bytes(method_data[0:2], 'little') & 0x0FFF
+                    max_stack = int.from_bytes(method_data[max_stack_offset:max_stack_offset + 2], 'little')
+                    code_size = int.from_bytes(method_data[code_size_offset:code_size_offset+4], 'little')
+                    local_var_sig = int.from_bytes(method_data[local_var_tok_offset:local_var_tok_offset+4], 'little')
+                    if flags & net_structs.CorILMethod.MoreSects != 0:
+                        more_sects_offset = 12 + code_size
+                        if more_sects_offset % 4 != 0:
+                            amt_to_add = 4 - (more_sects_offset % 4)
+                            more_sects_offset += amt_to_add
+
+                            eh_data = method_data[12 + code_size + amt_to_add:]
+                        else:
+                            eh_data = method_data[12 + code_size:]
+                use_fat = len(code) > 63 or eh_data is not None
+                new_method_body = bytearray()
+                if not use_fat:
+                    new_method_body.extend(int.to_bytes((len(code) << 2) | 0x2), 1, 'little')
+                    new_method_body.extend(code)
+                else:
+                    if not was_fat:
+                        if method_obj['RVA'].get_value() % 4 != 0:
+                            print("NOT ALIGNED")
+                        import binascii
+                        print(binascii.hexlify(code))
+                        raise Exception('mixing method types not supported')
+                    new_flags = 0x0003
+                    if eh_data is not None:
+                        new_flags |= 0x0008
+                    if local_var_sig is not None and local_var_sig != 0:
+                        new_flags |= 0x0010
+                    if max_stack is None:
+                        max_stack = 8
+                    if local_var_sig is None:
+                        local_var_sig = 0
+                    new_flags |= (3 << 12)
+                    new_method_body.extend(int.to_bytes(new_flags, 2, 'little'))
+                    new_method_body.extend(int.to_bytes(max_stack, 4, 'little'))
+                    new_method_body.extend(int.to_bytes(len(code), 4, 'little'))
+                    new_method_body.extend(int.to_bytes(local_var_sig, 4, 'little'))
+                    new_method_body.extend(code)
+                    if eh_data is not None:
+                        new_length = (len(new_method_body) + 3) & ~3
+                        while len(new_method_body) != new_length:
+                            new_method_body.append(0)
+                method_obj.set_method_data(bytes(new_method_body))
+        print('Done decrypting {} methods'.format(amt_entries))
+
     
     def remove_delegates(self, dotnet, del_method):
         start_offset = -1
@@ -204,5 +452,7 @@ class NETReactor(Deobfuscator):
         delegate_method = self.identify_delegate_method(dotnet)
         print('delegate method identified as {}'.format(delegate_method))
         self.remove_delegates(dotnet, delegate_method)
+        print('handling code encryption.')
+        self.fix_encrypted_methods(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
         return True

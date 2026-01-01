@@ -809,7 +809,7 @@ cdef class DotNetNumber(DotNetObject):
                 return False
         return True
 
-    cdef void init_zero(self):
+    cpdef void init_zero(self):
         """ Internal use for initializing DotNetNumbers from C types.
         """
         cdef int type_size = self.__util_get_type_size(self.__num_type)
@@ -1143,6 +1143,12 @@ cdef class DotNetIntPtr(DotNetNumber):
     @staticmethod
     cdef StackCell Zero(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
         return app_domain.get_emulator_obj().pack_i(0)
+
+    @staticmethod
+    cdef StackCell get_Size(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        if app_domain.get_emulator_obj().is_64bit():
+            return app_domain.get_emulator_obj().pack_i4(8)
+        return app_domain.get_emulator_obj().pack_i4(4)
 
     @staticmethod
     cdef StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
@@ -10792,3 +10798,5 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[50].name = 'System.Reflection.Emit.OpCodes
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[50].func_ptr = <static_func_type>&DotNetOpCodes.Ret
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51].name = 'System.IntPtr.op_Explicit'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51].func_ptr = <static_func_type>&DotNetIntPtr.op_Explicit
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[52].name = 'System.IntPtr.get_Size'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[52].func_ptr = <static_func_type>&DotNetIntPtr.get_Size

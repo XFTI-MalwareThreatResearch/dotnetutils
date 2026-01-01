@@ -590,11 +590,11 @@ cdef class MethodDefTable(TableObject):
                         if instr_name == 'call' or instr_name == 'callvirt' or instr_name == 'newobj':
                             #handle method references here.
                             instr_arg = instr.get_argument()
-                            if instr_arg != None:
+                            if instr_arg != None and hasattr(instr_arg, '_add_xref'):
                                 instr_arg._add_xref(method_obj.get_rid(), instr.get_instr_offset())
                         elif instr_name == 'stsfld' or instr_name == 'ldsfld' or instr_name == 'ldfld' or instr_name == 'stfld':
                             instr_arg = instr.get_argument()
-                            if instr_arg != None:
+                            if instr_arg != None and hasattr(instr_arg, '_add_xref'):
                                 instr_arg._add_xref(method_obj.get_rid(), instr.get_instr_offset())
 
 

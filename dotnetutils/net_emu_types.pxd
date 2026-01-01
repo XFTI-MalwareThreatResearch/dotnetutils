@@ -143,7 +143,7 @@ cdef class DotNetNumber(DotNetObject):
 
     cdef bint val_is_zero(self)
 
-    cdef void init_zero(self)
+    cpdef void init_zero(self)
 
     cdef DotNetNumber convert_unsigned(self)
 
@@ -246,6 +246,9 @@ cdef class DotNetIntPtr(DotNetNumber):
 
     @staticmethod
     cdef StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell get_Size(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
     cdef DotNetObject duplicate(self)
 

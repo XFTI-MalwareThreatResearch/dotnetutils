@@ -144,6 +144,8 @@ cdef class DotNetStack:
 
     cpdef void remove_obj(self)
 
+    cpdef net_emu_types.DotNetObject peek_obj(self)
+
     cdef StackCell get(self, int index)
 
     cpdef net_emu_types.DotNetObject pop_obj(self)
