@@ -2,6 +2,7 @@ import sys
 import os
 import hashlib
 from dotnetutils.deobfuscators.confuserex import ConfuserExDeobfuscator
+from dotnetutils.deobfuscators.dotnetreactor import NETReactor
 from dotnetutils.deobfuscators import deobfuscator
 from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer
 
@@ -143,7 +144,7 @@ def main():
         net_deobfuscate_funcs.cleanup_names(dotnet)
         net_deobfuscate_funcs.remove_unk_obf_1_obfuscation(dotnet)
     elif deob_type == 'deob':
-        deobfuscators = [ConfuserExDeobfuscator]
+        deobfuscators = [ConfuserExDeobfuscator, NETReactor]
         if not os.path.isdir(obf_exe):
             work = [(dotnet, obf_exe)]
         else:
