@@ -1,6 +1,6 @@
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
-from dotnetutils import net_row_objects, net_sigs, net_emulator, net_exceptions, net_emu_types, net_opcodes
-from dotnetutils import net_structs
+from dotnetutils import net_row_objects, net_sigs, net_emulator, net_exceptions, net_emu_types, net_opcodes, net_graph_analyzer
+from dotnetutils import net_structs, dotnetpefile
 
 def dnr_skip_obf_methods(emulator, argument):
     method_obj = emulator.get_method_obj()
@@ -230,11 +230,8 @@ class NETReactor(Deobfuscator):
         if last_ldc_i8 is None:
             print('error cant get xor val')
             return
-        import binascii
         xor_val = last_ldc_i8.get_argument()
-        print('xor val {}'.format(xor_val))
         encrypted_data = encrypted_data.as_bytes()
-        print('pre encrypted data {}'.format(binascii.hexlify(encrypted_data[:50])))
         amt = len(encrypted_data) // 8
         decrypted_data = bytearray()
         index = 0
@@ -242,7 +239,6 @@ class NETReactor(Deobfuscator):
             new_val = int.from_bytes(encrypted_data[index:index+8], 'little') ^ xor_val
             index += 8
             decrypted_data.extend(int.to_bytes(new_val, 8, 'little'))
-        print('post decrypted data', binascii.hexlify(decrypted_data[:50]))
         reader = net_structs.DotNetDataReader(bytes(decrypted_data))
         reader.read_int32()
         reader.read_int32()
@@ -253,7 +249,7 @@ class NETReactor(Deobfuscator):
             print('not supported yet')
             return
         initial_entries = dict()
-        rva_offset = -7680
+        rva_offset = 0
         exe_data = dotnet.get_exe_data()
         for x in range(num1):
             rva = reader.read_int32() + rva_offset
@@ -261,9 +257,6 @@ class NETReactor(Deobfuscator):
             initial_entries[rva] = towrite
             offset = dotnet.get_pe().get_offset_from_rva(rva)
             exe_data = exe_data[:offset] + int.to_bytes(towrite, 4, 'little') + exe_data[offset + 4:]
-        #dotnet.set_exe_data(exe_data)
-        dotnet.reinit_dpe(False)
-            
         amt_entries = reader.read_int32()
         second_entries = dict()
         while not reader.is_end():
@@ -272,79 +265,53 @@ class NETReactor(Deobfuscator):
             code_length = reader.read_int32()
             code = reader.read(code_length)
             second_entries[rva] = code
+        new_dpe = dotnetpefile.DotNetPeFile(pe_data=exe_data)
         for method_obj in dotnet.get_metadata_table('MethodDef'):
             rva = method_obj['RVA'].get_value()
-            if rva in second_entries:
-                print('found encrypted method {}'.format(hex(method_obj.get_token())))
-                code = second_entries[rva]
-                if rva in initial_entries:
-                    print('first entry for this rva:', hex(initial_entries[rva]))
-                print('setting code to {}'.format(binascii.hexlify(code[:50])))
-                method_data = method_obj.get_method_data()
-                start = method_data[0]
-                hdr_type = start & 0x3
-                eh_data = None
-                local_var_sig = None
-                max_stack = None
-                was_fat = False
-                if hdr_type == 2:
-                    #if the header type is 2, encode based off the code data.
-                    pass
-                else:
-                    was_fat = True
-                    max_stack_offset = 2
-                    code_size_offset = 4
-                    local_var_tok_offset = 8
-                    if rva + local_var_tok_offset in initial_entries:
-                        print("RVA IS IN INITIAL ENTRIES ")
-                        raise Exception()
-                    flags = int.from_bytes(method_data[0:2], 'little') & 0x0FFF
-                    max_stack = int.from_bytes(method_data[max_stack_offset:max_stack_offset + 2], 'little')
-                    code_size = int.from_bytes(method_data[code_size_offset:code_size_offset+4], 'little')
-                    local_var_sig = int.from_bytes(method_data[local_var_tok_offset:local_var_tok_offset+4], 'little')
-                    if flags & net_structs.CorILMethod.MoreSects != 0:
-                        more_sects_offset = 12 + code_size
-                        if more_sects_offset % 4 != 0:
-                            amt_to_add = 4 - (more_sects_offset % 4)
-                            more_sects_offset += amt_to_add
-
-                            eh_data = method_data[12 + code_size + amt_to_add:]
-                        else:
-                            eh_data = method_data[12 + code_size:]
-                use_fat = len(code) > 63 or eh_data is not None
-                new_method_body = bytearray()
-                if not use_fat:
-                    new_method_body.extend(int.to_bytes((len(code) << 2) | 0x2), 1, 'little')
-                    new_method_body.extend(code)
-                else:
-                    if not was_fat:
-                        if method_obj['RVA'].get_value() % 4 != 0:
-                            print("NOT ALIGNED")
-                        import binascii
-                        print(binascii.hexlify(code))
-                        raise Exception('mixing method types not supported')
-                    new_flags = 0x0003
-                    if eh_data is not None:
-                        new_flags |= 0x0008
-                    if local_var_sig is not None and local_var_sig != 0:
-                        new_flags |= 0x0010
-                    if max_stack is None:
-                        max_stack = 8
-                    if local_var_sig is None:
-                        local_var_sig = 0
-                    new_flags |= (3 << 12)
-                    new_method_body.extend(int.to_bytes(new_flags, 2, 'little'))
-                    new_method_body.extend(int.to_bytes(max_stack, 4, 'little'))
-                    new_method_body.extend(int.to_bytes(len(code), 4, 'little'))
-                    new_method_body.extend(int.to_bytes(local_var_sig, 4, 'little'))
-                    new_method_body.extend(code)
-                    if eh_data is not None:
-                        new_length = (len(new_method_body) + 3) & ~3
-                        while len(new_method_body) != new_length:
-                            new_method_body.append(0)
-                method_obj.set_method_data(bytes(new_method_body))
+            if method_obj.has_body():
+                new_mdef = new_dpe.get_token_value(method_obj.get_token())
+                new_dis = new_mdef.disassemble_method()
+                test_rva = new_dis.get_header_size() + rva
+                if test_rva in second_entries:
+                    mdata = new_mdef.get_method_data()
+                    print('Found encrypted func {}'.format(hex(method_obj.get_token())))
+                    code = second_entries[test_rva]                        
+                    new_mdata = mdata[:new_dis.get_header_size()] + code + mdata[new_dis.get_header_size() + new_dis.get_code_size():]
+                    if new_dis.get_header_size() == 1:
+                        if len(code) > 63:
+                            raise Exception()
+                        new_mdata = int.to_bytes((len(code) << 2) | 0x2, 1, 'little') + new_mdata[1:]
+                    else:
+                        new_mdata = new_mdata[:4] + int.to_bytes(len(code), 4, 'little') + new_mdata[8:]
+                    new_mdata = bytearray(new_mdata)
+                    if len(new_dis.get_exception_blocks()) != 0:
+                        eh_offset = new_dis.get_header_size() + new_dis.get_code_size()
+                        amt_padding = 0
+                        if eh_offset % 4 != 0:
+                            amt_padding = 0
+                            while (eh_offset + amt_padding) % 4 != 0:
+                                amt_padding += 1
+                        new_eh_offset = new_dis.get_header_size() + len(code)
+                        extra_data = new_mdata[new_eh_offset + amt_padding:]
+                        new_mdata = new_mdata[:new_eh_offset]
+                        while len(new_mdata) % 4 != 0:
+                            new_mdata.append(0)
+                        new_mdata.extend(extra_data)
+                    method_obj.set_method_data(bytes(new_mdata))
+        new_table = new_dpe.get_metadata_table('MethodDef')
+        old_table = dotnet.get_metadata_table('MethodDef')
+        for x in range(1, len(new_table) + 1):
+            new_mdef = new_table.get(x)
+            old_mdef = old_table.get(x)
+            old_mdef.get_column('ImplFlags').set_raw_value(old_mdef.get_column('ImplFlags').get_raw_value())
+            old_mdef.get_column('Flags').set_raw_value(old_mdef.get_column('Flags').get_raw_value())
+            old_mdef.get_column('Signature').set_raw_value(old_mdef.get_column('Signature').get_raw_value())
+            old_mdef.get_column('ParamList').set_raw_value(old_mdef.get_column('ParamList').get_raw_value())
+        rva = dotnet.get_pe().get_rva_from_offset(dotnet.get_metadata_table('Module').get(1).get_file_offset())
+        dotnet.patch_dpe(rva, 0, b'#~', rva + 1, None, 0, False)
+        dotnet.reinit_dpe(False)
+            
         print('Done decrypting {} methods'.format(amt_entries))
-
     
     def remove_delegates(self, dotnet, del_method):
         start_offset = -1
@@ -453,6 +420,7 @@ class NETReactor(Deobfuscator):
         print('delegate method identified as {}'.format(delegate_method))
         self.remove_delegates(dotnet, delegate_method)
         print('handling code encryption.')
-        self.fix_encrypted_methods(dotnet)
+        #encrypted methods doesnt work yet, its close.
+        #self.fix_encrypted_methods(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
         return True
