@@ -106,7 +106,7 @@ class NETReactor(Deobfuscator):
                 for instr in dis:
                     if instr.get_name() == 'call':
                         arg = instr.get_argument()
-                        if not arg.is_static_method():
+                        if arg is None or not arg.is_static_method():
                             continue
                         if isinstance(arg, net_row_objects.MethodDef):
                             msig = arg.get_method_signature()
@@ -265,9 +265,12 @@ class NETReactor(Deobfuscator):
             code_length = reader.read_int32()
             code = reader.read(code_length)
             second_entries[rva] = code
+        rvas = dict()
+        for mdef in dotnet.get_metadata_table('MethodDef'):
+            rvas[mdef.get_token()] = mdef.get_column('RVA').get_value()
         new_dpe = dotnetpefile.DotNetPeFile(pe_data=exe_data)
         for method_obj in dotnet.get_metadata_table('MethodDef'):
-            rva = method_obj['RVA'].get_value()
+            rva = rvas[method_obj.get_token()]
             if method_obj.has_body():
                 new_mdef = new_dpe.get_token_value(method_obj.get_token())
                 new_dis = new_mdef.disassemble_method()
@@ -307,6 +310,12 @@ class NETReactor(Deobfuscator):
             old_mdef.get_column('Flags').set_raw_value(old_mdef.get_column('Flags').get_raw_value())
             old_mdef.get_column('Signature').set_raw_value(old_mdef.get_column('Signature').get_raw_value())
             old_mdef.get_column('ParamList').set_raw_value(old_mdef.get_column('ParamList').get_raw_value())
+        new_table = new_dpe.get_metadata_table('StandAloneSig')
+        old_table = dotnet.get_metadata_table('StandAloneSig')
+        for x in range(1, len(old_table)):
+            new_sig = new_table.get(x)
+            old_sig = old_table.get(x)
+            old_sig.get_column('Signature').set_raw_value(new_sig.get_column('Signature').get_raw_value())
         rva = dotnet.get_pe().get_rva_from_offset(dotnet.get_metadata_table('Module').get(1).get_file_offset())
         dotnet.patch_dpe(rva, 0, b'#~', rva + 1, None, 0, False)
         dotnet.reinit_dpe(False)
@@ -421,6 +430,6 @@ class NETReactor(Deobfuscator):
         self.remove_delegates(dotnet, delegate_method)
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
-        #self.fix_encrypted_methods(dotnet)
+        self.fix_encrypted_methods(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
         return True

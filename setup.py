@@ -16,7 +16,9 @@ else:
 def gen_extension(name):
     global compile_args
     global link_args
-    return Extension('dotnetutils.' + name, ['dotnetutils/{}.pyx'.format(name)], extra_compile_args=compile_args, extra_link_args=link_args + ['/PDB:{}.pdb'.format(name)])
+    if sys.platform == 'win32':
+        return Extension('dotnetutils.' + name, ['dotnetutils/{}.pyx'.format(name)], extra_compile_args=compile_args, extra_link_args=link_args + ['/PDB:{}.pdb'.format(name)])
+    return Extension('dotnetutils.' + name, ['dotnetutils/{}.pyx'.format(name)], extra_compile_args=compile_args, extra_link_args=link_args)
 
 ext_modules = cythonize([
     gen_extension('dotnetpefile'),
