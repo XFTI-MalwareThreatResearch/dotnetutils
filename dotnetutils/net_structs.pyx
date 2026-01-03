@@ -42,6 +42,9 @@ cdef class DotNetDataReader:
     cpdef int tell(self):
         return self.__current_pos
 
+    cpdef int get_length(self):
+        return self.__data_len
+
     cpdef unsigned char read_byte(self):
         return <unsigned char>self.read_single_byte()
 

@@ -239,6 +239,7 @@ class NETReactor(Deobfuscator):
             new_val = int.from_bytes(encrypted_data[index:index+8], 'little') ^ xor_val
             index += 8
             decrypted_data.extend(int.to_bytes(new_val, 8, 'little'))
+        decrypted_data = decrypted_data + encrypted_data[index:]
         reader = net_structs.DotNetDataReader(bytes(decrypted_data))
         reader.read_int32()
         reader.read_int32()
@@ -259,16 +260,18 @@ class NETReactor(Deobfuscator):
             exe_data = exe_data[:offset] + int.to_bytes(towrite, 4, 'little') + exe_data[offset + 4:]
         amt_entries = reader.read_int32()
         second_entries = dict()
-        while not reader.is_end():
+        while reader.tell() < (reader.get_length() - 1):
             rva = reader.read_int32() + rva_offset
             num = reader.read_int32() # we dont really care about this number its something for how the code is injected.
             code_length = reader.read_int32()
             code = reader.read(code_length)
-            second_entries[rva] = code
+            second_entries[rva] = (code, num)
         rvas = dict()
         for mdef in dotnet.get_metadata_table('MethodDef'):
             rvas[mdef.get_token()] = mdef.get_column('RVA').get_value()
         new_dpe = dotnetpefile.DotNetPeFile(pe_data=exe_data)
+        import binascii
+        count = 0
         for method_obj in dotnet.get_metadata_table('MethodDef'):
             rva = rvas[method_obj.get_token()]
             if method_obj.has_body():
@@ -277,8 +280,9 @@ class NETReactor(Deobfuscator):
                 test_rva = new_dis.get_header_size() + rva
                 if test_rva in second_entries:
                     mdata = new_mdef.get_method_data()
-                    print('Found encrypted func {}'.format(hex(method_obj.get_token())))
-                    code = second_entries[test_rva]                        
+                    print('Found encrypted func {} {}'.format(hex(method_obj.get_token()), count))
+                    count += 1
+                    code, num = second_entries[test_rva]
                     new_mdata = mdata[:new_dis.get_header_size()] + code + mdata[new_dis.get_header_size() + new_dis.get_code_size():]
                     if new_dis.get_header_size() == 1:
                         if len(code) > 63:

@@ -303,7 +303,8 @@ cdef class DotNetDataReader:
     cdef int __data_len
     cdef bytes __data
     cdef int __current_pos
-
+    
+    cpdef int get_length(self)
     cpdef bint is_end(self)
     cpdef void seek(self, int offset, int where)
     cpdef int tell(self)
