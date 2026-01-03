@@ -563,8 +563,8 @@ cdef class DotNetPeFile:
                     x += 1
                 if amt_method_padding == 0:
                     break
-
-        self.verify_dpe(dont_update_methods)
+        #if not dont_update_methods:
+        #    self.verify_dpe(dont_update_methods)
     
     cdef void verify_resources(self, uint64_t rs_offset, uint64_t orig_rs_offset, Py_buffer new_exe_view) except *:
         """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.

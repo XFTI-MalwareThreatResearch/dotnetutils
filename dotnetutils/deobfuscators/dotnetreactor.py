@@ -270,7 +270,6 @@ class NETReactor(Deobfuscator):
         for mdef in dotnet.get_metadata_table('MethodDef'):
             rvas[mdef.get_token()] = mdef.get_column('RVA').get_value()
         new_dpe = dotnetpefile.DotNetPeFile(pe_data=exe_data)
-        import binascii
         count = 0
         for method_obj in dotnet.get_metadata_table('MethodDef'):
             rva = rvas[method_obj.get_token()]
@@ -280,7 +279,6 @@ class NETReactor(Deobfuscator):
                 test_rva = new_dis.get_header_size() + rva
                 if test_rva in second_entries:
                     mdata = new_mdef.get_method_data()
-                    print('Found encrypted func {} {}'.format(hex(method_obj.get_token()), count))
                     count += 1
                     code, num = second_entries[test_rva]
                     new_mdata = mdata[:new_dis.get_header_size()] + code + mdata[new_dis.get_header_size() + new_dis.get_code_size():]
@@ -322,8 +320,10 @@ class NETReactor(Deobfuscator):
             old_sig.get_column('Signature').set_raw_value(new_sig.get_column('Signature').get_raw_value())
         rva = dotnet.get_pe().get_rva_from_offset(dotnet.get_metadata_table('Module').get(1).get_file_offset())
         dotnet.patch_dpe(rva, 0, b'#~', rva + 1, None, 0, False)
+        for xref_rid, xref_offset in encryption_method.get_xrefs():
+            xfm = dotnet.get_method_by_rid(xref_rid)
+            dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)
         dotnet.reinit_dpe(False)
-            
         print('Done decrypting {} methods'.format(amt_entries))
     
     def remove_delegates(self, dotnet, del_method):
@@ -425,7 +425,45 @@ class NETReactor(Deobfuscator):
                 dotnet.patch_instruction(xfm, b'\x00' * len(xfm_instr), xfm_instr.get_instr_offset(), len(xfm_instr))
                 dotnet.patch_instruction(xfm, patch_bytes, invoke_func.get_instr_offset(), len(invoke_func))
 
-    
+    def remove_junk_static_fields(self, dotnet):
+        static_field_types = list()
+        for typedef in dotnet.get_metadata_table('TypeDef'):
+            name = typedef['TypeName'].get_value()
+            if name.startswith(b'<Module>{') and name.endswith(b'}'):
+                static_field_types.append(typedef)
+        potential_fields = list()
+        for typedef in static_field_types:
+            fields = typedef['FieldList'].get_formatted_value()
+            for field in fields:
+                if field.is_static():
+                    continue
+                fsig = field.get_field_signature()
+                if fsig.get_type_sig() != net_sigs.get_CorSig_Int32():
+                    continue
+                potential_fields.append(field)
+
+        for field in potential_fields:
+            amt_stflds = 0
+            ld_xrefs = list()
+            for xref_rid, xref_offset in field.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                instr = xfm.disassemble_method().get_instr_at_offset(xref_offset)
+                if instr.get_opcode() in (net_opcodes.Opcodes.Stsfld, net_opcodes.Opcodes.Stfld):
+                    amt_stflds += 1
+                else:
+                    ld_xrefs.append((xref_rid, xref_offset))
+            
+            if amt_stflds == 0:
+                #replace it with a 0.
+                if field.is_static():
+                    patch_bytes = b'\x00\x00\x00\x00\x16'
+                else:
+                    patch_bytes = b'\x00\x00\x00\x26\x16'
+                for xref_rid, xref_offset in ld_xrefs:
+                    xfm = dotnet.get_method_by_rid(xref_rid)
+                    dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(patch_bytes))
+            else:
+                raise Exception('not supported yet')
 
     def deobfuscate(self, dotnet, ctx):
         string_method = self.identify_string_method(dotnet)
@@ -435,5 +473,10 @@ class NETReactor(Deobfuscator):
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
         self.fix_encrypted_methods(dotnet)
+        #remove delegatges again for decrypted methods.
+        print('doing a second remove delegates pass')
+        self.remove_delegates(dotnet, delegate_method)
+        print('Removing junk static fields')
+        self.remove_junk_static_fields(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
         return True
