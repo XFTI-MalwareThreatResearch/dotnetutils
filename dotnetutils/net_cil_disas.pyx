@@ -880,7 +880,6 @@ cdef class MethodDisassembler:
             self.parse_header()
             if self.header_size == 0 or self.code_size == 0:
                 raise net_exceptions.InvalidHeaderException(self.method_obj.get_token())
-
             self.__reader.seek(self.header_size, io.SEEK_SET)
             while index < self.code_size:
                 orig_index = index
@@ -902,9 +901,9 @@ cdef class MethodDisassembler:
                     raise net_exceptions.OpcodeLookupException
 
                 if usable_opcode.get_operand_count() == 0:
-                    instr = Instruction(usable_opcode, self, offset=orig_index, instr_index=instr_index)
+                    instr = Instruction(usable_opcode, self, orig_index, instr_index)
                 else:
-                    instr = Instruction(usable_opcode, self, offset=orig_index, instr_index=instr_index)
+                    instr = Instruction(usable_opcode, self, orig_index, instr_index)
                     for x in range(index, index + usable_opcode.get_operand_count()):
                         instr.add_argument(self.__reader.read_single_byte())
                         index += 1
@@ -916,7 +915,6 @@ cdef class MethodDisassembler:
                         for x in range(index, index + amt_of_extra):
                             instr.add_argument(self.__reader.read_single_byte())
                             index += 1
-
 
                 instr.setup_instr_size(index - orig_index)
                 Py_INCREF(instr)

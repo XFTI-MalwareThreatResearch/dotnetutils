@@ -6270,26 +6270,40 @@ cdef struct SortHelperStruct:
 
 cdef bint list_sort_helper(StackCell a, StackCell b): #TODO: is this dangerous?  Will this method have the GIL?
     cdef SortHelperStruct * helper = <SortHelperStruct *>a.extra_data
-    cdef net_row_objects.MethodDef compare_method = <net_row_objects.MethodDef>helper.compare_method
-    cdef DotNetComparison comparison = <DotNetComparison>helper.comparison
-    cdef net_emulator.DotNetEmulator emu = comparison.get_emulator_obj()
-    cdef net_emulator.DotNetEmulator emu_obj = emu.spawn_new_emulator(compare_method, 0, -1, None)
-    cdef StackCell * temp_params = <StackCell *>malloc(sizeof(StackCell) * 3)
+    cdef net_row_objects.MethodDef compare_method = None
+    cdef DotNetComparison comparison = None 
+    cdef net_emulator.DotNetEmulator emu = None 
+    cdef net_emulator.DotNetEmulator emu_obj = None
+    cdef StackCell * temp_params = NULL
     cdef Py_ssize_t x = 0
     cdef StackCell result
+    cdef StackCell owner_obj
+    cdef int amt_params = 2
+    compare_method = <net_row_objects.MethodDef>helper.compare_method
+    comparison = <DotNetComparison>helper.comparison
+    emu = comparison.get_emulator_obj()
+    emu_obj = emu.spawn_new_emulator(compare_method, 0, -1, None)
+    temp_params = <StackCell *>malloc(sizeof(StackCell) * 3)
     if temp_params == NULL:
         raise net_exceptions.EmulatorExecutionException(compare_method.get_emulator_obj(), 'memory error')
+    owner_obj = comparison.get_object()
     if compare_method.is_static_method():
         raise net_exceptions.OperationNotSupportedException()
-    temp_params[0] = comparison.get_emulator_obj().pack_object(comparison)
-    temp_params[1] = comparison.get_emulator_obj().duplicate_cell(a)
-    temp_params[2] = comparison.get_emulator_obj().duplicate_cell(b)
-    emu_obj._allocate_params(3)
-    for x in range(3):
+    if owner_obj.tag == CorElementType.ELEMENT_TYPE_END: #TODO: make sure this logic is correct.
+        raise net_exceptions.EmulatorExecutionException(compare_method.get_emulator_obj(), 'error with compare owner object')
+        #temp_params[0] = comparison.get_emulator_obj().duplicate_cell(a)
+        #temp_params[1] = comparison.get_emulator_obj().duplicate_cell(b)
+    else:
+        amt_params = 3
+        temp_params[0] = comparison.get_emulator_obj().duplicate_cell(owner_obj)
+        temp_params[1] = comparison.get_emulator_obj().duplicate_cell(a)
+        temp_params[2] = comparison.get_emulator_obj().duplicate_cell(b)
+    emu_obj._allocate_params(amt_params)
+    for x in range(amt_params):
         emu_obj._add_param(<int>x, temp_params[x])
     emu_obj.run_function()
     result = emu_obj.get_stack().pop()
-    for x in range(3):
+    for x in range(amt_params):
         comparison.get_emulator_obj().dealloc_cell(temp_params[x])
     free(temp_params)
     if result.tag != CorElementType.ELEMENT_TYPE_I4:
@@ -6386,7 +6400,7 @@ cdef class DotNetList(DotNetObject):  #TODO: Going to need to reorient this to a
         return self.get_emulator_obj().pack_blanktag()
 
     cdef StackCell Sort(self, StackCell * params, int nparams):
-        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
+        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL or params[0].is_slim_object:
             raise net_exceptions.InvalidArgumentsException()
         cdef DotNetComparison comparison = <DotNetComparison> params[0].item.ref
         cdef net_row_objects.MethodDefOrRef compare_method
@@ -10067,22 +10081,27 @@ cdef class DotNetDebugger(DotNetObject):
 cdef class DotNetComparison(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):
         DotNetObject.__init__(self, emulator_obj)
-        self.__object = None
+        memset(&self.__object, 0x0, sizeof(StackCell))
         self.__method_object = None
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
 
     cdef StackCell ctor(self, StackCell * params, int nparams):
-        if nparams != 2 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[1].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[1].item.ref == NULL:
+        if nparams != 2 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or check_object(params[1]):
             raise net_exceptions.InvalidArgumentsException()
-        if params[0].item.ref != NULL:
-            self.__object = <DotNetObject>params[0].item.ref
-        else:
-            self.__object = None
+        if params[0].is_slim_object or params[0].item.ref != NULL:
+            self.__object = self.get_emulator_obj().duplicate_cell(params[0])
         self.__method_object = <DotNetRuntimeMethodHandle>params[1].item.ref
         return self.get_emulator_obj().pack_object(self)
 
     cpdef net_row_objects.MethodDef get_method_object(self):
         return self.__method_object.internal_method
+
+    cdef StackCell get_object(self):
+        return self.__object
+    
+    def __dealloc__(self):
+        if self.__object.tag != CorElementType.ELEMENT_TYPE_END:
+            self.get_emulator_obj().dealloc_cell(self.__object)
 
 cdef class DotNetGC(DotNetObject):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj):

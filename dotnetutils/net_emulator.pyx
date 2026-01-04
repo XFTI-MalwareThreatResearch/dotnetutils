@@ -814,8 +814,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         net_exceptions.EmulatorExecutionException: When theres an error executing the instruction, such as not enough memory etc.
         net_exceptions.InvalidArgumentsException: When force_method_args is used improperly.
     """
-    if emu.method_obj.get_rid() == 1203:
-        print('stsarting do_call 1', initial_method_obj)
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.TypeDefOrRef parent_type
     cdef net_row_objects.MethodDef cctor_method
@@ -839,15 +837,12 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef int params_start = 0
     cdef int params_end = 1
     cdef int amt_args = 0
-    cdef bint debug = emu.method_obj.get_rid() == 1203
     cdef StackCell cell
     cdef StackCell * method_args = NULL
     cdef StackCell boxed_this
     cdef StackCell ret_cell
     cdef StackCell casted_cell
     cdef net_sigs.MethodSig method_signature = initial_method_obj.get_method_signature()
-    if debug:
-        print('starting do_call')
     memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj is not None:
         method_obj = force_method_obj
@@ -1032,14 +1027,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         if obj_ref is not None:
             emu.dealloc_cell(boxed_this)
     elif method_obj.get_table_name() == 'MethodSpec':
-        if debug:
-            print('methodspec do call')
         return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0, method_obj)
     else:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj))
-    if debug:
-        print('done with call')
     return False
 
 cdef bint handle_call_instruction(DotNetEmulator emu): 
@@ -3457,8 +3448,23 @@ cdef bint handle_isinst_instruction(DotNetEmulator emu):
     Returns:
         bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
     """
-    raise net_exceptions.FeatureNotImplementedException()
-
+    cdef net_row_objects.TypeDefOrRef arg = emu.instr.get_argument()
+    cdef StackCell cell = emu.stack.pop()
+    cdef net_emu_types.DotNetObject dnobj = None
+    cdef StackCell result
+    if cell.is_slim_object or cell.tag != CorElementType.ELEMENT_TYPE_OBJECT or cell.item.ref == NULL:
+        raise net_exceptions.FeatureNotImplementedException()
+    
+    dnobj = <net_emu_types.DotNetObject>cell.item.ref
+    if dnobj.isinst(arg):
+        emu.stack.append(cell)
+    else:
+        result = emu.pack_null()
+        emu.stack.append(result)
+        emu.dealloc_cell(result)
+    emu.dealloc_cell(cell)
+    return False
+    
 cdef bint handle_ldflda_instruction(DotNetEmulator emu):
     """ Performs ldflda instruction.
 
@@ -4555,7 +4561,6 @@ cdef class DotNetEmulator:
 
         if isinstance(method_obj, net_row_objects.MemberRef):
             raise net_exceptions.InvalidArgumentsException()
-        
         self.method_obj = method_obj
         if not self.method_obj.has_body():
             raise net_exceptions.InvalidArgumentsException()
@@ -7634,7 +7639,6 @@ cdef class DotNetEmulator:
                 cctor_method = new_emu.method_obj.get_parent_type().get_static_constructor()
                 if cctor_method is not None:
                     new_emu.executed_cctors.can_execute(cctor_method)
-
         return new_emu
 
     cdef void set_slimobj_field(self, StackCell slim_obj, int idno, StackCell val):
@@ -7973,21 +7977,15 @@ cdef class DotNetEmulator:
                 self.print_instr(self.instr)
 
             try:
-                if self.method_obj.get_token() == 0x60004af:
-                    print(1)
                 if self.print_debug:
                     self.__last_instr_start = _perf_counter_ns()
                 should_do_normal_handler = False
                 instr_handler = app_domain.get_instr_handler(self.instr.get_opcode())
-                if self.method_obj.get_token() == 0x60004af:
-                    print(2)
                 if instr_handler is None:
                     should_do_normal_handler = True
                 else:
                     should_do_normal_handler = instr_handler[0](self, instr_handler[1])
                     do_normal_offsets = True
-                if self.method_obj.get_token() == 0x60004af:
-                    print(3)
                 
                 if should_do_normal_handler:
                     emu_instr_handler = emu_func_handlers[<uint16_t>self.instr.get_opcode()]
@@ -7995,8 +7993,6 @@ cdef class DotNetEmulator:
                         raise net_exceptions.InstructionNotSupportedException(self.instr.get_name())
                     
                     do_normal_offsets = not emu_instr_handler(self)
-                if self.method_obj.get_token() == 0x60004af:
-                    print(4)
 
                 if do_normal_offsets:
                     self.current_eip += 1

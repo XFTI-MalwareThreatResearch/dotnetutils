@@ -1,6 +1,6 @@
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils import net_row_objects, net_sigs, net_emulator, net_exceptions, net_emu_types, net_opcodes, net_graph_analyzer
-from dotnetutils import net_structs, dotnetpefile, net_patch
+from dotnetutils import net_structs, dotnetpefile, net_patch, net_deobfuscate_funcs
 
 def dnr_skip_obf_methods(emulator, argument):
     method_obj = emulator.get_method_obj()
@@ -89,23 +89,17 @@ def dnr_skip_time_check(emulator, argument):
         return True
     if len(msig.get_parameters()) != 0:
         return True
-    print(16)
     sha1 = 'SHA1'.encode('utf-16le')
-    print(17, arg)
     dis = arg.disassemble_method()
-    print(17.5)
     for instr in dis:
         if instr.get_opcode() == net_opcodes.Opcodes.Call:
             if instr.get_argument() is None:
                 continue
             if instr.get_argument()['Name'].get_value() == b'get_Now':
-                print(19)
                 return False
         if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
             if instr.get_argument() == sha1:
-                print(20)
                 return False
-    print(18)
     return True
 
 class NETReactor(Deobfuscator):
@@ -229,31 +223,31 @@ class NETReactor(Deobfuscator):
                 arg = instr.get_argument()
                 if not isinstance(arg, net_row_objects.MethodDef):
                     continue
-                print('checking method', arg)
-                if not arg.has_return_value():
-                    print('no ret val')
+                msig = arg.get_method_signature()
+                if msig.get_return_type() != net_sigs.get_CorSig_Int32():
                     continue
                 if arg.is_static_method():
-                    print('is static')
-                    continue
-                if len(arg.get_param_types()) != 0:
-                    print('has params')
-                    continue
-                if not arg.method_has_this():
-                    print('doesnt have this')
-                    continue
-                if arg.get_return_type() != net_sigs.get_CorSig_Int32():
-                    print('retsig is {}'.format(arg.get_return_type()))
-                    continue
+                    if len(msig.get_parameters()) != 1:
+                        continue
+                    param = msig.get_parameters()[0]
+                    if not isinstance(param, net_sigs.CorLibTypeSig):
+                        continue
+                    if param != net_sigs.get_CorSig_Object():
+                        continue
+                    return arg
+                else:
+                    if len(msig.get_parameters()) != 0:
+                        continue
+                    return arg
                 return arg
         return None
 
     def count_int32_pops(self, encryption_method, int32_method):
         dis = encryption_method.disassemble_method()
-        count = 3
+        count = 0
         for x in range(len(dis)):
             instr = dis[x]
-            if instr.get_opcode() == net_opcodes.Opcodes.Callvirt and int32_method == instr.get_argument():
+            if instr.get_opcode() in (net_opcodes.Opcodes.Callvirt, net_opcodes.Opcodes.Call) and int32_method == instr.get_argument():
                 if dis[x+1].get_opcode() == net_opcodes.Opcodes.Pop:
                     count += 1
         return count
@@ -624,8 +618,10 @@ class NETReactor(Deobfuscator):
         self.remove_delegates(dotnet, delegate_method)
         print('Removing junk static fields')
         self.remove_junk_static_fields(dotnet)
-        string_method = self.identify_string_method(dotnet)
-        print('Removing string obfuscation')
-        self.remove_string_obfuscation(dotnet, string_method)
+        #string_method = self.identify_string_method(dotnet)
+        print('Removing string obfuscation') #NOTE: not ready yet.
+        #self.remove_string_obfuscation(dotnet, string_method)
+        print('Cleaning up names')
+        net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
         return True

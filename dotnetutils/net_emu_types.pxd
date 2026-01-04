@@ -2240,10 +2240,12 @@ cdef class DotNetResolveEventArgs(DotNetObject):
     cdef StackCell get_Name(self, StackCell * params, int nparams)
 
 cdef class DotNetComparison(DotNetObject):
-    cdef DotNetObject __object
+    cdef StackCell __object
     cdef DotNetRuntimeMethodHandle __method_object
 
     cpdef net_row_objects.MethodDef get_method_object(self)
+
+    cdef StackCell get_object(self)
 
 """
 

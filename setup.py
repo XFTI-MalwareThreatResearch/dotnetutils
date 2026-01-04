@@ -10,14 +10,14 @@ elif sys.platform == 'darwin':
     compile_args = ['-g', '-Werror', '-Wno-unreachable-code-fallthrough', '-Wno-unused-but-set-variable']
     link_args = ['-g']
 else:
-    compile_args = ['/DEBUG', '/WX', '/wd4551', '/Zi', '/0d'] 
+    compile_args = ['/DEBUG', '/WX', '/wd4551', '/Zi'] 
     link_args = ['/Zi', '/DEBUG']
 
 def gen_extension(name):
     global compile_args
     global link_args
     if sys.platform == 'win32':
-        return Extension('dotnetutils.' + name, ['dotnetutils/{}.pyx'.format(name)], extra_compile_args=compile_args, extra_link_args=link_args + ['/PDB:{}.pdb'.format(name)], define_macros=[('CYTHON_TRACE', '1')])
+        return Extension('dotnetutils.' + name, ['dotnetutils/{}.pyx'.format(name)], extra_compile_args=compile_args, extra_link_args=link_args + ['/PDB:{}.pdb'.format(name)])
     return Extension('dotnetutils.' + name, ['dotnetutils/{}.pyx'.format(name)], extra_compile_args=compile_args, extra_link_args=link_args)
 
 ext_modules = cythonize([
@@ -37,7 +37,7 @@ ext_modules = cythonize([
     gen_extension('net_patch'),
     gen_extension('net_sigs'),
     gen_extension('net_emu_structs')
-], annotate=True, compiler_directives={'linetrace': True, 'binding': True})
+], annotate=True, gdb_debug=True, compiler_directives={'linetrace': True, 'binding': True})
 
 setup(
     ext_modules=ext_modules,
