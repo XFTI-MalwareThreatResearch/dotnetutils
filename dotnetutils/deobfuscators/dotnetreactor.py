@@ -560,7 +560,7 @@ class NETReactor(Deobfuscator):
         cctor_method = strm.get_parent_type().get_static_constructor()
         emu = net_emulator.DotNetEmulator(cctor_method)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
-        emu.set_print_debugging(True, True)
+        #emu.set_print_debugging(True, True)
         emu.setup_method_params([])
         print('Emulating string cctor.')
         emu.run_function()

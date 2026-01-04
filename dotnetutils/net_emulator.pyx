@@ -939,7 +939,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if emu.cell_is_null(boxed_this):
                 raise net_exceptions.EmulatorExecutionException(emu, 'obj_ref is NULL when trying to do a instance call')
             obj_ref = <net_emu_types.DotNetObject>boxed_this.item.ref
-            emu.dealloc_cell(boxed_this)
         elif force_method_args != NULL and not is_newobj and push_obj_reference:
             cell = method_args[0]
             if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
@@ -954,7 +953,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if emu.cell_is_null(boxed_this):
                 raise net_exceptions.EmulatorExecutionException(emu, 'obj_ref is NULL when trying to do a instance call')
             obj_ref = <net_emu_types.DotNetObject>boxed_this.item.ref
-            emu.dealloc_cell(boxed_this)
             if amt_args == 0:
                 method_args = NULL
             else:
@@ -982,6 +980,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 if force_method_args == NULL:
                     for x in range(amt_args):
                         emu.dealloc_cell(method_args[x])
+                if obj_ref is not None:
+                    emu.dealloc_cell(boxed_this)
                 return False
             else:
                 ret_call = emu.pack_null()
@@ -1003,6 +1003,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if force_method_args == NULL: #these args are cleaned up by a later call.
                 for x in range(amt_args):
                     emu.dealloc_cell(method_args[x])
+            if obj_ref is not None:
+                emu.dealloc_cell(boxed_this)
             return False 
         else:
             #static methods are handled so this should only be thiscall methods.
@@ -1027,6 +1029,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             emu.dealloc_cell(cell)
         for x in range(amt_args):
             emu.dealloc_cell(method_args[x])
+        if obj_ref is not None:
+            emu.dealloc_cell(boxed_this)
     elif method_obj.get_table_name() == 'MethodSpec':
         if debug:
             print('methodspec do call')
