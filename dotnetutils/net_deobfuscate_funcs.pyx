@@ -1607,7 +1607,7 @@ cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
 
             #now handle TypeNamespace
             name = row_obj.get_column('TypeNamespace').get_value_as_bytes()
-            if name is not None and not has_prefix(name) and change_namespaces:
+            if name is not None and not has_prefix(name) and change_namespaces and not name.startswith(b'<Module>'):
                 if name not in changed_namespaces:
                     prop_name = name
                     name = make_string(b'NameSpace', count2)

@@ -234,6 +234,19 @@ class NETReactor(Deobfuscator):
                         continue
                     if param != net_sigs.get_CorSig_Object():
                         continue
+                    dis = arg.disassemble_method()
+                    if len(dis) > 20:
+                        continue
+                    skip = False
+                    for instr in dis:
+                        if instr.get_opcode() in (net_opcodes.Opcodes.Callvirt):
+                            if instr.get_argument() is None:
+                                continue
+                            if not isinstance(instr.get_argument(), net_row_objects.MethodDef):
+                                skip = True
+                                break
+                    if skip:
+                        continue
                     return arg
                 else:
                     if len(msig.get_parameters()) != 0:
@@ -476,7 +489,9 @@ class NETReactor(Deobfuscator):
                         for y in range(len(msig_invoke.get_parameters()) - 1):
                             if y == 0 and mdef_obj.method_has_this():
                                 continue
-                            if msig.get_parameters()[z] != msig_invoke.get_parameters()[y]:
+                            mparam = msig.get_parameters()[z]
+                            miparam = msig_invoke.get_parameters()[y]
+                            if mparam != net_sigs.get_CorSig_Object() and mparam != miparam:
                                 is_equal = False
                                 break
                             z += 1
@@ -485,13 +500,14 @@ class NETReactor(Deobfuscator):
                             break
 
                 if invoke_func is None:
-                    print('error no invoke func')
+                    print('error no invoke func', hex(xfm.get_token()), hex(xref_offset))
                     continue
                 #patch and replace instrs
                 dotnet.patch_instruction(xfm, b'\x00' * len(xfm_instr), xfm_instr.get_instr_offset(), len(xfm_instr))
                 dotnet.patch_instruction(xfm, patch_bytes, invoke_func.get_instr_offset(), len(invoke_func))
 
     def remove_junk_static_fields(self, dotnet):
+        #TODO: Need to account for static fields that are used in other functions (specifically the non integer ones.)
         static_field_types = list()
         more_junk_fields = list()
         for typedef in dotnet.get_metadata_table('TypeDef'):
@@ -617,7 +633,7 @@ class NETReactor(Deobfuscator):
         print('doing a second remove delegates pass')
         self.remove_delegates(dotnet, delegate_method)
         print('Removing junk static fields')
-        self.remove_junk_static_fields(dotnet)
+        #self.remove_junk_static_fields(dotnet)
         #string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
         #self.remove_string_obfuscation(dotnet, string_method)
