@@ -1,6 +1,6 @@
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils import net_row_objects, net_sigs, net_emulator, net_exceptions, net_emu_types, net_opcodes, net_graph_analyzer
-from dotnetutils import net_structs, dotnetpefile
+from dotnetutils import net_structs, dotnetpefile, net_patch
 
 def dnr_skip_obf_methods(emulator, argument):
     method_obj = emulator.get_method_obj()
@@ -75,6 +75,37 @@ def dnr_encrypt_stop_ldelema(emulator, argument):
     instr = emulator.get_instr()
     if instr.get_opcode() == net_opcodes.Opcodes.Ldelema:
         raise net_exceptions.EmulatorEndExecutionException(emulator, emulator.get_method_obj().get_rid(), 0, 0, 0)
+    return True
+
+def dnr_skip_time_check(emulator, argument):
+    instr = emulator.get_instr()
+    arg = instr.get_argument()
+    if not isinstance(arg, net_row_objects.MethodDef):
+        return True
+    if not arg.is_static_method():
+        return True
+    msig = arg.get_method_signature()
+    if arg.has_return_value():
+        return True
+    if len(msig.get_parameters()) != 0:
+        return True
+    print(16)
+    sha1 = 'SHA1'.encode('utf-16le')
+    print(17, arg)
+    dis = arg.disassemble_method()
+    print(17.5)
+    for instr in dis:
+        if instr.get_opcode() == net_opcodes.Opcodes.Call:
+            if instr.get_argument() is None:
+                continue
+            if instr.get_argument()['Name'].get_value() == b'get_Now':
+                print(19)
+                return False
+        if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
+            if instr.get_argument() == sha1:
+                print(20)
+                return False
+    print(18)
     return True
 
 class NETReactor(Deobfuscator):
@@ -154,6 +185,7 @@ class NETReactor(Deobfuscator):
     def identify_string_method(self, dotnet):
         toint32 = dotnet.get_methods_by_full_name(b'System.BitConverter.ToInt32')
         if len(toint32) != 1:
+            print('error len toint32 isnt 1')
             return None
         toint32 = toint32[0]
         for xref_rid, xref_offset in toint32.get_xrefs():
@@ -161,7 +193,7 @@ class NETReactor(Deobfuscator):
             if xfm is None:
                 continue
             msig = xfm.get_method_signature()
-            if msig.get_return_type() != net_sigs.get_CorSig_Void():
+            if msig.get_return_type() != net_sigs.get_CorSig_String():
                 continue
             params = msig.get_parameters()
             if len(params) != 1:
@@ -190,6 +222,41 @@ class NETReactor(Deobfuscator):
         if len(constants_classes) == 0:
             print('no constant field classes found.')
             return
+        
+    def find_int32_method(self, encryption_method):
+        for instr in encryption_method.disassemble_method():
+            if instr.get_opcode() in (net_opcodes.Opcodes.Call, net_opcodes.Opcodes.Callvirt):
+                arg = instr.get_argument()
+                if not isinstance(arg, net_row_objects.MethodDef):
+                    continue
+                print('checking method', arg)
+                if not arg.has_return_value():
+                    print('no ret val')
+                    continue
+                if arg.is_static_method():
+                    print('is static')
+                    continue
+                if len(arg.get_param_types()) != 0:
+                    print('has params')
+                    continue
+                if not arg.method_has_this():
+                    print('doesnt have this')
+                    continue
+                if arg.get_return_type() != net_sigs.get_CorSig_Int32():
+                    print('retsig is {}'.format(arg.get_return_type()))
+                    continue
+                return arg
+        return None
+
+    def count_int32_pops(self, encryption_method, int32_method):
+        dis = encryption_method.disassemble_method()
+        count = 3
+        for x in range(len(dis)):
+            instr = dis[x]
+            if instr.get_opcode() == net_opcodes.Opcodes.Callvirt and int32_method == instr.get_argument():
+                if dis[x+1].get_opcode() == net_opcodes.Opcodes.Pop:
+                    count += 1
+        return count
         
     def fix_encrypted_methods(self, dotnet):
         encryption_method = self.identify_encryption_method(dotnet)
@@ -241,9 +308,14 @@ class NETReactor(Deobfuscator):
             decrypted_data.extend(int.to_bytes(new_val, 8, 'little'))
         decrypted_data = decrypted_data + encrypted_data[index:]
         reader = net_structs.DotNetDataReader(bytes(decrypted_data))
-        reader.read_int32()
-        reader.read_int32()
-        reader.read_int32()
+        int32_method = self.find_int32_method(encryption_method)
+        print('int32 method {}'.format(int32_method))
+        amt = self.count_int32_pops(encryption_method, int32_method)
+        print('amt pops {}'.format(amt))
+        if amt == 0:
+            raise Exception('invalid amt pops')
+        for x in range(amt):
+            reader.read_int32()
         num1 = reader.read_int32()
         num2 = reader.read_int32()
         if num2 == 4 or num2 == 1:
@@ -427,6 +499,7 @@ class NETReactor(Deobfuscator):
 
     def remove_junk_static_fields(self, dotnet):
         static_field_types = list()
+        more_junk_fields = list()
         for typedef in dotnet.get_metadata_table('TypeDef'):
             name = typedef['TypeName'].get_value()
             if name.startswith(b'<Module>{') and name.endswith(b'}'):
@@ -436,13 +509,17 @@ class NETReactor(Deobfuscator):
             fields = typedef['FieldList'].get_formatted_value()
             for field in fields:
                 if field.is_static():
+                    fsig = field.get_field_signature()
+                    if isinstance(fsig, net_sigs.FieldSig):
+                        if isinstance(fsig.get_type_sig(), net_sigs.ClassSig):
+                            more_junk_fields.append(field)
                     continue
                 fsig = field.get_field_signature()
                 if fsig.get_type_sig() != net_sigs.get_CorSig_Int32():
                     continue
                 potential_fields.append(field)
 
-        for field in potential_fields:
+        for field in potential_fields :
             amt_stflds = 0
             ld_xrefs = list()
             for xref_rid, xref_offset in field.get_xrefs():
@@ -454,19 +531,88 @@ class NETReactor(Deobfuscator):
                     ld_xrefs.append((xref_rid, xref_offset))
             
             if amt_stflds == 0:
-                #replace it with a 0.
-                if field.is_static():
-                    patch_bytes = b'\x00\x00\x00\x00\x16'
-                else:
-                    patch_bytes = b'\x00\x00\x00\x26\x16'
+                #replace it with a ldc 0.
+                patch_bytes = b'\x00\x00\x00\x00\x16'
                 for xref_rid, xref_offset in ld_xrefs:
                     xfm = dotnet.get_method_by_rid(xref_rid)
                     dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(patch_bytes))
             else:
                 raise Exception('not supported yet')
+        for field in more_junk_fields:
+            amt_stflds = 0
+            ld_xrefs = list()
+            for xref_rid, xref_offset in field.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                instr = xfm.disassemble_method().get_instr_at_offset(xref_offset)
+                if instr.get_opcode() in (net_opcodes.Opcodes.Stsfld, net_opcodes.Opcodes.Stfld):
+                    amt_stflds += 1
+                else:
+                    ld_xrefs.append((xref_rid, xref_offset))
+            if amt_stflds <= 1:
+                patch_bytes = b'\x00\x00\x00\x00\x00'
+                for xref_rid, xref_offset in ld_xrefs:
+                    xfm = dotnet.get_method_by_rid(xref_rid)
+                    dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(patch_bytes))
+
+    def remove_string_obfuscation(self, dotnet, strm):
+        if not dotnet.has_heap('#US'):
+            net_patch.insert_blank_userstrings(dotnet)
+        cctor_method = strm.get_parent_type().get_static_constructor()
+        emu = net_emulator.DotNetEmulator(cctor_method)
+        emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
+        emu.set_print_debugging(True, True)
+        emu.setup_method_params([])
+        print('Emulating string cctor.')
+        emu.run_function()
+        print('starting to replace strings.')
+        us_heap = dotnet.get_heap('#US')
+        us_heap.begin_append_tx()
+        string_methods = [strm]
+        while string_methods:
+            string_method = string_methods.pop()
+            for xref_rid, xref_offset in string_method.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                dis = xfm.disassemble_method()
+                call_instr = dis.get_instr_at_offset(xref_offset)
+                instrs = dis.get_list_of_instrs()
+                start_instr = None
+                needed = 1
+                for x in range(call_instr.get_instr_index() - 1, -1, -1):
+                    instr = instrs[x]
+                    added = instr.get_astack()
+                    pulled = instr.get_pstack()
+                    needed = needed - added + pulled
+                    if needed == 0:
+                        start_instr = instr
+                        break
+                if start_instr is None:
+                    print('Could not find start instr')
+                else:
+                    patch_start = start_instr.get_instr_offset()
+                    if patch_start == 0x8 and start_instr.get_opcode() == net_opcodes.Opcodes.Ldarg:
+                        print('adding additional string method {}'.format(hex(xfm.get_token())))
+                        string_methods.append(xfm)
+                        continue
+                    print('running strings for method {} patch start {} patch end {}'.format(hex(xfm.get_token()), hex(patch_start), hex(call_instr.get_instr_offset() + len(call_instr))))
+                    new_emu = emu.spawn_new_emulator(xfm, start_offset=patch_start, end_offset=call_instr.get_instr_offset() + len(call_instr), dont_execute_first_cctor=True)
+                    new_emu.setup_method_params([])
+                    worked = False
+                    try:
+                        new_emu.run_function()
+                    except net_exceptions.EmulatorEndExecutionException:
+                        worked = True
+
+                    if not worked:
+                        print('error with emulation')
+                    else:
+                        str_obj = new_emu.get_stack().pop_obj()
+                        if not isinstance(str_obj, net_emu_types.DotNetString):
+                            print('Error not string!!!')
+                        else:
+                            print('found string {}'.format(str_obj))
+        us_heap.end_append_tx()                 
 
     def deobfuscate(self, dotnet, ctx):
-        string_method = self.identify_string_method(dotnet)
         delegate_method = self.identify_delegate_method(dotnet)
         print('delegate method identified as {}'.format(delegate_method))
         self.remove_delegates(dotnet, delegate_method)
@@ -478,5 +624,8 @@ class NETReactor(Deobfuscator):
         self.remove_delegates(dotnet, delegate_method)
         print('Removing junk static fields')
         self.remove_junk_static_fields(dotnet)
+        string_method = self.identify_string_method(dotnet)
+        print('Removing string obfuscation')
+        self.remove_string_obfuscation(dotnet, string_method)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
         return True

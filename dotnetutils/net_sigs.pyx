@@ -356,6 +356,9 @@ cdef class GenericInstMethodSig(CallingConventionSig):
     cpdef list get_generic_args(self):
         return self.__generic_args
 
+    def __str__(self):
+        return 'Generic Method sig {}'.format(self.get_generic_args())
+
 cdef class SignatureReader():
     """ Contains utilities for parsing various .NET signatures.  Mostly used internally at this point.
     """
@@ -837,7 +840,6 @@ cdef bint type_sig_compare(TypeSig sig_one, TypeSig sig_two, GenericInstMethodSi
     cdef TypeSig temp = None
     cdef TypeSig temp2 = None
     cdef SZArraySig sztemp = None
-
     if isinstance(comp_one, GenericInstSig) or isinstance(comp_two, GenericInstSig):
         if not isinstance(comp_one, GenericInstSig) or not isinstance(comp_two, GenericInstSig):
             return False
@@ -846,35 +848,17 @@ cdef bint type_sig_compare(TypeSig sig_one, TypeSig sig_two, GenericInstMethodSi
         generic_params = list()
         for x in range(len(gsig_one.get_generic_args())):
             tsigone = gsig_one.get_generic_args()[x]
-            if isinstance(tsigone, GenericVar):
-                if gentypesig is None:
-                    raise net_exceptions.InvalidArgumentsException()
-                number = tsigone.get_number()
-                tsigone = gentypesig.get_generic_args()[number]
-            elif isinstance(tsigone, GenericMVar):
-                if gensig is None:
-                    raise net_exceptions.InvalidArgumentsException()
-                number = tsigone.get_number()
-                tsigone = gensig.get_generic_args()[number]
+            tsigone = sub_sig(tsigone, gensig, gentypesig)
             generic_params.append(tsigone)
         gsig_one = GenericInstSig(comp_one.get_next(), comp_one.get_generic_type(), comp_one.get_generic_args_count())
         for tsigone in generic_params:
             gsig_one.add_generic_type(tsigone)
         comp_one = gsig_one
 
-        generic_params = list()
+        generic_params.clear()
         for x in range(len(gsig_two.get_generic_args())):
             tsigone = gsig_two.get_generic_args()[x]
-            if isinstance(tsigone, GenericVar):
-                if gentypesig is None:
-                    raise net_exceptions.InvalidArgumentsException()
-                number = tsigone.get_number()
-                tsigone = gentypesig.get_generic_args()[number]
-            elif isinstance(tsigone, GenericMVar):
-                if gensig is None:
-                    raise net_exceptions.InvalidArgumentsException()
-                number = tsigone.get_number()
-                tsigone = gensig.get_generic_args()[number]
+            tsigone = sub_sig(tsigone, gensig, gentypesig)
             generic_params.append(tsigone)
         gsig_two = GenericInstSig(comp_one.get_next(), comp_one.get_generic_type(), comp_one.get_generic_args_count())
         for tsigone in generic_params:
@@ -922,7 +906,6 @@ cdef bint type_sig_compare(TypeSig sig_one, TypeSig sig_two, GenericInstMethodSi
         temp = sub_sig(comp_two.get_next(), gensig, gentypesig)
         temp2 = sub_sig(comp_two.get_signature(), gensig, gentypesig)
         comp_two = FnPtrSig(temp, temp2)
-
     return comp_one == comp_two
 
 cdef bint field_sig_compare(FieldSig sig_one, FieldSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig):

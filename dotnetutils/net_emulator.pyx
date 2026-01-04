@@ -814,6 +814,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         net_exceptions.EmulatorExecutionException: When theres an error executing the instruction, such as not enough memory etc.
         net_exceptions.InvalidArgumentsException: When force_method_args is used improperly.
     """
+    if emu.method_obj.get_rid() == 1203:
+        print('stsarting do_call 1', initial_method_obj)
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.TypeDefOrRef parent_type
     cdef net_row_objects.MethodDef cctor_method
@@ -837,12 +839,15 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef int params_start = 0
     cdef int params_end = 1
     cdef int amt_args = 0
+    cdef bint debug = emu.method_obj.get_rid() == 1203
     cdef StackCell cell
     cdef StackCell * method_args = NULL
     cdef StackCell boxed_this
     cdef StackCell ret_cell
     cdef StackCell casted_cell
     cdef net_sigs.MethodSig method_signature = initial_method_obj.get_method_signature()
+    if debug:
+        print('starting do_call')
     memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj is not None:
         method_obj = force_method_obj
@@ -887,7 +892,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 cell = force_method_args[x]
                 new_emu._add_param(x, cell)
         if is_newobj:
-            cell = emu.pack_slimobject(initial_method_obj.get_parent_type())
+            if isinstance(initial_method_obj.get_parent_type(), net_row_objects.TypeSpec):
+                cell = emu.pack_slimobject(initial_method_obj.get_parent_type().get_type())
+            else:
+                cell = emu.pack_slimobject(initial_method_obj.get_parent_type())
             new_emu._add_param(0, cell)
             emu.dealloc_cell(cell)
         new_emu.run_function()
@@ -1020,10 +1028,14 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         for x in range(amt_args):
             emu.dealloc_cell(method_args[x])
     elif method_obj.get_table_name() == 'MethodSpec':
-        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0, initial_method_obj)
+        if debug:
+            print('methodspec do call')
+        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0, method_obj)
     else:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj))
+    if debug:
+        print('done with call')
     return False
 
 cdef bint handle_call_instruction(DotNetEmulator emu): 
@@ -2511,7 +2523,7 @@ cdef net_row_objects.MethodDef resolve_ref(net_row_objects.MemberRef ref_obj):
     if not isinstance(parent_type, net_row_objects.TypeDef):
         return None
     for mdef in parent_type.get_methods():
-        if mdef.get_name().get_value_as_bytes() == ref_obj.get_name():
+        if mdef.get_name() == ref_obj.get_name():
             if mdef.get_method_signature() == ref_sig:
                 return mdef
     return None
@@ -2927,6 +2939,9 @@ cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
     cdef DotNetEmulator new_emu = None
     cdef net_row_objects.MethodDef cctor_method = None
     cdef net_sigs.FieldSig field_sig = None
+    cdef bint fsig_equal = False
+    cdef net_row_objects.TypeSpec tspec = None
+    cdef bint was_set = False
     if emu.get_appdomain().has_static_func(ref_obj.get_token()):
         if set_val.tag != CorElementType.ELEMENT_TYPE_END:
             raise net_exceptions.EmulatorExecutionException(emu, 'Erorr invalid state')
@@ -2937,30 +2952,41 @@ cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
         current_obj = static_func(emu.get_appdomain(), NULL, 0)
         return current_obj
     else:
-        raise net_exceptions.FeatureNotImplementedException()
         #Okay so heres our generic inst sig
+
         parent_type = ref_obj.get_parent_type()
+        if not isinstance(parent_type, net_row_objects.TypeSpec):
+            raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to do a virt field lookup when the parent isnt a typespec.')
         if parent_type is None:
             return emu.pack_blanktag()
-        col_val = parent_type.get_column('FieldList')
+        tspec = <net_row_objects.TypeSpec>parent_type
+        col_val = tspec.get_type().get_column('FieldList')
         if col_val is None:
             return emu.pack_blanktag()
+        was_set = False
         for field_obj in col_val.get_formatted_value():
-            if field_obj.get_column('Name').get_value_as_bytes() == ref_obj.get_name():
+            if ref_obj.get_name().startswith(field_obj.get_column('Name').get_value_as_bytes()):
                 field_sig = field_obj.get_field_signature()
-                if field_sig == ref_obj.get_method_signature():
-                    cctor_method = parent_type.get_static_constructor()
+                if emu.spec_obj is None:
+                    fsig_equal = net_sigs.field_sig_compare(field_sig, ref_obj.get_method_signature(), None, tspec.get_sig_obj())
+                else:
+                    fsig_equal = net_sigs.field_sig_compare(field_sig, ref_obj.get_method_signature(), emu.spec_obj.get_sig_obj(), tspec.get_sig_obj())
+                if fsig_equal:
+                    cctor_method = tspec.get_type().get_static_constructor()
                     if cctor_method:
                         if emu.executed_cctors.can_execute(cctor_method) and not emu.dont_execute_cctor:
                             new_emu = emu.spawn_new_emulator(cctor_method, caller=emu)
-                            new_emu._allocate_params(0)
+                            new_emu.setup_method_params([])
                             new_emu.run_function()
                     if set_val.tag == CorElementType.ELEMENT_TYPE_END:
                         current_obj = emu.get_appdomain().get_static_field(field_obj.get_rid())
                         return current_obj
                     else:
                         emu.get_appdomain().set_static_field(field_obj.get_rid(), set_val)
+                        was_set = True
                         break
+    if not was_set:
+        raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to get or set a virtual field but nothing was actually done.')
     return emu.pack_blanktag()
 
 cdef bint handle_stsfld_instruction(DotNetEmulator emu):
@@ -3933,10 +3959,17 @@ cdef class EmulatorAppDomain:
             net_exceptions.EmulatorExecutionException: Pulled an uninitialized field.
         """
         cdef int actual_index = self.__static_field_mappings[idno]
+        cdef net_row_objects.Field fobj = None
+        cdef net_sigs.FieldSig fsig = None
+        cdef StackCell new_cell
         if actual_index >= <int>self.__static_fields.size():
             raise net_exceptions.InvalidArgumentsException()
         if self.__static_fields[actual_index].tag == CorElementType.ELEMENT_TYPE_END:
-            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'attempted to pull an uninitialized static field')
+            fobj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_metadata_table('Field').get(idno)
+            fsig = fobj.get_field_signature()
+            new_cell = self.get_emulator_obj()._get_default_value(fsig.get_type_sig(), None)
+            self.get_emulator_obj().ref_cell(new_cell)
+            self.__static_fields[actual_index] = new_cell
         return self.get_emulator_obj().duplicate_cell(self.__static_fields[actual_index])
 
     cdef static_func_type get_static_func(self, int token):
@@ -4529,7 +4562,7 @@ cdef class DotNetEmulator:
         self.end_offset = end_offset
         self.stack = DotNetStack(self, self.disasm_obj.max_stack)
         self.end_method_rid = end_method_rid
-        if self.spec_obj is None and self.spec_obj is not None:
+        if self.spec_obj is None and spec_obj is not None:
             self.spec_obj = spec_obj
         self.executed_cctors = CctorRegistry()
         if start_offset > -1:
@@ -6065,6 +6098,15 @@ cdef class DotNetEmulator:
                             result.item.i8 = <int64_t>cell.item.r4
                         elif cell.tag == CorElementType.ELEMENT_TYPE_R8:
                             result.item.i8 = <int64_t>cell.item.r8
+                        elif cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                            if not cell.is_slim_object:
+                                if cell.item.ref != NULL:
+                                    #We need to account for potential ldftn objects in this for now at least.
+                                    if isinstance(<net_emu_types.DotNetObject>cell.item.ref, net_emu_types.DotNetRuntimeMethodHandle):
+                                        result.item.ref = cell.item.ref
+                                        result.tag = CorElementType.ELEMENT_TYPE_OBJECT
+                                        return result
+                            raise net_exceptions.InvalidArgumentsException()
                         else:
                             raise net_exceptions.InvalidArgumentsException()
                 elif etype == CorElementType.ELEMENT_TYPE_U:
@@ -7927,15 +7969,21 @@ cdef class DotNetEmulator:
                 self.print_instr(self.instr)
 
             try:
+                if self.method_obj.get_token() == 0x60004af:
+                    print(1)
                 if self.print_debug:
                     self.__last_instr_start = _perf_counter_ns()
                 should_do_normal_handler = False
                 instr_handler = app_domain.get_instr_handler(self.instr.get_opcode())
+                if self.method_obj.get_token() == 0x60004af:
+                    print(2)
                 if instr_handler is None:
                     should_do_normal_handler = True
                 else:
                     should_do_normal_handler = instr_handler[0](self, instr_handler[1])
                     do_normal_offsets = True
+                if self.method_obj.get_token() == 0x60004af:
+                    print(3)
                 
                 if should_do_normal_handler:
                     emu_instr_handler = emu_func_handlers[<uint16_t>self.instr.get_opcode()]
@@ -7943,6 +7991,8 @@ cdef class DotNetEmulator:
                         raise net_exceptions.InstructionNotSupportedException(self.instr.get_name())
                     
                     do_normal_offsets = not emu_instr_handler(self)
+                if self.method_obj.get_token() == 0x60004af:
+                    print(4)
 
                 if do_normal_offsets:
                     self.current_eip += 1

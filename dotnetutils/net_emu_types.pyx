@@ -6272,7 +6272,8 @@ cdef bint list_sort_helper(StackCell a, StackCell b): #TODO: is this dangerous? 
     cdef SortHelperStruct * helper = <SortHelperStruct *>a.extra_data
     cdef net_row_objects.MethodDef compare_method = <net_row_objects.MethodDef>helper.compare_method
     cdef DotNetComparison comparison = <DotNetComparison>helper.comparison
-    cdef net_emulator.DotNetEmulator emu_obj = compare_method.get_emulator_obj().spawn_new_emulator(compare_method, caller=None)
+    cdef net_emulator.DotNetEmulator emu = comparison.get_emulator_obj()
+    cdef net_emulator.DotNetEmulator emu_obj = emu.spawn_new_emulator(compare_method, 0, -1, None)
     cdef StackCell * temp_params = <StackCell *>malloc(sizeof(StackCell) * 3)
     cdef Py_ssize_t x = 0
     cdef StackCell result
@@ -6283,6 +6284,7 @@ cdef bint list_sort_helper(StackCell a, StackCell b): #TODO: is this dangerous? 
     temp_params[0] = comparison.get_emulator_obj().pack_object(comparison)
     temp_params[1] = comparison.get_emulator_obj().duplicate_cell(a)
     temp_params[2] = comparison.get_emulator_obj().duplicate_cell(b)
+    emu_obj._allocate_params(3)
     for x in range(3):
         emu_obj._add_param(<int>x, temp_params[x])
     emu_obj.run_function()
@@ -6403,7 +6405,6 @@ cdef class DotNetList(DotNetObject):  #TODO: Going to need to reorient this to a
             if isinstance(parent_type, net_row_objects.TypeRef):
                 raise net_exceptions.OperationNotSupportedException() #likely requires similar logic as a call with a MemberRef and a TypeRef - TODO
             
-            #assume parent_Type is TypeDef here.
             for method in parent_type['MethodList'].get_formatted_value():
                 if method['Name'].get_value() == compare_method['Name'].get_value():
                     if method.get_method_signature() == compare_method.get_method_signature():
@@ -7952,7 +7953,7 @@ cdef class DotNetParameterInfo(DotNetObject):
         raise net_exceptions.OperationNotSupportedException()
 
     def __str__(self):
-        return 'ParameterObject: {} {}'.format(hex(self.internal_param.get_token()), self.internal_param.get_column('Name').get_value())
+        return 'ParameterObject: {}'.format(self.internal_param)
 
 cdef class DynamicMethodObject(net_row_objects.MethodDef):
 
@@ -9792,7 +9793,6 @@ cdef class DotNetDynamicMethod(DotNetObject):
             self.get_emulator_obj().dealloc_cell(cell)
             current_param_sig = current_param.sig_obj
             if current_param_sig is None:
-                print('error getrting sig for {}'.format(current_param.get_type_handle()))
                 raise net_exceptions.InvalidArgumentsException()
 
             params_list.append(current_param_sig)

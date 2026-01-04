@@ -407,6 +407,7 @@ cdef class DotNetPeFile:
         cdef uint64_t min_method_rva = 0
         cdef net_row_objects.MethodDef mdef2 = None
         cdef net_processing.MetadataTableHeapObject mheap = self.get_heap('#~')
+        cdef bint in_method_table = False
         metadata_offset = pe.get_offset_from_rva(pe.get_net_header().MetaData.VirtualAddress)
         streams_offset = metadata_offset + 12
         number_of_streams = <int>(metadata_offset + 12)
@@ -468,6 +469,7 @@ cdef class DotNetPeFile:
                     continue
                 if resource_offset == va_addr:
                     in_table = True
+                    in_method_table = True
                     continue
                 resource_rva = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, resource_offset, va_addr, difference, target_addr)
                 if resource_rva != resource_offset:
@@ -521,7 +523,7 @@ cdef class DotNetPeFile:
                 raise net_exceptions.InvalidArgumentsException()
             self.set_exe_data(result)
         tobj = self.get_metadata_table('MethodDef')
-        if tobj is not None and not dont_update_methods:
+        if tobj is not None and not dont_update_methods and not in_method_table:
             padding_counter = 0
             methods = list(tobj)
             methods.sort(key=method_rva_sort)
