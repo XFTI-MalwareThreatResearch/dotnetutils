@@ -4552,6 +4552,8 @@ cdef class DotNetEmulator:
             net_exceptions.DisassemblyFailedException: could not disassemble the method.
         
         """
+        if method_obj is None:
+            raise net_exceptions.InvalidArgumentsException()
         self.spec_obj = None
         self.is_destroyed = False
         self.__init_open_generics_as_object = init_open_generics_as_object

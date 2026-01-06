@@ -267,6 +267,9 @@ class NETReactor(Deobfuscator):
         
     def fix_encrypted_methods(self, dotnet):
         encryption_method = self.identify_encryption_method(dotnet)
+        if encryption_method is None:
+            print('Code encryption not detected.')
+            return False
         print('Encryption method identified as {}'.format(encryption_method))
         emu_obj = net_emulator.DotNetEmulator(encryption_method)
         emu_obj.setup_method_params([])
@@ -282,12 +285,12 @@ class NETReactor(Deobfuscator):
             worked = True
         if not worked:
             print('initial emulation failed.')
-            return
+            return False
         emu_obj.get_stack().remove_obj()
         encrypted_data = emu_obj.get_stack().pop_obj()
         if not isinstance(encrypted_data, net_emu_types.DotNetArray):
             print('error with emulation')
-            return
+            return False
         last_ldc_i8 = None
         prev_instr = None
         for instr in encryption_method.disassemble_method():
@@ -303,7 +306,7 @@ class NETReactor(Deobfuscator):
             prev_instr = instr
         if last_ldc_i8 is None:
             print('error cant get xor val')
-            return
+            return False
         xor_val = last_ldc_i8.get_argument()
         encrypted_data = encrypted_data.as_bytes()
         amt = len(encrypted_data) // 8
@@ -327,7 +330,7 @@ class NETReactor(Deobfuscator):
         num2 = reader.read_int32()
         if num2 == 4 or num2 == 1:
             print('not supported yet')
-            return
+            return False
         initial_entries = dict()
         rva_offset = 0
         exe_data = dotnet.get_exe_data()
@@ -404,6 +407,7 @@ class NETReactor(Deobfuscator):
             dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)
         dotnet.reinit_dpe(False)
         print('Done decrypting {} methods'.format(amt_entries))
+        return True
     
     def remove_delegates(self, dotnet, del_method):
         start_offset = -1
@@ -628,15 +632,16 @@ class NETReactor(Deobfuscator):
         self.remove_delegates(dotnet, delegate_method)
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
-        self.fix_encrypted_methods(dotnet)
-        #remove delegatges again for decrypted methods.
-        print('doing a second remove delegates pass')
-        self.remove_delegates(dotnet, delegate_method)
+        is_encrypted = self.fix_encrypted_methods(dotnet)
+        if is_encrypted:
+            #remove delegatges again for decrypted methods.
+            print('doing a second remove delegates pass')
+            self.remove_delegates(dotnet, delegate_method)
         print('Removing junk static fields')
-        #self.remove_junk_static_fields(dotnet)
-        #string_method = self.identify_string_method(dotnet)
+        self.remove_junk_static_fields(dotnet)
+        string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
-        #self.remove_string_obfuscation(dotnet, string_method)
+        self.remove_string_obfuscation(dotnet, string_method)
         print('Cleaning up names')
         net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')

@@ -46,6 +46,8 @@ cdef class DotNetObject:
 
     cdef StackCell ctor(self, StackCell * params, int nparams)
 
+    cdef StackCell GetType(self, StackCell * params, int nparams)
+
     cdef int __get_num_fields(self, net_row_objects.TypeDefOrRef ref)
 
     cdef void __init_fields(self, net_row_objects.TypeDefOrRef ref)

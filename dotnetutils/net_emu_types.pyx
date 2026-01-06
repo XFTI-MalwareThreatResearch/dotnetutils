@@ -182,6 +182,28 @@ cdef class DotNetObject:
         When adding imported methods such as ToString() etc, put a line like below in the constructor for each function.
         """
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
+        self.add_function(b'GetType', <emu_func_type>self.GetType)
+
+    cdef StackCell ctor(self, StackCell * params, int nparams):
+        """ ctor method for the object.  Used with newobj instructions.
+            All MemberRef methods take the same arguments: An array of StackCells that contain the parameters and the number of params.
+            All MemberRef methods must return a newly allocated StackCell.
+
+        Args:
+            params (net_emu_structs.StackCell *): The array of parameters.
+            nparams (int): The number of parameters provided.
+        
+        Returns:
+            net_emu_structs.StackCell: A newly allocated stackcell representing the current object.
+                Generally for ctor methods, it should always look like this: return self.get_emulator_obj().pack_object(self)
+        """
+        return self.get_emulator_obj().pack_object(self)
+
+    cdef StackCell GetType(self, StackCell * params, int nparams):
+        if self.type_obj is None:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Error obtaining runtime type of dotnetobject')
+        cdef DotNetType type_obj = DotNetType(self.get_emulator_obj(), self.type_obj, self.type_sig_obj)
+        return self.get_emulator_obj().pack_object(type_obj)
 
     cpdef object as_python_obj(self):
         """ Helper method to convert a .NET object to its python equivalent.
@@ -294,21 +316,6 @@ cdef class DotNetObject:
             bool: True if DotNetNumber, False otherwise.
         """
         return False
-
-    cdef StackCell ctor(self, StackCell * params, int nparams):
-        """ ctor method for the object.  Used with newobj instructions.
-            All MemberRef methods take the same arguments: An array of StackCells that contain the parameters and the number of params.
-            All MemberRef methods must return a newly allocated StackCell.
-
-        Args:
-            params (net_emu_structs.StackCell *): The array of parameters.
-            nparams (int): The number of parameters provided.
-        
-        Returns:
-            net_emu_structs.StackCell: A newly allocated stackcell representing the current object.
-                Generally for ctor methods, it should always look like this: return self.get_emulator_obj().pack_object(self)
-        """
-        return self.get_emulator_obj().pack_object(self)
 
     cdef bint is_null(self):
         """ Is the object NULL (Not really used anymore, NULL is now represented by a ELEMENT_TYPE_OBJECT with a NULL ref.)
