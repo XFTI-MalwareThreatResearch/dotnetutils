@@ -626,36 +626,27 @@ class NETReactor(Deobfuscator):
                             print('found string {}'.format(str_obj))
         us_heap.end_append_tx()
 
-    def remove_antitamper_method(self, dotnet):
-        module_type = dotnet.get_type_by_full_name(b'<Module>')
-        if module_type is None:
-            print('Couldnt find antitamper method.')
-            return
-        cctor = module_type.get_static_constructor()
-        if cctor is None:
-            print('Couldnt find antitamper method.')
-            return
-        tampered = ' is tampered.'.encode('utf-16le')
-        antitamper_method = None
-        for instr in cctor.disassemble_method():
-            if instr.get_opcode() == net_opcodes.Opcodes.Call:
-                arg = instr.get_argument()
-                if isinstance(arg, net_row_objects.MethodDef):
-                    for instr in arg.disassemble_method():
-                        if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
-                            strarg = instr.get_argument()
-                            if strarg == tampered:
-                                antitamper_method = arg
-                                break
-        if antitamper_method is None:
-            print('Could not find anti tamper method.')
-            return
-        
-        for xref_rid, xref_offset in antitamper_method.get_xrefs():
-            xfm = dotnet.get_method_by_rid(xref_rid)
-            dis = xfm.disassemble_method()
-            instr = dis.get_instr_at_offset(xref_offset)
-            dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
+    def remove_antitamper_antidebug_method(self, dotnet):
+        methods_to_remove = list()
+        identifier_strings = [' is tampered.'.encode('utf-16le'), 'Debugger Detected'.encode('utf-16le')]
+        this_assembly = 'This assembly is protected by an unregistered version'.encode('utf-16le')
+        for mdef in dotnet.get_metadata_table('MethodDef'):
+            if not mdef.has_body() or mdef.has_return_value() or not mdef.is_static_method():
+                continue
+            if len(mdef.get_param_types()) != 0:
+                continue
+            for instr in mdef.disassemble_method():
+                if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
+                    strarg = instr.get_argument()
+                    if strarg in identifier_strings or this_assembly in strarg:
+                        methods_to_remove.append(mdef)
+                        break
+        for mdef in methods_to_remove:
+            for xref_rid, xref_offset in mdef.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                dis = xfm.disassemble_method()
+                instr = dis.get_instr_at_offset(xref_offset)
+                dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
 
     def deobfuscate(self, dotnet, ctx):
         delegate_method = self.identify_delegate_method(dotnet)
@@ -669,13 +660,13 @@ class NETReactor(Deobfuscator):
             print('doing a second remove delegates pass')
             self.remove_delegates(dotnet, delegate_method)
         print('Removing junk static fields')
-        self.remove_junk_static_fields(dotnet)
+        #self.remove_junk_static_fields(dotnet)
         print('removing antitamper method calls.')
-        self.remove_antitamper_method(dotnet)
-        string_method = self.identify_string_method(dotnet)
+        self.remove_antitamper_antidebug_method(dotnet)
+        #string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
-        self.remove_string_obfuscation(dotnet, string_method)
+        #self.remove_string_obfuscation(dotnet, string_method)
         print('Cleaning up names')
-        net_deobfuscate_funcs.cleanup_names(dotnet)
+        #net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
         return True
