@@ -624,7 +624,38 @@ class NETReactor(Deobfuscator):
                             print('Error not string!!!')
                         else:
                             print('found string {}'.format(str_obj))
-        us_heap.end_append_tx()                 
+        us_heap.end_append_tx()
+
+    def remove_antitamper_method(self, dotnet):
+        module_type = dotnet.get_type_by_full_name(b'<Module>')
+        if module_type is None:
+            print('Couldnt find antitamper method.')
+            return
+        cctor = module_type.get_static_constructor()
+        if cctor is None:
+            print('Couldnt find antitamper method.')
+            return
+        tampered = ' is tampered.'.encode('utf-16le')
+        antitamper_method = None
+        for instr in cctor.disassemble_method():
+            if instr.get_opcode() == net_opcodes.Opcodes.Call:
+                arg = instr.get_argument()
+                if isinstance(arg, net_row_objects.MethodDef):
+                    for instr in arg.disassemble_method():
+                        if instr.get_opcode() == net_opcodes.Opcodes.Ldstr:
+                            strarg = instr.get_argument()
+                            if strarg == tampered:
+                                antitamper_method = arg
+                                break
+        if antitamper_method is None:
+            print('Could not find anti tamper method.')
+            return
+        
+        for xref_rid, xref_offset in antitamper_method.get_xrefs():
+            xfm = dotnet.get_method_by_rid(xref_rid)
+            dis = xfm.disassemble_method()
+            instr = dis.get_instr_at_offset(xref_offset)
+            dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
 
     def deobfuscate(self, dotnet, ctx):
         delegate_method = self.identify_delegate_method(dotnet)
@@ -639,6 +670,8 @@ class NETReactor(Deobfuscator):
             self.remove_delegates(dotnet, delegate_method)
         print('Removing junk static fields')
         self.remove_junk_static_fields(dotnet)
+        print('removing antitamper method calls.')
+        self.remove_antitamper_method(dotnet)
         string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
         self.remove_string_obfuscation(dotnet, string_method)
