@@ -3769,9 +3769,18 @@ cdef class EmulatorAppDomain:
         self.__user_instr_handlers = dict()
 
     cpdef void register_instr_handler(self, Opcodes opcode, object instrFn, object param):
+        """ Register an instr handler.  Instruction handlers are functions that follow this signature: def func(emulator: DotNetEmulator, param: object) -> bool.
+            Instruction handlers return True if the emulator should execute the instruction normally and False otherwise.
+        Args:
+            opcode (net_opcodes.Opcodes): the opcode to call the instruction handler on.  It is called on every instruction of this type executed within a emulator context.
+            instrFn (object): The handler.  It must follow the function signature above.
+            param (object): A optional parameter that will be passed to every handler called for this opcode.  Can be None.
+        """
         self.__user_instr_handlers[opcode] = (instrFn, param)
 
     cdef tuple get_instr_handler(self, Opcodes opcode):
+        """ Used by the emulator to obtain instr handlers.
+        """
         if opcode not in self.__user_instr_handlers:
             return None
         return self.__user_instr_handlers[opcode]

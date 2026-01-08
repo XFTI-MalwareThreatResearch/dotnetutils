@@ -213,6 +213,10 @@ cdef class Instruction:
         return self.instr_size
 
     cpdef void setup_instr_offset(self, unsigned int instr_offset, unsigned int instr_index):
+        """
+        Internal method, may be removed later.
+        Used to change the instruction's offset and index (mostly used in the disassembler, and control flow deob.)
+        """
         self.offset = instr_offset
         self.instr_index = instr_index
 

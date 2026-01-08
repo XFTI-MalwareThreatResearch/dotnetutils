@@ -320,9 +320,25 @@ cdef class DotNetPeFile:
         self.raise_exc_on_invalid_method = raise_exc
 
     cdef bint should_raise_exc_on_invalid_method(self):
+        """ Obtains the value which determines whether or not malformed methods will raise an exception or a warning.
+            Returning exceptions on invalid methods can be a bad thing - some obfuscators can add invalid metadata and also code
+            can be encrypted on disk.
+        Returns:
+            bint: True if invalid methods will return an exception, False if they will return a warning.
+        """
         return self.raise_exc_on_invalid_method
 
     cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end, bint dont_update_methods):
+        """  Patches data into or out of the dotnet file.
+        Args:
+            va (uint64_t): The virtual address of the location where the patch should occur.
+            diff (int): The difference in bytes between the data that was previously there and the data that is being inserted.
+            stream_name (bytes): The name of the .NET metadata stream that is being patched, or None if the data is outside .NET metadata.
+            target_va (uint64_t): An address that is within the section and metadata heap which you are trying to patch.   This helps deal with cases like adding data to the end of a section.
+            new_data (bytes): the data to patch in.
+            target_end (uint64_t): The END OFFSET where the original data should resume.  So for example, if you are trying to patch the data b'abcdefghijk' with b'bbbb' at offset 2, but you want to keep all of the other data, your target_end should be 2.
+            dont_update_methods (bint): whether or not method RVAs and alignment should be updated.  If True, it will not be updated.  Leave this False for the most part.
+        """
         if self.get_pe().is_64bit():
             self.__patch_dpe64(va, diff, stream_name, target_va, dont_update_methods, new_data, target_end)
         else:
@@ -569,7 +585,7 @@ cdef class DotNetPeFile:
         #    self.verify_dpe(dont_update_methods)
     
     cdef void verify_resources(self, uint64_t rs_offset, uint64_t orig_rs_offset, Py_buffer new_exe_view) except *:
-        """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.
+        """ These methods are basically used for debugging, to check over an executables RVAs after patching.
         """
         cdef IMAGE_RESOURCE_DIRECTORY * rsrc_dir = NULL
         cdef uint64_t usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
@@ -596,6 +612,8 @@ cdef class DotNetPeFile:
             usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
 
     cpdef void verify_dpe(self, bint dont_check_method_align) except *:
+        """ These methods are basically used for debugging, to check over an executables RVAs after patching.
+        """
         cdef bytes exe_data = self.get_exe_data()
         cdef IMAGE_DOS_HEADER * dos = NULL
         cdef Py_buffer exe_view
@@ -1185,12 +1203,17 @@ cdef class DotNetPeFile:
 
 
     cpdef void update_streams(self):
+        """Used for updating the data in the .NET metadata heaps for get_exe_data() 
+        """
         cdef net_processing.HeapObject heap_obj = None
         cdef bytes exe_data = self.get_exe_data()
         for heap_obj in self.get_heaps().values():
             exe_data = exe_data[:heap_obj.get_offset()] + heap_obj.to_bytes() + exe_data[heap_obj.get_offset() + heap_obj.get_size():]
+        self.set_exe_data(exe_data)
 
     cpdef void reinit_dpe(self, bint no_processing):
+        """ Reparse the dotnet file.  Eventually likely to remove this in favor of removing state variables that cause issues requiring this.
+        """
         self.original_exe_data = bytes(self.exe_data)
         self.metadata_dir = net_metadata.MetaDataDirectory(self)
         self.__versioninfo_str = None

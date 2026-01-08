@@ -1898,7 +1898,7 @@ cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
 
 cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list target_rids=None):
     """ A control flow deobfuscator.  Deobfuscates control flow obfuscation that uses switch statements to produce constant outcomes.
-        Currently in development.  There may be issues.  Currently doesnt support methods with try catch finally filter.
+        Currently in development.  There may be issues.
     
     Args:
         dotnet (dotnetpefile.DotNetPeFile): The dotnetpe to deobfuscate

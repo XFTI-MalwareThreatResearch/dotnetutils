@@ -144,6 +144,9 @@ def main():
         net_deobfuscate_funcs.cleanup_names(dotnet)
         net_deobfuscate_funcs.remove_unk_obf_1_obfuscation(dotnet)
     elif deob_type == 'deob':
+        """ The deob functionality is currently under development.  Currently using it mostly for testing related to control flow deobfuscation.
+            They arent really optimized for speed yet, and some functions dont work.  confuserex is probably the more stable one right now.
+        """
         deobfuscators = [ConfuserExDeobfuscator, NETReactor]
         if not os.path.isdir(obf_exe):
             work = [(dotnet, obf_exe)]
