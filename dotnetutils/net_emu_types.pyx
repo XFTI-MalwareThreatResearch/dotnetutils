@@ -10606,6 +10606,28 @@ cdef class DotNetConditionalWeakTable(DotNetDictionary):
 cdef class DotNetRandom(DotNetObject):
     pass
 
+cdef class DotNetDateTime(DotNetObject):
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
+        self.__day = 0
+        self.__year = 0
+        self.__month = 0
+        self.add_function(b'ctor', <emu_func_type>self.ctor)
+        self.add_function(b'get_Day', <emu_func_type>self.get_Day)
+
+    cdef StackCell ctor(self, StackCell * params, int nparams):
+        if nparams != 3:
+            raise net_exceptions.InvalidArgumentsException()
+        if params[0].tag != CorElementType.ELEMENT_TYPE_I4 or not (params[0].tag == params[1].tag == params[2].tag):
+            raise net_exceptions.InvalidArgumentsException()
+        self.__year = params[0].item.i4
+        self.__month = params[1].item.i4
+        self.__day = params[2].item.i4
+        return self.get_emulator_obj().pack_object(self)
+
+    cdef StackCell get_Day(self, StackCell * params, int nparams):
+        return self.get_emulator_obj().pack_i4(self.__day)
+
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj):
     return DotNetConcurrentDictionary(emulator_obj)
 
@@ -10671,6 +10693,9 @@ cdef DotNetObject New_Random(net_emulator.DotNetEmulator emulator_obj):
 cdef DotNetObject New_DynamicMethod(net_emulator.DotNetEmulator emulator_obj):
     return DotNetDynamicMethod(emulator_obj)
 
+cdef DotNetObject New_DateTime(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetDateTime(emulator_obj)
+
 include "net_emu_types.pxi"
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[AMT_OF_TYPES]
@@ -10718,6 +10743,9 @@ NET_EMULATE_TYPE_REGISTRATIONS[20].name = 'System.Random'
 NET_EMULATE_TYPE_REGISTRATIONS[20].func_ptr = <newobj_func_type>&New_Random
 NET_EMULATE_TYPE_REGISTRATIONS[21].name = 'System.Reflection.Emit.DynamicMethod'
 NET_EMULATE_TYPE_REGISTRATIONS[21].func_ptr = <newobj_func_type>&New_DynamicMethod
+NET_EMULATE_TYPE_REGISTRATIONS[22].name = 'System.DateTime'
+NET_EMULATE_TYPE_REGISTRATIONS[22].func_ptr = <newobj_func_type>&New_DateTime
+
 
 cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[AMT_OF_STATIC_FUNCTIONS]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'

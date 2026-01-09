@@ -536,37 +536,39 @@ class NETReactor(Deobfuscator):
         for field in potential_fields :
             amt_stflds = 0
             ld_xrefs = list()
+            ldobj_refs = list()
             for xref_rid, xref_offset in field.get_xrefs():
                 xfm = dotnet.get_method_by_rid(xref_rid)
-                instr = xfm.disassemble_method().get_instr_at_offset(xref_offset)
+                dis = xfm.disassemble_method()
+                instr = dis.get_instr_at_offset(xref_offset)
                 if instr.get_opcode() in (net_opcodes.Opcodes.Stsfld, net_opcodes.Opcodes.Stfld):
                     amt_stflds += 1
                 else:
                     ld_xrefs.append((xref_rid, xref_offset))
+                found = False
+                instr_index = instr.get_instr_index()
+                for x in range(instr_index - 1, 0, -1):
+                    instr = dis[x]
+                    if instr.get_opcode() == net_opcodes.Opcodes.Ldsfld:
+                        if instr.get_argument().get_parent_type() in static_field_types:
+                            ldobj_refs.append((xref_rid, instr.get_instr_offset()))
+                            found = True
+                            break
+                if not found:
+                    raise Exception('couldnt find ldsfld instr.')
             
             if amt_stflds == 0:
                 #replace it with a ldc 0.
                 patch_bytes = b'\x00\x00\x00\x00\x16'
+                index = 0
                 for xref_rid, xref_offset in ld_xrefs:
                     xfm = dotnet.get_method_by_rid(xref_rid)
+                    xref_rid, ldobj_offset = ldobj_refs[index]
                     dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(patch_bytes))
+                    dotnet.patch_instruction(xfm, b'\x00' * 5, ldobj_offset, 5)
+                    index += 1
             else:
                 raise Exception('not supported yet')
-        for field in more_junk_fields:
-            amt_stflds = 0
-            ld_xrefs = list()
-            for xref_rid, xref_offset in field.get_xrefs():
-                xfm = dotnet.get_method_by_rid(xref_rid)
-                instr = xfm.disassemble_method().get_instr_at_offset(xref_offset)
-                if instr.get_opcode() in (net_opcodes.Opcodes.Stsfld, net_opcodes.Opcodes.Stfld):
-                    amt_stflds += 1
-                else:
-                    ld_xrefs.append((xref_rid, xref_offset))
-            if amt_stflds <= 1:
-                patch_bytes = b'\x00\x00\x00\x00\x00'
-                for xref_rid, xref_offset in ld_xrefs:
-                    xfm = dotnet.get_method_by_rid(xref_rid)
-                    dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(patch_bytes))
 
     def remove_string_obfuscation(self, dotnet, strm):
         if not dotnet.has_heap('#US'):
@@ -575,6 +577,7 @@ class NETReactor(Deobfuscator):
         emu = net_emulator.DotNetEmulator(cctor_method)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
         #emu.set_print_debugging(True, True)
+        emu.set_print_debugging(True, False, print_debug_methods=[556])
         emu.setup_method_params([])
         print('Emulating string cctor.')
         emu.run_function()
@@ -660,12 +663,12 @@ class NETReactor(Deobfuscator):
             print('doing a second remove delegates pass')
             self.remove_delegates(dotnet, delegate_method)
         print('Removing junk static fields')
-        #self.remove_junk_static_fields(dotnet)
+        self.remove_junk_static_fields(dotnet)
         print('removing antitamper method calls.')
         self.remove_antitamper_antidebug_method(dotnet)
-        #string_method = self.identify_string_method(dotnet)
+        string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
-        #self.remove_string_obfuscation(dotnet, string_method)
+        self.remove_string_obfuscation(dotnet, string_method)
         print('Cleaning up names')
         #net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')

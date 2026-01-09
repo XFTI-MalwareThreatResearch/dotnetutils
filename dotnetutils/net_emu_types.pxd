@@ -2385,6 +2385,15 @@ cdef class DotNetVersion(DotNetObject):
 
     cdef StackCell get_Major(self, StackCell * params, int nparams)
 
+cdef class DotNetDateTime(DotNetObject):
+    cdef int __day
+    cdef int __month
+    cdef int __year
+
+    cdef StackCell ctor(self, StackCell * params, int nparams)
+
+    cdef StackCell get_Day(self, StackCell * params, int nparams)
+
 cdef struct NewobjFuncMapping:
     const char * name
     newobj_func_type func_ptr
@@ -2439,3 +2448,5 @@ cdef DotNetObject New_ConditionalWeakTable(net_emulator.DotNetEmulator emulator_
 cdef DotNetObject New_Random(net_emulator.DotNetEmulator emulator_obj)
 
 cdef DotNetObject New_DynamicMethod(net_emulator.DotNetEmulator emulator_obj)
+
+cdef DotNetObject New_DateTime(net_emulator.DotNetEmulator emulator_obj)
