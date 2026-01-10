@@ -876,7 +876,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 cell = emu.stack.pop()
                 new_emu._add_param(x, cell)
                 emu.dealloc_cell(cell)
-            if (method_obj.method_has_this() and method_name != b'.ctor'):
+            if (method_obj.method_has_this() and not is_newobj):
                 if len(emu.stack) < 1:
                     raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
                 cell = emu.stack.pop()
@@ -4331,11 +4331,15 @@ cdef class DotNetStack:
         cdef StackCell boxed
         cdef StackCell unboxed
 
-        if isinstance(obj, net_emu_types.DotNetString):
-            boxed = self.__emulator.pack_string(obj)
+        if obj is not None:
+            if isinstance(obj, net_emu_types.DotNetString):
+                boxed = self.__emulator.pack_string(obj)
+            else:
+                boxed = self.__emulator.pack_object(obj)
+            unboxed = self.__emulator.unbox_value(boxed)
         else:
-            boxed = self.__emulator.pack_object(obj)
-        unboxed = self.__emulator.unbox_value(boxed)
+            boxed = self.__emulator.pack_null()
+            unboxed = self.__emulator.duplicate_cell(boxed)
         self.append(unboxed)
         self.__emulator.dealloc_cell(unboxed)
         self.__emulator.dealloc_cell(boxed)
@@ -6622,6 +6626,8 @@ cdef class DotNetEmulator:
         """
         cdef int x
         cdef SlimObject * slim = NULL
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            return
         Py_XDECREF(cell.emulator_obj)
         cell.emulator_obj = NULL
         if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT or cell.tag == CorElementType.ELEMENT_TYPE_STRING:
@@ -7302,15 +7308,25 @@ cdef class DotNetEmulator:
             net_exceptions.OperationNotSupportedException: the operation cant be done on the provided args.
             net_exceptions.FeatureNotImplementedException: Ability to unbox this item has not been implemented.
         """
-        if cell.tag == CorElementType.ELEMENT_TYPE_BYREF or cell.is_slim_object:
-            raise net_exceptions.OperationNotSupportedException()
+        cdef net_emu_types.DotNetObject dobj = None
+        cdef net_emu_types.DotNetNumber nobj = None
+        cdef CorElementType cor_type = CorElementType.ELEMENT_TYPE_END
+        cdef StackCell ref_cell
+        cdef StackCell result
+        if cell.is_slim_object:
+            return self.duplicate_cell(cell)
+        
+        if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
+            ref_cell = self.get_ref(cell)
+            result = self.unbox_value(ref_cell)
+            self.dealloc_cell(ref_cell)
+            return result
+        
         if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT:
             return self.duplicate_cell(cell)
         if cell.item.ref == NULL:
             return self.pack_null()
-        cdef net_emu_types.DotNetObject dobj = <net_emu_types.DotNetObject> cell.item.ref
-        cdef net_emu_types.DotNetNumber nobj = None
-        cdef CorElementType cor_type = CorElementType.ELEMENT_TYPE_END
+        dobj = <net_emu_types.DotNetObject> cell.item.ref
         if not dobj.is_number():
             return self.duplicate_cell(cell)
         nobj = <net_emu_types.DotNetNumber>dobj
@@ -7944,7 +7960,6 @@ cdef class DotNetEmulator:
                 end_offset = <unsigned int>self.end_offset
                 should_check_offset = True
                 self.end_offset = -1
-    
         if self.caller is None and has_timeout:
             self.start_time = _perf_counter_ns()
         self.get_appdomain().set_current_emulator(self)

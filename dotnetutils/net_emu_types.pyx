@@ -201,7 +201,7 @@ cdef class DotNetObject:
 
     cdef StackCell GetType(self, StackCell * params, int nparams):
         if self.type_obj is None:
-            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Error obtaining runtime type of dotnetobject')
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Error obtaining runtime type of dotnetobject {}'.format(type(self)))
         cdef DotNetType type_obj = DotNetType(self.get_emulator_obj(), self.type_obj, self.type_sig_obj)
         return self.get_emulator_obj().pack_object(type_obj)
 
@@ -2621,6 +2621,7 @@ cdef class DotNetInt16(DotNetNumber):
 cdef class DotNetInt32(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
         DotNetNumber.__init__(self, emu_obj, CorElementType.ELEMENT_TYPE_I4, num_data)
+        self.type_obj = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Int32')
         self.add_function(b'CompareTo', <emu_func_type>self.CompareTo)
 
     cdef DotNetObject duplicate(self):
@@ -5491,8 +5492,7 @@ cdef class DotNetType(DotNetObject):
         self.add_function(b'get_IsEnum', <emu_func_type>self.get_IsEnum)
 
     cdef StackCell get_IsEnum(self, StackCell * params, int nparams):
-        #TODO: this should eventually be expanded out, maybe proper support for runtime types in the emulator?
-        return self.get_emulator_obj().pack_bool(False)
+        return self.get_emulator_obj().pack_bool(self.type_handle.is_enum())
 
     def __str__(self):
         return 'TypeObject {} {}'.format(hex(self.type_handle.get_token()), self.type_handle.get_full_name())
@@ -6337,6 +6337,7 @@ cdef class DotNetList(DotNetObject):  #TODO: Going to need to reorient this to a
         self.add_function(b'set_Item', <emu_func_type>self.set_Item)
         self.add_function(b'Sort', <emu_func_type>self.Sort)
         self.add_function(b'.ctor', <emu_func_type>self.ctor)
+        self.add_function(b'RemoveAt', <emu_func_type>self.RemoveAt)
 
     cdef DotNetObject duplicate(self):
         cdef DotNetList result = DotNetList(self.get_emulator_obj())
@@ -6363,6 +6364,14 @@ cdef class DotNetList(DotNetObject):  #TODO: Going to need to reorient this to a
             initial_size = params[0].item.i4
         self.internal.reserve(initial_size)
         return self.get_emulator_obj().pack_object(self)
+
+    cdef StackCell RemoveAt(self, StackCell * params, int nparams):
+        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef int index = params[0].item.i4
+        cdef vector[StackCell].iterator it = self.internal.begin() + index
+        self.internal.erase(it)
+        return self.get_emulator_obj().pack_blanktag()
 
     cdef StackCell AddRange(self, StackCell * params, int nparams):
         if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
@@ -6873,6 +6882,9 @@ cdef class DotNetMemberInfo(DotNetObject):
         if self.internal_method is None:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Invalid DotNetMemberInfo created')
         self.add_function(b'get_DeclaringType', <emu_func_type>self.get_DeclaringType)
+
+    cpdef net_row_objects.MethodDefOrRef get_internal_method(self):
+        return self.internal_method
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.MemberInfo' or DotNetObject.isinst(self, tdef)
@@ -7829,15 +7841,18 @@ cdef class DotNetFieldInfo(DotNetObject):
         cdef net_sigs.TypeSig sig = self.internal_field.get_field_signature().get_type_sig()
         cdef net_row_objects.TypeDefOrRef ref = None
         cdef DotNetType type_obj = None
-        if isinstance(sig, net_sigs.TypeDefOrRefSig):
+        cdef bytes name = None
+        #TODO: Change corlibtypesig to actually work as a typedeforref sig.
+        if isinstance(sig, net_sigs.CorLibTypeSig):
+            name = net_utils.get_cor_type_name(sig.get_element_type())
+            ref = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(name)
+        elif isinstance(sig, net_sigs.TypeDefOrRefSig):
             ref = sig.get_type()
-        elif isinstance(sig, net_sigs.CorLibTypeSig):
-            ref = self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(net_utils.get_cor_type_name(sig.get_element_type()))
         elif isinstance(sig, net_sigs.GenericInstSig):
             ref = sig.get_generic_type()
         else:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'couldnt handle sig {}'.format(sig))
-        type_obj = DotNetType(self.get_emulator_obj(), ref, self.internal_field.get_field_signature().get_type_sig())
+        type_obj = DotNetType(self.get_emulator_obj(), ref, sig)
         return self.get_emulator_obj().pack_object(type_obj)
 
     cdef StackCell SetValue(self, StackCell * params, int nparams):
@@ -7864,6 +7879,7 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
     def __init__(self, net_emulator.DotNetEmulator emulator_obj, net_row_objects.MethodDefOrRef internal_method):
         DotNetMethodBase.__init__(self, emulator_obj, internal_method)
         self.add_function(b'get_ReturnType', <emu_func_type>self.get_ReturnType)
+        self.add_function(b'Invoke', <emu_func_type>self.Invoke)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.MethodInfo' or DotNetMethodBase.isinst(self, tdef)
@@ -7890,6 +7906,45 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
             elif isinstance(return_sig, net_sigs.SZArraySig):
                 return self.get_emulator_obj().pack_object(DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Array'), return_sig))
         raise net_exceptions.OperationNotSupportedException()
+
+    cdef StackCell Invoke(self, StackCell * params, int nparams):
+        cdef int amt_args = 0
+        cdef int args_start = 0
+        cdef StackCell * args = NULL
+        cdef StackCell this_obj = params[0]
+        cdef StackCell array_obj
+        cdef int x = 0
+        cdef DotNetArray arr_dnobj = None
+        if nparams == 1:
+            array_obj = this_obj
+        else:
+            array_obj = params[1]
+            this_obj = self.get_emulator_obj().pack_null()
+        if array_obj.tag != CorElementType.ELEMENT_TYPE_OBJECT or array_obj.is_slim_object or array_obj.item.ref == NULL:
+            raise net_exceptions.InvalidArgumentsException()
+        if not self.get_emulator_obj().cell_is_null(this_obj):
+            amt_args += 1
+        arr_dnobj = <DotNetArray>array_obj.item.ref
+
+        amt_args += <int>len(arr_dnobj)
+        args = <StackCell *>malloc(sizeof(StackCell) * amt_args)
+        if args == NULL:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error')
+        memset(args, 0, sizeof(StackCell) * amt_args)
+        if not self.get_emulator_obj().cell_is_null(this_obj):
+            args_start = 1
+            args[0] = self.get_emulator_obj().duplicate_cell(params[0])
+        for x in range(<int>len(arr_dnobj)):
+            args[args_start + x] = arr_dnobj._get_item(x)
+        net_emulator.do_call(self.get_emulator_obj(), False, self.get_emulator_obj().cell_is_null(this_obj) and self.internal_method.get_name() == b'.ctor', self.internal_method, None, args, amt_args, self.internal_method)
+        for x in range(amt_args):
+            self.get_emulator_obj().dealloc_cell(args[x])
+        free(args)
+        if nparams == 1:
+            self.get_emulator_obj().dealloc_cell(this_obj)
+        if self.internal_method.has_return_value():
+            return self.get_emulator_obj().get_stack().pop()
+        return self.get_emulator_obj().pack_null()
 
     def __str__(self):
         return 'DotNetMethodInfo: {}:{} {} Name:{}'.format(self.internal_method.get_table_name(), self.internal_method.get_rid(), hex(self.internal_method.get_token()), self.internal_method.get_full_name())

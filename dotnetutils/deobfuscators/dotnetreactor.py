@@ -5,13 +5,45 @@ from dotnetutils import net_structs, dotnetpefile, net_patch, net_deobfuscate_fu
 def dnr_skip_obf_methods(emulator, argument):
     method_obj = emulator.get_method_obj()
     instr = emulator.get_instr()
-    if method_obj['Name'].get_value() == b'.cctor':
+    name = method_obj['Name'].get_value()
+    if name == b'.cctor':
         if isinstance(instr.get_argument(), net_row_objects.MethodDef):
             msig = instr.get_argument().get_method_signature()
             if msig.get_return_type() == net_sigs.get_CorSig_Void():
                 if len(msig.get_parameters()) == 0:
-                    return False
+                    return False 
     return True
+
+def dnr_skip_obf_invoke_methods(emulator, argument):
+    instr = emulator.get_instr()
+    name = instr.get_argument().get_full_name()
+    if name == b'System.Reflection.MethodBase.Invoke':
+        args_array = emulator.get_stack().pop_obj()
+        this_obj = emulator.get_stack().pop_obj()
+        methodinfo = emulator.get_stack().pop_obj()
+        internal = methodinfo.get_internal_method()
+        if internal.has_return_value() or internal.method_has_this():
+            emulator.get_stack().append_obj(methodinfo)
+            emulator.get_stack().append_obj(this_obj)
+            emulator.get_stack().append_obj(args_array)
+            return True
+        if len(internal.get_param_types()) > 0:
+            emulator.get_stack().append_obj(methodinfo)
+            emulator.get_stack().append_obj(this_obj)
+            emulator.get_stack().append_obj(args_array)
+            return True
+
+        if not internal.is_static_method():
+            emulator.get_stack().append_obj(methodinfo)
+            emulator.get_stack().append_obj(this_obj)
+            emulator.get_stack().append_obj(args_array)
+            return True
+        
+        print('Blocking execution of method by invoke {}'.format(internal))
+        emulator.get_stack().append_obj(None)
+        return False
+    return True
+
 
 def dnr_encrypt_skip_conv_u(emulator, argument):
     obj = emulator.get_stack().peek_obj()
@@ -576,6 +608,7 @@ class NETReactor(Deobfuscator):
         cctor_method = strm.get_parent_type().get_static_constructor()
         emu = net_emulator.DotNetEmulator(cctor_method)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
+        emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, None)
         #emu.set_print_debugging(True, True)
         #emu.set_print_debugging(True, False, print_debug_methods=[1553])
         emu.setup_method_params([])
@@ -615,7 +648,7 @@ class NETReactor(Deobfuscator):
                     new_emu.setup_method_params([])
                     worked = False
                     try:
-                        #new_emu.set_print_debugging(True, False, print_debug_methods=[1553])
+                        #new_emu.set_print_debugging(True, False, print_debug_methods=[1405])
                         new_emu.run_function()
                     except net_exceptions.EmulatorEndExecutionException:
                         worked = True

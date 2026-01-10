@@ -906,6 +906,8 @@ cdef class DotNetList(DotNetObject):
 
     cdef StackCell ctor(self, StackCell * params, int nparams)
 
+    cdef StackCell RemoveAt(self, StackCell * params, int nparams)
+
     cdef StackCell AddRange(self, StackCell * params, int nparams)
 
     cdef StackCell Add(self, StackCell * params, int nparams)
@@ -982,7 +984,9 @@ cdef class DotNetStackFrame(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result)
 
 cdef class DotNetMemberInfo(DotNetObject):
-    cdef net_row_objects.RowObject internal_method
+    cdef net_row_objects.MethodDefOrRef internal_method
+
+    cpdef net_row_objects.MethodDefOrRef get_internal_method(self)
 
     cdef StackCell get_DeclaringType(self, StackCell * params, int nparams)
 
@@ -1283,6 +1287,8 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
     cdef DotNetObject duplicate(self)
+
+    cdef StackCell Invoke(self, StackCell * params, int nparams)
 
     cdef void duplicate_into(self, DotNetObject result)
     

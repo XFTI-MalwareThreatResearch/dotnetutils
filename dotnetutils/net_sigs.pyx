@@ -440,7 +440,7 @@ cdef class SignatureReader():
     cdef TypeSig handle_type_sig(self, bint read_first):
 
         cdef net_structs.CorElementType type_num
-
+        #FIXME: Make corlib type sigs work as actual TypeDefOrRefSigs
         if read_first:
             type_num = <net_structs.CorElementType>self.read_byte()
         else:
