@@ -702,6 +702,8 @@ cdef class DotNetType(DotNetObject):
     cdef net_row_objects.TypeDefOrRef type_handle
     cdef net_sigs.TypeSig sig_obj
 
+    cdef StackCell get_TypeHandle(self, StackCell * params, int nparams)
+
     cdef StackCell get_IsValueType(self, StackCell * params, int nparams)
 
     cdef StackCell GetGenericArguments(self, StackCell * params, int nparams)

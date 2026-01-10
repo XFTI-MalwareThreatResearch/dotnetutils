@@ -3452,7 +3452,7 @@ cdef bint handle_isinst_instruction(DotNetEmulator emu):
     cdef StackCell cell = emu.stack.pop()
     cdef net_emu_types.DotNetObject dnobj = None
     cdef StackCell result
-    if cell.is_slim_object or cell.tag != CorElementType.ELEMENT_TYPE_OBJECT or cell.item.ref == NULL:
+    if cell.is_slim_object or (cell.tag != CorElementType.ELEMENT_TYPE_OBJECT and cell.tag != CorElementType.ELEMENT_TYPE_STRING) or cell.item.ref == NULL:
         raise net_exceptions.FeatureNotImplementedException()
     
     dnobj = <net_emu_types.DotNetObject>cell.item.ref
@@ -5600,7 +5600,10 @@ cdef class DotNetEmulator:
         cdef bint result = False
 
         if one.tag != two.tag:
-            raise net_exceptions.InvalidArgumentsException()
+            if one.tag != CorElementType.ELEMENT_TYPE_OBJECT and one.tag != CorElementType.ELEMENT_TYPE_STRING:
+                raise net_exceptions.InvalidArgumentsException()
+            if two.tag != CorElementType.ELEMENT_TYPE_OBJECT and two.tag != CorElementType.ELEMENT_TYPE_STRING:
+                raise net_exceptions.InvalidArgumentsException()
         if one.tag == CorElementType.ELEMENT_TYPE_STRING or one.tag == CorElementType.ELEMENT_TYPE_OBJECT or \
             two.tag == CorElementType.ELEMENT_TYPE_OBJECT or two.tag == CorElementType.ELEMENT_TYPE_STRING:
             if self.cell_is_null(one):
@@ -7291,7 +7294,7 @@ cdef class DotNetEmulator:
                 dnum.from_ushort(<unsigned short>cell.item.u4)
                 return self.pack_object(dnum)
             else:
-                raise net_exceptions.FeatureNotImplementedException()
+                raise net_exceptions.EmulatorExecutionException(self, 'Cor type not supported for boxing {}'.format(net_utils.get_cor_type_name(cor_type)))
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef StackCell unbox_value(self, StackCell cell):
