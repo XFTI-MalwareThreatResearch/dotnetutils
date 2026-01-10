@@ -1,0 +1,7 @@
+reading dotnet
+done
+Attempting to deobfuscate executable located at /home/aaron/Documents/maltesting/85d549a6aa5e163f2376c95d0b070e36
+551e00ec751da92ddd87c1a1fa1ac0d7dc8c9ba63a4a34a4663b04bf16d07ce2: Executable recognized as DotNetReactor obfuscated executable.
+delegate method identified as MethodDef:239=b'NdaSPnl2EJcOATT32VU.cd264aliMHmgPyAEkhq.ddGlKewBZk'
+handling code encryption.
+Encryption method identified as MethodDef:248=b'NdaSPnl2EJcOATT32VU.cd264aliMHmgPyAEkhq.udvlGCyKCf'

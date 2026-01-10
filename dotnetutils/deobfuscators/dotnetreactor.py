@@ -577,7 +577,7 @@ class NETReactor(Deobfuscator):
         emu = net_emulator.DotNetEmulator(cctor_method)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
         #emu.set_print_debugging(True, True)
-        emu.set_print_debugging(True, False, print_debug_methods=[556])
+        #emu.set_print_debugging(True, False, print_debug_methods=[1553])
         emu.setup_method_params([])
         print('Emulating string cctor.')
         emu.run_function()
@@ -615,6 +615,7 @@ class NETReactor(Deobfuscator):
                     new_emu.setup_method_params([])
                     worked = False
                     try:
+                        #new_emu.set_print_debugging(True, False, print_debug_methods=[1553])
                         new_emu.run_function()
                     except net_exceptions.EmulatorEndExecutionException:
                         worked = True

@@ -716,6 +716,8 @@ cdef class DotNetType(DotNetObject):
 
     cpdef net_row_objects.TypeDefOrRef get_type_handle(self)
 
+    cdef StackCell get_IsEnum(self, StackCell * params, int nparams)
+
     @staticmethod
     cdef StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
@@ -2401,6 +2403,11 @@ cdef struct NewobjFuncMapping:
 cdef struct EmuFuncMapping:
     const char * name
     static_func_type func_ptr
+
+cdef class DotNetNullable(DotNetObject):
+
+    @staticmethod
+    cdef StackCell GetUnderlyingType(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
 include "net_emu_types.pxi"
 

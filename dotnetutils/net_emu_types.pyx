@@ -5488,6 +5488,11 @@ cdef class DotNetType(DotNetObject):
         self.add_function(b'get_Assembly', <emu_func_type>self.get_Assembly)
         self.add_function(b'get_IsValueType', <emu_func_type>self.get_IsValueType)
         self.add_function(b'GetGenericArguments', <emu_func_type>self.GetGenericArguments)
+        self.add_function(b'get_IsEnum', <emu_func_type>self.get_IsEnum)
+
+    cdef StackCell get_IsEnum(self, StackCell * params, int nparams):
+        #TODO: this should eventually be expanded out, maybe proper support for runtime types in the emulator?
+        return self.get_emulator_obj().pack_bool(False)
 
     def __str__(self):
         return 'TypeObject {} {}'.format(hex(self.type_handle.get_token()), self.type_handle.get_full_name())
@@ -5564,7 +5569,9 @@ cdef class DotNetType(DotNetObject):
     cdef StackCell op_Inequality(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
         if nparams != 2 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[1].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].is_slim_object or params[1].is_slim_object:
             raise net_exceptions.InvalidArgumentsException()
-        if params[0].item.ref == NULL or params[1].item.ref == NULL:
+        if (params[0].item.ref == NULL and params[1].item.ref != NULL) or (params[0].item.ref != NULL and params[1].item.ref == NULL):
+            return app_domain.get_emulator_obj().pack_bool(True)
+        if params[0].item.ref == NULL and params[0].item.ref == params[1].item.ref:
             return app_domain.get_emulator_obj().pack_bool(False)
         cdef DotNetObject arg_one = <DotNetObject>params[0].item.ref
         cdef DotNetObject arg_two = <DotNetObject>params[1].item.ref
@@ -10628,6 +10635,18 @@ cdef class DotNetDateTime(DotNetObject):
     cdef StackCell get_Day(self, StackCell * params, int nparams):
         return self.get_emulator_obj().pack_i4(self.__day)
 
+cdef class DotNetNullable(DotNetObject):
+
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
+
+    @staticmethod
+    cdef StackCell GetUnderlyingType(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        if nparams != 1:
+            raise net_exceptions.InvalidArgumentsException()
+        return app_domain.get_emulator_obj().duplicate_cell(params[0])
+        
+
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj):
     return DotNetConcurrentDictionary(emulator_obj)
 
@@ -10854,3 +10873,5 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51].name = 'System.IntPtr.op_Explicit'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[51].func_ptr = <static_func_type>&DotNetIntPtr.op_Explicit
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[52].name = 'System.IntPtr.get_Size'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[52].func_ptr = <static_func_type>&DotNetIntPtr.get_Size
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[53].name = 'System.Nullable.GetUnderlyingType'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[53].func_ptr = <static_func_type>&DotNetNullable.GetUnderlyingType
