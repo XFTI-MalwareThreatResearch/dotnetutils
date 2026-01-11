@@ -6306,7 +6306,10 @@ cdef class DotNetEmulator:
             elif etype == CorElementType.ELEMENT_TYPE_STRING:
                 return result
             elif etype == CorElementType.ELEMENT_TYPE_OBJECT:
-                return result
+                if result.tag == CorElementType.ELEMENT_TYPE_BYREF:
+                    return result
+                self.dealloc_cell(result)
+                return self.box_value(cell, None)
             else:
                 raise net_exceptions.InvalidArgumentsException()
             return result

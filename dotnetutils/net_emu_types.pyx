@@ -331,12 +331,7 @@ cdef class DotNetObject:
         Returns:
             bool: True if the objects truth value is True, false otherwise.
         """
-        cdef DotNetNumber num = None
-        if self.is_number():
-            num = <DotNetNumber>self
-            return not num.val_is_zero()
-        else:
-            return not self.is_null()
+        return not self.is_null()
 
     cdef bint is_false(self):
         """ Is the object false (generally, NULL)
