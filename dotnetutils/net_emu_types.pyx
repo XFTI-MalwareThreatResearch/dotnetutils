@@ -7944,7 +7944,7 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
         free(args)
         if nparams == 1:
             self.get_emulator_obj().dealloc_cell(this_obj)
-        if self.internal_method.has_return_value():
+        if self.internal_method.has_return_value() or self.internal_method.get_name() == b'.ctor':
             return self.get_emulator_obj().get_stack().pop()
         return self.get_emulator_obj().pack_null()
 
@@ -9990,8 +9990,20 @@ cdef class DotNetBinaryReader(DotNetObject):
         pass
     
     cdef StackCell ctor(self, StackCell * params, int nparams):
-        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
+        if nparams != 1 or ((params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL) and params[0].tag != CorElementType.ELEMENT_TYPE_BYREF):
             raise net_exceptions.InvalidArgumentsException()
+        cdef StackCell cell
+        cdef DotNetObject obj = None
+        if params[0].tag == CorElementType.ELEMENT_TYPE_BYREF:
+            cell = self.get_emulator_obj().get_ref(params[0])
+            if cell.tag == CorElementType.ELEMENT_TYPE_OBJECT and not cell.is_slim_object and cell.item.ref != NULL:
+                obj = <DotNetObject>cell.item.ref
+                if isinstance(obj, DotNetStream):
+                    self.stream = <DotNetStream>obj
+                    self.get_emulator_obj().dealloc_cell(cell)
+                    return self.get_emulator_obj().pack_object(self)
+            raise net_exceptions.InvalidArgumentsException()
+
         self.stream = <DotNetStream>params[0].item.ref
         return self.get_emulator_obj().pack_object(self)
 
