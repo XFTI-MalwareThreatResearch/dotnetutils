@@ -705,6 +705,9 @@ cdef class DotNetChar(DotNetUInt16):
 cdef class DotNetType(DotNetObject):
     cdef net_row_objects.TypeDefOrRef type_handle
     cdef net_sigs.TypeSig sig_obj
+    cdef net_row_objects.TypeDefOrRef element_type
+
+    cdef StackCell GetElementType(self, StackCell * params, int nparams)
 
     cdef StackCell get_TypeHandle(self, StackCell * params, int nparams)
 
@@ -931,6 +934,7 @@ cdef class DotNetList(DotNetObject):
 cdef class DotNetArray(DotNetObject):
     cdef SlimStackCell * __internal_array
     cdef uint64_t __size
+    cdef net_row_objects.TypeDefOrRef element_type
 
     cpdef object as_python_obj(self)
 
@@ -951,6 +955,15 @@ cdef class DotNetArray(DotNetObject):
     cdef void setup_default_value(self, uint64_t index, uint64_t size)
 
     cdef void reverse_internal(self, int start, int end)
+
+    cdef StackCell SetValue(self, StackCell * params, int nparams)
+
+    cdef StackCell GetValue(self, StackCell * params, int nparams)
+
+    cdef StackCell get_Length(self, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell CreateInstance(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
     
     @staticmethod
     cdef StackCell Copy(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
@@ -1255,6 +1268,8 @@ cdef class DotNetFieldInfo(DotNetObject):
     cdef StackCell get_FieldType(self, StackCell * params, int nparams)
     
     cdef StackCell SetValue(self, StackCell * params, int nparams)
+
+    cdef StackCell GetValue(self, StackCell * params, int nparams)
 
     cdef StackCell get_Name(self, StackCell * params, int nparams)
 
