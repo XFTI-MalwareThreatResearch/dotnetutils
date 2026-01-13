@@ -648,7 +648,7 @@ class NETReactor(Deobfuscator):
                     new_emu.setup_method_params([])
                     worked = False
                     try:
-                        #new_emu.set_print_debugging(True, False, print_debug_methods=[1468])
+                        #new_emu.set_print_debugging(True, False, print_debug_methods=[1515])
                         new_emu.run_function()
                     except net_exceptions.EmulatorEndExecutionException:
                         worked = True

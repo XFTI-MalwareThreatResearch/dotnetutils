@@ -32,7 +32,7 @@ from libcpp.algorithm cimport sort, find
 from libcpp.iterator cimport distance
 from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
 from cython.operator cimport dereference
-from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell
+from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell, SlimObject
 
 
 """
@@ -230,6 +230,32 @@ cdef class DotNetObject:
         if self.__fields == NULL:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error')
         memset(self.__fields, 0, sizeof(StackCell) * self.__num_fields)
+
+    cdef void copy_fields_from_slimobject(self, SlimObject * slimobj):
+        if slimobj.num_fields != self.__num_fields:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'error copying from slimobject')
+        if self.__num_fields == 0:
+            return
+        cdef int x = 0
+        self.__clear_fields()
+        self.__fields = <StackCell*>malloc(sizeof(StackCell) * self.__num_fields)
+        if self.__fields == NULL:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error')
+        for x in range(self.__num_fields):
+            self.__fields[x] = self.get_emulator_obj().duplicate_cell(slimobj.fields[x])
+            self.get_emulator_obj().ref_cell(self.__fields[x])
+
+    cdef void copy_fields_to_slimobject(self, SlimObject* slimobj):
+        if slimobj.num_fields != self.__num_fields:
+            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'error copying from slimobject')
+        if self.__num_fields == 0:
+            return
+        cdef int x = 0
+        for x in range(self.__num_fields):
+            self.get_emulator_obj().deref_cell(slimobj.fields[x])
+            self.get_emulator_obj().dealloc_cell(slimobj.fields[x])
+            slimobj.fields[x] = self.get_emulator_obj().duplicate_cell(self.__fields[x])
+            self.get_emulator_obj().ref_cell(slimobj.fields[x])
 
     cdef int __get_num_fields(self, net_row_objects.TypeDefOrRef ref):
         """ Calculate how many fields the type has.
@@ -3146,6 +3172,7 @@ cdef class DotNetInt32(DotNetNumber):
 cdef class DotNetInt64(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
         DotNetNumber.__init__(self, emu_obj, CorElementType.ELEMENT_TYPE_I8, num_data)
+        self.type_obj = emu_obj.get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Int64')
 
     cdef DotNetObject duplicate(self):
         cdef DotNetInt64 num = DotNetInt64(self.get_emulator_obj(), None)
@@ -3975,6 +4002,7 @@ cdef class DotNetUInt16(DotNetNumber):
 cdef class DotNetUInt32(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
         DotNetNumber.__init__(self, emu_obj, CorElementType.ELEMENT_TYPE_U4, num_data)
+        self.type_obj = emu_obj.get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.UInt32')
 
     cdef DotNetObject duplicate(self):
         if self._ptr == NULL:
@@ -4499,6 +4527,7 @@ cdef class DotNetUInt32(DotNetNumber):
 cdef class DotNetUInt64(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
         DotNetNumber.__init__(self, emu_obj, CorElementType.ELEMENT_TYPE_U8, num_data)
+        self.type_obj = emu_obj.get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.UInt64')
 
     cdef DotNetObject duplicate(self):
         cdef DotNetUInt64 num = DotNetUInt64(self.get_emulator_obj(), None)

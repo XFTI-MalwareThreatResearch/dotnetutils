@@ -9,7 +9,7 @@ from libc.stdint cimport int64_t, uint64_t
 from dotnetutils.net_structs cimport CorElementType
 from cpython.ref cimport PyObject
 from libcpp.vector cimport vector
-from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell
+from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell, SlimObject
 
 
 cdef str remove_generics_from_name(str name)
@@ -41,6 +41,10 @@ cdef class DotNetObject:
     cdef StackCell * __fields
     cdef int __num_fields
     cdef int orig_type_token
+
+    cdef void copy_fields_from_slimobject(self, SlimObject * slimobj)
+
+    cdef void copy_fields_to_slimobject(self, SlimObject* slimobj)
 
     cpdef object as_python_obj(self)
 

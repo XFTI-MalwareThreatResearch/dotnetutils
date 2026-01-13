@@ -842,7 +842,9 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef StackCell boxed_this
     cdef StackCell ret_cell
     cdef StackCell casted_cell
+    cdef bint this_was_slimobj = False #TODO: make sure this on MemberRefs converts SlimObjects to DotNetObjects before call.
     cdef net_sigs.MethodSig method_signature = initial_method_obj.get_method_signature()
+    cdef DotNetEmulator current_emu = None
     memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj is not None:
         method_obj = force_method_obj
@@ -853,7 +855,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
                     return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0, initial_method_obj)
-
     if method_obj.get_table_name() == 'MethodDef' and not force_extern_type:
         method_name = method_obj.get_name()
         amt_args = <int>len(method_obj.get_param_types())
@@ -935,9 +936,18 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 raise net_exceptions.InvalidArgumentsException()
             boxed_this = emu.box_value(cell, None) #TODO: should there be a sig here
             emu.dealloc_cell(cell)
-            if emu.cell_is_null(boxed_this):
-                raise net_exceptions.EmulatorExecutionException(emu, 'obj_ref is NULL when trying to do a instance call')
-            obj_ref = <net_emu_types.DotNetObject>boxed_this.item.ref
+            if not boxed_this.is_slim_object:
+                if emu.cell_is_null(boxed_this):
+                    raise net_exceptions.EmulatorExecutionException(emu, 'obj_ref is NULL when trying to do a instance call')
+                obj_ref = <net_emu_types.DotNetObject>boxed_this.item.ref
+            else:
+                this_was_slimobj = True
+                current_emu = <DotNetEmulator>boxed_this.emulator_obj
+                if boxed_this.item.slim_object.type_token == 0:
+                    raise net_exceptions.EmulatorExecutionException(emu, 'invalid type token')
+                obj_ref = net_emu_types.DotNetObject(current_emu)
+                obj_ref.initialize_type(current_emu.get_method_obj().get_dotnetpe().get_token_value(boxed_this.item.slim_object.type_token))
+                obj_ref.copy_fields_from_slimobject(boxed_this.item.slim_object)
         elif force_method_args != NULL and not is_newobj and push_obj_reference:
             cell = method_args[0]
             if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
@@ -948,10 +958,18 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             boxed_this = emu.box_value(cell, None)
             if obj_ref_initial.tag == CorElementType.ELEMENT_TYPE_BYREF:
                 emu.dealloc_cell(cell)
-            
-            if emu.cell_is_null(boxed_this):
-                raise net_exceptions.EmulatorExecutionException(emu, 'obj_ref is NULL when trying to do a instance call')
-            obj_ref = <net_emu_types.DotNetObject>boxed_this.item.ref
+            if not boxed_this.is_slim_object:
+                if emu.cell_is_null(boxed_this):
+                    raise net_exceptions.EmulatorExecutionException(emu, 'obj_ref is NULL when trying to do a instance call')
+                obj_ref = <net_emu_types.DotNetObject>boxed_this.item.ref
+            else:
+                this_was_slimobj = True
+                current_emu = <DotNetEmulator>boxed_this.emulator_obj
+                if boxed_this.item.slim_object.type_token == 0:
+                    raise net_exceptions.EmulatorExecutionException(emu, 'invalid type token')
+                obj_ref = net_emu_types.DotNetObject(current_emu)
+                obj_ref.initialize_type(current_emu.get_method_obj().get_dotnetpe().get_token_value(boxed_this.item.slim_object.type_token))
+                obj_ref.copy_fields_from_slimobject(boxed_this.item.slim_object)
             if amt_args == 0:
                 method_args = NULL
             else:
@@ -980,12 +998,14 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                     for x in range(amt_args):
                         emu.dealloc_cell(method_args[x])
                 if obj_ref is not None:
+                    if this_was_slimobj:
+                        obj_ref.copy_fields_to_slimobject(boxed_this.item.slim_object)
                     emu.dealloc_cell(boxed_this)
                 return False
             else:
-                ret_call = emu.pack_null()
+                ret_cell = emu.pack_null()
                 if not emu.strict_typing:
-                    print('Warning: Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
+                    print('Warning: Unable to handle token: unknown ctor {} {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name(), is_newobj))
                 else:
                     raise net_exceptions.EmulatorExecutionException(emu, 'Unable to handle token: unknown ctor {} {} {} {}'.format(method_obj.get_full_name(), hex(method_obj.get_token()), hex(parent_type.get_token()), parent_type.get_full_name()))
             if newobj_func != NULL and not dot_obj.has_function(method_name):
@@ -1003,6 +1023,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 for x in range(amt_args):
                     emu.dealloc_cell(method_args[x])
             if obj_ref is not None:
+                if this_was_slimobj:
+                    obj_ref.copy_fields_to_slimobject(boxed_this.item.slim_object)
                 emu.dealloc_cell(boxed_this)
             return False 
         else:
@@ -1029,6 +1051,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         for x in range(amt_args):
             emu.dealloc_cell(method_args[x])
         if obj_ref is not None:
+            if this_was_slimobj:
+                obj_ref.copy_fields_to_slimobject(boxed_this.item.slim_object)
             emu.dealloc_cell(boxed_this)
     elif method_obj.get_table_name() == 'MethodSpec':
         return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0, method_obj)
@@ -5875,6 +5899,12 @@ cdef class DotNetEmulator:
                             result.item.i4 = 1
                         else:
                             result.item.i4 = 0
+                    elif cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                        self.dealloc_cell(result)
+                        result = self.unbox_value(cell)
+                        if result.tag == CorElementType.ELEMENT_TYPE_I4:
+                            return result
+                        raise net_exceptions.EmulatorExecutionException(self, 'weird unbox on i4')
                     else:
                         raise net_exceptions.InvalidArgumentsException()
                 elif etype == CorElementType.ELEMENT_TYPE_U1:
@@ -5945,6 +5975,12 @@ cdef class DotNetEmulator:
                         result.item.u2 = <unsigned short>cell.item.r4
                     elif cell.tag == CorElementType.ELEMENT_TYPE_R8:
                         result.item.u2 = <unsigned short>cell.item.r8
+                    elif cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                        self.dealloc_cell(result)
+                        result = self.unbox_value(cell)
+                        if result.tag == CorElementType.ELEMENT_TYPE_U2:
+                            return result
+                        raise net_exceptions.EmulatorExecutionException(self, 'weird unbox on type u2')
                     else:
                         raise net_exceptions.InvalidArgumentsException()
                 elif etype == CorElementType.ELEMENT_TYPE_U4:
@@ -6315,8 +6351,14 @@ cdef class DotNetEmulator:
                         result.item.i8 = <int64_t>cell.item.r4
                     elif cell.tag == CorElementType.ELEMENT_TYPE_R8:
                         result.item.i8 = <int64_t>cell.item.r8
+                    elif cell.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                        self.dealloc_cell(result)
+                        result = self.unbox_value(cell)
+                        if result.tag == CorElementType.ELEMENT_TYPE_I8:
+                            return result
+                        raise net_exceptions.EmulatorExecutionException(self, 'weird type when unboxing supposed i8')
                     else:
-                        raise net_exceptions.InvalidArgumentsException()
+                        raise net_exceptions.EmulatorExecutionException(self, 'error invalid type {}'.format(net_utils.get_cor_type_name(<CorElementType>cell.tag)))
                 elif etype == CorElementType.ELEMENT_TYPE_BOOLEAN:
                     if cell.tag == CorElementType.ELEMENT_TYPE_R4:
                         result.item.b = cell.item.r4 != 0
@@ -7830,7 +7872,7 @@ cdef class DotNetEmulator:
             if cell.item.ref == NULL:
                 return 'null'
             dobj = <net_emu_types.DotNetObject>cell.item.ref
-            return str(dobj)
+            return '{}: {}'.format(type(dobj), str(dobj))
         else:
             if cell.tag == CorElementType.ELEMENT_TYPE_END:
                 return 'Blank Cell'
@@ -7838,7 +7880,7 @@ cdef class DotNetEmulator:
             if net_utils.is_cortype_signed(<CorElementType>cell.tag):
                 return hex(<int64_t>(<int64_t*>&cell.item)[0])
             ival = ptr[0]
-            return hex(ival)
+            return '{}: {}'.format(net_utils.get_cor_type_name(<CorElementType>cell.tag), hex(ival))
 
     cpdef void print_current_state(self):
         """ prints the current state of the emulator to stdout.  Used for print debugging.
