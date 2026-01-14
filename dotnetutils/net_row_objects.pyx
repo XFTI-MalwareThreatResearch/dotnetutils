@@ -956,14 +956,28 @@ cdef class TypeRef(TypeDefOrRef):
         self.__cctor_method = None
         self.__full_name = None
         self._memberrefs = list()
+        self.__enum_value = 0
 
     cpdef bint is_enum(self):
         """ Checks if the type's name matches System.Enum and thus is an Enum.
+            So the problem here is now we can only determine if its a valuetype.  We need other assemblies to go further.
+            so for now, assume valuetypes are enums for the purpose of this function in order to get the emulator to work. 
+            TODO: make some sort of fix here, maybe have the emulator use a version of the function that can look into mscorlib types
 
         Returns:
             bool: True if the type is enum, False otherwise.
         """
-        return self.get_full_name() == b'System.Enum'
+        if self.__enum_value == 1:
+            return True
+        if self.__enum_value == 2:
+            return False
+        #So the problem here is now we can only determine if its a valuetype.  We need other assemblies to go further.
+        #so for now, assume valuetypes are enums for the purpose of this function in order to get the emulator to work.
+        if self.get_full_name() == b'System.Enum':
+            self.__enum_value = 1
+            return True
+        self.__enum_value = 2
+        return False
 
     cpdef bint is_valuetype(self):
         """ Checks if the type's name matches System.ValueType and thus is a ValueType

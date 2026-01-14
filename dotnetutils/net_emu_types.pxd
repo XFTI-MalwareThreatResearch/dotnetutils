@@ -2436,10 +2436,28 @@ cdef class DotNetNullable(DotNetObject):
     @staticmethod
     cdef StackCell GetUnderlyingType(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
+cdef class DotNetEnum(DotNetObject):
+
+    @staticmethod
+    cdef StackCell GetUnderlyingType(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell ToObject(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+cdef class DotNetCryptoConfig(DotNetObject):
+
+    @staticmethod
+    cdef StackCell get_AllowOnlyFipsAlgorithms(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+cdef class DotNetRijandaelManaged(DotNetSymmetricAlgorithm):
+    pass
+
 include "net_emu_types.pxi"
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[AMT_OF_TYPES]
 cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[AMT_OF_STATIC_FUNCTIONS]
+
+cdef DotNetObject New_RijandaelManaged(net_emulator.DotNetEmulator emulator_obj)
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 

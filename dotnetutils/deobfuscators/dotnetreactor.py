@@ -619,6 +619,7 @@ class NETReactor(Deobfuscator):
         new_method = dotnet.get_method_by_rid(242)
 
         new_emu = emu.spawn_new_emulator(new_method)
+        #new_emu.set_print_debugging(True, False, print_debug_methods=[582])
         dnint = net_emu_types.DotNetInt32(new_emu, None)
         dnint.from_int(0xEE0)
         new_emu.setup_method_params([dnint])

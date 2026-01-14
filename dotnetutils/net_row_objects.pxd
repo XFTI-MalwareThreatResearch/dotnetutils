@@ -226,6 +226,7 @@ cdef class TypeRef(TypeDefOrRef):
     cdef bytes __full_name
     cdef public list _memberrefs
     cdef TypeDefOrRef __superclass
+    cdef int __enum_value
     cdef MethodDef __cctor_method
 
     cpdef list get_member_refs(self)

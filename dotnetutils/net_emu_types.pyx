@@ -5530,6 +5530,9 @@ cdef class DotNetType(DotNetObject):
         return self.get_emulator_obj().pack_object(DotNetRuntimeTypeHandle(self.get_emulator_obj(), self.type_handle))
 
     cdef StackCell get_IsEnum(self, StackCell * params, int nparams):
+        cdef list known_enums = [b'System.Security.Cryptography.CipherMode']
+        if self.type_handle.get_full_name() in known_enums:
+            return self.get_emulator_obj().pack_bool(True)
         return self.get_emulator_obj().pack_bool(self.type_handle.is_enum())
 
     def __str__(self):
@@ -10484,6 +10487,7 @@ cdef class DotNetSymmetricAlgorithm(DotNetObject):
 
     cdef StackCell set_Mode(self, StackCell * params, int nparams):
         if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_I4:
+            print(net_utils.get_cor_type_name(<CorElementType>params[0].tag))
             raise net_exceptions.InvalidArgumentsException()
         cdef int mode = params[0].item.i4
         self.__mode = mode
@@ -10847,8 +10851,45 @@ cdef class DotNetNullable(DotNetObject):
     cdef StackCell GetUnderlyingType(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
         if nparams != 1:
             raise net_exceptions.InvalidArgumentsException()
+        #TODO: This function doesnt technically work, although it seems to be fooling the emulator well enough.  May need to look into it.
         return app_domain.get_emulator_obj().duplicate_cell(params[0])
+
+cdef class DotNetEnum(DotNetObject):
+
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
+
+    @staticmethod
+    cdef StackCell ToObject(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        if nparams != 2:
+            raise net_exceptions.InvalidArgumentsException()
+
+        if check_object(params[0]):
+            raise net_exceptions.InvalidArgumentsException()
         
+        cdef StackCell signed = app_domain.get_emulator_obj().cast_cell(params[1], net_sigs.get_CorSig_Int32())
+        cdef StackCell boxed = app_domain.get_emulator_obj().box_value(signed, None)
+        app_domain.get_emulator_obj().dealloc_cell(signed)
+        return boxed
+
+    @staticmethod
+    cdef StackCell GetUnderlyingType(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_object(DotNetType(app_domain.get_emulator_obj(), app_domain.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Int32')))
+
+cdef class DotNetCryptoConfig(DotNetObject):
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj):
+        DotNetObject.__init__(self, emulator_obj)
+
+    @staticmethod
+    cdef StackCell get_AllowOnlyFipsAlgorithms(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_emulator_obj().pack_bool(False)
+
+cdef class DotNetRijandaelManaged(DotNetSymmetricAlgorithm):
+    def __init__(self, net_emulator.DotNetEmulator emulator_obj):
+        DotNetSymmetricAlgorithm.__init__(self, emulator_obj)
+
+cdef DotNetObject New_RijandaelManaged(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetRijandaelManaged(emulator_obj)
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj):
     return DotNetConcurrentDictionary(emulator_obj)
@@ -10972,7 +11013,8 @@ NET_EMULATE_TYPE_REGISTRATIONS[22].name = 'System.DateTime'
 NET_EMULATE_TYPE_REGISTRATIONS[22].func_ptr = <newobj_func_type>&New_DateTime
 NET_EMULATE_TYPE_REGISTRATIONS[23].name = 'System.Security.Cryptography.RSACryptoServiceProvider'
 NET_EMULATE_TYPE_REGISTRATIONS[23].func_ptr = <newobj_func_type>&New_RSACryptoServiceProvider
-
+NET_EMULATE_TYPE_REGISTRATIONS[24].name = 'System.Security.Cryptography.RijndaelManaged'
+NET_EMULATE_TYPE_REGISTRATIONS[24].func_ptr = <newobj_func_type>&New_RijandaelManaged
 
 cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[AMT_OF_STATIC_FUNCTIONS]
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[0].name = 'System.Type.op_Equality'
@@ -11085,3 +11127,9 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[53].name = 'System.Nullable.GetUnderlyingT
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[53].func_ptr = <static_func_type>&DotNetNullable.GetUnderlyingType
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[54].name = 'System.Array.CreateInstance'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[54].func_ptr = <static_func_type>&DotNetArray.CreateInstance
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[55].name = 'System.Security.Cryptography.CryptoConfig.get_AllowOnlyFipsAlgorithms'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[55].func_ptr = <static_func_type>&DotNetCryptoConfig.get_AllowOnlyFipsAlgorithms
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[56].name = 'System.Enum.GetUnderlyingType'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[56].func_ptr = <static_func_type>&DotNetEnum.GetUnderlyingType
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[57].name = 'System.Enum.ToObject'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[57].func_ptr = <static_func_type>&DotNetEnum.ToObject
