@@ -616,6 +616,14 @@ class NETReactor(Deobfuscator):
         emu.run_function()
         print('starting to replace strings.')
         us_heap = dotnet.get_heap('#US')
+        new_method = dotnet.get_method_by_rid(242)
+
+        new_emu = emu.spawn_new_emulator(new_method)
+        dnint = net_emu_types.DotNetInt32(new_emu, None)
+        dnint.from_int(0xEE0)
+        new_emu.setup_method_params([dnint])
+        new_emu.run_function()
+        return
         us_heap.begin_append_tx()
         string_methods = [strm]
         while string_methods:
@@ -648,7 +656,7 @@ class NETReactor(Deobfuscator):
                     new_emu.setup_method_params([])
                     worked = False
                     try:
-                        #new_emu.set_print_debugging(True, False, print_debug_methods=[1515])
+                        new_emu.set_print_debugging(True, False, print_debug_methods=[1554])
                         new_emu.run_function()
                     except net_exceptions.EmulatorEndExecutionException:
                         worked = True

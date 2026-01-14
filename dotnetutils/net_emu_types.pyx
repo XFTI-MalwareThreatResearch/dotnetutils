@@ -702,7 +702,7 @@ cdef class DotNetNumber(DotNetObject):
         if self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_I:
             tname = b'System.IntPtr'
         elif self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
-            tname = b'System.Int8'
+            tname = b'System.SByte'
         elif self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_I2:
             tname = b'System.Int16'
         elif self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_I4:
@@ -712,7 +712,7 @@ cdef class DotNetNumber(DotNetObject):
         elif self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_U:
             tname = b'System.UIntPtr'
         elif self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
-            tname = b'System.UInt8'
+            tname = b'System.Byte'
         elif self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_U2:
             tname = b'System.UInt16'
         elif self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_U4:
@@ -732,7 +732,7 @@ cdef class DotNetNumber(DotNetObject):
         """
         cdef DotNetNumber num_obj = None
         if self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
-            num_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            num_obj = DotNetByte(self.get_emulator_obj(), None)
             num_obj.from_uchar(<unsigned char>self.as_char())
         elif self.__num_type == net_structs.CorElementType.ELEMENT_TYPE_I:
             num_obj = DotNetUIntPtr(self.get_emulator_obj(), self.as_bytes())
@@ -1207,7 +1207,7 @@ cdef class DotNetIntPtr(DotNetNumber):
         if new_type == CorElementType.ELEMENT_TYPE_I:
             return self
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             if native_64:
                 res_obj.from_char(<char>self.as_long())
             else:
@@ -1237,7 +1237,7 @@ cdef class DotNetIntPtr(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_int())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             if native_64:
                 res_obj.from_uchar(<unsigned char>self.as_long())
             else:
@@ -1798,7 +1798,7 @@ cdef class DotNetUIntPtr(DotNetNumber):
         if new_type == CorElementType.ELEMENT_TYPE_U:
             return self
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             if native_64:
                 res_obj.from_char(<char>self.as_ulong())
             else:
@@ -1828,7 +1828,7 @@ cdef class DotNetUIntPtr(DotNetNumber):
             else:
                 res_obj.from_int(<int>self.as_uint())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             if native_64:
                 res_obj.from_uchar(<unsigned char>self.as_ulong())
             else:
@@ -2353,12 +2353,13 @@ cdef class DotNetUIntPtr(DotNetNumber):
                 return val_three >= val_four
         raise Exception()
 
-cdef class DotNetInt8(DotNetNumber):
+cdef class DotNetSByte(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
         DotNetNumber.__init__(self, emu_obj, CorElementType.ELEMENT_TYPE_I1, num_data)
+        self.type_obj = self.get_emulator_obj().get_method_obj().get_typeref_by_full_name(b'System.SByte')
 
     cdef DotNetObject duplicate(self):
-        cdef DotNetInt8 num = DotNetInt8(self.get_emulator_obj(), None)
+        cdef DotNetSByte num = DotNetSByte(self.get_emulator_obj(), None)
         num.from_char(self.as_char())
         DotNetNumber.duplicate_into(self, num)
         return num
@@ -2393,7 +2394,7 @@ cdef class DotNetInt8(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_char())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_char())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -2425,7 +2426,7 @@ cdef class DotNetInt8(DotNetNumber):
 
     cdef DotNetNumber xor(self, DotNetNumber other):
         cdef CorElementType other_type = other.get_num_type()
-        cdef DotNetInt8 result = DotNetInt8(self.get_emulator_obj(), None)
+        cdef DotNetSByte result = DotNetSByte(self.get_emulator_obj(), None)
         cdef char val_one = self.as_char()
         cdef unsigned char val_two = 0
         if other_type == CorElementType.ELEMENT_TYPE_U1:
@@ -2433,7 +2434,7 @@ cdef class DotNetInt8(DotNetNumber):
             val_one ^= val_two
             result.from_char(val_one)
             return result
-        raise Exception('DotNetInt8.xor {}'.format(net_utils.get_cor_type_name(other_type)))
+        raise Exception('DotNetSByte.xor {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef bint equals(self, DotNetNumber other):
         cdef char val_one = 0
@@ -2508,7 +2509,7 @@ cdef class DotNetInt16(DotNetNumber):
             else:
                 res_obj.from_int(<int>self.as_short())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_short())
         elif new_type == CorElementType.ELEMENT_TYPE_I4:
             res_obj = DotNetInt32(self.get_emulator_obj(), None)
@@ -2523,7 +2524,7 @@ cdef class DotNetInt16(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_short())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_short())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -2678,7 +2679,7 @@ cdef class DotNetInt32(DotNetNumber):
             res_obj = DotNetInt16(self.get_emulator_obj(), None)
             res_obj.from_short(<short>self.as_int())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_int())
         elif new_type == CorElementType.ELEMENT_TYPE_I8:
             res_obj = DotNetInt64(self.get_emulator_obj(), None)
@@ -2690,7 +2691,7 @@ cdef class DotNetInt32(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_int())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_int())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -3201,7 +3202,7 @@ cdef class DotNetInt64(DotNetNumber):
             res_obj = DotNetInt32(self.get_emulator_obj(), None)
             res_obj.from_int(<int>self.as_long())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_long())
         elif new_type == CorElementType.ELEMENT_TYPE_U:
             res_obj = DotNetUIntPtr(self.get_emulator_obj(), None)
@@ -3210,7 +3211,7 @@ cdef class DotNetInt64(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_long())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_long())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -3616,12 +3617,13 @@ cdef class DotNetInt64(DotNetNumber):
             return val_one >= val_two
         raise Exception('int64 gte {}'.format(net_utils.get_cor_type_name(other_type)))
 
-cdef class DotNetUInt8(DotNetNumber):
+cdef class DotNetByte(DotNetNumber):
     def __init__(self, net_emulator.DotNetEmulator emu_obj, bytes num_data):
         DotNetNumber.__init__(self, emu_obj, CorElementType.ELEMENT_TYPE_U1, num_data)
+        self.type_obj = emu_obj.get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Byte')
 
     cdef DotNetObject duplicate(self):
-        cdef DotNetUInt8 num = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef DotNetByte num = DotNetByte(self.get_emulator_obj(), None)
         num.from_uchar(self.as_uchar())
         DotNetNumber.duplicate_into(self, num)
         return num
@@ -3631,7 +3633,7 @@ cdef class DotNetUInt8(DotNetNumber):
 
     cdef DotNetNumber shr(self, DotNetNumber number):
         cdef CorElementType other_type = number.get_num_type()
-        cdef DotNetNumber result = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef DotNetNumber result = DotNetByte(self.get_emulator_obj(), None)
         cdef bint is_64bit = self.get_emulator_obj().is_64bit()
         cdef unsigned char val_one = 0
         cdef int val_two = 0
@@ -3660,7 +3662,7 @@ cdef class DotNetUInt8(DotNetNumber):
 
     cdef DotNetNumber shl(self, DotNetNumber number):
         cdef CorElementType other_type = number.get_num_type()
-        cdef DotNetNumber result = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef DotNetNumber result = DotNetByte(self.get_emulator_obj(), None)
         cdef bint is_64bit = self.get_emulator_obj().is_64bit()
         cdef unsigned char val_one = 0
         cdef int val_two = 0
@@ -3689,7 +3691,7 @@ cdef class DotNetUInt8(DotNetNumber):
 
     cdef DotNetNumber rem(self, DotNetNumber number): #TODO: Once strict typing is introduced this should be removed.
         cdef CorElementType other_type = number.get_num_type()
-        cdef DotNetNumber result = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef DotNetNumber result = DotNetByte(self.get_emulator_obj(), None)
         cdef unsigned char val_one = 0
         cdef int val_two = 0
         if self._ptr == NULL:
@@ -3705,7 +3707,7 @@ cdef class DotNetUInt8(DotNetNumber):
 
     cdef DotNetNumber divide(self, DotNetNumber number):
         cdef CorElementType other_type = number.get_num_type()
-        cdef DotNetNumber result = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef DotNetNumber result = DotNetByte(self.get_emulator_obj(), None)
         cdef unsigned char val_one = 0
         cdef int val_two = 0
         if self._ptr == NULL:
@@ -3721,7 +3723,7 @@ cdef class DotNetUInt8(DotNetNumber):
 
     cdef DotNetNumber orop(self, DotNetNumber other):
         cdef CorElementType other_type = other.get_num_type()
-        cdef DotNetUInt8 result = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef DotNetByte result = DotNetByte(self.get_emulator_obj(), None)
         cdef unsigned char val_one = self.as_uchar()
         cdef unsigned char val_two = 0
         if other_type == CorElementType.ELEMENT_TYPE_U1:
@@ -3758,7 +3760,7 @@ cdef class DotNetUInt8(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_uchar())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<unsigned char>self.as_uchar())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -3789,7 +3791,7 @@ cdef class DotNetUInt8(DotNetNumber):
         return res_obj
 
     cdef DotNetNumber andop(self, DotNetNumber other):
-        cdef DotNetUInt8 result = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef DotNetByte result = DotNetByte(self.get_emulator_obj(), None)
         cdef unsigned char val_one = self.as_uchar()
         cdef int val_two = 0
         cdef CorElementType other_type = other.get_num_type()
@@ -3801,7 +3803,7 @@ cdef class DotNetUInt8(DotNetNumber):
         raise Exception('unkown type {}'.format(net_utils.get_cor_type_name(other_type)))
 
     cdef DotNetNumber xor(self, DotNetNumber other):
-        cdef DotNetUInt8 result = DotNetUInt8(self.get_emulator_obj(), None)
+        cdef DotNetByte result = DotNetByte(self.get_emulator_obj(), None)
         cdef CorElementType other_type = other.get_num_type()
         cdef unsigned char val_one = self.as_uchar()
         cdef unsigned char val_two = 0
@@ -3891,7 +3893,7 @@ cdef class DotNetUInt16(DotNetNumber):
             else:
                 res_obj.from_int(<int>self.as_ushort())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_ushort())
         elif new_type == CorElementType.ELEMENT_TYPE_I4:
             res_obj = DotNetInt32(self.get_emulator_obj(), None)
@@ -3906,7 +3908,7 @@ cdef class DotNetUInt16(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_ushort())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_ushort())
         elif new_type == CorElementType.ELEMENT_TYPE_I2:
             res_obj = DotNetInt16(self.get_emulator_obj(), None)
@@ -4032,7 +4034,7 @@ cdef class DotNetUInt32(DotNetNumber):
             res_obj = DotNetInt16(self.get_emulator_obj(), None)
             res_obj.from_short(<short>self.as_uint())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_uint())
         elif new_type == CorElementType.ELEMENT_TYPE_I8:
             res_obj = DotNetInt64(self.get_emulator_obj(), None)
@@ -4044,7 +4046,7 @@ cdef class DotNetUInt32(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_uint())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_uint())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -4556,7 +4558,7 @@ cdef class DotNetUInt64(DotNetNumber):
             res_obj = DotNetInt32(self.get_emulator_obj(), None)
             res_obj.from_int(<int>self.as_ulong())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_ulong())
         elif new_type == CorElementType.ELEMENT_TYPE_U:
             res_obj = DotNetUIntPtr(self.get_emulator_obj(), None)
@@ -4565,7 +4567,7 @@ cdef class DotNetUInt64(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_ulong())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_ulong())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -5023,7 +5025,7 @@ cdef class DotNetSingle(DotNetNumber):
             res_obj = DotNetInt32(self.get_emulator_obj(), None)
             res_obj.from_int(<int>self.as_float())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_float())
         elif new_type == CorElementType.ELEMENT_TYPE_U:
             res_obj = DotNetUIntPtr(self.get_emulator_obj(), None)
@@ -5032,7 +5034,7 @@ cdef class DotNetSingle(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_float())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_float())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -5202,7 +5204,7 @@ cdef class DotNetDouble(DotNetNumber):
             res_obj = DotNetInt32(self.get_emulator_obj(), None)
             res_obj.from_int(<int>self.as_double())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_double())
         elif new_type == CorElementType.ELEMENT_TYPE_U:
             res_obj = DotNetUIntPtr(self.get_emulator_obj(), None)
@@ -5211,7 +5213,7 @@ cdef class DotNetDouble(DotNetNumber):
             else:
                 res_obj.from_uint(<unsigned int>self.as_double())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_double())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -5422,7 +5424,7 @@ cdef class DotNetChar(DotNetUInt16):
             res_obj = DotNetInt32(self.get_emulator_obj(), None)
             res_obj.from_int(<int>self.as_ushort())
         elif new_type == CorElementType.ELEMENT_TYPE_I1:
-            res_obj = DotNetInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetSByte(self.get_emulator_obj(), None)
             res_obj.from_char(<char>self.as_ushort())
         elif new_type == CorElementType.ELEMENT_TYPE_U:
             res_obj = DotNetUIntPtr(self.get_emulator_obj(), None)
@@ -5431,7 +5433,7 @@ cdef class DotNetChar(DotNetUInt16):
             else:
                 res_obj.from_uint(<unsigned int>self.as_ushort())
         elif new_type == CorElementType.ELEMENT_TYPE_U1:
-            res_obj = DotNetUInt8(self.get_emulator_obj(), None)
+            res_obj = DotNetByte(self.get_emulator_obj(), None)
             res_obj.from_uchar(<unsigned char>self.as_ushort())
         elif new_type == CorElementType.ELEMENT_TYPE_U2:
             res_obj = DotNetUInt16(self.get_emulator_obj(), None)
@@ -6695,7 +6697,7 @@ cdef class DotNetArray(DotNetObject):
         cdef uint64_t x = 0
         if self.element_type is not None:
             type_name = self.element_type.get_full_name()
-            if type_name == b'System.Byte' or type_name == b'System.UInt8':
+            if type_name == b'System.Byte' or type_name == b'System.Byte':
                 for x in range(self.__size):
                     if self.__internal_array[x].tag == CorElementType.ELEMENT_TYPE_END:
                         raise net_exceptions.OperationNotSupportedException()
@@ -7525,7 +7527,7 @@ cdef class DotNetString(DotNetObject):
         cdef unsigned short wc = 0
         if isinstance(str_data, bytes) or isinstance(str_data, bytearray):
             if isinstance(str_data, bytes) or isinstance(str_data, bytearray):
-                #convert all bytes to DotNetChar or DotNetUInt8 according to encoding.
+                #convert all bytes to DotNetChar or DotNetByte according to encoding.
                 if self.is_encoding_wide():
                     for x in range(0, len(str_data), 2):
                         wc = <unsigned short>int.from_bytes(str_data[x:x+2], 'little')
@@ -10407,7 +10409,7 @@ cdef class DotNetDeflateStream(DotNetObject):
         cdef DotNetInt32 result = DotNetInt32(self.get_emulator_obj(), None)
         cdef int amt_written
         cdef int x
-        cdef DotNetUInt8 num = None
+        cdef DotNetByte num = None
         cdef unsigned char uc = 0
         if len(args) == 3:
             offset = <DotNetInt32>args[1]
@@ -10422,7 +10424,7 @@ cdef class DotNetDeflateStream(DotNetObject):
                 break
             amt_written += 1
             uc = self.decompressed_buffer[x + self.position]
-            num = DotNetUInt8(self.get_emulator_obj(), None)
+            num = DotNetByte(self.get_emulator_obj(), None)
             num.init_from_ptr(&uc, sizeof(uc))
             buffer[offset.as_int() + x] = num
 
@@ -10916,6 +10918,9 @@ cdef DotNetObject New_DynamicMethod(net_emulator.DotNetEmulator emulator_obj):
 cdef DotNetObject New_DateTime(net_emulator.DotNetEmulator emulator_obj):
     return DotNetDateTime(emulator_obj)
 
+cdef DotNetObject New_RSACryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj):
+    return DotNetRSACryptoServiceProvider(emulator_obj)
+
 include "net_emu_types.pxi"
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[AMT_OF_TYPES]
@@ -10965,6 +10970,8 @@ NET_EMULATE_TYPE_REGISTRATIONS[21].name = 'System.Reflection.Emit.DynamicMethod'
 NET_EMULATE_TYPE_REGISTRATIONS[21].func_ptr = <newobj_func_type>&New_DynamicMethod
 NET_EMULATE_TYPE_REGISTRATIONS[22].name = 'System.DateTime'
 NET_EMULATE_TYPE_REGISTRATIONS[22].func_ptr = <newobj_func_type>&New_DateTime
+NET_EMULATE_TYPE_REGISTRATIONS[23].name = 'System.Security.Cryptography.RSACryptoServiceProvider'
+NET_EMULATE_TYPE_REGISTRATIONS[23].func_ptr = <newobj_func_type>&New_RSACryptoServiceProvider
 
 
 cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[AMT_OF_STATIC_FUNCTIONS]

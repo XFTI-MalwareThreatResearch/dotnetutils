@@ -344,7 +344,7 @@ cdef class DotNetUIntPtr(DotNetNumber):
     @staticmethod
     cdef StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
-cdef class DotNetInt8(DotNetNumber):
+cdef class DotNetSByte(DotNetNumber):
     
     cdef DotNetObject duplicate(self)
 
@@ -471,7 +471,7 @@ cdef class DotNetInt64(DotNetNumber):
 
     cdef bint greaterthanequals(self, DotNetNumber other)
 
-cdef class DotNetUInt8(DotNetNumber):
+cdef class DotNetByte(DotNetNumber):
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
@@ -2484,3 +2484,5 @@ cdef DotNetObject New_Random(net_emulator.DotNetEmulator emulator_obj)
 cdef DotNetObject New_DynamicMethod(net_emulator.DotNetEmulator emulator_obj)
 
 cdef DotNetObject New_DateTime(net_emulator.DotNetEmulator emulator_obj)
+
+cdef DotNetObject New_RSACryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj)

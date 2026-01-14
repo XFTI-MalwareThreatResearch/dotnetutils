@@ -28,6 +28,7 @@ cdef class StackCellWrapper:
     cdef uint64_t u8_holder
     cdef PyObject * ref_holder
     cdef CorElementType cor_type
+    cdef CorElementType cli_type
     cdef int kind_holder
     cdef void * owner_holder
     cdef int idx_holder
