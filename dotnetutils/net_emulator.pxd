@@ -61,6 +61,11 @@ cdef class EmulatorAppDomain:
     cdef dict __field_index_registrations
     cdef dict __field_counter_registrations
     cdef vector[StackCell] __static_fields
+    cdef list __known_enums
+
+    cpdef list get_known_enums(self)
+    
+    cpdef void add_known_enum(self, bytes name)
 
     cpdef void register_instr_handler(self, Opcodes opcode, object instrFn, object param)
 

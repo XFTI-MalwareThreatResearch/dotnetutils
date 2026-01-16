@@ -74,6 +74,8 @@ cdef class DotNetObject:
 
     cdef void add_function(self, bytes name, emu_func_type func)
 
+    cdef void clear_functions(self)
+
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self)
 
     cdef void set_field(self, int idno, StackCell val)
@@ -832,6 +834,12 @@ cdef class DotNetStream(DotNetObject):
 
     cdef StackCell Close(self, StackCell * params, int nparams)
 
+    cdef void expand(self, uint64_t new_size)
+
+    cdef void set_internal_array(self, DotNetArray array)
+
+
+
 cdef class DotNetMemoryStream(DotNetStream):
 
     cdef DotNetObject duplicate(self)
@@ -841,6 +849,12 @@ cdef class DotNetMemoryStream(DotNetStream):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
     cdef StackCell ToArray(self, StackCell * params, int nparams)
+
+cdef class DotNetCryptoStream(DotNetStream):
+    cdef DotNetMemoryStream __mstream
+    cdef DotNetICryptoTransform __transform
+
+    cdef StackCell FlushFinalBlock(self, StackCell * params, int nparams)
 
 cdef class DotNetAssemblyName(DotNetObject):
     cdef bytes name
@@ -930,6 +944,8 @@ cdef class DotNetList(DotNetObject):
     cdef StackCell set_Item(self, StackCell * params, int nparams)
 
     cdef StackCell Sort(self, StackCell * params, int nparams)
+
+    cdef StackCell Clear(self, StackCell * params, int nparams)
 
 cdef class DotNetArray(DotNetObject):
     cdef SlimStackCell * __internal_array
@@ -2450,7 +2466,17 @@ cdef class DotNetCryptoConfig(DotNetObject):
     cdef StackCell get_AllowOnlyFipsAlgorithms(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
 cdef class DotNetRijandaelManaged(DotNetSymmetricAlgorithm):
-    pass
+    
+    cdef StackCell CreateDecryptor(self, StackCell * params, int nparams)
+
+cdef class DotNetRijandaelDecryptor(DotNetICryptoTransform):
+    cdef object aes_object
+    cdef bint __encrypt
+    cdef StackCell ctor(self, StackCell * params, int nparams)
+    cdef StackCell get_InputBlockSize(self, StackCell * params, int nparams)
+    cdef StackCell get_OutputBlockSize(self, StackCell * params, int nparams)
+    cdef StackCell TransformBlock(self, StackCell * params, int nparams)
+    cdef StackCell TransformFinalBlock(self, StackCell * params, int nparams)
 
 include "net_emu_types.pxi"
 
@@ -2504,3 +2530,5 @@ cdef DotNetObject New_DynamicMethod(net_emulator.DotNetEmulator emulator_obj)
 cdef DotNetObject New_DateTime(net_emulator.DotNetEmulator emulator_obj)
 
 cdef DotNetObject New_RSACryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj)
+
+cdef DotNetObject New_CryptoStream(net_emulator.DotNetEmulator emulator_obj)

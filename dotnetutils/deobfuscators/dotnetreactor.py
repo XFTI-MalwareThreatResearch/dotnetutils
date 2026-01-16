@@ -18,29 +18,23 @@ def dnr_skip_obf_invoke_methods(emulator, argument):
     instr = emulator.get_instr()
     name = instr.get_argument().get_full_name()
     if name == b'System.Reflection.MethodBase.Invoke':
-        args_array = emulator.get_stack().pop_obj()
-        this_obj = emulator.get_stack().pop_obj()
-        methodinfo = emulator.get_stack().pop_obj()
+        stack = emulator.get_stack()
+        stack_len = len(stack)
+        methodinfo = stack[stack_len - 3]
         internal = methodinfo.get_internal_method()
         if internal.has_return_value() or internal.method_has_this():
-            emulator.get_stack().append_obj(methodinfo)
-            emulator.get_stack().append_obj(this_obj)
-            emulator.get_stack().append_obj(args_array)
             return True
         if len(internal.get_param_types()) > 0:
-            emulator.get_stack().append_obj(methodinfo)
-            emulator.get_stack().append_obj(this_obj)
-            emulator.get_stack().append_obj(args_array)
             return True
 
         if not internal.is_static_method():
-            emulator.get_stack().append_obj(methodinfo)
-            emulator.get_stack().append_obj(this_obj)
-            emulator.get_stack().append_obj(args_array)
             return True
         
         print('Blocking execution of method by invoke {}'.format(internal))
-        emulator.get_stack().append_obj(None)
+        stack.remove_obj()
+        stack.remove_obj()
+        stack.remove_obj()
+        stack.append_obj(None)
         return False
     return True
 
@@ -112,6 +106,7 @@ def dnr_encrypt_stop_ldelema(emulator, argument):
 def dnr_skip_time_check(emulator, argument):
     instr = emulator.get_instr()
     arg = instr.get_argument()
+        
     if not isinstance(arg, net_row_objects.MethodDef):
         return True
     if not arg.is_static_method():
@@ -609,21 +604,35 @@ class NETReactor(Deobfuscator):
         emu = net_emulator.DotNetEmulator(cctor_method)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, None)
-        #emu.set_print_debugging(True, True)
-        #emu.set_print_debugging(True, False, print_debug_methods=[1553])
+        #emu.set_print_debugging(True, False, print_debug_methods=[582])
         emu.setup_method_params([])
         print('Emulating string cctor.')
         emu.run_function()
         print('starting to replace strings.')
         us_heap = dotnet.get_heap('#US')
         new_method = dotnet.get_method_by_rid(242)
+        #block antitamper checks
+        antitamper_field = None
+        for instr in new_method.disassemble_method():
+            if instr.get_opcode() == net_opcodes.Opcodes.Stsfld:
+                arg = instr.get_argument()
+                if isinstance(arg, net_row_objects.Field) and arg.is_static():
+                    fsig = arg.get_field_signature()
+                    if fsig.get_type_sig() == net_sigs.get_CorSig_Int32():
+                        antitamper_field = arg
+                        break
+                        
+                        
 
         new_emu = emu.spawn_new_emulator(new_method)
-        #new_emu.set_print_debugging(True, False, print_debug_methods=[582])
         dnint = net_emu_types.DotNetInt32(new_emu, None)
         dnint.from_int(0xEE0)
+        if antitamper_field is not None:
+            new_emu.set_static_field_obj(antitamper_field.get_rid(), dnint)
         new_emu.setup_method_params([dnint])
+        new_emu.set_print_debugging(True, False)
         new_emu.run_function()
+        raise Exception()
         return
         us_heap.begin_append_tx()
         string_methods = [strm]

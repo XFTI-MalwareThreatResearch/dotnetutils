@@ -845,6 +845,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef bint this_was_slimobj = False #TODO: make sure this on MemberRefs converts SlimObjects to DotNetObjects before call.
     cdef net_sigs.MethodSig method_signature = initial_method_obj.get_method_signature()
     cdef DotNetEmulator current_emu = None
+    cdef StackCell * orig_method_args = NULL
+    cdef bint debug = False
     memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj is not None:
         method_obj = force_method_obj
@@ -855,6 +857,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
                     return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0, initial_method_obj)
+    debug = method_obj.get_name() == b'set_Mode'
     if method_obj.get_table_name() == 'MethodDef' and not force_extern_type:
         method_name = method_obj.get_name()
         amt_args = <int>len(method_obj.get_param_types())
@@ -914,6 +917,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 method_args = <StackCell*>malloc(sizeof(StackCell) * (amt_args))
                 if method_args == NULL:
                     raise net_exceptions.EmulatorExecutionException(emu, 'error allocating memory for args')
+                orig_method_args = method_args
                 memset(method_args, 0, amt_args * sizeof(StackCell))
             if len(emu.stack) < amt_args:
                 raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
@@ -923,7 +927,11 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 method_args[x] = casted_cell
                 emu.dealloc_cell(cell)
         else:
-            method_args = force_method_args
+            method_args = <StackCell*>malloc(sizeof(StackCell) * nforce_method_args)
+            if method_args == NULL:
+                raise net_exceptions.EmulatorExecutionException(emu, 'memory error')
+            orig_method_args = method_args
+            memcpy(method_args, force_method_args, sizeof(StackCell) * nforce_method_args)
         if not is_newobj and push_obj_reference and force_method_args == NULL:
             if len(emu.stack) < 1:
                 raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
@@ -971,9 +979,23 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 obj_ref.initialize_type(current_emu.get_method_obj().get_dotnetpe().get_token_value(boxed_this.item.slim_object.type_token))
                 obj_ref.copy_fields_from_slimobject(boxed_this.item.slim_object)
             if amt_args == 0:
+                free(method_args)
+                orig_method_args = NULL
                 method_args = NULL
             else:
                 method_args = &method_args[1] #Make sure this isnt included
+            for x in range(amt_args):
+                casted_cell = emu.cast_cell(method_args[x], method_signature.get_parameters()[x])
+                method_args[x] = casted_cell
+        elif force_method_args != NULL:
+            if debug:
+                print('at force_method_args != NULL {}'.format(amt_args))
+            for x in range(amt_args):
+                casted_cell = emu.cast_cell(method_args[x], method_signature.get_parameters()[x])
+                if debug:
+                    print('casted cell type {}, orig {}'.format(net_utils.get_cor_type_name(<CorElementType>casted_cell.tag), net_utils.get_cor_type_name(<CorElementType>method_args[x].tag)))
+                method_args[x] = casted_cell
+
         emu_method = None
         if method_obj.is_static_method():
             if not emu.get_appdomain().has_static_func(method_obj.get_token()):
@@ -994,9 +1016,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 dot_obj.initialize_type(parent_type)
             elif parent_type is not None and not is_newobj:
                 #for calls with ctors, do nothing.  Allocation already happened and for our purposes thats when the Ctor is called.
-                if force_method_args == NULL:
-                    for x in range(amt_args):
-                        emu.dealloc_cell(method_args[x])
+                for x in range(amt_args):
+                    emu.dealloc_cell(method_args[x])
+                free(orig_method_args)
+                method_args = NULL
                 if obj_ref is not None:
                     if this_was_slimobj:
                         obj_ref.copy_fields_to_slimobject(boxed_this.item.slim_object)
@@ -1019,9 +1042,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 emu.dealloc_cell(ret_cell)
                 emu.stack.append(cell)
                 emu.dealloc_cell(cell)
-            if force_method_args == NULL: #these args are cleaned up by a later call.
-                for x in range(amt_args):
-                    emu.dealloc_cell(method_args[x])
+            for x in range(amt_args):
+                emu.dealloc_cell(method_args[x])
+            free(orig_method_args)
+            method_args = NULL
             if obj_ref is not None:
                 if this_was_slimobj:
                     obj_ref.copy_fields_to_slimobject(boxed_this.item.slim_object)
@@ -1050,6 +1074,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             emu.dealloc_cell(cell)
         for x in range(amt_args):
             emu.dealloc_cell(method_args[x])
+        free(orig_method_args)
         if obj_ref is not None:
             if this_was_slimobj:
                 obj_ref.copy_fields_to_slimobject(boxed_this.item.slim_object)
@@ -3831,6 +3856,13 @@ cdef class EmulatorAppDomain:
         self.__field_index_registrations = dict()
         self.__field_counter_registrations = dict()
         self.__user_instr_handlers = dict()
+        self.__known_enums = [b'System.Security.Cryptography.CipherMode', b'System.Security.Cryptography.CryptoStreamMode']
+
+    cpdef list get_known_enums(self):
+        return self.__known_enums
+
+    cpdef void add_known_enum(self, bytes name):
+        self.__known_enums.append(name)
 
     cpdef void register_instr_handler(self, Opcodes opcode, object instrFn, object param):
         """ Register an instr handler.  Instruction handlers are functions that follow this signature: def func(emulator: DotNetEmulator, param: object) -> bool.
@@ -4499,6 +4531,26 @@ cdef class DotNetStack:
         cdef StackCell old = self.__internal_stack[index]
         cdef StackCell duped = self.__emulator.duplicate_cell(self.__internal_stack[index])
         return duped
+
+    def __getitem__(self, index):
+        if index < 0 or self.__internal_stack.size() <= index:
+            raise IndexError
+
+        cdef StackCell cell = self.get(index)
+        cdef StackCell boxed = self.__emulator.box_value(cell, None)
+        cdef net_emu_types.DotNetObject obj = None
+        if boxed.is_slim_object:
+            self.__emulator.dealloc_cell(cell)
+            self.__emulator.dealloc_cell(boxed)
+            raise net_exceptions.OperationNotSupportedException()
+        if boxed.tag != CorElementType.ELEMENT_TYPE_OBJECT and boxed.tag != CorElementType.ELEMENT_TYPE_STRING:
+            self.__emulator.dealloc_cell(cell)
+            self.__emulator.dealloc_cell(boxed)
+            raise net_exceptions.OperationNotSupportedException()
+        self.__emulator.dealloc_cell(cell)
+        obj = <net_emu_types.DotNetObject>boxed.item.ref
+        self.__emulator.dealloc_cell(boxed)
+        return obj
 
     def __len__(self) -> int:
         return self.__internal_stack.size()
@@ -5812,10 +5864,31 @@ cdef class DotNetEmulator:
         """
         cdef CorElementType etype = CorElementType.ELEMENT_TYPE_END
         cdef StackCell result
-        if isinstance(sig, net_sigs.CorLibTypeSig):
+        cdef StackCell unboxed_result
+        cdef StackCell casted
+        cdef net_row_objects.TypeDefOrRef ref = None
+        if isinstance(sig, net_sigs.ValueTypeSig):
+            if sig.get_type().get_full_name() in self.get_appdomain().get_known_enums():
+                return self.cast_cell(cell, net_sigs.get_CorSig_Int32())
+            else:
+                return self.duplicate_cell(cell)
+        elif isinstance(sig, net_sigs.CorLibTypeSig):
             etype = sig.get_element_type()
             result = self.duplicate_cell(cell)
             if net_utils.is_cortype_number(etype):
+                if not result.is_slim_object and result.tag == CorElementType.ELEMENT_TYPE_OBJECT:
+                    unboxed_result = self.unbox_value(result)
+                    if unboxed_result.tag == etype:
+                        self.dealloc_cell(result)
+                        return unboxed_result
+                    else:
+                        if etype == CorElementType.ELEMENT_TYPE_BOOLEAN:
+                            if net_utils.is_cortype_number(<CorElementType>unboxed_result.tag):
+                                casted = self.cast_cell(unboxed_result, net_sigs.get_CorSig_Boolean())
+                                self.dealloc_cell(unboxed_result)
+                                self.dealloc_cell(result)
+                                return casted
+                    self.dealloc_cell(unboxed_result)
                 result.tag = etype
                 result.cli_tag = etype
                 result.item.i8 = 0
@@ -6412,7 +6485,7 @@ cdef class DotNetEmulator:
                     elif cell.tag == CorElementType.ELEMENT_TYPE_U8 or cell.tag == CorElementType.ELEMENT_TYPE_I8:
                         result.item.b = cell.item.u8 != 0
                     else:
-                        raise net_exceptions.EmulatorExecutionException('invalid cell tag {}'.format(net_utils.get_cor_type_name(<CorElementType>cell.tag)))
+                        raise net_exceptions.EmulatorExecutionException(self, 'invalid cell tag {}'.format(net_utils.get_cor_type_name(<CorElementType>cell.tag)))
                 else:
                     raise net_exceptions.InvalidArgumentsException()
                 return result
