@@ -739,6 +739,8 @@ cdef class MethodDisassembler:
                     else:
                         #the local var sig token is invalid.
                         self.local_types = list()
+            if self.local_types is None:
+                self.local_types = list()
         return self.local_types
 
     cpdef int get_flags(self):
