@@ -988,12 +988,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 casted_cell = emu.cast_cell(method_args[x], method_signature.get_parameters()[x])
                 method_args[x] = casted_cell
         elif force_method_args != NULL:
-            if debug:
-                print('at force_method_args != NULL {}'.format(amt_args))
             for x in range(amt_args):
                 casted_cell = emu.cast_cell(method_args[x], method_signature.get_parameters()[x])
-                if debug:
-                    print('casted cell type {}, orig {}'.format(net_utils.get_cor_type_name(<CorElementType>casted_cell.tag), net_utils.get_cor_type_name(<CorElementType>method_args[x].tag)))
                 method_args[x] = casted_cell
 
         emu_method = None
@@ -8134,8 +8130,9 @@ cdef class DotNetEmulator:
         cdef net_sigs.TypeSig tsig
         cdef int index
         cdef StackCell ref
-        for index in range(len(self.disasm_obj.local_types)):
-            tsig = self.disasm_obj.local_types[index]
+        cdef list local_types = self.disasm_obj.get_local_types()
+        for index in range(len(local_types)):
+            tsig = local_types[index]
             try:
                 ref = self._get_default_value(tsig, self.method_obj.get_parent_type())
             except Exception as e:

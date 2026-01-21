@@ -598,7 +598,7 @@ cdef class MethodDisassembler:
         self.dotnetpe = dotnetpe
         self.method_obj = method
         self.max_stack = 0
-        self.local_types = list()
+        self.local_types = None
         self.local_var_sig_tok = 0
         self.flags = 0
         self.header_size = 0
@@ -721,6 +721,24 @@ cdef class MethodDisassembler:
         Returns:
             list[net_sigs.TypeSig]: A list of local type signatures for the method.
         """
+        if self.local_var_sig_tok == 0:
+            if self.local_types is None:
+                self.local_types = list()
+        if self.local_types is None:
+            if self.local_var_sig_tok > 0:
+                if self.local_var_sig_tok != 0:
+                    signature_entry = self.dotnetpe.get_token_value(self.local_var_sig_tok)
+                    if signature_entry is not None and signature_entry.get_table_name() == 'StandAloneSig':
+                        blob_value = signature_entry.get_column('Signature').get_value()
+                        if blob_value is None or blob_value[0] != net_structs.CorCallingConvention.LocalSig:
+                            self.local_types = list()
+                        else:
+                            sig_reader = net_sigs.SignatureReader(self.dotnetpe, blob_value)
+                            local_sig = sig_reader.read_signature()
+                            self.local_types = local_sig.get_local_vars()
+                    else:
+                        #the local var sig token is invalid.
+                        self.local_types = list()
         return self.local_types
 
     cpdef int get_flags(self):
@@ -788,19 +806,6 @@ cdef class MethodDisassembler:
             self.header_size *= 4
             if self.header_size != 12:
                 raise net_exceptions.InvalidArgumentsException()
-            if self.local_var_sig_tok > 0:
-                if self.local_var_sig_tok != 0:
-                    signature_entry = self.dotnetpe.get_token_value(self.local_var_sig_tok)
-                    if signature_entry is not None and signature_entry.get_table_name() == 'StandAloneSig':
-                        blob_value = signature_entry.get_column('Signature').get_value()
-                        if blob_value[0] != net_structs.CorCallingConvention.LocalSig:
-                            raise net_exceptions.InvalidHeaderException
-                        sig_reader = net_sigs.SignatureReader(self.dotnetpe, blob_value)
-                        local_sig = sig_reader.read_signature()
-                        self.local_types = local_sig.get_local_vars()
-                    else:
-                        #the local var sig token is invalid.
-                        raise net_exceptions.InvalidTokenException()
 
             self.exception_blocks = list()
 

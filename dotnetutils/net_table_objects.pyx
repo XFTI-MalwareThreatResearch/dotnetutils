@@ -581,7 +581,7 @@ cdef class MethodDefTable(TableObject):
                     if self.dotnetpe.should_raise_exc_on_invalid_method():
                         raise e
                     #traceback.print_exc()
-                    print('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
+                    logger.debug('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
                     disasm_obj = None
                 if disasm_obj != None:
                     for x in range(len(disasm_obj)):
