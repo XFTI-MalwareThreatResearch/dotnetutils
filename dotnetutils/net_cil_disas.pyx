@@ -721,6 +721,10 @@ cdef class MethodDisassembler:
         Returns:
             list[net_sigs.TypeSig]: A list of local type signatures for the method.
         """
+        cdef net_row_objects.RowObject signature_entry = None
+        cdef bytes blob_value = None
+        cdef net_sigs.SignatureReader sig_reader = None
+        cdef net_sigs.LocalSig local_sig = None
         if self.local_var_sig_tok == 0:
             if self.local_types is None:
                 self.local_types = list()
@@ -773,10 +777,6 @@ cdef class MethodDisassembler:
         """
         cdef int start
         cdef int val
-        cdef net_row_objects.RowObject signature_entry
-        cdef bytes blob_value
-        cdef net_sigs.SignatureReader sig_reader
-        cdef net_sigs.LocalSig local_sig
         cdef int extra_sect_offset
         cdef int amt_to_add
         cdef int sect_flags
