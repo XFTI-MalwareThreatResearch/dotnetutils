@@ -598,6 +598,7 @@ class NETReactor(Deobfuscator):
                 raise Exception('not supported yet')
 
     def remove_string_obfuscation(self, dotnet, strm):
+        return
         if not dotnet.has_heap('#US'):
             net_patch.insert_blank_userstrings(dotnet)
         cctor_method = strm.get_parent_type().get_static_constructor()
