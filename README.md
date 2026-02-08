@@ -105,6 +105,22 @@ DotNetUtils contains a emulator, DotNetEmulator.
 
     item = emulator.get_stack().pop_obj() #Pop the return value off the stack once finished.
 
+Instruction Handlers:
+    The emulator supports instruction handlers. Handlers may be added by obtaining the appdomain for the emulator, through DotNetEmulator.get_appdomain().
+    Next, EmulatorAppDomain.register_instr_handler() can be used to register handlers for an opcode.
+    The first argument is the net_opcodes.Opcodes object to register a handler for, the second argument is the handler function, the third argument is a parameter to pass each handler call.  This parameter can be None.
+        app_domain = emulator.get_appdomain()
+        app_domain.register_instr_handler(Opcodes.Ldind_U4, cex_decrypt_ldind_u4_handler, mapped)
+
+
+    Only one handler per opcode currently. Handlers are fired each time an instruction with a specific opcode is executed. 
+
+    Handlers follow the following signature.
+        def handler(emulator, argument):
+            return False
+
+    If True is returned, the emulator will execute the instruction normally.  If False is returned, the emulator will continue onto the next instruction without firing the default handler for the current instruction. The first argument is the DotNetEmulator object, the second argument is the optional parameter provided to register_instr_handler().
+
 
 ### net_deobfuscate.py
 
