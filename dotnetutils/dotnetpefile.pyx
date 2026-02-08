@@ -295,8 +295,9 @@ cdef class DotNetPeFile:
             pe_data (bytes): Bytes representing the PE file.  Optional if file_path is provided.
             no_processing (bool): Should DotNetUtils run processing on the metadata or just read it?  If processing is disabled, some functions may not return correct values.
         
-        Returns:
-            DotNetPeFile: A DotNetPeFile, raises net_exceptions.NotADotNetFile if there is an error parsing.
+        Raises:
+            net_exceptions.InvalidArgumentsException: If no data is supplied.
+            net_exceptions.NotADotNetFile: On pe parsing or other .NET signature related errors.
 
         """
 

@@ -1,0 +1,18 @@
+site_name: dotnetutils
+theme:
+  name: material
+
+plugins:
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_signature_annotations: true
+            show_source: true
+            separate_signature: true
+            members_order: source
+
+log_level:
+  griffe: DEBUG
+  mkdocstrings: DEBUG

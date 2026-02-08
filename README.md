@@ -132,7 +132,9 @@ It seems to work pretty well for confuserex control flow deobfuscation but its s
 
 There are deobfuscators for NET Reactor and ConfuserEx in the deobfuscators folder.  Those are work in progress as well.
 
-### update_va() vs patch_dpe()
+### Patching: update_va() vs patch_dpe()
+
+Still working on optimizing patching a bit - some things may change as I progress with that.
 
 In tag 2.0.0-rc14, update_va() was removed and replaced with patch_dpe() for practical reasons related to method alignment.
 
@@ -157,7 +159,12 @@ More changes may occur to this function in future versions to support better met
 
 ### Documentation
 
-All functions have docstrings which describe what they do and their parameters etc.  HTML documentation can be found in docs/html.
+Docs can be built using mkdocs build
+
+Requirements:
+pip install mkdocs mkdocs-material mkdocstrings[python]
+
+All functions have docstrings which describe what they do and their parameters etc.  HTML documentation can be found in the site directory.
 
 
 
