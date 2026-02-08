@@ -2,6 +2,18 @@ class DotNetUtilsException(Exception):
     def __init__(self):
         Exception.__init__(self, "Generic Dotnetutils Exception")
 
+class ControlFlowDeobfuscationMisidentify(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self, msg)
+
+class CantUnpackException(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self, msg)
+
+class CantDeobfuscateException(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self, msg)
+
 class EmulatorExecutionException(DotNetUtilsException):
     def __init__(self, emu_obj, msg):
         self.__emu_obj = emu_obj
@@ -16,7 +28,7 @@ class EmulatorTimeoutException(EmulatorExecutionException):
 
 class EmulatorEndExecutionException(DotNetUtilsException):
     def __init__(self, emu_obj, method_rid, end_method_rid, end_offset, current_offset):
-        Exception.__init__(self, "Emulator ending at method RID {}, end method RID {}, end offset {}, current offset {}".format(method_rid, end_method_rid, hex(end_offset), hex(current_offset)))
+        Exception.__init__(self, "Emulator ending at method RID {}, end method RID {}, end offset {}, current offset {}.  This error is probably intentional.".format(method_rid, end_method_rid, hex(end_offset), hex(current_offset)))
         self.__emu_obj = emu_obj
     
     def get_emu_obj(self):
@@ -35,8 +47,8 @@ class InvalidPatchException(DotNetUtilsException):
         Exception.__init__(self, "attempted to patch a binary with an invalid value.")
 
 class InvalidVirtualAddressException(DotNetUtilsException):
-    def __init__(self):
-        Exception.__init__(self, "Attempted to supply an invalid virtual address")
+    def __init__(self, num=0):
+        Exception.__init__(self, "Attempted to supply an invalid virtual address: {}".format(hex(num)))
 
 class FeatureNotImplementedException(DotNetUtilsException):
     def __init__(self):

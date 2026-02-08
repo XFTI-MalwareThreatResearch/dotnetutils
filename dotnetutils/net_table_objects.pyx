@@ -2,6 +2,7 @@
 #distutils: language=c++
 
 import warnings
+import traceback
 
 from cpython.ref cimport Py_INCREF, PyObject, Py_XDECREF
 from dotnetutils cimport net_tokens
@@ -372,6 +373,12 @@ cdef class TableObject:
             Py_XDECREF(item)
         self.rows.clear()
 
+    cpdef str get_name(self):
+        return self.name
+
+    cpdef int get_tid(self):
+        return self.tid
+
     cdef void add_row(self, net_row_objects.RowObject row):
         """ Internal method to add rows to a table.
         """
@@ -571,7 +578,10 @@ cdef class MethodDefTable(TableObject):
                 try:
                     disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
                 except Exception as e:
-                    warnings.warn('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
+                    if self.dotnetpe.should_raise_exc_on_invalid_method():
+                        raise e
+                    #traceback.print_exc()
+                    logger.debug('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
                     disasm_obj = None
                 if disasm_obj != None:
                     for x in range(len(disasm_obj)):
@@ -580,11 +590,11 @@ cdef class MethodDefTable(TableObject):
                         if instr_name == 'call' or instr_name == 'callvirt' or instr_name == 'newobj':
                             #handle method references here.
                             instr_arg = instr.get_argument()
-                            if instr_arg != None:
+                            if instr_arg != None and hasattr(instr_arg, '_add_xref'):
                                 instr_arg._add_xref(method_obj.get_rid(), instr.get_instr_offset())
                         elif instr_name == 'stsfld' or instr_name == 'ldsfld' or instr_name == 'ldfld' or instr_name == 'stfld':
                             instr_arg = instr.get_argument()
-                            if instr_arg != None:
+                            if instr_arg != None and hasattr(instr_arg, '_add_xref'):
                                 instr_arg._add_xref(method_obj.get_rid(), instr.get_instr_offset())
 
 
@@ -852,6 +862,7 @@ cdef class MetadataTableHeader:
         self.heapoffsetsizes_curr = 0
         self.reserved2 = 1
         self.valid = 0
+        self.extra_data_size = 0
         self.__sorted = 0
         self.table_amt_rows = list()  # we need to preserve order here.
         self.end_offset = 0
@@ -885,7 +896,8 @@ cdef class MetadataTableHeader:
                 self.table_amt_rows.append((key, int.from_bytes(file_data[rows_offset:rows_offset + 4], 'little')))
         self.end_offset = current_offset + (4 * num_tables_found)
         if self.heapoffsetsizes_orig & 0x40 != 0:
-            self.end_offset += 4 #if this is the case, there is 4 bytes of extra data to handle.  Doesnt seem to have any meaning.
+            self.extra_data_size = int.from_bytes(file_data[self.end_offset:self.end_offset+4], 'little')
+            self.end_offset += 4 #if this is the case, there is 4 bytes of extra
 
     cpdef bytes to_bytes(self):
         # So assuming we are only currently supporting adding to the Strings stream, we can use all the old row counts.
@@ -897,6 +909,8 @@ cdef class MetadataTableHeader:
         result += int.to_bytes(self.__sorted, 8, 'little')
         for table_id, num_rows in self.table_amt_rows:
             result += int.to_bytes(num_rows, 4, 'little')
+        if self.heapoffsetsizes_orig & 0x40 != 0:
+            result += int.to_bytes(self.extra_data_size, 4, 'little')
         return result
 
     cpdef void set_heap_offset_size(self, net_structs.CorHeapBitmask bitmask, int new_size):

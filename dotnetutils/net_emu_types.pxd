@@ -9,7 +9,7 @@ from libc.stdint cimport int64_t, uint64_t
 from dotnetutils.net_structs cimport CorElementType
 from cpython.ref cimport PyObject
 from libcpp.vector cimport vector
-from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell
+from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell, SlimObject
 
 
 cdef str remove_generics_from_name(str name)
@@ -42,9 +42,15 @@ cdef class DotNetObject:
     cdef int __num_fields
     cdef int orig_type_token
 
+    cdef void copy_fields_from_slimobject(self, SlimObject * slimobj)
+
+    cdef void copy_fields_to_slimobject(self, SlimObject* slimobj)
+
     cpdef object as_python_obj(self)
 
     cdef StackCell ctor(self, StackCell * params, int nparams)
+
+    cdef StackCell GetType(self, StackCell * params, int nparams)
 
     cdef int __get_num_fields(self, net_row_objects.TypeDefOrRef ref)
 
@@ -67,6 +73,8 @@ cdef class DotNetObject:
     cdef emu_func_type get_function(self, bytes name)
 
     cdef void add_function(self, bytes name, emu_func_type func)
+
+    cdef void clear_functions(self)
 
     cpdef net_emulator.DotNetEmulator get_emulator_obj(self)
 
@@ -104,6 +112,18 @@ cdef class DotNetObject:
 
     cdef bint greaterthanequals(self, DotNetNumber other)
 
+cdef class BoxedReference(DotNetObject):
+    """ Used in order to allow users to interact with references.
+    """
+
+    cdef StackCell __internal_cell
+
+    cdef void init_internal_cell(self, StackCell cell)
+
+    cpdef DotNetObject get_val(self)
+
+    cpdef void set_val(self, DotNetObject dnObj)
+
 cdef class DotNetNumber(DotNetObject):
     cdef unsigned char * _ptr
     cdef int __amt_bytes
@@ -131,31 +151,31 @@ cdef class DotNetNumber(DotNetObject):
 
     cdef bint val_is_zero(self)
 
-    cdef void init_zero(self)
+    cpdef void init_zero(self)
 
     cdef DotNetNumber convert_unsigned(self)
 
-    cdef void from_long(self, int64_t num)
+    cpdef void from_long(self, int64_t num)
 
-    cdef void from_int(self, int num)
+    cpdef void from_int(self, int num)
 
-    cdef void from_uchar(self, unsigned char num)
+    cpdef void from_uchar(self, unsigned char num)
 
-    cdef void from_uint(self, unsigned int num)
+    cpdef void from_uint(self, unsigned int num)
     
-    cdef void from_ulong(self, uint64_t num)
+    cpdef void from_ulong(self, uint64_t num)
 
-    cdef void from_bool(self, bint num)
+    cpdef void from_bool(self, bint num)
 
-    cdef void from_char(self, char num)
+    cpdef void from_char(self, char num)
 
-    cdef void from_float(self, float num)
+    cpdef void from_float(self, float num)
 
-    cdef void from_double(self, double num)
+    cpdef void from_double(self, double num)
 
-    cdef void from_short(self, short num)
+    cpdef void from_short(self, short num)
 
-    cdef void from_ushort(self, unsigned short num)
+    cpdef void from_ushort(self, unsigned short num)
 
     cdef void init_from_ptr(self, unsigned char * ptr, int ptr_size) except *
     
@@ -163,7 +183,7 @@ cdef class DotNetNumber(DotNetObject):
 
     cdef bint __check_size(self, int amt_bytes, CorElementType num_type)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -232,11 +252,17 @@ cdef class DotNetIntPtr(DotNetNumber):
     @staticmethod
     cdef StackCell Zero(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
+    @staticmethod
+    cdef StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell get_Size(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -279,7 +305,7 @@ cdef class DotNetUIntPtr(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -320,13 +346,13 @@ cdef class DotNetUIntPtr(DotNetNumber):
     @staticmethod
     cdef StackCell op_Explicit(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
-cdef class DotNetInt8(DotNetNumber):
+cdef class DotNetSByte(DotNetNumber):
     
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -345,7 +371,7 @@ cdef class DotNetInt16(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -366,7 +392,7 @@ cdef class DotNetInt32(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -409,7 +435,7 @@ cdef class DotNetInt64(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -447,12 +473,12 @@ cdef class DotNetInt64(DotNetNumber):
 
     cdef bint greaterthanequals(self, DotNetNumber other)
 
-cdef class DotNetUInt8(DotNetNumber):
+cdef class DotNetByte(DotNetNumber):
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -471,7 +497,7 @@ cdef class DotNetUInt16(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef bint equals(self, DotNetNumber other)
 
@@ -490,7 +516,7 @@ cdef class DotNetUInt32(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -533,7 +559,7 @@ cdef class DotNetUInt64(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -576,7 +602,7 @@ cdef class DotNetSingle(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -619,7 +645,7 @@ cdef class DotNetDouble(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
     cdef DotNetNumber add(self, DotNetNumber number)
 
@@ -662,25 +688,30 @@ cdef class DotNetBoolean(DotNetNumber):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
 cdef class DotNetVoid(DotNetNumber):
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
 cdef class DotNetChar(DotNetUInt16):
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
 
-    cdef DotNetNumber cast(self, CorElementType new_type)
+    cpdef DotNetNumber cast(self, CorElementType new_type)
 
 cdef class DotNetType(DotNetObject):
     cdef net_row_objects.TypeDefOrRef type_handle
     cdef net_sigs.TypeSig sig_obj
+    cdef net_row_objects.TypeDefOrRef element_type
+
+    cdef StackCell GetElementType(self, StackCell * params, int nparams)
+
+    cdef StackCell get_TypeHandle(self, StackCell * params, int nparams)
 
     cdef StackCell get_IsValueType(self, StackCell * params, int nparams)
 
@@ -695,6 +726,8 @@ cdef class DotNetType(DotNetObject):
     cdef StackCell get_IsByRef(self, StackCell * params, int nparams)
 
     cpdef net_row_objects.TypeDefOrRef get_type_handle(self)
+
+    cdef StackCell get_IsEnum(self, StackCell * params, int nparams)
 
     @staticmethod
     cdef StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
@@ -801,6 +834,12 @@ cdef class DotNetStream(DotNetObject):
 
     cdef StackCell Close(self, StackCell * params, int nparams)
 
+    cdef void expand(self, uint64_t new_size)
+
+    cdef void set_internal_array(self, DotNetArray array)
+
+
+
 cdef class DotNetMemoryStream(DotNetStream):
 
     cdef DotNetObject duplicate(self)
@@ -810,6 +849,12 @@ cdef class DotNetMemoryStream(DotNetStream):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
     cdef StackCell ToArray(self, StackCell * params, int nparams)
+
+cdef class DotNetCryptoStream(DotNetStream):
+    cdef DotNetMemoryStream __mstream
+    cdef DotNetICryptoTransform __transform
+
+    cdef StackCell FlushFinalBlock(self, StackCell * params, int nparams)
 
 cdef class DotNetAssemblyName(DotNetObject):
     cdef bytes name
@@ -884,6 +929,8 @@ cdef class DotNetList(DotNetObject):
 
     cdef StackCell ctor(self, StackCell * params, int nparams)
 
+    cdef StackCell RemoveAt(self, StackCell * params, int nparams)
+
     cdef StackCell AddRange(self, StackCell * params, int nparams)
 
     cdef StackCell Add(self, StackCell * params, int nparams)
@@ -898,9 +945,12 @@ cdef class DotNetList(DotNetObject):
 
     cdef StackCell Sort(self, StackCell * params, int nparams)
 
+    cdef StackCell Clear(self, StackCell * params, int nparams)
+
 cdef class DotNetArray(DotNetObject):
     cdef SlimStackCell * __internal_array
     cdef uint64_t __size
+    cdef net_row_objects.TypeDefOrRef element_type
 
     cpdef object as_python_obj(self)
 
@@ -921,6 +971,15 @@ cdef class DotNetArray(DotNetObject):
     cdef void setup_default_value(self, uint64_t index, uint64_t size)
 
     cdef void reverse_internal(self, int start, int end)
+
+    cdef StackCell SetValue(self, StackCell * params, int nparams)
+
+    cdef StackCell GetValue(self, StackCell * params, int nparams)
+
+    cdef StackCell get_Length(self, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell CreateInstance(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
     
     @staticmethod
     cdef StackCell Copy(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
@@ -960,7 +1019,9 @@ cdef class DotNetStackFrame(DotNetObject):
     cdef void duplicate_into(self, DotNetObject result)
 
 cdef class DotNetMemberInfo(DotNetObject):
-    cdef net_row_objects.RowObject internal_method
+    cdef net_row_objects.MethodDefOrRef internal_method
+
+    cpdef net_row_objects.MethodDefOrRef get_internal_method(self)
 
     cdef StackCell get_DeclaringType(self, StackCell * params, int nparams)
 
@@ -1159,6 +1220,8 @@ cdef class DotNetModule(DotNetObject):
 
     cdef StackCell get_ModuleHandle(self, StackCell * params, int nparams)
 
+    cdef StackCell get_FullyQualifiedName(self, StackCell * params, int nparams)
+
     cdef StackCell ResolveType(self, StackCell * params, int nparams)
     
     cdef StackCell ResolveMethod(self, StackCell * params, int nparams)
@@ -1222,6 +1285,8 @@ cdef class DotNetFieldInfo(DotNetObject):
     
     cdef StackCell SetValue(self, StackCell * params, int nparams)
 
+    cdef StackCell GetValue(self, StackCell * params, int nparams)
+
     cdef StackCell get_Name(self, StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
@@ -1259,6 +1324,8 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
     cdef DotNetObject duplicate(self)
+
+    cdef StackCell Invoke(self, StackCell * params, int nparams)
 
     cdef void duplicate_into(self, DotNetObject result)
     
@@ -2220,10 +2287,12 @@ cdef class DotNetResolveEventArgs(DotNetObject):
     cdef StackCell get_Name(self, StackCell * params, int nparams)
 
 cdef class DotNetComparison(DotNetObject):
-    cdef DotNetObject __object
+    cdef StackCell __object
     cdef DotNetRuntimeMethodHandle __method_object
 
     cpdef net_row_objects.MethodDef get_method_object(self)
+
+    cdef StackCell get_object(self)
 
 """
 
@@ -2337,6 +2406,8 @@ cdef class DotNetGCHandle(DotNetObject):
 
     cdef StackCell get_Target(self, StackCell * params, int nparams)
 
+    cpdef DotNetObject get_target(self)
+
     cdef void duplicate_into(self, DotNetObject obj)
 
     cdef StackCell ctor(self, StackCell * params, int nparams)
@@ -2359,6 +2430,15 @@ cdef class DotNetVersion(DotNetObject):
 
     cdef StackCell get_Major(self, StackCell * params, int nparams)
 
+cdef class DotNetDateTime(DotNetObject):
+    cdef int __day
+    cdef int __month
+    cdef int __year
+
+    cdef StackCell ctor(self, StackCell * params, int nparams)
+
+    cdef StackCell get_Day(self, StackCell * params, int nparams)
+
 cdef struct NewobjFuncMapping:
     const char * name
     newobj_func_type func_ptr
@@ -2367,10 +2447,43 @@ cdef struct EmuFuncMapping:
     const char * name
     static_func_type func_ptr
 
+cdef class DotNetNullable(DotNetObject):
+
+    @staticmethod
+    cdef StackCell GetUnderlyingType(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+cdef class DotNetEnum(DotNetObject):
+
+    @staticmethod
+    cdef StackCell GetUnderlyingType(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell ToObject(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+cdef class DotNetCryptoConfig(DotNetObject):
+
+    @staticmethod
+    cdef StackCell get_AllowOnlyFipsAlgorithms(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+cdef class DotNetRijandaelManaged(DotNetSymmetricAlgorithm):
+    
+    cdef StackCell CreateDecryptor(self, StackCell * params, int nparams)
+
+cdef class DotNetRijandaelDecryptor(DotNetICryptoTransform):
+    cdef object aes_object
+    cdef bint __encrypt
+    cdef StackCell ctor(self, StackCell * params, int nparams)
+    cdef StackCell get_InputBlockSize(self, StackCell * params, int nparams)
+    cdef StackCell get_OutputBlockSize(self, StackCell * params, int nparams)
+    cdef StackCell TransformBlock(self, StackCell * params, int nparams)
+    cdef StackCell TransformFinalBlock(self, StackCell * params, int nparams)
+
 include "net_emu_types.pxi"
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[AMT_OF_TYPES]
 cdef EmuFuncMapping NET_EMULATE_STATIC_FUNC_REGISTRATIONS[AMT_OF_STATIC_FUNCTIONS]
+
+cdef DotNetObject New_RijandaelManaged(net_emulator.DotNetEmulator emulator_obj)
 
 cdef DotNetObject New_ConcurrentDictionary(net_emulator.DotNetEmulator emulator_obj)
 
@@ -2413,3 +2526,9 @@ cdef DotNetObject New_ConditionalWeakTable(net_emulator.DotNetEmulator emulator_
 cdef DotNetObject New_Random(net_emulator.DotNetEmulator emulator_obj)
 
 cdef DotNetObject New_DynamicMethod(net_emulator.DotNetEmulator emulator_obj)
+
+cdef DotNetObject New_DateTime(net_emulator.DotNetEmulator emulator_obj)
+
+cdef DotNetObject New_RSACryptoServiceProvider(net_emulator.DotNetEmulator emulator_obj)
+
+cdef DotNetObject New_CryptoStream(net_emulator.DotNetEmulator emulator_obj)

@@ -35,10 +35,10 @@ cpdef unsigned long get_total_method_size(bytes data):
 
     reader = net_structs.DotNetDataReader(data)
     start = reader.read_byte()
-    val = start & 7
+    val = start & 3
     header_size = 0
     code_size = 0
-    if val == 2 or val == 6:
+    if val == 2:
         header_size = 1
         code_size = (start >> 2)
     else:
@@ -213,6 +213,10 @@ cdef class Instruction:
         return self.instr_size
 
     cpdef void setup_instr_offset(self, unsigned int instr_offset, unsigned int instr_index):
+        """
+        Internal method, may be removed later.
+        Used to change the instruction's offset and index (mostly used in the disassembler, and control flow deob.)
+        """
         self.offset = instr_offset
         self.instr_index = instr_index
 
@@ -414,10 +418,22 @@ cdef class Instruction:
         self.instr_size = instr_size
 
     def __str__(self):
-        """
-        :return: A string representing the instruction
-        """
-        return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), str(self.get_argument()))
+        cdef str result = ''
+        cdef int arg = 0
+        if self.get_opcode() == net_opcodes.Opcodes.Switch:
+            result = 'Offset={}, Name={}, Argument=['.format(hex(self.get_instr_offset()), self.get_name())
+            for arg in self.get_argument():
+                result += hex(arg) + ', '
+            result = result.rstrip(', ')
+            result += ']'
+            return result
+        elif self.is_branch() or self.is_absolute_jmp():
+            return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), hex(self.get_argument() + len(self) + self.get_instr_offset()))
+        else:
+            return 'Offset={}, Name={}, Argument={}'.format(hex(self.get_instr_offset()), self.get_name(), str(self.get_argument()))
+
+    def __repr__(self):
+        return self.__str__()
 
     def __len__(self):
         """ Obtains the length in bytes of the instruction
@@ -582,7 +598,7 @@ cdef class MethodDisassembler:
         self.dotnetpe = dotnetpe
         self.method_obj = method
         self.max_stack = 0
-        self.local_types = list()
+        self.local_types = None
         self.local_var_sig_tok = 0
         self.flags = 0
         self.header_size = 0
@@ -703,8 +719,32 @@ cdef class MethodDisassembler:
         """ Obtain a list of the local types in the method.
 
         Returns:
-            list[net_sigs.TypeSig]: A list of local type signatures for the method.
+            list[net_sigs.TypeSig]: A list of local type signatures for the method.  Returns None on error.
         """
+        cdef net_row_objects.RowObject signature_entry = None
+        cdef bytes blob_value = None
+        cdef net_sigs.SignatureReader sig_reader = None
+        cdef net_sigs.LocalSig local_sig = None
+        if self.local_var_sig_tok == 0:
+            if self.local_types is None:
+                self.local_types = list()
+        if self.local_types is None:
+            if self.local_var_sig_tok > 0:
+                if self.local_var_sig_tok != 0:
+                    signature_entry = self.dotnetpe.get_token_value(self.local_var_sig_tok)
+                    if signature_entry is not None and signature_entry.get_table_name() == 'StandAloneSig':
+                        blob_value = signature_entry.get_column('Signature').get_value()
+                        if blob_value is None or blob_value[0] != net_structs.CorCallingConvention.LocalSig:
+                            self.local_types = list()
+                        else:
+                            sig_reader = net_sigs.SignatureReader(self.dotnetpe, blob_value)
+                            local_sig = sig_reader.read_signature()
+                            self.local_types = local_sig.get_local_vars()
+                    else:
+                        #the local var sig token is invalid.
+                        self.local_types = list()
+            if self.local_types is None:
+                self.local_types = list()
         return self.local_types
 
     cpdef int get_flags(self):
@@ -737,10 +777,6 @@ cdef class MethodDisassembler:
         """
         cdef int start
         cdef int val
-        cdef net_row_objects.RowObject signature_entry
-        cdef bytes blob_value
-        cdef net_sigs.SignatureReader sig_reader
-        cdef net_sigs.LocalSig local_sig
         cdef int extra_sect_offset
         cdef int amt_to_add
         cdef int sect_flags
@@ -772,19 +808,6 @@ cdef class MethodDisassembler:
             self.header_size *= 4
             if self.header_size != 12:
                 raise net_exceptions.InvalidArgumentsException()
-            if self.local_var_sig_tok > 0:
-                if self.local_var_sig_tok != 0:
-                    signature_entry = self.dotnetpe.get_token_value(self.local_var_sig_tok)
-                    if signature_entry is not None and signature_entry.get_table_name() == 'StandAloneSig':
-                        blob_value = signature_entry.get_column('Signature').get_value()
-                        if blob_value[0] != net_structs.CorCallingConvention.LocalSig:
-                            raise net_exceptions.InvalidHeaderException
-                        sig_reader = net_sigs.SignatureReader(self.dotnetpe, blob_value)
-                        local_sig = sig_reader.read_signature()
-                        self.local_types = local_sig.get_local_vars()
-                    else:
-                        #the local var sig token is invalid.
-                        raise net_exceptions.InvalidTokenException()
 
             self.exception_blocks = list()
 
@@ -868,7 +891,6 @@ cdef class MethodDisassembler:
             self.parse_header()
             if self.header_size == 0 or self.code_size == 0:
                 raise net_exceptions.InvalidHeaderException(self.method_obj.get_token())
-
             self.__reader.seek(self.header_size, io.SEEK_SET)
             while index < self.code_size:
                 orig_index = index
@@ -890,9 +912,9 @@ cdef class MethodDisassembler:
                     raise net_exceptions.OpcodeLookupException
 
                 if usable_opcode.get_operand_count() == 0:
-                    instr = Instruction(usable_opcode, self, offset=orig_index, instr_index=instr_index)
+                    instr = Instruction(usable_opcode, self, orig_index, instr_index)
                 else:
-                    instr = Instruction(usable_opcode, self, offset=orig_index, instr_index=instr_index)
+                    instr = Instruction(usable_opcode, self, orig_index, instr_index)
                     for x in range(index, index + usable_opcode.get_operand_count()):
                         instr.add_argument(self.__reader.read_single_byte())
                         index += 1
@@ -904,7 +926,6 @@ cdef class MethodDisassembler:
                         for x in range(index, index + amt_of_extra):
                             instr.add_argument(self.__reader.read_single_byte())
                             index += 1
-
 
                 instr.setup_instr_size(index - orig_index)
                 Py_INCREF(instr)

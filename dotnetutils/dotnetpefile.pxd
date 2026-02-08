@@ -43,14 +43,6 @@ cdef class PeFile:
 
     cpdef uint64_t get_physical_by_rva(self, uint64_t rva)
 
-    cpdef void update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
-
-    cdef __update_va(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference)
-
-    cdef void __update_va32(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
-
-    cdef void __update_va64(self, uint64_t va_addr, int difference, DotNetPeFile dpe, bytes stream_name, uint64_t target_addr)
-
     cdef int get_sec_index_va(self, uint64_t va_addr)
 
     cdef int get_sec_index_phys(self, uint64_t offset)
@@ -64,7 +56,26 @@ cdef class DotNetPeFile:
     cdef net_metadata.MetaDataDirectory metadata_dir
     cdef bytes original_exe_data
     cdef PeFile pe
+    cdef bint raise_exc_on_invalid_method
 
+    cdef bint should_raise_exc_on_invalid_method(self)
+
+    cpdef void verify_dpe(self, bint dont_check_method_align) except *
+
+    cdef void verify_resources(self, uint64_t rs_offset, uint64_t orig_rs_offset, Py_buffer new_exe_view) except *
+
+    cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end, bint dont_update_methods)
+
+    cdef void __update_net_vas(self, uint64_t va_addr, int difference, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference, bint dont_update_methods, bytes new_data, uint64_t target_end)
+
+    cpdef void __patch_dpe32(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bint dont_update_methods, bytes new_data, uint64_t target_end)
+
+    cpdef void __patch_dpe64(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bint dont_update_methods, bytes new_data, uint64_t target_end)
+
+    cdef uint64_t __get_offset_from_memview(self, Py_buffer view_obj, uint64_t rva)
+
+    cdef uint64_t __get_rva_from_memview(self, Py_buffer view_obj, uint64_t offset)
+    
     cpdef void reinit_dpe(self, bint no_processing)
 
     cpdef void update_streams(self)

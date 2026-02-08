@@ -6,11 +6,11 @@ authors = [
     { name = "Aaron Gdanski", email = "aaron.gdanski@ibm.com" }
 ]
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 
 dependencies = [
-    "Cython>=3.0.11",
-    "pycryptodome>=3.21.0",
+    "Cython >=0.29.33",
+    "pycryptodome>=3.15.0",
     "pefile"
 ]
 
@@ -19,4 +19,4 @@ requires = ["setuptools", "cython", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages=["dotnetutils"]
+packages=["dotnetutils", "dotnetutils.deobfuscators"]

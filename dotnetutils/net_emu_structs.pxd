@@ -72,6 +72,7 @@ Notes:
 """
 cdef struct SlimStackCell:
     char tag
+    char cli_tag
     char is_slim_object
     StackCellItem item
 
@@ -87,6 +88,7 @@ Notes:
 """
 cdef struct StackCell:
     char tag
+    char cli_tag
     int rid
     StackCellItem item
     PyObject * emulator_obj

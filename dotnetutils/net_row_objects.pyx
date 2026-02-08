@@ -252,7 +252,8 @@ cdef class ColumnValue:
             stream.append_item(new_value)
             self.cached_value = None
             self.__has_no_value = False #Reset everything for next grab.
-            if orig_value != 0: #Stream.del_item() already handles references checks.  It will warn for now but thats fine.
+            if orig_value != 0 and stream.has_offset(orig_value): #Stream.del_item() already handles references checks.  It will warn for now but thats fine.
+                #If the stream doesnt have the offset, its probably an invalid row.  Allow the change but dont delete original.
                 stream.del_item(orig_value)
         elif self.col_type.is_fixed_value():
             self.raw_value = new_value
@@ -955,14 +956,28 @@ cdef class TypeRef(TypeDefOrRef):
         self.__cctor_method = None
         self.__full_name = None
         self._memberrefs = list()
+        self.__enum_value = 0
 
     cpdef bint is_enum(self):
         """ Checks if the type's name matches System.Enum and thus is an Enum.
+            So the problem here is now we can only determine if its a valuetype.  We need other assemblies to go further.
+            so for now, assume valuetypes are enums for the purpose of this function in order to get the emulator to work. 
+            TODO: make some sort of fix here, maybe have the emulator use a version of the function that can look into mscorlib types
 
         Returns:
             bool: True if the type is enum, False otherwise.
         """
-        return self.get_full_name() == b'System.Enum'
+        if self.__enum_value == 1:
+            return True
+        if self.__enum_value == 2:
+            return False
+        #So the problem here is now we can only determine if its a valuetype.  We need other assemblies to go further.
+        #so for now, assume valuetypes are enums for the purpose of this function in order to get the emulator to work.
+        if self.get_full_name() == b'System.Enum':
+            self.__enum_value = 1
+            return True
+        self.__enum_value = 2
+        return False
 
     cpdef bint is_valuetype(self):
         """ Checks if the type's name matches System.ValueType and thus is a ValueType
@@ -1371,22 +1386,20 @@ cdef class MethodDef(MethodDefOrRef):
         if self.get_column('RVA').get_value_as_int() == 0:
             raise net_exceptions.InvalidArgumentsException()
             #TODO: add the ability to add addiitonal methods when they dont already exist.
-
-        cdef int orig_method_size = <int>len(self.get_method_data())
+        cdef bytes old_data = self.get_method_data()
+        cdef int orig_method_size = <int>len(old_data)
         cdef int new_method_size = <int>len(data)
         cdef int difference = 0
         cdef dotnetpefile.PeFile pe = self.get_dotnetpe().get_pe()
         cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
         cdef uint64_t file_offset = pe.get_offset_from_rva(rva)
         cdef int amt_padding = 0
-        cdef bytes old_exe_data = self.get_dotnetpe().get_exe_data()
-        cdef bytes new_data = None
         difference = new_method_size - orig_method_size
-        if difference != 0:
-            pe.update_va(rva + 1, difference, self.get_dotnetpe(), None, rva) #make sure we dont patch out the current method.
-        new_data = self.get_dotnetpe().get_exe_data()
-        new_data = new_data[:file_offset] + data + new_data[file_offset + orig_method_size:]
-        self.get_dotnetpe().set_exe_data(new_data)
+        while (orig_method_size % 4) != ((new_method_size + amt_padding) % 4):
+            amt_padding += 1
+        #This approach might leave an extra byte or two in the binary when patching methods but it also saves a ton of time when patching methods.
+        #TODO Figure out a better way to handle alignment than checking after each patch.
+        self.get_dotnetpe().patch_dpe(rva, difference + amt_padding, None, rva, data + (b'\x00' * amt_padding), file_offset + orig_method_size, False)
 
     cpdef bytes get_name(self):
         """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().

@@ -7,8 +7,6 @@ from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONT
 from libc.stdint cimport uintptr_t, uint64_t, uint32_t
 from libc.string cimport memcmp, memcpy
 
-import hashlib
-
 from cpython.bytes cimport PyBytes_FromStringAndSize
 
 from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_SCN_CNT_CODE, IMAGE_OPTIONAL_HEADER32, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_ORDINAL_FLAG64, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_OPTIONAL_HEADER64, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_DATA_DIRECTORY, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_COR20_HEADER, IMAGE_BASE_RELOCATION, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64, IMAGE_DEBUG_DIRECTORY
@@ -59,7 +57,9 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
         while exe_data[current_offset] != 0:
             name += bytes([exe_data[current_offset]])
             current_offset += 1
-        current_offset += (4 - (current_offset % 4))
+        current_offset += 1
+        while current_offset % 4 != 0:
+            current_offset += 1
     #construct the new streamheader.
     us_size = 0
     new_header_offset = current_offset
@@ -70,18 +70,14 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
         new_streamheader += b'\x00'
     new_streamheader = int.to_bytes(us_offset + len(new_streamheader), 4, 'little') + new_streamheader[4:]
     va_addr = dotnetpe.get_pe().get_rva_from_offset(new_header_offset)
-    dotnetpe.get_pe().update_va(va_addr, <int>len(new_streamheader), dotnetpe, None, va_addr - 1)
+    dotnetpe.patch_dpe(va_addr, <int>len(new_streamheader), None, va_addr - 1, new_streamheader, new_header_offset, True)
     new_exe_data = bytearray(dotnetpe.get_exe_data())
-    new_exe_data = new_exe_data[:new_header_offset] + new_streamheader + new_exe_data[new_header_offset:]
     stream_amt_offset = streams_offset - 2
     new_exe_data = new_exe_data[:stream_amt_offset] + int.to_bytes(number_of_streams + 1, 2, 'little') + new_exe_data[stream_amt_offset + 2:]
     dotnetpe.set_exe_data(bytes(new_exe_data))
     new_data_offset = us_offset + metadata_offset + <int>len(new_streamheader)
     new_data_va = dotnetpe.get_pe().get_rva_from_offset(new_data_offset)
-    dotnetpe.get_pe().update_va(new_data_va, 1, dotnetpe, b'#US', new_data_va - 1)
-    new_exe_data = bytearray(dotnetpe.get_exe_data())
-    new_exe_data = new_exe_data[:new_data_offset] + bytes([0]) + new_exe_data[new_data_offset:]
-    dotnetpe.set_exe_data(bytes(new_exe_data))
+    dotnetpe.patch_dpe(new_data_va, 1, b'#US', new_data_va - 1, bytes([0]), new_data_offset, False)
     dotnetpe.reinit_dpe(False)
 
 cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):
@@ -138,7 +134,7 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
 
     if not found_target_section:
         #could not find target section.
-        raise net_exceptions.InvalidVirtualAddressException()
+        raise net_exceptions.InvalidVirtualAddressException(addr)
 
     for section in old_pe.get_sections():
         if section.VirtualAddress <= addr < (section.VirtualAddress + section.Misc.VirtualSize):
@@ -148,7 +144,7 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
         if memcmp(section.Name, target_section.Name, 8) == 0:
             passed_text = True
     if not found_old_section:
-        raise net_exceptions.InvalidVirtualAddressException
+        raise net_exceptions.InvalidVirtualAddressException(addr)
 
     if not passed_text and memcmp(old_section.Name, target_section.Name, 8) != 0:
         return addr  # we don't need to change it here
@@ -170,6 +166,6 @@ cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view,
         section_offset += sizeof(IMAGE_SECTION_HEADER)
     
     if not new_section:
-        raise net_exceptions.InvalidVirtualAddressException
+        raise net_exceptions.InvalidVirtualAddressException(addr)
     difference = new_section.VirtualAddress - old_section.VirtualAddress
     return addr + difference

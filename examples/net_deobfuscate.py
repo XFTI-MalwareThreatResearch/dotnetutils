@@ -1,5 +1,10 @@
 import sys
-from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing
+import os
+import hashlib
+from dotnetutils.deobfuscators.confuserex import ConfuserExDeobfuscator
+from dotnetutils.deobfuscators.dotnetreactor import NETReactor
+from dotnetutils.deobfuscators import deobfuscator
+from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer
 
 def main():
     if len(sys.argv) < 4:
@@ -14,16 +19,25 @@ def main():
         print(
             'unk_obf_1: a currently unknown obfuscator.  Example hash: e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb')
         print('dumbmath: Removes redundant math expressions.  Example: 7005baba5671e99eb677bc7dff5b2e15527cb196668ad0340e9f015903430625')
+        print('deob: Runs a file against a list of deobfuscators.')
         exit()
     deob_type = sys.argv[1]
     obf_exe = sys.argv[2]
     output_exe = sys.argv[3]
-    with open(obf_exe, 'rb') as infile:
-        data = infile.read()
-    dotnet = dotnetpefile.try_get_dotnetpe(pe_data=data)
-    if dotnet is None:
-        print('Not a dotnet file.')
-        exit(0)
+    if os.path.isfile(obf_exe):
+        with open(obf_exe, 'rb') as infile:
+            data = infile.read()
+        print('reading dotnet')
+        dotnet = dotnetpefile.try_get_dotnetpe(pe_data=data)
+        print('done')
+        if dotnet is None:
+            print('Not a dotnet file.')
+            exit(0)
+    else:
+        if not os.path.isdir(obf_exe):
+            print('invalid args')
+            exit(0)
+        print('Reading input as directory.')
     if deob_type == 'conditional':
         print('Attempting to remove useless conditionals')
         net_deobfuscate_funcs.remove_useless_conditionals(dotnet)
@@ -51,55 +65,32 @@ def main():
         Adds a useless br instruction after every block though.  Need to fix that.
         Currently need to fix stuff for try catch finally to work.
         """
-        mspec_table = dotnet.get_metadata_table('MethodSpec')
-        mspec_methods = set()
-        for mspec in mspec_table:
-            mspec_methods.add(mspec.get_method().get_rid())
+        misidentified = set()
         for mobj in dotnet.get_metadata_table('MethodDef'):
             if not mobj.has_body():
                 continue
-            if mobj.get_rid() in mspec_methods:
-                continue
             if mobj.disassemble_method() is None:
                 continue
-            print('doing method 1', hex(mobj.get_token()))
+            print('doing method 1', hex(mobj.get_token()), mobj.get_full_name())
             fgraph = net_graphing.FunctionGraph(mobj)
             fgraph.validate_blocks()
-            fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
+            fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
             try:
                 new_graph = fanalyzer.simplify_control_flow()
-            except net_exceptions.EmulatorExecutionException:
+                if new_graph is None:
+                    print('function is not obfuscated.')
+                    continue
+            except net_exceptions.EmulatorExecutionException as e:
                 print('emulation failed due to error')
                 continue
-            #new_graph.print_root()
-            instrs = new_graph.emit_instructions_as_list()
-            blk = new_graph.get_block_by_offset(0x323)
-            localsigtok = mobj.disassemble_method().get_local_var_sig_token()
-            exc = list()
-            recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
-            data = recompiler.compile_method()
-            mobj.set_method_data(data)
-        mspecs_completed = set()
-        for mspec in mspec_table:
-            method = mspec.get_method()
-            if method.get_rid() in mspecs_completed:
+            except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
+                print('Possible control flow misidentification:', str(e))
+                misidentified.add((mobj.get_token(), e))
                 continue
-            mspecs_completed.add(method.get_rid())
-            if method.disassemble_method() is None:
-                continue
-            print('doing method', hex(mobj.get_token()))
-            fgraph = net_graphing.FunctionGraph(mspec)
-            fgraph.validate_blocks()
-            fanalyzer = net_graphing.GraphAnalyzer(mspec, fgraph)
-            new_graph = fanalyzer.simplify_control_flow()
-            #new_graph.print_root()
-            instrs = new_graph.emit_instructions_as_list()
-            localsigtok = mobj.disassemble_method().get_local_var_sig_token()
-            exc = list()
-            recompiler = net_graphing.MethodRecompiler(instrs, exc, localsigtok)
-            data = recompiler.compile_method()
-            mobj.get_method().set_method_data(data)
-
+        print('Done with flow check')
+        print('Misidentified methods dump')
+        for mtoken, exc in misidentified:
+            print('Token: {} error: {}'.format(hex(mtoken), str(exc)))
     elif deob_type == 'dumbmath':
         #Remove useless math expressions.
         """
@@ -117,15 +108,17 @@ def main():
                 continue
             print('checking for useless math from method {}'.format(hex(mobj.get_token())))
             fgraph = net_graphing.FunctionGraph(mobj)
-            fanalyzer = net_graphing.GraphAnalyzer(mobj, fgraph)
-            fanalyzer.repair_blocks()
+            #fgraph.print_root()
+            fgraph.validate_blocks()
+            fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
             has_math = fanalyzer.remove_useless_math()
             if has_math:
                 fanalyzer.repair_blocks()
+                #fgraph.print_root()
                 localvartok = mobj.disassemble_method().get_local_var_sig_token()
                 instrs = fgraph.emit_instructions_as_list()
                 exc_blocks = fgraph.get_raw_exception_clauses()
-                recompiler = net_graphing.MethodRecompiler(instrs, exc_blocks, localvartok)
+                recompiler = net_graph_analyzer.MethodRecompiler(instrs, exc_blocks, localvartok)
                 data = recompiler.compile_method()
                 mobj.set_method_data(data)
                 print('patched method {}'.format(hex(mobj.get_token())))
@@ -150,6 +143,90 @@ def main():
         net_deobfuscate_funcs.remove_useless_bytearray_conditionals(dotnet)
         net_deobfuscate_funcs.cleanup_names(dotnet)
         net_deobfuscate_funcs.remove_unk_obf_1_obfuscation(dotnet)
+    elif deob_type == 'deob':
+        """ The deob functionality is currently under development.  Currently using it mostly for testing related to control flow deobfuscation.
+            They arent really optimized for speed yet, and some functions dont work.  confuserex is probably the more stable one right now.
+        """
+        deobfuscators = [ConfuserExDeobfuscator, NETReactor]
+        if not os.path.isdir(obf_exe):
+            work = [(dotnet, obf_exe)]
+        else:
+            work = []
+            for item in os.listdir(obf_exe):
+                fp = os.path.join(obf_exe, item)
+                if os.path.isfile(fp):
+                    dotnet = dotnetpefile.try_get_dotnetpe(file_path=fp)
+                    if dotnet is not None:
+                        work.append((dotnet, fp))
+        if not os.path.isdir(output_exe):
+            print('error: invalid directory for results')
+            exit(0)
+        for starting_dotnet, file_path in work:
+            current_work = [starting_dotnet]
+            results = set()
+            print('Attempting to deobfuscate executable located at {}'.format(file_path))
+            try:
+                ctx = deobfuscator.DeobfuscatorContext()
+                while current_work:
+                    current_dotnet = current_work.pop()
+                    for deob_type in deobfuscators:
+                        deob = deob_type()
+                        if deob.identify_unpack(current_dotnet, ctx):
+                            exe_hash = hashlib.sha256()
+                            exe_hash.update(current_dotnet.get_exe_data())
+                            exe_hash = exe_hash.hexdigest()
+                            print('{}: Executable recognized as {} packed executable.'.format(exe_hash, deob.NAME))
+                            unpacked_exes = deob.unpack(current_dotnet, ctx)
+                            for unpacked_exe in unpacked_exes:
+                                results.add(unpacked_exe)
+                                dpe = dotnetpefile.try_get_dotnetpe(pe_data=unpacked_exe)
+                                if dpe is not None:
+                                    sha_obj = hashlib.sha256()
+                                    sha_obj.update(dpe.get_exe_data())
+                                    print('{} unpacker outputted file with hash {}'.format(deob.NAME, sha_obj.hexdigest()))
+                                    current_work.append(dpe)
+
+                            print('Extracted {} files'.format(len(unpacked_exes)))
+
+                        if deob.identify_deobfuscate(current_dotnet, ctx):
+                            exe_hash = hashlib.sha256()
+                            exe_hash.update(current_dotnet.get_exe_data())
+                            exe_hash = exe_hash.hexdigest()
+                            print('{}: Executable recognized as {} obfuscated executable.'.format(exe_hash, deob.NAME))
+                            if deob.deobfuscate(current_dotnet, ctx):
+                                print('Deobfuscation completed for {}'.format(deob.NAME))
+                                sha_obj = hashlib.sha256()
+                                sha_obj.update(current_dotnet.get_exe_data())
+                                print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
+                                results.add(current_dotnet.get_exe_data())
+                                current_work.append(current_dotnet)
+                            else:
+                                print('Deobfuscation failed for {}'.format(deob.NAME))
+                print('Outputting {} files to directory {}'.format(len(results), output_exe))
+                for data in results:
+                    sha_obj = hashlib.sha256()
+                    sha_obj.update(data)
+                    filename = sha_obj.hexdigest()
+                    result_path = os.path.join(output_exe, filename)
+                    print('Saving outputted file to {}'.format(result_path))
+                    fd = open(result_path, 'wb')
+                    fd.write(data)
+                    fd.close()
+            except Exception as e:
+                print('deobfuscation of file failed.')
+                for data in results:
+                    sha_obj = hashlib.sha256()
+                    sha_obj.update(data)
+                    filename = sha_obj.hexdigest()
+                    result_path = os.path.join(output_exe, filename)
+                    print('Saving outputted file to {}'.format(result_path))
+                    fd = open(result_path, 'wb')
+                    fd.write(data)
+                    fd.close()
+                raise e
+        print('Done')
+        exit(0)
+                    
     else:
         print('invalid mode')
         exit()

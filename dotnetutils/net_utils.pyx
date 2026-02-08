@@ -50,9 +50,9 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
         net_exceptions.InvalidArgumentsException: Unsupported type.
     """
     if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
-        return b'System.Int8'
+        return b'System.SByte'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
-        return b'System.UInt8'
+        return b'System.Byte'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I2:
         return b'System.Int16'
     elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U2:

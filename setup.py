@@ -10,28 +10,34 @@ elif sys.platform == 'darwin':
     compile_args = ['-g', '-Werror', '-Wno-unreachable-code-fallthrough', '-Wno-unused-but-set-variable']
     link_args = ['-g']
 else:
-    compile_args = ['/WX', '/wd4551'] 
-    link_args = []
+    compile_args = ['/DEBUG', '/WX', '/wd4551', '/Zi'] 
+    link_args = ['/Zi', '/DEBUG']
 
-# Extension modules
+def gen_extension(name):
+    global compile_args
+    global link_args
+    if sys.platform == 'win32':
+        return Extension('dotnetutils.' + name, ['dotnetutils/{}.pyx'.format(name)], extra_compile_args=compile_args, extra_link_args=link_args + ['/PDB:{}.pdb'.format(name)])
+    return Extension('dotnetutils.' + name, ['dotnetutils/{}.pyx'.format(name)], extra_compile_args=compile_args, extra_link_args=link_args)
+
 ext_modules = cythonize([
-    Extension("dotnetutils.dotnetpefile", ["dotnetutils/dotnetpefile.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_emulator", ["dotnetutils/net_emulator.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_structs", ["dotnetutils/net_structs.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_cil_disas", ["dotnetutils/net_cil_disas.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_metadata", ["dotnetutils/net_metadata.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_table_objects", ["dotnetutils/net_table_objects.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_deobfuscate_funcs", ["dotnetutils/net_deobfuscate_funcs.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_opcodes", ["dotnetutils/net_opcodes.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_tokens", ["dotnetutils/net_tokens.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_processing", ["dotnetutils/net_processing.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_utils", ["dotnetutils/net_utils.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_emu_types", ["dotnetutils/net_emu_types.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_row_objects", ["dotnetutils/net_row_objects.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_patch", ["dotnetutils/net_patch.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_sigs", ["dotnetutils/net_sigs.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-    Extension("dotnetutils.net_emu_structs", ["dotnetutils/net_emu_structs.pyx"], extra_compile_args=compile_args, extra_link_args=link_args),
-], annotate=True)
+    gen_extension('dotnetpefile'),
+    gen_extension('net_emulator'),
+    gen_extension('net_structs'),
+    gen_extension('net_cil_disas'),
+    gen_extension('net_metadata'),
+    gen_extension('net_table_objects'),
+    gen_extension('net_deobfuscate_funcs'),
+    gen_extension('net_opcodes'),
+    gen_extension('net_tokens'),
+    gen_extension('net_processing'),
+    gen_extension('net_utils'),
+    gen_extension('net_emu_types'),
+    gen_extension('net_row_objects'),
+    gen_extension('net_patch'),
+    gen_extension('net_sigs'),
+    gen_extension('net_emu_structs')
+], annotate=True, gdb_debug=True, compiler_directives={'embedsignature': True, 'linetrace': True, 'binding': True})
 
 setup(
     ext_modules=ext_modules,
