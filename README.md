@@ -126,6 +126,24 @@ Instruction Handlers:
 
 net_deobfuscate.py contains some common utilities for removing the most common .NET obfuscation such as name obfuscation, useless conditionals and useless functions.  net_deobfuscate_funcs.pyx implements the functions on an api level, while net_deobfuscate.py contains a command line utility to use them.
 
+The deob mode for net_deobfuscate can be used to run common deobfuscators.  Currently they are still WIP, with the following status:
+ConfuserEx:
+    Code encryption: seems to work
+    String deobfuscation: seems to work
+    Control flow deobfuscation: sort of works, needs some work - sometimes it misses switch statements and the code output is weird.
+    Unpacking: seems to work
+    Antidebug removal: seems to work
+    Names cleanup: seems to work
+
+NETReactor:
+    Code encryption: Works for some versions
+    Antitamper and antidebug removal: seems to work
+    String deobfuscation: still working on it
+    Names cleanup: Seems to work
+    Junk code removal: working on it
+    Delegates removal: seems to work
+
+
 ### Experimental Features
 Control flow deobfuscation, implemented by net_graphing.py, net_graph_analyzer.py is currently experimental.
 It seems to work pretty well for confuserex control flow deobfuscation but its still a work in progress.  It also outputs instructions in weird orders currently.
