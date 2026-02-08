@@ -19,7 +19,7 @@ def main():
         print(
             'unk_obf_1: a currently unknown obfuscator.  Example hash: e6579d0717d17f39f2024280100c9fffb8be1699ccf14d9c708150c0a54fcedb')
         print('dumbmath: Removes redundant math expressions.  Example: 7005baba5671e99eb677bc7dff5b2e15527cb196668ad0340e9f015903430625')
-        print('deob:: Runs a file against a list of deobfuscators.')
+        print('deob: Runs a file against a list of deobfuscators.')
         exit()
     deob_type = sys.argv[1]
     obf_exe = sys.argv[2]

@@ -719,7 +719,7 @@ cdef class MethodDisassembler:
         """ Obtain a list of the local types in the method.
 
         Returns:
-            list[net_sigs.TypeSig]: A list of local type signatures for the method.
+            list[net_sigs.TypeSig]: A list of local type signatures for the method.  Returns None on error.
         """
         cdef net_row_objects.RowObject signature_entry = None
         cdef bytes blob_value = None

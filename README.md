@@ -116,6 +116,29 @@ It seems to work pretty well for confuserex control flow deobfuscation but its s
 
 There are deobfuscators for NET Reactor and ConfuserEx in the deobfuscators folder.  Those are work in progress as well.
 
+### update_va() vs patch_dpe()
+
+In tag 2.0.0-rc14, update_va() was removed and replaced with patch_dpe() for practical reasons related to method alignment.
+
+Practically this means that patches are now handled by patch_dpe(), not user anymore.  
+
+An example of patch_dpe()'s use (from net_patch.insert_blank_userstrings()):
+
+    new_streamheader = int.to_bytes(us_offset, 4, 'little') + int.to_bytes(us_size, 4, 'little')
+    new_streamheader += b'#US\x00'
+    while len(new_streamheader) % 4 != 0:
+        new_streamheader += b'\x00'
+    new_streamheader = int.to_bytes(us_offset + len(new_streamheader), 4, 'little') + new_streamheader[4:]
+    va_addr = dotnetpe.get_pe().get_rva_from_offset(new_header_offset)
+    dotnetpe.patch_dpe(va_addr, <int>len(new_streamheader), None, va_addr - 1, new_streamheader, new_header_offset, True)
+
+patch_dpe() is similar to update_va() in some respects - first argument is the va addr of the start of the data to be patched.
+Second argument is the length of the data being patched in. Third argument is the name of the stream being patched. For the most part, this should be None as strema level manipulations are handled by their various HeapObject classes. Fourth argument is a target va.  This is a VA within the section and stream that the patch needs to be in. So for instance, if patching something in the .text section, make sure target va is within the .text section. Here its within the metadata heap, and because the stream header is appended last, the va in this example corresponds to the end of the last stream header in the original binary.
+The fifth argument is the data being patched in.  There are scenarios where this can be None, such as when doing a stream update.  Stream updates are generally handled by HeapObjects though. The sixth argument is the file offset of the end of the patch - the offset where you want the original binary data to resume after the patch. In this example, the new_header_offset is the end of the stream headers, because we are appending data without removing any data from the original binary.
+The seventh argument determines whether or not method alignment should be updated. generally, this parameter should be False. method alignment should almost always be updated.
+
+More changes may occur to this function in future versions to support better methods of patching.
+
 ### Documentation
 
 All functions have docstrings which describe what they do and their parameters etc.  HTML documentation can be found in docs/html.

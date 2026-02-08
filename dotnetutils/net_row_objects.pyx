@@ -1398,7 +1398,7 @@ cdef class MethodDef(MethodDefOrRef):
         while (orig_method_size % 4) != ((new_method_size + amt_padding) % 4):
             amt_padding += 1
         #This approach might leave an extra byte or two in the binary when patching methods but it also saves a ton of time when patching methods.
-        #TODO figure out a better way to handle patching.
+        #TODO Figure out a better way to handle alignment than checking after each patch.
         self.get_dotnetpe().patch_dpe(rva, difference + amt_padding, None, rva, data + (b'\x00' * amt_padding), file_offset + orig_method_size, False)
 
     cpdef bytes get_name(self):

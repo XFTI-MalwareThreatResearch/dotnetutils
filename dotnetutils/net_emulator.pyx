@@ -846,7 +846,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef net_sigs.MethodSig method_signature = initial_method_obj.get_method_signature()
     cdef DotNetEmulator current_emu = None
     cdef StackCell * orig_method_args = NULL
-    cdef bint debug = False
     memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj is not None:
         method_obj = force_method_obj
@@ -857,7 +856,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
                     return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0, initial_method_obj)
-    debug = method_obj.get_name() == b'set_Mode'
     if method_obj.get_table_name() == 'MethodDef' and not force_extern_type:
         method_name = method_obj.get_name()
         amt_args = <int>len(method_obj.get_param_types())
