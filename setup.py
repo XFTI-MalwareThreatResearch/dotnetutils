@@ -11,7 +11,7 @@ elif sys.platform == 'darwin':
     link_args = ['-g']
 else:
     compile_args = ['/DEBUG', '/WX', '/wd4551', '/Zi'] 
-    link_args = ['/Zi', '/DEBUG']
+    link_args = ['/DEBUG']
 
 def gen_extension(name):
     global compile_args
