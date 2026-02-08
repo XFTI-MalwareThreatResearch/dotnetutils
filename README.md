@@ -110,6 +110,12 @@ DotNetUtils contains a emulator, DotNetEmulator.
 
 net_deobfuscate.py contains some common utilities for removing the most common .NET obfuscation such as name obfuscation, useless conditionals and useless functions.  net_deobfuscate_funcs.pyx implements the functions on an api level, while net_deobfuscate.py contains a command line utility to use them.
 
+### Experimental Features
+Control flow deobfuscation, implemented by net_graphing.py, net_graph_analyzer.py is currently experimental.
+It seems to work pretty well for confuserex control flow deobfuscation but its still a work in progress.  It also outputs instructions in weird orders currently.
+
+There are deobfuscators for NET Reactor and ConfuserEx in the deobfuscators folder.  Those are work in progress as well.
+
 ### Documentation
 
 All functions have docstrings which describe what they do and their parameters etc.  HTML documentation can be found in docs/html.
