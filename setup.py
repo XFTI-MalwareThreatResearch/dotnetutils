@@ -7,7 +7,7 @@ if sys.platform == 'linux': #Some warnings cant be treated as errors on MSVC bec
     compile_args = ['-g', '-Werror', '-Wno-maybe-uninitialized', '-Wno-unused-but-set-variable', '-Wno-array-bounds', '-Wno-unused-function'] 
     link_args = ['-g']
 elif sys.platform == 'darwin':
-    compile_args = ['-g', '-Werror', '-Wno-unreachable-code-fallthrough', '-Wno-unused-but-set-variable']
+    compile_args = ['-g', '-Werror', '-Wno-unreachable-code-fallthrough', '-Wno-unused-but-set-variable', '-Wno-unused-function']
     link_args = ['-g']
 else:
     compile_args = ['/DEBUG', '/WX', '/wd4551', '/Zi'] 

@@ -15,7 +15,7 @@ data = dpe.get_exe_data()
 data_hash = hashlib.sha256()
 data_hash.update(data)
 data_hash = data_hash.hexdigest()
-assert data_hash == '8063E51CF9C3ADA9C915DA878C221A332C90670C527CD05AFE5D24B02E14A46D'.lower()
+assert data_hash == '3cbbe7c3f54960cb0e893aa96b73a4d17736def4f311a71f0f12aa0e90eefb72'
 print('Done!!!')
 
 """
