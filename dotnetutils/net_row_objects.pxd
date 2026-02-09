@@ -74,11 +74,11 @@ cdef class ColumnValue:
     
     cpdef bint has_value(self)
 
-    cpdef object get_value(self) except *
+    cpdef object get_value(self)
 
     cpdef void set_formatted_value(self, object value)
 
-    cpdef object get_formatted_value(self) except *
+    cpdef object get_formatted_value(self)
 
     cpdef object get_changed_value(self)
 

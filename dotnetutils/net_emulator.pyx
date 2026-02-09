@@ -4267,7 +4267,7 @@ cdef class EmulatorAppDomain:
         self.__loaded_assemblies.append(result)
         return result
 
-    cpdef net_emu_types.DotNetAssembly get_assembly_by_name(self, net_emu_types.DotNetString name) except *:
+    cpdef net_emu_types.DotNetAssembly get_assembly_by_name(self, net_emu_types.DotNetString name):
         """ This function is used to handle lookups that account for potential AssemblyResolve handlers.
 
         Params:
@@ -4322,7 +4322,7 @@ cdef class EmulatorAppDomain:
                 return asm_obj
         return None
 
-    cpdef bytes get_resource_by_name(self, net_emu_types.DotNetString name, net_emu_types.DotNetAssembly assembly) except *:
+    cpdef bytes get_resource_by_name(self, net_emu_types.DotNetString name, net_emu_types.DotNetAssembly assembly):
         """ This function is used to handle lookups that account for potential ResourceResolve handlers.
 
         Params:

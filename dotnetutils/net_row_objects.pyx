@@ -304,7 +304,7 @@ cdef class ColumnValue:
         """
         return not self.__has_no_value
 
-    cpdef object get_value(self) except *:
+    cpdef object get_value(self):
         """ Obtain the processed value corresponding to the raw_value
         
         Returns:
@@ -332,7 +332,7 @@ cdef class ColumnValue:
         """
         self.formatted_value = value
 
-    cpdef object get_formatted_value(self) except *:
+    cpdef object get_formatted_value(self):
         """ Obtains the formatted value for a column
 
         Returns:
