@@ -846,6 +846,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef net_sigs.MethodSig method_signature = initial_method_obj.get_method_signature()
     cdef DotNetEmulator current_emu = None
     cdef StackCell * orig_method_args = NULL
+    cdef net_sigs.TypeSig psig = None
     memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj is not None:
         method_obj = force_method_obj
@@ -921,7 +922,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
             for x in range(amt_args - 1, -1, -1):
                 cell = emu.stack.pop()
-                casted_cell = emu.cast_cell(cell, method_signature.get_parameters()[x])
+                psig = method_signature.get_parameters()[x]
+                casted_cell = emu.cast_cell(cell, psig)
                 method_args[x] = casted_cell
                 emu.dealloc_cell(cell)
         else:
@@ -983,11 +985,13 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             else:
                 method_args = &method_args[1] #Make sure this isnt included
             for x in range(amt_args):
-                casted_cell = emu.cast_cell(method_args[x], method_signature.get_parameters()[x])
+                psig = method_signature.get_parameters()[x]
+                casted_cell = emu.cast_cell(method_args[x], psig)
                 method_args[x] = casted_cell
         elif force_method_args != NULL:
             for x in range(amt_args):
-                casted_cell = emu.cast_cell(method_args[x], method_signature.get_parameters()[x])
+                psig = method_signature.get_parameters()[x]
+                casted_cell = emu.cast_cell(method_args[x], psig)
                 method_args[x] = casted_cell
 
         emu_method = None
@@ -6492,7 +6496,6 @@ cdef class DotNetEmulator:
                 return self.box_value(cell, None)
             else:
                 raise net_exceptions.InvalidArgumentsException()
-            return result
         else:
             return self.duplicate_cell(cell)
 
@@ -7497,7 +7500,6 @@ cdef class DotNetEmulator:
             return self.pack_object(dnum)
         else:
             raise net_exceptions.EmulatorExecutionException(self, 'Cor type not supported for boxing {}'.format(net_utils.get_cor_type_name(cor_type)))
-        raise net_exceptions.FeatureNotImplementedException()
 
     cdef StackCell unbox_value(self, StackCell cell):
         """ Performs unboxing on an cell.  Unboxing does things like convet a DotNetInt32() stackcell to a ELEMENT_TYPE_I4 stackcell.
@@ -7787,7 +7789,6 @@ cdef class DotNetEmulator:
             return self._get_default_value(rsig, tref)
         else:
             raise net_exceptions.EmulatorExecutionException(self, 'weird sig {}'.format(type(type_sig)))
-        return self.pack_null()
 
     def skip_next_instruction(self):
         """ Instructs the emulator to skip the next instruction.

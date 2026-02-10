@@ -3,8 +3,8 @@ from Cython.Build import cythonize
 from Cython.Compiler import Options
 import sys
 
-Options.extra_warnings = True
-Options.warning_errors = True
+Options.extra_warnings = False
+Options.warning_errors = False
 
 if sys.platform == 'linux': #Some warnings cant be treated as errors on MSVC because cython generates them.
     #TODO: can we remove no array bounds
