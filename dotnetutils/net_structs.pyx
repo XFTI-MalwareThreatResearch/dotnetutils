@@ -2,7 +2,6 @@
 #distutils: language=c++
 
 
-import ctypes
 import io
 import re
 from dotnetutils import net_exceptions

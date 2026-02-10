@@ -12,7 +12,6 @@ from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing, net_opcodes
-from typing import Union
 
 cdef class RowObject:
 

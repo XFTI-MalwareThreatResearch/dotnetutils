@@ -6,7 +6,7 @@ from dotnetutils import net_exceptions
 from libc.stdint cimport int64_t, uint64_t
 from libc.string cimport strlen, strcmp, memset, memcpy
 from libc.stdlib cimport free, malloc
-from dotnetutils cimport net_sigs, net_tokens, net_utils, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
+from dotnetutils cimport net_sigs, net_utils, net_opcodes, net_cil_disas, net_structs, net_row_objects, net_emu_types, net_table_objects, dotnetpefile
 from dotnetutils.net_structs cimport CorElementType
 from dotnetutils.net_opcodes cimport Opcodes
 from cpython.ref cimport Py_INCREF, Py_XDECREF

@@ -2,7 +2,7 @@
 #distutils: language=c++
 
 
-from dotnetutils cimport dotnetpefile, net_row_objects, net_structs, net_processing
+from dotnetutils cimport dotnetpefile, net_row_objects, net_structs
 from libcpp.vector cimport vector
 from cpython.ref cimport PyObject
 

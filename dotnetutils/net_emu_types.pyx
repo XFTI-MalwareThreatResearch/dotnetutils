@@ -16,8 +16,8 @@ from Crypto.Cipher import DES, DES3, AES
 from Crypto.Util.Padding import unpad, pad
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, net_table_objects
-from dotnetutils cimport net_sigs, net_opcodes, net_cil_disas
-from dotnetutils cimport net_structs, net_utils, net_tokens
+from dotnetutils cimport net_sigs, net_cil_disas
+from dotnetutils cimport net_structs, net_utils
 
 from dotnetutils cimport dotnetpefile
 

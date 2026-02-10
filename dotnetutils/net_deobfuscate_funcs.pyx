@@ -3,13 +3,12 @@
 
 import os
 
-from dotnetutils cimport dotnetpefile, net_tokens, net_row_objects, net_emulator, net_cil_disas, net_processing
+from dotnetutils cimport dotnetpefile, net_row_objects, net_emulator, net_cil_disas, net_processing
 from dotnetutils cimport net_opcodes, net_table_objects, net_structs, net_emu_types, net_sigs
 from dotnetutils import net_graphing, net_exceptions, net_graph_analyzer
 from libc.stdio cimport snprintf
 from libc.string cimport memcpy
-from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING, PyBytes_GET_SIZE, _PyBytes_Resize
-from cpython.ref cimport PyObject
+from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING, PyBytes_GET_SIZE
 
 cdef bytes make_string(bytes prefix, unsigned int i):
     """ Quick method to create byte string with the following format: <prefix><i>

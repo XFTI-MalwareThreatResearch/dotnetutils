@@ -1,11 +1,8 @@
 #cython: language_level=3
 #distutils: language=c++
 
-
-
 from libc.stdint cimport uint16_t, uint32_t, uint8_t, uint64_t, int64_t
 from libc.stddef cimport wchar_t
-
 
 """
 Structures required to parse .NET metadata headers.

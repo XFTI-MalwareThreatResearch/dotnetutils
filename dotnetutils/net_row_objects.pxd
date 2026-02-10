@@ -2,7 +2,7 @@
 #distutils: language=c++
 
 
-from dotnetutils cimport dotnetpefile, net_sigs, net_cil_disas, net_tokens, net_table_objects, net_structs
+from dotnetutils cimport dotnetpefile, net_sigs, net_cil_disas, net_tokens
 from libc.stdint cimport uint64_t
 
 cdef class RowObject:
