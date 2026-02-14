@@ -140,16 +140,13 @@ cdef class HeapObject:
         """
         raise net_exceptions.FeatureNotImplementedException()
 
-    cdef dotnetpefile.DotNetPeFile get_dotnetpe(self):
-        return self.dotnetpe
-
     cpdef bytes to_bytes(self):
         return bytes(self.raw_data)
     
     cdef void read(self):
         """ Responsible for reading and handling the heap data.
         """
-        self.raw_data = bytearray(self.get_dotnetpe().get_exe_data()[self.offset:self.offset+self.size])
+        self.raw_data = bytearray((<dotnetpefile.DotNetPeFile>self.dotnetpe).get_exe_data()[self.offset:self.offset+self.size])
 
     cpdef list get_items(self):
         """ Return a list of all items within the heap.
@@ -228,7 +225,7 @@ cdef class StringHeapObject(HeapObject):
     cdef void read(self):
         cdef int index = 0
         self.amt_trailing_zeroes = 0
-        self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
+        self.raw_data = bytearray((<dotnetpefile.DotNetPeFile>self.dotnetpe).get_exe_data()[self.offset:self.offset + self.size])
         index = <int>len(self.raw_data) - 1
         while self.raw_data[index] == 0:
             self.amt_trailing_zeroes += 1
@@ -266,12 +263,12 @@ cdef class StringHeapObject(HeapObject):
         self.raw_data.extend(self.tx_data)
         for x in range(self.amt_trailing_zeroes):
             self.raw_data.append(0)
-        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
-        self.get_dotnetpe().patch_dpe(va_addr, <int>len(self.tx_data), b'#Strings', va_addr - new_offset, None, 0, False)
+        va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + new_offset)
+        (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, <int>len(self.tx_data), b'#Strings', va_addr - new_offset, None, 0, False)
         self.tx_data = bytearray()
 
     cdef void update_bitmask(self, int new_size):
-        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>(<dotnetpefile.DotNetPeFile>self.dotnetpe).get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS)
         cdef int old_metadata_size = heap_obj.get_size()
         cdef uint64_t va_addr = 0
@@ -283,8 +280,8 @@ cdef class StringHeapObject(HeapObject):
         difference = <int>len(heap_obj.to_bytes()) - old_metadata_size
         if difference == 0:
             return
-        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
-        self.get_dotnetpe().patch_dpe(va_addr, difference, b'#~', va_addr - old_metadata_size, None, 0, False)    
+        va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
+        (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#~', va_addr - old_metadata_size, None, 0, False)    
 
     cpdef int append_tx(self, bytes item):
         cdef int new_offset = 0
@@ -324,7 +321,7 @@ cdef class StringHeapObject(HeapObject):
             end_offset += 1
         #above is for partial reference handling, something specific to the #string heap.
         for table_name, col_names in self.metadata_references.items():
-            table_obj = self.get_dotnetpe().get_metadata_table(table_name)
+            table_obj = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table(table_name)
             if table_obj is None:
                 continue
             for row_obj in table_obj:
@@ -351,7 +348,7 @@ cdef class StringHeapObject(HeapObject):
         #Next update the tokens within the metadata tables
         #Strings items can only really be in the metadata heap as far as im aware.
         for table_name, col_names in self.metadata_references.items():
-            table_object = self.get_dotnetpe().get_metadata_table(table_name)
+            table_object = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table(table_name)
             if table_object is None:
                 continue
             for row_object in table_object:
@@ -386,8 +383,8 @@ cdef class StringHeapObject(HeapObject):
         self.update_bitmask(self.get_size() + difference)
         self.raw_data = self.raw_data[:offset] + b + self.raw_data[offset + len(old_item):]
         self.update(offset, offset, difference)
-        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-        self.get_dotnetpe().patch_dpe(va_addr, difference, b'#Strings', va_addr - offset, None, 0, False)
+        va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+        (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#Strings', va_addr - offset, None, 0, False)
         return difference
 
     cpdef int append_item(self, object item):
@@ -408,8 +405,8 @@ cdef class StringHeapObject(HeapObject):
             self.raw_data += b
             if self.amt_trailing_zeroes > 0:
                 self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
-            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
-            self.get_dotnetpe().patch_dpe(va_addr, <int>len(b), b'#Strings', va_addr - new_offset, None, 0, False)
+            va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + new_offset)
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, <int>len(b), b'#Strings', va_addr - new_offset, None, 0, False)
             return new_offset
         else:
             return potential
@@ -461,8 +458,8 @@ cdef class StringHeapObject(HeapObject):
             self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
-            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-            self.get_dotnetpe().patch_dpe(va_addr, difference, b'#Strings', va_addr - offset, None, 0, False)
+            va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#Strings', va_addr - offset, None, 0, False)
             return difference
         else:
             warnings.warn('Attempting to delete a string item that is currently referenced.  Ignoring.')
@@ -475,10 +472,10 @@ cdef class BlobHeapObject(HeapObject):
         self.__build_metadata_references()
 
     cdef void read(self):
-        self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
+        self.raw_data = bytearray((<dotnetpefile.DotNetPeFile>self.dotnetpe).get_exe_data()[self.offset:self.offset + self.size])
 
     cdef void update_bitmask(self, int new_size):
-        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>(<dotnetpefile.DotNetPeFile>self.dotnetpe).get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB)
         cdef int old_metadata_size = heap_obj.get_size()
         cdef uint64_t va_addr = 0
@@ -490,8 +487,8 @@ cdef class BlobHeapObject(HeapObject):
         difference = <int>len(heap_obj.to_bytes()) - old_metadata_size
         if difference == 0:
             return
-        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
-        self.get_dotnetpe().patch_dpe(va_addr, difference, b'#~', va_addr - old_metadata_size, None, 0, False)        
+        va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
+        (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#~', va_addr - old_metadata_size, None, 0, False)        
 
 
     cdef void __build_metadata_references(self):
@@ -514,7 +511,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef net_row_objects.RowObject row_obj = None
         cdef net_row_objects.ColumnValue col_val = None
         for table_name, col_names in self.metadata_references.items():
-            table_obj = self.get_dotnetpe().get_metadata_table(table_name)
+            table_obj = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table(table_name)
             if table_obj is None:
                 continue
             for row_obj in table_obj:
@@ -543,7 +540,7 @@ cdef class BlobHeapObject(HeapObject):
 
         #Next update the tokens within the metadata tables
         for table_name, col_names in self.metadata_references.items():
-            table_object = self.get_dotnetpe().get_metadata_table(table_name)
+            table_object = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table(table_name)
             if table_object is None:
                 continue
             for row_object in table_object:
@@ -579,8 +576,8 @@ cdef class BlobHeapObject(HeapObject):
         self.update_bitmask(self.get_size() + difference)
         self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(orig_item):]
         self.update(offset, offset, difference)
-        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-        self.get_dotnetpe().patch_dpe( va_addr, difference, b'#Blob', va_addr - offset, None, 0, False)
+        va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+        (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe( va_addr, difference, b'#Blob', va_addr - offset, None, 0, False)
         return difference
 
     cpdef bint has_item(self, object item):
@@ -595,8 +592,8 @@ cdef class BlobHeapObject(HeapObject):
         if potential == -1:
             self.update_bitmask(self.get_size() + <int>len(final))
             self.raw_data += final
-            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-            self.get_dotnetpe().patch_dpe(va_addr, <int>len(final), b'#Blob', va_addr - offset, None, 0, False)
+            va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, <int>len(final), b'#Blob', va_addr - offset, None, 0, False)
             return offset
         else:
             return potential
@@ -621,8 +618,8 @@ cdef class BlobHeapObject(HeapObject):
             self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
-            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-            self.get_dotnetpe().patch_dpe(va_addr, difference, b'#Blob', va_addr - offset, None, 0, False)
+            va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#Blob', va_addr - offset, None, 0, False)
             return difference
         else:
             warnings.warn('Attempting to delete an item that is currently referenced')
@@ -650,7 +647,7 @@ cdef class GuidHeapObject(HeapObject):
                     self.metadata_references[table_name].append(col_name)
 
     cdef void update_bitmask(self, int new_size):
-        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
+        cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>(<dotnetpefile.DotNetPeFile>self.dotnetpe).get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID)
         cdef int old_metadata_size = heap_obj.get_size()
         cdef uint64_t va_addr = 0
@@ -662,8 +659,8 @@ cdef class GuidHeapObject(HeapObject):
         difference = <int>len(heap_obj.to_bytes()) - old_metadata_size
         if difference == 0:
             return
-        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
-        self.get_dotnetpe().patch_dpe(va_addr, difference, b'#~', va_addr - old_metadata_size, None, 0, False)        
+        va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(heap_obj.get_offset() + old_metadata_size)
+        (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#~', va_addr - old_metadata_size, None, 0, False)        
 
     cpdef bint is_offset_referenced(self, int offset):
         cdef str table_name = None
@@ -673,7 +670,7 @@ cdef class GuidHeapObject(HeapObject):
         cdef net_row_objects.RowObject row_obj = None
         cdef net_row_objects.ColumnValue col_val = None
         for table_name, col_names in self.metadata_references.items():
-            table_obj = self.get_dotnetpe().get_metadata_table(table_name)
+            table_obj = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table(table_name)
             if table_obj is None:
                 continue
             for row_obj in table_obj:
@@ -701,7 +698,7 @@ cdef class GuidHeapObject(HeapObject):
         #self.raw_data should already be taken care of by the caller.
         #Next update the tokens within the metadata tables
         for table_name, col_names in self.metadata_references.items():
-            table_object = self.get_dotnetpe().get_metadata_table(table_name)
+            table_object = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table(table_name)
             if table_object is None:
                 continue
             for row_object in table_object:
@@ -713,7 +710,7 @@ cdef class GuidHeapObject(HeapObject):
                         col_val.set_raw_value(col_val.get_raw_value() + difference)
 
     cdef void read(self):
-        self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
+        self.raw_data = bytearray((<dotnetpefile.DotNetPeFile>self.dotnetpe).get_exe_data()[self.offset:self.offset + self.size])
 
     cdef bytes read_item(self, int offset):
         if not self.has_offset(offset) or not self.has_offset(offset + 15):
@@ -733,8 +730,8 @@ cdef class GuidHeapObject(HeapObject):
             self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + 16:]
             self.update(offset, offset, difference)
-            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-            self.get_dotnetpe().patch_dpe(va_addr, difference, b'#GUID', va_addr - offset, None, 0, False)
+            va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#GUID', va_addr - offset, None, 0, False)
             return difference
         else:
             warnings.warn('Attempting to delete a guid item that is currently referenced.')
@@ -757,8 +754,8 @@ cdef class GuidHeapObject(HeapObject):
         if potential == -1:
             self.update_bitmask(self.get_size() + 16)
             self.raw_data += item
-            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-            self.get_dotnetpe().patch_dpe(va_addr, <int>len(item), b'#GUID', va_addr - offset, None, 0, False)
+            va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, <int>len(item), b'#GUID', va_addr - offset, None, 0, False)
             return offset
         return potential
 
@@ -771,7 +768,7 @@ cdef class UserStringsHeapObject(HeapObject):
         self.warned = False
 
     cdef void _fill_methods(self):
-        cdef net_table_objects.MethodDefTable table = self.get_dotnetpe().get_metadata_table('MethodDef')
+        cdef net_table_objects.MethodDefTable table = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table('MethodDef')
         cdef net_row_objects.MethodDef mdef = None
         if table is None:
             return
@@ -790,8 +787,8 @@ cdef class UserStringsHeapObject(HeapObject):
             return
         new_offset = <int>len(self.raw_data)
         self.raw_data.extend(self.tx_data)
-        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
-        self.get_dotnetpe().patch_dpe(va_addr, <int>len(self.tx_data), b'#US', va_addr - new_offset, None, 0, False)
+        va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + new_offset)
+        (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, <int>len(self.tx_data), b'#US', va_addr - new_offset, None, 0, False)
         self.tx_data = bytearray()
 
     cpdef int append_tx(self, bytes item):
@@ -840,10 +837,10 @@ cdef class UserStringsHeapObject(HeapObject):
 
     cdef void read(self):
         self.amt_trailing_zeroes = 0 #TODO: well have to see if any binaries actually exploit this or have checks but in general make sure streams arent less because of padding issues.
-        self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
+        self.raw_data = bytearray((<dotnetpefile.DotNetPeFile>self.dotnetpe).get_exe_data()[self.offset:self.offset + self.size])
 
     cdef void update(self, int old_value, int new_value, int difference):
-        cdef net_table_objects.MethodDefTable table_object = self.get_dotnetpe().get_metadata_table('MethodDef')
+        cdef net_table_objects.MethodDefTable table_object = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table('MethodDef')
         cdef net_row_objects.MethodDef method = None
         cdef net_cil_disas.MethodDisassembler disasm = None
         cdef Py_ssize_t y = 0
@@ -878,7 +875,7 @@ cdef class UserStringsHeapObject(HeapObject):
                             instr_argument = int.to_bytes(argument_token, 4, 'little')
                             instr.setup_arguments_from_int32(argument_token)
                             new_instr = b'\x72' + instr_argument
-                            self.get_dotnetpe().patch_instruction(method, new_instr, instr.get_instr_offset(), <unsigned long>len(instr))
+                            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_instruction(method, new_instr, instr.get_instr_offset(), <unsigned long>len(instr))
 
     cpdef bint is_offset_referenced(self, int offset):
         cdef int argument = 0
@@ -936,8 +933,8 @@ cdef class UserStringsHeapObject(HeapObject):
         if not self.is_offset_referenced(offset):
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(old_item):]
             self.update(offset, -1, difference)
-            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-            self.get_dotnetpe().patch_dpe(va_addr, difference, b'#US', va_addr - offset, None, 0, False)
+            va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#US', va_addr - offset, None, 0, False)
             return difference
         else:
             warnings.warn('cant delete item because its referenced')
@@ -959,8 +956,8 @@ cdef class UserStringsHeapObject(HeapObject):
         difference = <int>(len(final) - len(old_item))
         self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(old_item):]
         self.update(offset, offset, difference)
-        va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + offset)
-        self.get_dotnetpe().patch_dpe(va_addr, difference, b'#US', va_addr - offset, None, 0, False)
+        va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + offset)
+        (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, difference, b'#US', va_addr - offset, None, 0, False)
         return difference
 
     cpdef int append_item(self, object item):
@@ -979,8 +976,8 @@ cdef class UserStringsHeapObject(HeapObject):
             self.raw_data += final
             if self.amt_trailing_zeroes > 0:
                 self.raw_data += (b'\x00'*self.amt_trailing_zeroes)
-            va_addr = self.get_dotnetpe().get_pe().get_rva_from_offset(self.get_offset() + new_offset)
-            self.get_dotnetpe().patch_dpe(va_addr, <int>len(final), b'#US', va_addr - new_offset, None, 0, False)
+            va_addr = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().get_rva_from_offset(self.get_offset() + new_offset)
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).patch_dpe(va_addr, <int>len(final), b'#US', va_addr - new_offset, None, 0, False)
             return new_offset
         else:
             return potential #Dont append if it already exists.
@@ -1043,11 +1040,11 @@ cdef class MetadataTableHeapObject(HeapObject):
         cdef unsigned long rid
         cdef int ref_table_id
         cdef net_table_objects.TableObject current_table = None
-        cdef bytes file_data = self.get_dotnetpe().get_exe_data()
+        cdef bytes file_data = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_exe_data()
         cdef unsigned long table_start_offset = 0
         cdef unsigned long actual_table_size = 0
         cdef unsigned long expected_table_size = 0
-        self.header = self.get_dotnetpe().get_metadata_dir().get_metadata_table_header()
+        self.header = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_dir().get_metadata_table_header()
         self.items = dict()
         self.end_offset = 0
         tables_curr_offset = self.header.end_offset
@@ -1111,7 +1108,7 @@ cdef class MetadataTableHeapObject(HeapObject):
                         sizes.append(size_of_value)
                 raw_row.append(row_offset)
                 rid = x + 1
-                current_table.add_row(net_row_objects.get_rowobject_for_table(tbl_name)(self.dotnetpe, raw_row, rid, sizes,
+                current_table.add_row(net_row_objects.get_rowobject_for_table(tbl_name)(<dotnetpefile.DotNetPeFile>self.dotnetpe, raw_row, rid, sizes,
                                                                                  col_type_handler, tbl_name))
             self.items[tbl_name] = current_table
         self.end_offset = tables_curr_offset

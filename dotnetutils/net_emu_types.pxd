@@ -10,7 +10,6 @@ from dotnetutils.net_structs cimport CorElementType
 from libcpp.vector cimport vector
 from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell, SlimObject
 
-
 cdef str remove_generics_from_name(str name)
 
 cdef void initialize_array_helper(DotNetArray arr, net_row_objects.RowObject runtime_handle) except *

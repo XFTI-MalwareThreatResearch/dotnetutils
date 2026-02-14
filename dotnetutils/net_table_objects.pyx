@@ -578,7 +578,7 @@ cdef class MethodDefTable(TableObject):
                 try:
                     disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
                 except Exception as e:
-                    if self.dotnetpe.should_raise_exc_on_invalid_method():
+                    if (<dotnetpefile.DotNetPeFile>self.dotnetpe).should_raise_exc_on_invalid_method():
                         raise e
                     #traceback.print_exc()
                     logger.debug('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))

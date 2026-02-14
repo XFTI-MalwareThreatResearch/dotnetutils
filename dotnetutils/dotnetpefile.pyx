@@ -10,7 +10,7 @@ from dotnetutils.net_structs import DotNetResourceSet
 from dotnetutils import net_exceptions
 from logging import getLogger
 
-from dotnetutils cimport net_tokens, net_metadata
+from dotnetutils cimport net_tokens, net_metadata, base
 from dotnetutils cimport net_row_objects, net_table_objects, net_patch
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from libc.stdint cimport uintptr_t, uint32_t, uint64_t
@@ -276,7 +276,7 @@ cdef class PeFile:
         ptr = <IMAGE_COR20_HEADER*>(<uint64_t>self.__file_view.buf + offset)
         return ptr[0]
 
-cdef class DotNetPeFile:
+cdef class DotNetPeFile(base.DotNetUtilsBaseType):
     """Represents a DotNetPeFile.  Contains all methods used to access other parts of the .NET metadata structure.
 
     Notes:

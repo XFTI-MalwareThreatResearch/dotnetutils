@@ -4,6 +4,7 @@ from dotnetutils cimport net_metadata
 from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing
+from dotnetutils cimport base
 
 from cpython.buffer cimport Py_buffer
 from libc.stdint cimport uintptr_t, uint64_t, int64_t
@@ -49,7 +50,7 @@ cdef class PeFile:
 
     cpdef IMAGE_COR20_HEADER get_net_header(self)
 
-cdef class DotNetPeFile:
+cdef class DotNetPeFile(base.DotNetUtilsBaseType):
     cdef str __versioninfo_str
     cdef str file_path
     cdef bytes exe_data
