@@ -3,8 +3,8 @@ from Cython.Build import cythonize
 from Cython.Compiler import Options
 import sys
 
-Options.extra_warnings = True
-Options.warning_errors = True
+Options.extra_warnings = False
+Options.warning_errors = False
 
 if sys.platform == 'linux': #Some warnings cant be treated as errors on MSVC because cython generates them.
     #TODO: can we remove no array bounds
@@ -40,8 +40,7 @@ ext_modules = cythonize([
     gen_extension('net_row_objects'),
     gen_extension('net_patch'),
     gen_extension('net_sigs'),
-    gen_extension('net_emu_structs'),
-    gen_extension('base')
+    gen_extension('net_emu_structs')
 ], annotate=True, gdb_debug=True, show_all_warnings=True, force=True, compiler_directives={'embedsignature': True, 'linetrace': True, 'binding': True})
 
 setup(

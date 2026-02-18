@@ -176,7 +176,7 @@ cdef class MetaDataDirectory:
         self.metadata_heap_size = 0
         self.metadata_file_offset = 0
         self.metadata_file_size = 0
-        self.is_valid_directory = self.process_directory(dotnetpe.get_exe_data())
+        self.is_valid_directory = self.process_directory(self.dotnetpe.get_exe_data())
 
     cpdef net_processing.HeapObject get_heap(self, str name):
         """ Obtain a heap from the metadata directory.
@@ -216,7 +216,6 @@ cdef class MetaDataDirectory:
         cdef unsigned int file_offset
         cdef unsigned int size
         cdef bytes name
-        cdef dotnetpefile.DotNetPeFile dotnetpe = <dotnetpefile.DotNetPeFile>self.dotnetpe
         if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
             raise net_exceptions.NotADotNetFile
         PyObject_GetBuffer(file_data, &file_data_view, PyBUF_ANY_CONTIGUOUS)
@@ -225,27 +224,27 @@ cdef class MetaDataDirectory:
         self.net_header_offset = com_offset
         metadata_dir = cor_header.MetaData
         metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
-        self.metadata_header = MetaDataHeader(dotnetpe, file_data, metadata_offset)
+        self.metadata_header = MetaDataHeader(self.dotnetpe, file_data, metadata_offset)
         for file_offset, size, name in self.metadata_header.get_stream_headers():
             if name == b'#~' or name == b'#-':
                 self.metadata_file_offset = file_offset
                 self.metadata_file_size = size
             elif name == b'#Strings':
                 if self.__validate_stream_not_there('#Strings'):
-                    self.heaps['#Strings'] = net_processing.StringHeapObject(file_offset, size, name, dotnetpe)
+                    self.heaps['#Strings'] = net_processing.StringHeapObject(file_offset, size, name, self.dotnetpe)
             elif name == b'#GUID':
                 if self.__validate_stream_not_there('#GUID'):
-                    self.heaps['#GUID'] = net_processing.GuidHeapObject(file_offset, size, name, dotnetpe)
+                    self.heaps['#GUID'] = net_processing.GuidHeapObject(file_offset, size, name, self.dotnetpe)
             elif name == b'#US':
                 if self.__validate_stream_not_there('#US'):
-                    self.heaps['#US'] = net_processing.UserStringsHeapObject(file_offset, size, name, dotnetpe)
+                    self.heaps['#US'] = net_processing.UserStringsHeapObject(file_offset, size, name, self.dotnetpe)
             elif name == b'#Blob':
                 if self.__validate_stream_not_there('#Blob'):
-                    self.heaps['#Blob'] = net_processing.BlobHeapObject(file_offset, size, name, dotnetpe)
+                    self.heaps['#Blob'] = net_processing.BlobHeapObject(file_offset, size, name, self.dotnetpe)
             else:
                 # Dont throw exceptions on unknown streams, parse it as a generic stream.
                 if self.__validate_stream_not_there(name.decode('ascii')):
-                    self.heaps[name.decode('ascii')] = net_processing.HeapObject(file_offset, size, name, dotnetpe)
+                    self.heaps[name.decode('ascii')] = net_processing.HeapObject(file_offset, size, name, self.dotnetpe)
         if not (self.metadata_file_offset != 0 and self.metadata_file_size != 0):
             raise net_exceptions.InvalidMetadataException
 

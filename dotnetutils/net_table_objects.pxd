@@ -2,7 +2,7 @@
 #distutils: language=c++
 
 
-from dotnetutils cimport base, net_row_objects, net_structs
+from dotnetutils cimport dotnetpefile, net_row_objects, net_structs
 from libcpp.vector cimport vector
 from cpython.ref cimport PyObject
 
@@ -10,7 +10,7 @@ cdef class TableObject:
     cdef vector[PyObject*] rows
     cdef str name
     cdef int tid
-    cdef base.DotNetUtilsBaseType dotnetpe
+    cdef dotnetpefile.DotNetPeFile dotnetpe
 
     cdef list as_list(self)
 
@@ -43,7 +43,7 @@ cdef class MetadataTableHeader:
     cdef list table_amt_rows
     cdef int end_offset
     cdef unsigned int extra_data_size
-    cdef base.DotNetUtilsBaseType dotnetpe
+    cdef dotnetpefile.DotNetPeFile dotnetpe
 
     cdef void parse_table_header(self, bytes file_data)
 

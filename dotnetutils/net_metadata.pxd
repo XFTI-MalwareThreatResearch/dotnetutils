@@ -1,7 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 
-from dotnetutils cimport base, net_table_objects, net_processing
+from dotnetutils cimport dotnetpefile, net_table_objects, net_processing
 from dotnetutils.net_structs cimport IMAGE_COR20_HEADER
 from libc.stdint cimport uint64_t
 
@@ -21,7 +21,7 @@ cdef class MetaDataHeader:
     cdef int num_streams
     cdef list streamheaders
     cdef int end_offset
-    cdef base.DotNetUtilsBaseType dotnetpe
+    cdef dotnetpefile.DotNetPeFile dotnetpe
 
     cdef void parse_metadata_header(self, bytes file_data)
 
@@ -33,7 +33,7 @@ cdef class MetaDataDirectory:
     """
     Represents the metadata directory.   
     """
-    cdef base.DotNetUtilsBaseType dotnetpe
+    cdef dotnetpefile.DotNetPeFile dotnetpe
     cdef IMAGE_COR20_HEADER net_header
     cdef uint64_t net_header_offset
     cdef MetaDataHeader metadata_header

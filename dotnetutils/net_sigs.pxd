@@ -1,7 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 
-from dotnetutils cimport net_structs, net_row_objects, base
+from dotnetutils cimport net_structs, net_row_objects, dotnetpefile
 
 cdef bint method_sig_compare(MethodBaseSig sig_one, MethodBaseSig sig_two, GenericInstMethodSig gensig, GenericInstSig gentypesig)
 
@@ -150,7 +150,7 @@ cdef class MethodBaseSig(CallingConventionSig):
     cdef int __gen_param_count
     cdef int __params_after_sentinel
     cdef TypeSig __return_type
-    cdef base.DotNetUtilsBaseType dotnetpe
+    cdef dotnetpefile.DotNetPeFile dotnetpe
     cdef net_row_objects.MethodDef method
 
     cpdef TypeSig get_type_sig(self)
@@ -163,7 +163,7 @@ cdef class MethodBaseSig(CallingConventionSig):
     
     cpdef TypeSig get_return_type(self)
 
-    cdef void setup_dotnetpe(self, base.DotNetUtilsBaseType dotnetpe, net_row_objects.RowObject method)
+    cdef void setup_dotnetpe(self, dotnetpefile.DotNetPeFile dotnetpe, net_row_objects.RowObject method)
 
 cdef class MethodSig(MethodBaseSig):
     cdef int __orig_token
@@ -184,7 +184,7 @@ cdef class GenericInstMethodSig(CallingConventionSig):
     cpdef list get_generic_args(self)
 
 cdef class SignatureReader():
-    cdef base.DotNetUtilsBaseType dotnetpe
+    cdef dotnetpefile.DotNetPeFile dotnetpe
     cdef net_structs.DotNetDataReader sig_io
     cdef int sig_type
     cdef int calling_conv

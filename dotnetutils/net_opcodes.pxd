@@ -1,6 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 
+
 cpdef enum Opcodes:
     Invalid = -1
     Nop = 0
