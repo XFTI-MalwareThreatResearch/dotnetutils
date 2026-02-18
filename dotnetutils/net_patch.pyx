@@ -2,21 +2,18 @@
 #distutils: language=c++
 
 from dotnetutils import net_exceptions
-from dotnetutils cimport dotnetpefile
-from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
+from dotnetutils cimport dotnetpefile, base
 from libc.stdint cimport uintptr_t, uint64_t, uint32_t
-from libc.string cimport memcmp, memcpy
+from libc.string cimport memcmp
+from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY
 
-from cpython.bytes cimport PyBytes_FromStringAndSize
-
-from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_SCN_CNT_CODE, IMAGE_OPTIONAL_HEADER32, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_ORDINAL_FLAG64, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_OPTIONAL_HEADER64, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_DATA_DIRECTORY, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_COR20_HEADER, IMAGE_BASE_RELOCATION, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64, IMAGE_DEBUG_DIRECTORY
-
-cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
+cpdef void insert_blank_userstrings(base.DotNetUtilsBaseType dpeparam):
     """ Inserts a blank user strings stream (#US) into the dotnetpe.
 
     Args:
-        dotnetpe (dotnetpefile.DotNetPeFile): the dotnetpe to add to.
+        dpeparam (dotnetpefile.DotNetPeFile): the dotnetpe to add to.
     """
+    cdef dotnetpefile.DotNetPeFile dotnetpe = <dotnetpefile.DotNetPeFile>dpeparam
     cdef bytearray new_exe_data
     cdef uint64_t metadata_offset
     cdef uint64_t streams_offset
@@ -77,12 +74,14 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     dotnetpe.set_exe_data(bytes(new_exe_data))
     new_data_offset = us_offset + metadata_offset + <int>len(new_streamheader)
     new_data_va = dotnetpe.get_pe().get_rva_from_offset(new_data_offset)
-    dotnetpe.patch_dpe(new_data_va, 1, b'#US', new_data_va - 1, bytes([0]), new_data_offset, False)
+    new_streamheader = bytes([0])
+    dotnetpe.patch_dpe(new_data_va, 1, b'#US', new_data_va - 1, new_streamheader, new_data_offset, False)
     dotnetpe.reinit_dpe(False)
 
-cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):
+cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, base.DotNetUtilsPeFileBaseType old_pe_param, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):
     """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.
     """
+    cdef dotnetpefile.PeFile old_pe = <dotnetpefile.PeFile>old_pe_param
     cdef IMAGE_RESOURCE_DIRECTORY * rsrc_dir = NULL
     cdef uint64_t usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
     cdef int x
@@ -96,18 +95,19 @@ cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t
         sub_entry = <IMAGE_RESOURCE_DIRECTORY_ENTRY*> (<uintptr_t>new_exe_view.buf + <uintptr_t>usable_rs_offset)
         if sub_entry.OffsetToData.OffsetToDirectory.DataIsDirectory:
             r_offset = orig_rs_offset + sub_entry.OffsetToData.OffsetToDirectory.OffsetToDirectory
-            fixup_resource_directory(r_offset, rs_rva, orig_rs_offset, old_pe, new_exe_view, va_addr, difference, target_addr)
+            fixup_resource_directory(r_offset, rs_rva, orig_rs_offset, old_pe_param, new_exe_view, va_addr, difference, target_addr)
         else:
             r_offset = orig_rs_offset + sub_entry.OffsetToData.OffsetToData
             data_struct = <IMAGE_RESOURCE_DATA_ENTRY*>(<uintptr_t>new_exe_view.buf + <uintptr_t>r_offset)
             rva = data_struct.OffsetToData
-            fixed_rva = get_fixed_rva(old_pe, new_exe_view, rva, va_addr, difference, target_addr)
+            fixed_rva = get_fixed_rva(old_pe_param, new_exe_view, rva, va_addr, difference, target_addr)
             data_struct.OffsetToData = <uint32_t>fixed_rva
         usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
 
-cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view, uint64_t addr, uint64_t old_userstrings_va, int userstrings_difference, uint64_t target_addr):
+cdef uint64_t get_fixed_rva(base.DotNetUtilsPeFileBaseType old_pe_param, Py_buffer exe_data_view, uint64_t addr, uint64_t old_userstrings_va, int userstrings_difference, uint64_t target_addr):
     """ Take an RVA, and obtain its "fixed" value.  The fixed value of an RVA is the RVA after accounting for the amount of bytes that will be added or subtracted by an operation.
     """
+    cdef dotnetpefile.PeFile old_pe = <dotnetpefile.PeFile>old_pe_param
     cdef IMAGE_SECTION_HEADER old_section
     cdef bint passed_text = False
     cdef IMAGE_SECTION_HEADER target_section

@@ -310,7 +310,7 @@ cdef class MethodBaseSig(CallingConventionSig):
     cpdef TypeSig get_return_type(self):
         return self.__return_type
 
-    cdef void setup_dotnetpe(self, dotnetpefile.DotNetPeFile dotnetpe, net_row_objects.RowObject method):
+    cdef void setup_dotnetpe(self, base.DotNetUtilsBaseType dotnetpe, net_row_objects.RowObject method):
         self.dotnetpe = dotnetpe  # TODO: make a better way to do this.
         self.method = method
 
@@ -610,7 +610,7 @@ cdef class SignatureReader():
 
     cdef int read_integer_pointer(self):
         intptr_size = 4
-        if self.dotnetpe.get_pe().PE_TYPE == net_structs.IMAGE_OPTIONAL_MAGIC.IMAGE_NT_OPTIONAL_HDR64_MAGIC:
+        if (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_pe().PE_TYPE == net_structs.IMAGE_OPTIONAL_MAGIC.IMAGE_NT_OPTIONAL_HDR64_MAGIC:
             intptr_size = 8
         return int.from_bytes(self.sig_io.read(intptr_size), 'little')
 
@@ -701,7 +701,7 @@ cdef class SignatureReader():
         cdef int table_rid
         cdef net_row_objects.RowObject result
         table_name, table_rid = net_tokens.get_TypeDefOrRef().decode_token(self.read_compressed_integer())
-        result = self.dotnetpe.get_metadata_table(table_name).get(table_rid)
+        result = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table(table_name).get(table_rid)
         return result
 
 class GenericArgsSubstitutor:

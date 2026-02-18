@@ -1,16 +1,11 @@
 #cython: language_level=3
 #distutils: language=c++
 
-
 from dotnetutils import net_exceptions
-from dotnetutils cimport net_tokens
-from dotnetutils cimport net_structs
-from dotnetutils cimport dotnetpefile
-from dotnetutils cimport net_row_objects
 from dotnetutils.net_structs cimport CorElementType
+from dotnetutils cimport net_sigs
 from libc.stdint cimport uintptr_t
 from cpython.bytes cimport PyBytes_FromStringAndSize
-
 
 cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size):
     return PyBytes_FromStringAndSize(<char*>address, <Py_ssize_t>size)
@@ -40,7 +35,7 @@ cdef int get_size_of_cortype(CorElementType cor_type, bint is_64bit):
         return 8
     raise net_exceptions.InvalidArgumentsException()
 
-cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
+cdef bytes get_cor_type_name(CorElementType element_type):
     """ obtain the name in bytes of a CorElementType
 
     Returns:
@@ -49,41 +44,41 @@ cdef bytes get_cor_type_name(net_structs.CorElementType element_type):
     Raises:
         net_exceptions.InvalidArgumentsException: Unsupported type.
     """
-    if element_type == net_structs.CorElementType.ELEMENT_TYPE_I1:
+    if element_type == CorElementType.ELEMENT_TYPE_I1:
         return b'System.SByte'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U1:
+    elif element_type == CorElementType.ELEMENT_TYPE_U1:
         return b'System.Byte'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I2:
+    elif element_type == CorElementType.ELEMENT_TYPE_I2:
         return b'System.Int16'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U2:
+    elif element_type == CorElementType.ELEMENT_TYPE_U2:
         return b'System.UInt16'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I4:
+    elif element_type == CorElementType.ELEMENT_TYPE_I4:
         return b'System.Int32'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U4:
+    elif element_type == CorElementType.ELEMENT_TYPE_U4:
         return b'System.UInt32'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I8:
+    elif element_type == CorElementType.ELEMENT_TYPE_I8:
         return b'System.Int64'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U8:
+    elif element_type == CorElementType.ELEMENT_TYPE_U8:
         return b'System.UInt64'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_R4:
+    elif element_type == CorElementType.ELEMENT_TYPE_R4:
         return b'System.Single'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_R8:
+    elif element_type == CorElementType.ELEMENT_TYPE_R8:
         return b'System.Double'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_STRING:
+    elif element_type == CorElementType.ELEMENT_TYPE_STRING:
         return b'System.String'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_VOID:
+    elif element_type == CorElementType.ELEMENT_TYPE_VOID:
         return b'System.Void'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_CHAR:
+    elif element_type == CorElementType.ELEMENT_TYPE_CHAR:
         return b'System.Char'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
+    elif element_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
         return b'System.Boolean'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+    elif element_type == CorElementType.ELEMENT_TYPE_OBJECT:
         return b'System.Object'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_I:
+    elif element_type == CorElementType.ELEMENT_TYPE_I:
         return b'System.IntPtr'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_U:
+    elif element_type == CorElementType.ELEMENT_TYPE_U:
         return b'System.UIntPtr'
-    elif element_type == net_structs.CorElementType.ELEMENT_TYPE_BYREF:
+    elif element_type == CorElementType.ELEMENT_TYPE_BYREF:
         return b'ELEMENT_TYPE_BYREF'
     raise net_exceptions.InvalidArgumentsException(actual=element_type)
 

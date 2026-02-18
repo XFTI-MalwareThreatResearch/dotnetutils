@@ -6,7 +6,7 @@ import traceback
 
 from cpython.ref cimport Py_INCREF, PyObject, Py_XDECREF
 from dotnetutils cimport net_tokens
-from dotnetutils cimport dotnetpefile, net_processing, net_structs, net_row_objects, net_cil_disas
+from dotnetutils cimport dotnetpefile, net_structs, net_row_objects, net_cil_disas
 from dotnetutils import net_exceptions
 
 from logging import getLogger
@@ -578,7 +578,7 @@ cdef class MethodDefTable(TableObject):
                 try:
                     disasm_obj = method_obj.disassemble_method(original=True, no_save=True) # Dont save these disasm objects, probably not worth the memory.
                 except Exception as e:
-                    if self.dotnetpe.should_raise_exc_on_invalid_method():
+                    if (<dotnetpefile.DotNetPeFile>self.dotnetpe).should_raise_exc_on_invalid_method():
                         raise e
                     #traceback.print_exc()
                     logger.debug('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))

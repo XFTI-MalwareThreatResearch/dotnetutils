@@ -2,11 +2,11 @@
 #distutils: language=c++
 
 
-from dotnetutils cimport dotnetpefile, net_sigs, net_cil_disas, net_tokens, net_table_objects, net_structs
+from dotnetutils cimport base, net_sigs, net_cil_disas, net_tokens
 from libc.stdint cimport uint64_t
 
 cdef class RowObject:
-    cdef dotnetpefile.DotNetPeFile dotnetpe
+    cdef base.DotNetUtilsBaseType dotnetpe
     cdef int rid
     cdef int file_offset
     cdef dict values
@@ -17,7 +17,7 @@ cdef class RowObject:
     
     cpdef list get_sizes(self)
 
-    cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
+    cpdef base.DotNetUtilsBaseType get_dotnetpe(self)
 
     cpdef int get_rid(self)
 
@@ -50,7 +50,7 @@ cdef class ColumnValue:
     cdef object formatted_value
     cdef bint has_changed_value
     cdef object cached_value
-    cdef dotnetpefile.DotNetPeFile dotnetpe
+    cdef base.DotNetUtilsBaseType dotnetpe
     cdef object original_value
     cdef object __formatter_param
     cdef object __formatter_method
@@ -74,11 +74,11 @@ cdef class ColumnValue:
     
     cpdef bint has_value(self)
 
-    cpdef object get_value(self) except *
+    cpdef object get_value(self)
 
     cpdef void set_formatted_value(self, object value)
 
-    cpdef object get_formatted_value(self) except *
+    cpdef object get_formatted_value(self)
 
     cpdef object get_changed_value(self)
 

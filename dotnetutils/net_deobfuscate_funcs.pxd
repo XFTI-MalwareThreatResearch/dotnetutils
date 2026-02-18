@@ -2,7 +2,7 @@
 #distutils: language=c++
 
 from dotnetutils cimport dotnetpefile
-from dotnetutils cimport net_row_objects, net_sigs
+from dotnetutils cimport net_row_objects
 
 cdef void remove_unk_obf_1_junk_loops(dotnetpefile.DotNetPeFile dotnet)
 

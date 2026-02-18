@@ -1,11 +1,8 @@
 #cython: language_level=3
 #distutils: language=c++
 
-
-
 from libc.stdint cimport uint16_t, uint32_t, uint8_t, uint64_t, int64_t
 from libc.stddef cimport wchar_t
-
 
 """
 Structures required to parse .NET metadata headers.
@@ -232,13 +229,13 @@ ctypedef struct IMAGE_THUNK_DATA32:
 ctypedef struct IMAGE_THUNK_DATA64:
     thunk_u1_64 u1
 
-cdef uint64_t IMAGE_ORDINAL_FLAG32 = 0x80000000
-cdef uint64_t IMAGE_ORDINAL_FLAG64 = 0x8000000000000000
 cdef enum:
     IMAGE_SCN_CNT_CODE = 0x20
     IMAGE_SCN_MEM_READ = 0x40000000
     IMAGE_SCN_CNT_INITIALIZED_DATA = 0x40
     IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x80
+    IMAGE_ORDINAL_FLAG32 = (1U << 31)
+    IMAGE_ORDINAL_FLAG64 = (1ULL << 63)
 
 ctypedef struct IMAGE_RESOURCE_DIRECTORY:
     uint32_t Characteristics

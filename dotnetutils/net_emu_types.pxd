@@ -1,16 +1,14 @@
 #cython: language_level=3
 #distutils: language=c++
 
-from dotnetutils cimport net_row_objects, net_sigs, dotnetpefile
+from dotnetutils cimport net_row_objects, net_sigs
 from dotnetutils cimport net_emulator
 from libcpp.unordered_map cimport unordered_map
 from libcpp.string cimport string
 from libc.stdint cimport int64_t, uint64_t
 from dotnetutils.net_structs cimport CorElementType
-from cpython.ref cimport PyObject
 from libcpp.vector cimport vector
 from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell, SlimObject
-
 
 cdef str remove_generics_from_name(str name)
 

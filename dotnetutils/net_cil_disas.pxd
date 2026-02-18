@@ -1,12 +1,11 @@
 #cython: language_level=3
 #distutils: language=c++
 
-from dotnetutils cimport dotnetpefile
 from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_structs
 from dotnetutils cimport net_opcodes
+from dotnetutils cimport base
 from cpython.ref cimport PyObject
-from cython.operator cimport dereference
 from libcpp.vector cimport vector
 from libc.stdint cimport int64_t
 from libcpp.unordered_map cimport unordered_map
@@ -83,7 +82,7 @@ cdef class Instruction:
     cpdef Instruction duplicate(self)
 
 cdef class MethodDisassembler:
-    cdef dotnetpefile.DotNetPeFile dotnetpe
+    cdef base.DotNetUtilsBaseType dotnetpe
     cdef net_row_objects.MethodDef method_obj
     cdef int header_size
     cdef int code_size
@@ -101,8 +100,6 @@ cdef class MethodDisassembler:
     cpdef int get_max_stack_size(self)
 
     cpdef net_row_objects.MethodDefOrRef get_method(self)
-
-    cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
 
     cpdef list get_list_of_instrs(self)
 

@@ -12,7 +12,6 @@ from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing, net_opcodes
-from typing import Union
 
 cdef class RowObject:
 
@@ -30,7 +29,7 @@ cdef class RowObject:
         self.sizes = sizes
         index = 0
         for col_name, col_type in col_types.items():
-            cval = ColumnValue(col_type, sizes[index], raw_data[index], self.dotnetpe, col_name, self)
+            cval = ColumnValue(col_type, sizes[index], raw_data[index], (<dotnetpefile.DotNetPeFile>self.dotnetpe), col_name, self)
             if hasattr(self, 'format_{}_column'.format(col_name).lower()):
                 cval.set_formatter_method(getattr(self, 'format_{}_column'.format(col_name).lower()), None)
             self.values[col_name.lower()] = cval
@@ -44,10 +43,10 @@ cdef class RowObject:
         """
         return self.sizes
 
-    cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self):
+    cpdef base.DotNetUtilsBaseType get_dotnetpe(self):
         """ Get the dotnetpefile.DotNetPeFile that spawned this RowObject
         """
-        return self.dotnetpe
+        return (<dotnetpefile.DotNetPeFile>self.dotnetpe)
 
     cpdef int get_rid(self):
         """ Obtain the RID of a RowObject. A RID is a 1 based index of the row in a specific metadata table.
@@ -149,7 +148,7 @@ cdef class ColumnValue:
     A wrapper for column values with different ways to access the data and its properties.
     """
 
-    def __init__(self, col_type, col_size, raw_value, dotnetpe, col_name, row_obj):
+    def __init__(self, net_tokens.BaseToken col_type, unsigned int col_size, unsigned int raw_value, dotnetpefile.DotNetPeFile dotnetpe, str col_name, net_row_objects.RowObject row_obj):
         self.col_type = col_type
         self.col_size = col_size
         self.raw_value = raw_value
@@ -200,13 +199,13 @@ cdef class ColumnValue:
         """
         if self.col_type.is_stream():
             if self.col_type == net_tokens.get_BlobStream():
-                return self.dotnetpe.get_metadata_dir().get_metadata_table_header().get_heap_offset_size(
+                return (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_dir().get_metadata_table_header().get_heap_offset_size(
                     net_structs.CorHeapBitmask.BITMASK_BLOB)
             elif self.col_type == net_tokens.get_StringsStream():
-                return self.dotnetpe.get_metadata_dir().get_metadata_table_header().get_heap_offset_size(
+                return (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_dir().get_metadata_table_header().get_heap_offset_size(
                     net_structs.CorHeapBitmask.BITMASK_STRINGS)
             elif self.col_type == net_tokens.get_GuidStream():
-                return self.dotnetpe.get_metadata_dir().get_metadata_table_header().get_heap_offset_size(
+                return (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_dir().get_metadata_table_header().get_heap_offset_size(
                     net_structs.CorHeapBitmask.BITMASK_GUID)
             raise net_exceptions.InvalidArgumentsException()
         else:
@@ -245,7 +244,7 @@ cdef class ColumnValue:
             raise net_exceptions.InvalidArgumentsException()
         if self.col_type.is_stream():
             table_name = self.col_type.get_token_types()[0]
-            stream = self.dotnetpe.get_heap(table_name)
+            stream = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_heap(table_name)
             if stream is None:
                 raise net_exceptions.InvalidArgumentsException()
             self.raw_value = stream.get_next_append_index()
@@ -257,7 +256,7 @@ cdef class ColumnValue:
                 stream.del_item(orig_value)
         elif self.col_type.is_fixed_value():
             self.raw_value = new_value
-            self.dotnetpe.update_streams() # Ensure the raw change is updated in.
+            (<dotnetpefile.DotNetPeFile>self.dotnetpe).update_streams() # Ensure the raw change is updated in.
         else:
             #I dont think it would be safe to edit metadata columns that reference other metadata columns.
             #Nor can I really think of a good reason to do it right now.  May be something to implement later.
@@ -282,18 +281,18 @@ cdef class ColumnValue:
         if table_name is None:
             return table_rid
         elif self.col_type.is_stream():
-            if self.dotnetpe.has_heap(table_name):
-                heap_obj = self.dotnetpe.get_heap(table_name)
+            if (<dotnetpefile.DotNetPeFile>self.dotnetpe).has_heap(table_name):
+                heap_obj = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_heap(table_name)
                 result = heap_obj.get_item(table_rid)
                 return result
         elif self.col_type.is_fixed_value():
             return self.raw_value
         else:
-            if self.dotnetpe.has_metadata_table(table_name):
-                return self.dotnetpe.get_heap('#~').get_table(table_name).get(table_rid)
+            if (<dotnetpefile.DotNetPeFile>self.dotnetpe).has_metadata_table(table_name):
+                return (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_heap('#~').get_table(table_name).get(table_rid)
         if table_name is None:
             return None
-        table_obj = self.dotnetpe.get_metadata_table(table_name)
+        table_obj = (<dotnetpefile.DotNetPeFile>self.dotnetpe).get_metadata_table(table_name)
         if table_obj is None:
             self.__has_no_value = True
             return None
@@ -304,7 +303,7 @@ cdef class ColumnValue:
         """
         return not self.__has_no_value
 
-    cpdef object get_value(self) except *:
+    cpdef object get_value(self):
         """ Obtain the processed value corresponding to the raw_value
         
         Returns:
@@ -332,7 +331,7 @@ cdef class ColumnValue:
         """
         self.formatted_value = value
 
-    cpdef object get_formatted_value(self) except *:
+    cpdef object get_formatted_value(self):
         """ Obtains the formatted value for a column
 
         Returns:
@@ -340,7 +339,7 @@ cdef class ColumnValue:
         """
         #formatter method sig: def formatter_method(ColumnValue, DotNetPeFile, RowObject, object)
         if self.formatted_value == None and self.__formatter_method != None:
-            self.set_formatted_value(self.__formatter_method(self, self.dotnetpe, self.row_obj, self.__formatter_param))
+            self.set_formatted_value(self.__formatter_method(self, (<dotnetpefile.DotNetPeFile>self.dotnetpe), self.row_obj, self.__formatter_param))
         return self.formatted_value
 
     cpdef object get_changed_value(self):
@@ -1393,13 +1392,15 @@ cdef class MethodDef(MethodDefOrRef):
         cdef dotnetpefile.PeFile pe = self.get_dotnetpe().get_pe()
         cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
         cdef uint64_t file_offset = pe.get_offset_from_rva(rva)
+        cdef bytes final_data = None
         cdef int amt_padding = 0
         difference = new_method_size - orig_method_size
         while (orig_method_size % 4) != ((new_method_size + amt_padding) % 4):
             amt_padding += 1
         #This approach might leave an extra byte or two in the binary when patching methods but it also saves a ton of time when patching methods.
         #TODO Figure out a better way to handle alignment than checking after each patch.
-        self.get_dotnetpe().patch_dpe(rva, difference + amt_padding, None, rva, data + (b'\x00' * amt_padding), file_offset + orig_method_size, False)
+        final_data = data + (b'\x00' * amt_padding)
+        self.get_dotnetpe().patch_dpe(rva, difference + amt_padding, None, rva, final_data, file_offset + orig_method_size, False)
 
     cpdef bytes get_name(self):
         """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().

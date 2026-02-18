@@ -1,7 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 
-from dotnetutils cimport dotnetpefile
+from dotnetutils cimport base
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_row_objects
 from libcpp.vector cimport vector
@@ -14,6 +14,7 @@ cdef class HeapObject:
     cdef bytearray raw_data
     cdef bint in_append_tx
     cdef bytearray tx_data
+    cdef base.DotNetUtilsBaseType dotnetpe
 
     cdef void update_bitmask(self, int new_size)
 
@@ -24,8 +25,6 @@ cdef class HeapObject:
     cpdef void end_append_tx(self)
 
     cpdef int append_tx(self, bytes item)
-
-    cdef dotnetpefile.DotNetPeFile dotnetpe
 
     cdef bytes read_item(self, int offset)
 
@@ -46,8 +45,6 @@ cdef class HeapObject:
     cpdef bytes to_bytes(self)
 
     cpdef bytes get_raw_data(self)
-
-    cdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
     
     cpdef bytes get_name(self)
 
@@ -80,8 +77,6 @@ cdef class StringHeapObject(HeapObject):
     cdef void read(self)
 
     cpdef bytes to_bytes(self)
-
-    cdef dotnetpefile.DotNetPeFile get_dotnetpe(self)
     
     cpdef bytes get_name(self)
 

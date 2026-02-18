@@ -3,7 +3,7 @@
 
 import io
 from dotnetutils import net_exceptions
-from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_sigs, net_table_objects
+from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_sigs
 from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
 from libc.stdint cimport uint16_t, uint32_t, int64_t
 from libc.string cimport memcpy
@@ -376,7 +376,7 @@ cdef class Instruction:
                 elif self.get_opcode() != net_opcodes.Opcodes.Switch:
                     if self.has_token_argument():
                         token = int.from_bytes(instr_args, 'little', signed=False)
-                        self.__saved_argument = self.__disasm_obj.get_dotnetpe().get_token_value(token)
+                        self.__saved_argument = self.__disasm_obj.dotnetpe.get_token_value(token)
                         return self.__saved_argument
                     else:
                         if self.is_argument_signed():
@@ -659,14 +659,6 @@ cdef class MethodDisassembler:
         """
         return self.method_obj
 
-    cpdef dotnetpefile.DotNetPeFile get_dotnetpe(self):
-        """ Obtain the DotNetPeFile that created the disassembler.
-
-        Returns:
-            dotnetpefile.DotNetPeFile: The PE file which created the disassembler.
-        """
-        return self.dotnetpe
-
     cpdef list get_list_of_instrs(self):
         """ Obtain a python list of net_cil_disas.Instruction objects.
 
@@ -725,19 +717,20 @@ cdef class MethodDisassembler:
         cdef bytes blob_value = None
         cdef net_sigs.SignatureReader sig_reader = None
         cdef net_sigs.LocalSig local_sig = None
+        cdef dotnetpefile.DotNetPeFile dotnetpe = <dotnetpefile.DotNetPeFile>self.dotnetpe
         if self.local_var_sig_tok == 0:
             if self.local_types is None:
                 self.local_types = list()
         if self.local_types is None:
             if self.local_var_sig_tok > 0:
                 if self.local_var_sig_tok != 0:
-                    signature_entry = self.dotnetpe.get_token_value(self.local_var_sig_tok)
+                    signature_entry = dotnetpe.get_token_value(self.local_var_sig_tok)
                     if signature_entry is not None and signature_entry.get_table_name() == 'StandAloneSig':
                         blob_value = signature_entry.get_column('Signature').get_value()
                         if blob_value is None or blob_value[0] != net_structs.CorCallingConvention.LocalSig:
                             self.local_types = list()
                         else:
-                            sig_reader = net_sigs.SignatureReader(self.dotnetpe, blob_value)
+                            sig_reader = net_sigs.SignatureReader(dotnetpe, blob_value)
                             local_sig = sig_reader.read_signature()
                             self.local_types = local_sig.get_local_vars()
                     else:
@@ -891,7 +884,7 @@ cdef class MethodDisassembler:
             self.parse_header()
             if self.header_size == 0 or self.code_size == 0:
                 raise net_exceptions.InvalidHeaderException(self.method_obj.get_token())
-            self.__reader.seek(self.header_size, io.SEEK_SET)
+            self.__reader.seek(self.header_size, 0)
             while index < self.code_size:
                 orig_index = index
                 opcode_one = self.__reader.read_byte()
