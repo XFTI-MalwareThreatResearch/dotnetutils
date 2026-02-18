@@ -10,7 +10,7 @@ from dotnetutils.net_structs import DotNetResourceSet
 from dotnetutils import net_exceptions
 from logging import getLogger
 
-from dotnetutils cimport net_tokens
+from dotnetutils cimport net_tokens, net_metadata, base
 from dotnetutils cimport net_row_objects, net_table_objects, net_patch
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from libc.stdint cimport uintptr_t, uint32_t, uint64_t
@@ -19,6 +19,7 @@ from dotnetutils.net_structs cimport IMAGE_SCN_CNT_CODE, IMAGE_SCN_CNT_INITIALIZ
 from dotnetutils.net_structs cimport IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_DEBUG_DIRECTORY, IMAGE_ORDINAL_FLAG64, IMAGE_NT_OPTIONAL_HDR32_MAGIC
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS, PyBUF_WRITABLE
 from cpython.bytes cimport PyBytes_FromStringAndSize
+from cpython.ref cimport PyObject
 
 logger = getLogger(__name__)
 

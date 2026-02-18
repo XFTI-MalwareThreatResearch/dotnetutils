@@ -74,7 +74,8 @@ cpdef void insert_blank_userstrings(base.DotNetUtilsBaseType dpeparam):
     dotnetpe.set_exe_data(bytes(new_exe_data))
     new_data_offset = us_offset + metadata_offset + <int>len(new_streamheader)
     new_data_va = dotnetpe.get_pe().get_rva_from_offset(new_data_offset)
-    dotnetpe.patch_dpe(new_data_va, 1, b'#US', new_data_va - 1, bytes([0]), new_data_offset, False)
+    new_streamheader = bytes([0])
+    dotnetpe.patch_dpe(new_data_va, 1, b'#US', new_data_va - 1, new_streamheader, new_data_offset, False)
     dotnetpe.reinit_dpe(False)
 
 cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, base.DotNetUtilsPeFileBaseType old_pe_param, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):
