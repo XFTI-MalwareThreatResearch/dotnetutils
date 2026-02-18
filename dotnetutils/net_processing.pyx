@@ -830,7 +830,6 @@ cdef class UserStringsHeapObject(HeapObject):
         return self.compress_integer(<unsigned long>len(b)) + b
 
     def __dealloc__(self):
-        cdef size_t x = 0
         for x in range(self.methods.size()):
             Py_XDECREF(self.methods[x])
         self.methods.clear()
