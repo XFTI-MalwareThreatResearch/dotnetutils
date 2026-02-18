@@ -3,7 +3,3 @@
 
 cdef class DotNetUtilsBaseType:
     pass
-
-
-cdef class DotNetUtilsPeFileBaseType:
-    pass

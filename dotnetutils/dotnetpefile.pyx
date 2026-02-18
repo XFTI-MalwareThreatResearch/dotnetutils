@@ -26,7 +26,7 @@ logger = getLogger(__name__)
 def method_rva_sort(method):
     return method.get_column('RVA').get_value()
 
-cdef class PeFile(base.DotNetUtilsPeFileBaseType):
+cdef class PeFile:
     """Small custom PeFile implementation.
     Designed to ensure less python dependencies.
     
