@@ -41,7 +41,7 @@ ext_modules = cythonize([
     gen_extension('net_patch'),
     gen_extension('net_sigs'),
     gen_extension('net_emu_structs')
-], annotate=True, gdb_debug=True, show_all_warnings=True, force=True, compiler_directives={'embedsignature': True, 'linetrace': True, 'binding': True})
+], annotate=True, gdb_debug=True, show_all_warnings=True, compiler_directives={'embedsignature': True, 'linetrace': True, 'binding': True})
 
 setup(
     ext_modules=ext_modules,
