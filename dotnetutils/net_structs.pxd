@@ -235,7 +235,8 @@ cdef enum:
     IMAGE_SCN_CNT_INITIALIZED_DATA = 0x40
     IMAGE_SCN_CNT_UNINITIALIZED_DATA = 0x80
     IMAGE_ORDINAL_FLAG32 = (1U << 31)
-    IMAGE_ORDINAL_FLAG64 = (1ULL << 63)
+
+cdef const uint64_t IMAGE_ORDINAL_FLAG64
 
 ctypedef struct IMAGE_RESOURCE_DIRECTORY:
     uint32_t Characteristics
