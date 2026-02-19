@@ -2,12 +2,13 @@
 #distutils: language=c++
 
 
-import ctypes
 import io
 import re
 from dotnetutils import net_exceptions
-
+from libc.stdint cimport uint64_t
 import binascii
+
+cdef const uint64_t IMAGE_ORDINAL_FLAG64 = (1ULL << 63)
 
 cdef class DotNetDataReader:
     """ A specialized reader with utilities to read popular .NET formats.

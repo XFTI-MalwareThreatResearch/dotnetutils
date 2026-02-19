@@ -12,7 +12,6 @@ from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing, net_opcodes
-from typing import Union
 
 cdef class RowObject:
 
@@ -304,7 +303,7 @@ cdef class ColumnValue:
         """
         return not self.__has_no_value
 
-    cpdef object get_value(self) except *:
+    cpdef object get_value(self):
         """ Obtain the processed value corresponding to the raw_value
         
         Returns:
@@ -332,7 +331,7 @@ cdef class ColumnValue:
         """
         self.formatted_value = value
 
-    cpdef object get_formatted_value(self) except *:
+    cpdef object get_formatted_value(self):
         """ Obtains the formatted value for a column
 
         Returns:
@@ -1393,13 +1392,15 @@ cdef class MethodDef(MethodDefOrRef):
         cdef dotnetpefile.PeFile pe = self.get_dotnetpe().get_pe()
         cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
         cdef uint64_t file_offset = pe.get_offset_from_rva(rva)
+        cdef bytes final_data = None
         cdef int amt_padding = 0
         difference = new_method_size - orig_method_size
         while (orig_method_size % 4) != ((new_method_size + amt_padding) % 4):
             amt_padding += 1
         #This approach might leave an extra byte or two in the binary when patching methods but it also saves a ton of time when patching methods.
         #TODO Figure out a better way to handle alignment than checking after each patch.
-        self.get_dotnetpe().patch_dpe(rva, difference + amt_padding, None, rva, data + (b'\x00' * amt_padding), file_offset + orig_method_size, False)
+        final_data = data + (b'\x00' * amt_padding)
+        self.get_dotnetpe().patch_dpe(rva, difference + amt_padding, None, rva, final_data, file_offset + orig_method_size, False)
 
     cpdef bytes get_name(self):
         """ Equivalent to RowObject.get_column('Name').get_value_as_bytes().

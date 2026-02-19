@@ -3,13 +3,9 @@
 
 from dotnetutils import net_exceptions
 from dotnetutils cimport dotnetpefile
-from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
 from libc.stdint cimport uintptr_t, uint64_t, uint32_t
-from libc.string cimport memcmp, memcpy
-
-from cpython.bytes cimport PyBytes_FromStringAndSize
-
-from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_SCN_CNT_CODE, IMAGE_OPTIONAL_HEADER32, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_ORDINAL_FLAG64, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_OPTIONAL_HEADER64, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_DATA_DIRECTORY, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_COR20_HEADER, IMAGE_BASE_RELOCATION, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64, IMAGE_DEBUG_DIRECTORY
+from libc.string cimport memcmp
+from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY
 
 cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     """ Inserts a blank user strings stream (#US) into the dotnetpe.
@@ -77,7 +73,8 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     dotnetpe.set_exe_data(bytes(new_exe_data))
     new_data_offset = us_offset + metadata_offset + <int>len(new_streamheader)
     new_data_va = dotnetpe.get_pe().get_rva_from_offset(new_data_offset)
-    dotnetpe.patch_dpe(new_data_va, 1, b'#US', new_data_va - 1, bytes([0]), new_data_offset, False)
+    new_streamheader = bytes([0])
+    dotnetpe.patch_dpe(new_data_va, 1, b'#US', new_data_va - 1, new_streamheader, new_data_offset, False)
     dotnetpe.reinit_dpe(False)
 
 cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):

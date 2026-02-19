@@ -2,7 +2,7 @@
 #distutils: language=c++
 
 
-from dotnetutils cimport dotnetpefile, net_sigs, net_cil_disas, net_tokens, net_table_objects, net_structs
+from dotnetutils cimport dotnetpefile, net_sigs, net_cil_disas, net_tokens
 from libc.stdint cimport uint64_t
 
 cdef class RowObject:
@@ -74,11 +74,11 @@ cdef class ColumnValue:
     
     cpdef bint has_value(self)
 
-    cpdef object get_value(self) except *
+    cpdef object get_value(self)
 
     cpdef void set_formatted_value(self, object value)
 
-    cpdef object get_formatted_value(self) except *
+    cpdef object get_formatted_value(self)
 
     cpdef object get_changed_value(self)
 

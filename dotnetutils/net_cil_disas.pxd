@@ -6,7 +6,6 @@ from dotnetutils cimport net_row_objects
 from dotnetutils cimport net_structs
 from dotnetutils cimport net_opcodes
 from cpython.ref cimport PyObject
-from cython.operator cimport dereference
 from libcpp.vector cimport vector
 from libc.stdint cimport int64_t
 from libcpp.unordered_map cimport unordered_map

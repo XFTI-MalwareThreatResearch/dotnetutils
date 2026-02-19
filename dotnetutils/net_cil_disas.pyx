@@ -3,7 +3,7 @@
 
 import io
 from dotnetutils import net_exceptions
-from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_sigs, net_table_objects
+from dotnetutils cimport net_row_objects, dotnetpefile, net_opcodes, net_tokens, net_structs, net_sigs
 from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
 from libc.stdint cimport uint16_t, uint32_t, int64_t
 from libc.string cimport memcpy
@@ -891,7 +891,7 @@ cdef class MethodDisassembler:
             self.parse_header()
             if self.header_size == 0 or self.code_size == 0:
                 raise net_exceptions.InvalidHeaderException(self.method_obj.get_token())
-            self.__reader.seek(self.header_size, io.SEEK_SET)
+            self.__reader.seek(self.header_size, 0)
             while index < self.code_size:
                 orig_index = index
                 opcode_one = self.__reader.read_byte()

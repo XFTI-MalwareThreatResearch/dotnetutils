@@ -3,13 +3,12 @@
 
 import os
 
-from dotnetutils cimport dotnetpefile, net_tokens, net_row_objects, net_emulator, net_cil_disas, net_processing
+from dotnetutils cimport dotnetpefile, net_row_objects, net_emulator, net_cil_disas, net_processing
 from dotnetutils cimport net_opcodes, net_table_objects, net_structs, net_emu_types, net_sigs
 from dotnetutils import net_graphing, net_exceptions, net_graph_analyzer
 from libc.stdio cimport snprintf
 from libc.string cimport memcpy
-from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING, PyBytes_GET_SIZE, _PyBytes_Resize
-from cpython.ref cimport PyObject
+from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING, PyBytes_GET_SIZE
 
 cdef bytes make_string(bytes prefix, unsigned int i):
     """ Quick method to create byte string with the following format: <prefix><i>
@@ -536,6 +535,9 @@ cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list ta
     cdef net_cil_disas.Instruction prev_instr2
     cdef net_table_objects.MethodDefTable methods
     cdef bint check_target_methods = len(target_method_rids) != 0
+    cdef int prev_instr_size = 0
+    cdef int instr_size = 0
+    cdef bytes patch_data = None
 
     methods = <net_table_objects.MethodDefTable>dotnet.get_metadata_table('MethodDef')
     for y in range(len(methods)):
@@ -549,10 +551,12 @@ cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list ta
             continue
         for x in range(len(disas_obj)):
             instr = disas_obj.get_instr_at_index(x)
+            instr_size = instr.get_instr_size()
             if x == 0:
                 continue
             if instr.get_name() == 'brtrue.s':
                 prev_instr = disas_obj.get_instr_at_index(x - 1)
+                prev_instr_size = prev_instr.get_instr_size()
                 if prev_instr.get_name().startswith('ldc.i4.'):
                     number = prev_instr.get_argument()
                     if number != 0:
@@ -560,26 +564,27 @@ cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list ta
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                        dotnet.patch_instruction(method_obj,
-                                                 b'\x2B' +
-                                                 int.to_bytes(
-                                                     num_instrs, 1, 'little', signed=True),
-                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, b'\x00' * prev_instr_size, instr_offset, prev_instr_size)
+                        patch_data = b'\x2B' + int.to_bytes(num_instrs, 1, 'little', signed=True)
+                        dotnet.patch_instruction(method_obj,patch_data,instr_offset + prev_instr_size, instr_size)
                     else:
                         # if its never going to make the jump, just nop both out.
                         instr_offset = prev_instr.get_instr_offset()
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x00' * instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                 elif prev_instr.get_name() == 'ldnull':
                     # if its never going to make the jump, just nop both out.
                     instr_offset = prev_instr.get_instr_offset()
+                    patch_data = b'\x00' * prev_instr_size
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                        method_obj, patch_data, instr_offset, prev_instr_size)
+                    patch_data = b'\x00' * instr_size
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                        method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                 elif prev_instr == 'dup' and x > 1:
                     prev_instr2 = disas_obj.get_instr_at_index(x - 2)
                     # run the check again on the instruction before that.
@@ -589,61 +594,65 @@ cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list ta
                             # its always going to make the jmp, just replace both instructions with a br.s
                             num_instrs = instr.get_argument()
                             instr_offset = prev_instr.get_instr_offset()
+                            patch_data = b'\x00' * prev_instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                            dotnet.patch_instruction(method_obj,
-                                                     b'\x2B' +
-                                                     int.to_bytes(
-                                                         num_instrs, 1, 'little', signed=True),
-                                                     instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                                method_obj, patch_data, instr_offset, prev_instr_size)
+                            patch_data = b'\x2B' + int.to_bytes(num_instrs, 1, 'little', signed=True)
+                            dotnet.patch_instruction(method_obj, patch_data,
+                                                     instr_offset + prev_instr_size, instr_size)
                         else:
                             # if its never going to make the jump, just nop both out.
                             instr_offset = prev_instr.get_instr_offset()
+                            patch_data = b'\x00' * prev_instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                                method_obj, patch_data, instr_offset, prev_instr_size)
+                            patch_data = b'\x00' * instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                                method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                     elif prev_instr2.get_name() == 'ldnull':
                         # if its never going to make the jump, just nop both out.
                         instr_offset = prev_instr.get_instr_offset()
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x00' * instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
 
             elif instr.get_name() == 'brfalse.s':
                 prev_instr = disas_obj.get_instr_at_index(x - 1)
+                prev_instr_size = prev_instr.get_instr_size()
                 if prev_instr.get_name().startswith('ldc.i4.'):
                     number = prev_instr.get_argument()
                     if number == 0:
                         # its always going to make the jmp, just replace both instructions with a br.s
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                        dotnet.patch_instruction(method_obj,
-                                                 b'\x2B' +
-                                                 int.to_bytes(
-                                                     num_instrs, 1, 'little', signed=True),
-                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x2B' + int.to_bytes(num_instrs, 1, 'little', signed=True)
+                        dotnet.patch_instruction(method_obj, patch_data,
+                                                 instr_offset + prev_instr_size, instr_size)
                     else:
                         # if its never going to make the jump, just nop both out.
                         instr_offset = prev_instr.get_instr_offset()
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x00' * instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                 elif prev_instr.get_name() == 'ldnull':
                     # its always going to make the jmp, just replace both instructions with a br.s
                     num_instrs = instr.get_argument()
                     instr_offset = prev_instr.get_instr_offset()
+                    patch_data = b'\x00' * prev_instr_size
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                    dotnet.patch_instruction(method_obj,
-                                             b'\x2B' +
-                                             int.to_bytes(
-                                                 num_instrs, 1, 'little', signed=True),
-                                             instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                        method_obj, patch_data, instr_offset, prev_instr_size)
+                    patch_data = b'\x2B' + int.to_bytes(num_instrs, 1, 'little', signed=True)
+                    dotnet.patch_instruction(method_obj, patch_data,
+                                             instr_offset + prev_instr_size, instr_size)
                 elif prev_instr.get_name() == 'dup' and x > 1:
                     prev_instr2 = disas_obj.get_instr_at_index(x - 2)
                     if prev_instr2.get_name().startswith('ldc.i4.'):
@@ -652,63 +661,66 @@ cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list ta
                             # its always going to make the jmp, just replace both instructions with a br.s
                             num_instrs = instr.get_argument()
                             instr_offset = prev_instr.get_instr_offset()
+                            patch_data = b'\x00' * prev_instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                            dotnet.patch_instruction(method_obj,
-                                                     b'\x2B' +
-                                                     int.to_bytes(
-                                                         num_instrs, 1, 'little', signed=True),
-                                                     instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                                method_obj, patch_data, instr_offset, prev_instr_size)
+                            patch_data = b'\x2B' + int.to_bytes(num_instrs, 1, 'little', signed=True)
+                            dotnet.patch_instruction(method_obj, patch_data,
+                                                     instr_offset + prev_instr_size, instr_size)
                         else:
                             # if its never going to make the jump, just nop both out.
                             instr_offset = prev_instr.get_instr_offset()
+                            patch_data = b'\x00' * prev_instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                                method_obj, patch_data, instr_offset, prev_instr_size)
+                            patch_data = b'\x00' * instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                                method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                     elif prev_instr2.get_name() == 'ldnull':
                         # its always going to make the jmp, just replace both instructions with a br.s
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                        dotnet.patch_instruction(method_obj,
-                                                 b'\x2B' +
-                                                 int.to_bytes(
-                                                     num_instrs, 1, 'little', signed=True),
-                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x2B' + int.to_bytes(num_instrs, 1, 'little', signed=True)
+                        dotnet.patch_instruction(method_obj, patch_data,
+                                                 instr_offset + prev_instr_size, instr_size)
             elif instr.get_name() == 'brtrue':
                 prev_instr = disas_obj.get_instr_at_index(x - 1)
+                prev_instr_size = prev_instr.get_instr_size()
                 if prev_instr.get_name().startswith('ldc.i4.'):
                     number = prev_instr.get_argument()
                     if number != 0:
                         # its always going to make the jmp, just replace both instructions with a br.s
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
-
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                        dotnet.patch_instruction(method_obj,
-                                                 b'\x38' +
-                                                 int.to_bytes(
-                                                     num_instrs, 4, 'little', signed=True),
-                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x38' + int.to_bytes(num_instrs, 4, 'little', signed=True)
+                        dotnet.patch_instruction(method_obj, patch_data,
+                                                 instr_offset + prev_instr_size, instr_size)
                     else:
                         instr_offset = prev_instr.get_instr_offset()
 
                         # if its never going to make the jump, just nop both out.
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x00' * instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                 elif prev_instr.get_name() == 'ldnull':
                     instr_offset = prev_instr.get_instr_offset()
 
                     # if its never going to make the jump, just nop both out.
+                    patch_data = b'\x00' * prev_instr_size
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                        method_obj, patch_data, instr_offset, prev_instr_size)
+                    patch_data = b'\x00' * instr_size
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                        method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                 elif prev_instr.get_name() == 'dup' and x > 1:
                     prev_instr2 = disas_obj.get_instr_at_index(x - 2)
                     if prev_instr2.get_name().startswith('ldc.i4.'):
@@ -717,66 +729,66 @@ cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list ta
                             # its always going to make the jmp, just replace both instructions with a br.s
                             num_instrs = instr.get_argument()
                             instr_offset = prev_instr.get_instr_offset()
-
+                            patch_data = b'\x00' * prev_instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                            dotnet.patch_instruction(method_obj,
-                                                     b'\x38' +
-                                                     int.to_bytes(
-                                                         num_instrs, 4, 'little', signed=True),
-                                                     instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                                method_obj, patch_data, instr_offset, prev_instr_size)
+                            patch_data = b'\x38' + int.to_bytes(num_instrs, 4, 'little', signed=True)
+                            dotnet.patch_instruction(method_obj, patch_data,
+                                                     instr_offset + prev_instr_size, instr_size)
                         else:
                             instr_offset = prev_instr.get_instr_offset()
 
                             # if its never going to make the jump, just nop both out.
+                            patch_data = b'\x00' * prev_instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                                method_obj, patch_data, instr_offset, prev_instr_size)
+                            patch_data = b'\x00' * instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                                method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                     elif prev_instr2.get_name() == 'ldnull':
                         instr_offset = prev_instr.get_instr_offset()
 
                         # if its never going to make the jump, just nop both out.
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x00' * instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
             elif instr.get_name() == 'brfalse':
                 prev_instr = disas_obj.get_instr_at_index(x - 1)
+                prev_instr_size = prev_instr.get_instr_size()
                 if prev_instr.get_name().startswith('ldc.i4.'):
                     number = prev_instr.get_argument()
                     if number == 0:
                         # its always going to make the jmp, just replace both instructions with a br.s
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
-
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                        dotnet.patch_instruction(method_obj,
-                                                 b'\x38' +
-                                                 int.to_bytes(
-                                                     num_instrs, 4, 'little', signed=True),
-                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x38' + int.to_bytes(num_instrs, 4, 'little', signed=True)
+                        dotnet.patch_instruction(method_obj, patch_data,
+                                                 instr_offset + prev_instr_size, instr_size)
                     else:
                         # if its never going to make the jump, just nop both out.
                         instr_offset = prev_instr.get_instr_offset()
-
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x00' * instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                 elif prev_instr.get_name() == 'ldnull':
                     # its always going to make the jmp, just replace both instructions with a br.s
                     num_instrs = instr.get_argument()
                     instr_offset = prev_instr.get_instr_offset()
-
+                    patch_data = b'\x00' * prev_instr_size
                     dotnet.patch_instruction(
-                        method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                    dotnet.patch_instruction(method_obj,
-                                             b'\x38' +
-                                             int.to_bytes(
-                                                 num_instrs, 4, 'little', signed=True),
-                                             instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                        method_obj, patch_data, instr_offset, prev_instr_size)
+                    patch_data = b'\x38' + int.to_bytes(num_instrs, 4, 'little', signed=True)
+                    dotnet.patch_instruction(method_obj, patch_data,
+                                             instr_offset + prev_instr_size, instr_size)
                 elif prev_instr.get_name() == 'dup' and x > 1:
                     prev_instr2 = disas_obj.get_instr_at_index(x - 2)
                     if prev_instr2.get_name().startswith('ldc.i4.'):
@@ -785,34 +797,31 @@ cpdef void remove_useless_conditionals(dotnetpefile.DotNetPeFile dotnet, list ta
                             # its always going to make the jmp, just replace both instructions with a br.s
                             num_instrs = instr.get_argument()
                             instr_offset = prev_instr.get_instr_offset()
-
+                            patch_data = b'\x00' * prev_instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                            dotnet.patch_instruction(method_obj,
-                                                     b'\x38' +
-                                                     int.to_bytes(
-                                                         num_instrs, 4, 'little', signed=True),
-                                                     instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                                method_obj, patch_data, instr_offset, prev_instr_size)
+                            patch_data = b'\x38' + int.to_bytes(num_instrs, 4, 'little', signed=True)
+                            dotnet.patch_instruction(method_obj, patch_data,
+                                                     instr_offset + prev_instr_size, instr_size)
                         else:
                             # if its never going to make the jump, just nop both out.
                             instr_offset = prev_instr.get_instr_offset()
-
+                            patch_data = b'\x00' * prev_instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
+                                method_obj, patch_data, instr_offset, prev_instr_size)
+                            patch_data = b'\x00' * instr_size
                             dotnet.patch_instruction(
-                                method_obj, b'\x00' * instr.get_instr_size(), instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                                method_obj, patch_data, instr_offset + prev_instr_size, instr_size)
                     elif prev_instr2.get_name() == 'ldnull':
                         # its always going to make the jmp, just replace both instructions with a br.s
                         num_instrs = instr.get_argument()
                         instr_offset = prev_instr.get_instr_offset()
-
+                        patch_data = b'\x00' * prev_instr_size
                         dotnet.patch_instruction(
-                            method_obj, b'\x00' * prev_instr.get_instr_size(), instr_offset, prev_instr.get_instr_size())
-                        dotnet.patch_instruction(method_obj,
-                                                 b'\x38' +
-                                                 int.to_bytes(
-                                                     num_instrs, 4, 'little', signed=True),
-                                                 instr_offset + prev_instr.get_instr_size(), instr.get_instr_size())
+                            method_obj, patch_data, instr_offset, prev_instr_size)
+                        patch_data = b'\x38' + int.to_bytes(num_instrs, 4, 'little', signed=True)
+                        dotnet.patch_instruction(method_obj, patch_data,
+                                                 instr_offset + prev_instr_size, instr_size)
 
 cdef bytes __is_useless_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodDef method_obj):
     """ A useless method is defined as a method that for instance just pulls all arguments off the stack then does either newobj, callvirt or call then returns

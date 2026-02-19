@@ -6,7 +6,7 @@ import traceback
 
 from cpython.ref cimport Py_INCREF, PyObject, Py_XDECREF
 from dotnetutils cimport net_tokens
-from dotnetutils cimport dotnetpefile, net_processing, net_structs, net_row_objects, net_cil_disas
+from dotnetutils cimport dotnetpefile, net_structs, net_row_objects, net_cil_disas
 from dotnetutils import net_exceptions
 
 from logging import getLogger

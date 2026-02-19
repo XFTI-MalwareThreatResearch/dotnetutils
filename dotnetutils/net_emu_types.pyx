@@ -16,8 +16,8 @@ from Crypto.Cipher import DES, DES3, AES
 from Crypto.Util.Padding import unpad, pad
 from dotnetutils import net_exceptions
 from dotnetutils cimport net_row_objects, net_table_objects
-from dotnetutils cimport net_sigs, net_opcodes, net_cil_disas
-from dotnetutils cimport net_structs, net_utils, net_tokens
+from dotnetutils cimport net_sigs, net_cil_disas
+from dotnetutils cimport net_structs, net_utils
 
 from dotnetutils cimport dotnetpefile
 
@@ -378,7 +378,9 @@ cdef class DotNetObject:
         Returns:
             bool: True if the function exists, False otherwise.
         """
-        return self.__functions.count(name) == 1
+        cdef const char * p = name
+        cdef string s = string(p)
+        return self.__functions.count(s) == 1
             
     cdef emu_func_type get_function(self, bytes name):
         """ Obtain a MemberRef emulated function for this type.
@@ -386,7 +388,9 @@ cdef class DotNetObject:
         Returns:
             emu_func_type: A pointer to the emulated memberref function.
         """
-        return self.__functions[name]
+        cdef const char * p = name
+        cdef string s = string(p)
+        return self.__functions[s]
 
     cdef void add_function(self, bytes name, emu_func_type func):
         """ Register a function as a emulated memberref function for this object.
@@ -396,7 +400,9 @@ cdef class DotNetObject:
             name (bytes): the name of the function.
             func (emu_func_type): the address of the function.
         """
-        self.__functions[name] = func
+        cdef const char * p = name
+        cdef string s = string(p)
+        self.__functions[s] = func
 
     cdef void clear_functions(self):
         self.__functions.clear()
@@ -6786,7 +6792,6 @@ cdef class DotNetArray(DotNetObject):
             return self.get_emulator_obj().duplicate_cell(cell)
         else:
             raise net_exceptions.InvalidArgumentsException()
-        return self.get_emulator_obj().pack_blanktag()
 
     cdef bint _set_item(self, int64_t index, StackCell cell):
         if index < 0 or index >= <int64_t>self.__size:
@@ -8099,36 +8104,38 @@ cdef class DotNetFieldInfo(DotNetObject):
             raise net_exceptions.InvalidArgumentsException()
         cdef DotNetObject obj = None
         cdef StackCell cell = params[1]
+        cdef int field_rid = self.internal_field.get_rid()
         if self.internal_field.is_static():
-            self.get_emulator_obj().get_appdomain().set_static_field(self.internal_field.get_rid(), cell)
+            self.get_emulator_obj().get_appdomain().set_static_field(field_rid, cell)
         elif not params[0].is_slim_object:
             obj = <DotNetObject>params[0].item.ref
-            obj.set_field(self.internal_field.get_rid(), cell)
+            obj.set_field(field_rid, cell)
         else:
-            self.get_emulator_obj().set_slimobj_field(params[0], self.internal_field.get_rid(), cell)
+            self.get_emulator_obj().set_slimobj_field(params[0], field_rid, cell)
         return self.get_emulator_obj().pack_blanktag()
 
     cdef StackCell GetValue(self, StackCell * params, int nparams):
         cdef StackCell unboxed
         cdef StackCell boxed
         cdef DotNetObject obj_ref
+        cdef int frid = self.internal_field.get_rid()
         if nparams != 1:
             raise net_exceptions.InvalidArgumentsException()
         if self.internal_field.is_static():
-            unboxed = self.get_emulator_obj().get_appdomain().get_static_field(self.internal_field.get_rid())
+            unboxed = self.get_emulator_obj().get_appdomain().get_static_field(frid)
             boxed = self.get_emulator_obj().box_value(unboxed, None)
             self.get_emulator_obj().dealloc_cell(unboxed)
         else:
             if params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT:
                 raise net_exceptions.InvalidArgumentsException()
             if params[0].is_slim_object:
-                unboxed = self.get_emulator_obj().get_slimobj_field(params[0], self.internal_field.get_rid())
+                unboxed = self.get_emulator_obj().get_slimobj_field(params[0], frid)
                 boxed = self.get_emulator_obj().box_value(unboxed, None)
             else:
                 if params[0].item.ref == NULL:
                     raise net_exceptions.InvalidArgumentsException()
                 obj_ref = <DotNetObject>params[0].item.ref
-                unboxed = obj_ref.get_field(self.internal_field.get_rid())
+                unboxed = obj_ref.get_field(frid)
                 boxed = self.get_emulator_obj().box_value(unboxed, None)
             self.get_emulator_obj().dealloc_cell(unboxed)
         return boxed
@@ -10995,8 +11002,8 @@ cdef class DotNetEnum(DotNetObject):
 
         if check_object(params[0]):
             raise net_exceptions.InvalidArgumentsException()
-        
-        cdef StackCell signed = app_domain.get_emulator_obj().cast_cell(params[1], net_sigs.get_CorSig_Int32())
+        cdef net_sigs.CorLibTypeSig int32_sig = net_sigs.get_CorSig_Int32()
+        cdef StackCell signed = app_domain.get_emulator_obj().cast_cell(params[1], int32_sig)
         cdef StackCell boxed = app_domain.get_emulator_obj().box_value(signed, None)
         app_domain.get_emulator_obj().dealloc_cell(signed)
         return boxed
