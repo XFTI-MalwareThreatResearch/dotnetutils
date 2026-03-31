@@ -1447,7 +1447,7 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
 
         if isinstance(ptr, net_row_objects.TypeRef):
             continue
-        find_method_chains(methodimpl, base_type, ptr, inst_sigs, override_chains, sealed_slot, iterated_types)
+        find_method_chains(methodimpl, base_type, ptr, inst_sigs, override_chains, sealed_slots, iterated_types)
 
 
 cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
