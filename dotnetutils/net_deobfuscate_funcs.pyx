@@ -1220,7 +1220,7 @@ cdef bint is_in_chain(dict method_chains, net_row_objects.MethodDefOrRef mdef, n
             return True
     return False
 
-cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_row_objects.TypeDefOrRef base_type, net_row_objects.TypeDefOrRef tdef, dict inst_sigs, dict override_chains, list sealed_slots):
+cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_row_objects.TypeDefOrRef base_type, net_row_objects.TypeDefOrRef tdef, dict inst_sigs, dict override_chains, list sealed_slots, list iterated_types):
     """ Fills method_chains with a chain representing the inheritence / hiding / overriding of each method.  Used to ensure certain methods match names.
 
     Args:
@@ -1239,6 +1239,9 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
 
     if base_type not in override_chains:
         override_chains[base_type] = dict()
+    if tdef.get_token() in iterated_types:
+        return
+    iterated_types.append(tdef.get_token())
     if isinstance(ptr, net_row_objects.TypeSpec):
         ptr = ptr.get_type()
 
@@ -1444,7 +1447,7 @@ cdef void find_method_chains(net_table_objects.MethodImplTable methodimpl, net_r
 
         if isinstance(ptr, net_row_objects.TypeRef):
             continue
-        find_method_chains(methodimpl, base_type, ptr, inst_sigs, override_chains, sealed_slots)
+        find_method_chains(methodimpl, base_type, ptr, inst_sigs, override_chains, sealed_slot, iterated_types)
 
 
 cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
@@ -1700,11 +1703,11 @@ cpdef void cleanup_names(dotnetpefile.DotNetPeFile dotnet,
                 if tdefref_ptr is None or isinstance(tdefref_ptr, net_row_objects.TypeRef):
                     if tdefref_ptr is None:
                         if tdefref.get_token() not in ran_inheritence:
-                            find_method_chains(methodimpl, tdefref, tdefref, inst_sigs, method_chains, sealed_methods)
+                            find_method_chains(methodimpl, tdefref, tdefref, inst_sigs, method_chains, sealed_methods, list())
                             ran_inheritence.append(tdefref.get_token())
                     else:
                         if tdefref_ptr.get_token() not in ran_inheritence:
-                            find_method_chains(methodimpl, tdefref_ptr, tdefref_ptr, inst_sigs, method_chains, sealed_methods)
+                            find_method_chains(methodimpl, tdefref_ptr, tdefref_ptr, inst_sigs, method_chains, sealed_methods, list())
                             ran_inheritence.append(tdefref_ptr.get_token())
         count = 0
         strings_heap.begin_append_tx()

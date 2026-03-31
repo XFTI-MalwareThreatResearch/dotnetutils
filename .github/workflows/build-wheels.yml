@@ -73,3 +73,25 @@ jobs:
         with:
           name: sdist
           path: dist/*.tar.gz
+
+  upload_release_assets:
+    name: Upload release assets
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Show downloaded files
+        run: find artifacts -type f
+
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/*.whl
+            artifacts/**/*.tar.gz
