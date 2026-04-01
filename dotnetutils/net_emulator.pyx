@@ -3482,8 +3482,15 @@ cdef bint handle_initobj_instruction(DotNetEmulator emu):
     if obj_ref.tag != CorElementType.ELEMENT_TYPE_OBJECT and obj_ref.tag != CorElementType.ELEMENT_TYPE_STRING:
         raise net_exceptions.ObjectTypeException
     if not obj_ref.is_slim_object:
-        dot_obj = <net_emu_types.DotNetObject>obj_ref.item.ref
+        if obj_ref.item.ref != NULL:
+            dot_obj = <net_emu_types.DotNetObject>obj_ref.item.ref
+        else:
+            #this is probably a struct, DotNetObject should do.
+            dot_obj = net_emu_types.DotNetObject(emu)
+            emu.dealloc_cell(obj_ref)
+            obj_ref = emu.pack_object(dot_obj)
         dot_obj.initialize_type(type_obj)
+
     emu.set_ref(orig_cell, obj_ref)
     emu.dealloc_cell(orig_cell)
     emu.dealloc_cell(obj_ref)
@@ -4527,7 +4534,7 @@ cdef class DotNetStack:
         if <size_t>index >= self.__internal_stack.size():
             raise net_exceptions.InvalidArgumentsException()
         cdef StackCell old = self.__internal_stack[index]
-        cdef StackCell duped = self.__emulator.duplicate_cell(self.__internal_stack[index])
+        cdef StackCell duped = self.__emulator.duplicate_cell(old)
         return duped
 
     def __getitem__(self, index):
