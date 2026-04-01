@@ -7620,6 +7620,9 @@ cdef class DotNetString(DotNetObject):
         self.add_function(b'ctor', <emu_func_type>self.ctor)
         self.add_function(b'ToCharArray', <emu_func_type>self.ToCharArray)
 
+    cpdef object as_python_obj(self):
+        return self.get_str_data_as_str()
+
     cdef StackCell ctor(self, StackCell * params, int nparams):
         if nparams != 1 or check_object(params[0]):
             raise net_exceptions.InvalidArgumentsException()
