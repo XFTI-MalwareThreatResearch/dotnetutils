@@ -1,6 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 from dotnetutils.dotnetpefile cimport DotNetPeFile
+from dotnetutils.net_row_objects import MethodDef, RowObject
 from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_NT_OPTIONAL_HDR64_MAGIC, IMAGE_FILE_HEADER, IMAGE_SECTION_HEADER
 from dotnetutils.net_structs cimport IMAGE_SCN_CNT_CODE, IMAGE_SCN_MEM_READ, IMAGE_SCN_MEM_EXECUTE, IMAGE_DIRECTORY_ENTRY_IMPORT
 from dotnetutils.net_structs cimport IMAGE_IMPORT_BY_NAME
@@ -81,9 +82,36 @@ cdef class NetRebuilder:
     cdef size_t __build_stub64(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset):
         return 0
 
+    cdef dict __build_method_data(self, bytearray result, uint32_t methods_rva):
+        cdef MethodDef mdef = None
+        cdef dict results = dict()
+        cdef uint32_t offset = 0
+        cdef bytes data = None
+        if not self.__dpefile.has_metadata_table('MethodDef'):
+            return results
+        for mdef in self.__dpefile.get_metadata_table('MethodDef'):
+            if mdef.has_body():
+                data = mdef.get_method_data()
+                results[mdef.get_token()] = methods_rva + offset
+                offset += <uint32_t>len(data)
+                result.extend(data)
+        return results
 
-
-
+    cdef dict __build_fieldrva_data(self, bytearray result, uint32_t fieldrva_rva):
+        cdef RowObject fieldrva = None
+        cdef dict results = dict()
+        cdef uint32_t offset = 0
+        cdef bytes data = None
+        if not self.__dpefile.has_metadata_table('FieldRVA'):
+            return results
+        for fieldrva in self.__dpefile.get_metadata_table('FieldRVA'):
+            data = fieldrva.get_data()
+            if data is None:
+                raise Exception('Could not get fieldrva's data')
+            results[fieldrva.get_rid()] = fieldrva_rva + offset
+            offset += <uint32_t>len(data)
+            result.extend(data)
+        return results
 
 
     cdef bytes __rebuild_64(self):
