@@ -76,17 +76,17 @@ cdef class NetRebuilder:
         cdef TableObject tobj = None
         cdef str heap_name = None
         cdef bytes data = None
-        cdef DotNetPeFile copype = DotNetPeFile(pe_data=self.__dpefile.get_exe_data())
         cdef dict results = dict()
         cdef bytes versionstr = None
         cdef uint32_t versionstr_padding = 0
         cdef bytearray tmp = bytearray()
-        cdef MetaDataHeader mdatahdr = copype.get_metadata_table_header()
+        cdef MetaDataHeader mdatahdr = self.__dpefile.get_metadata_table_header()
         cdef uint32_t mdata_root_offset = 0
         cdef bytearray tmp2 = bytearray()
         cdef dict streamhdr_offsets = dict()
         cdef uint32_t streamhdr_offset = 0
-        #TODO add metadata headers in here
+        cdef dict old_method_rvas = dict()
+        cdef dict old_field_rvas = dict()
         mdata_root_offset = <uint32_t>len(result)
         result.extend(int.to_bytes(0x424A5342, 4, 'little'))
         result.extend(int.to_bytes(mdatahdr.majorversion, 2, 'little'))
@@ -100,18 +100,20 @@ cdef class NetRebuilder:
         result.extend(mdatahdr.flags, 2, 'little')
         result.extend(int.to_bytes(len(heaps_order), 2, 'little'))
         mdata_root_offset = <uint32_t>len(result) - mdata_root_offset
-        if copype.has_metadata_table('MethodDef'):
+        if self.__dpefile.has_metadata_table('MethodDef'):
             for token, mrva in method_rvas.items():
-                method = copype.get_token_value(token)
+                method = self.__dpefile.get_token_value(token)
+                old_method_rvas[method.get_token()] = method.get_column('RVA').get_raw_value()
                 method.get_column('RVA').set_raw_value(mrva)
-        if copype.has_metadat_table('FieldRVA'):
-            tobj = copype.get_metadata_table('FieldRVA')
+        if self.__dpefile.has_metadat_table('FieldRVA'):
+            tobj = self.__dpefile.get_metadata_table('FieldRVA')
             for rid, mrva in field_rvas.items():
                 fieldrva = tobj.get(rid)
+                old_field_rvas[fieldrva.get_rid()] = fieldrva.get_column('RVA').get_raw_value()
                 fieldrva.get_column('RVA').set_raw_value(mrva)
 
         for heap_name in heaps_order:
-            heap = copype.get_heap(heap_name)
+            heap = self.__dpefile.get_heap(heap_name)
             data = heap.get_data()
             results[heap_name] = offset
             tmp.extend(data)
@@ -120,7 +122,7 @@ cdef class NetRebuilder:
             streamhdr_offsets[heap_name] = streamhdr_offset
             tmp2.extend(int.to_bytes(0, 4, 'little'))
             streamhdr_offset += 4
-            heap = copype.get_heap(heap_name)
+            heap = self.__dpefile.get_heap(heap_name)
             result.extend(int.to_bytes(len(heap.get_data()), 4, 'little'))
             results.extend(heap.get_name())
             versionstr_padding = align_32(<uint32_t>len(heap.get_name()), 4) - <uint32_t>len(heap.get_name())
@@ -131,6 +133,11 @@ cdef class NetRebuilder:
             tmp2 = tmp2[:offset] + int.to_bytes(mdata_root_offset + streamhdr_offset + results[heap_name]) + tmp2[offset + 4:]
         result.extend(tmp2)
         result.extend(tmp)
+        #restore old rvas for consistency
+        for offset, streamhdr_offset in old_method_rvas.items():
+            self.__dpefile.get_token_value(offset).get_column('RVA').set_raw_value(streamhdr_offset)
+        for offset, streamhdr_offset in old_field_rvas.items():
+            self.__dpefile.get_metadata_table('FieldRVA').get(offset).get_column('RVA').set_raw_value(streamhdr_offset)
         return results
 
     cdef size_t __build_net_resources(self, bytearray result, uint32_t rva):
