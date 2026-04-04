@@ -133,12 +133,77 @@ cdef class NetRebuilder:
         result.extend(tmp)
         return results
 
-    cdef size_t __build_net_headers(self, bytearray result, uint32_t rva, dict heap_mappings):
+    cdef size_t __build_net_resources(self, bytearray result, uint32_t rva):
+        return 0
+
+    cdef size_t __build_net_headers(self, bytearray result, uint32_t rva, uint32_t metadata_rva, uint32_t metadata_size):
         cdef IMAGE_COR20_HEADER cor20
+        cdef IMAGE_COR20_HEADER old_header = self.__dpefile.get_net_header()
+        cdef MethodDef ep = self.__dpefile.get_entry_point()
+        cdef bytearray temp = bytearray()
+        cdef uint32_t current_rva = rva + sizeof(IMAGE_COR20_HEADER)
+        cdef uint32_t current_size = sizeof(IMAGE_COR20_HEADER)
+        cdef uint32_t offset = 0
+        cdef uint32_t rsrc_size = 0
+        cdef bytes data = None
         memset(&cor20, 0, sizeof(cor20))
         cor20.cb = sizeof(IMAGE_COR20_HEADER)
+        cor20.MajorRuntimeVersion = old_header.MajorImageVersion
+        cor20.MinorRuntimeVersion = old_header.MinorImageVersion
+        cor20.Flags = cor20.Flags
+        if ep is not None:
+            cor20.EntryPoint.EntryPointToken = ep.get_token()
+        cor20.MetaData.VirtualAddress = metadata_rva
+        cor20.MetaData.Size = metadata_size
+        rsrc_size = self.__build_net_resources(temp, current_rva)
+        if rsrc_size != 0:
+            cor20.Resources.VirtualAddress = current_rva
+            cor20.Resources.Size = rsrc_size
+        current_rva += rsrc_size
+        if old_header.StrongNameSignature.VirtualAddress != 0 and old_header.StrongNameSignature.Size != 0:
+            offset = self.__pe.get_offset_from_rva(old_header.StrongNameSignature.VirtualAddress)
+            data = self.__dpefile.get_exe_data()[offset:offset+old_header.StrongNameSignature.Size]
+            cor20.StrongNameSignature.VirtualAddress = current_rva
+            cor20.StrongNameSignature.Size = <uint32_t>len(data)
+            temp.extend(data)
+            current_rva += <uint32_t>len(data)
 
-        return 0
+        if old_header.CodeManagerTable.VirtualAddress != 0 and old_header.CodeManagerTable.Size != 0:
+            offset = self.__pe.get_offset_from_rva(old_header.CodeManagerTable.VirtualAddress)
+            data = self.__dpefile.get_exe_data()[offset:offset+old_header.CodeManagerTable.Size]
+            cor20.CodeManagerTable.VirtualAddress = current_rva
+            cor20.CodeManagerTable.Size = <uint32_t>len(data)
+            temp.extend(data)
+            current_rva += <uint32_t>len(data)
+
+        if old_header.VTableFixups.VirtualAddress != 0 and old_header.VTableFixups.Size != 0:
+            offset = self.__pe.get_offset_from_rva(old_header.VTableFixups.VirtualAddress)
+            data = self.__dpefile.get_exe_data()[offset:offset+old_header.VTableFixups.Size]
+            cor20.VTableFixups.VirtualAddress = current_rva
+            cor20.VTableFixups.Size = <uint32_t>len(data)
+            temp.extend(data)
+            current_rva += <uint32_t>len(data)
+
+        if old_header.ExportAddressTableJumps.VirtualAddress != 0 and old_header.ExportAddressTableJumps.Size != 0:
+            offset = self.__pe.get_offset_from_rva(old_header.ExportAddressTableJumps.VirtualAddress)
+            data = self.__dpefile.get_exe_data()[offset:offset+old_header.ExportAddressTableJumps.Size]
+            cor20.ExportAddressTableJumps.VirtualAddress = current_rva
+            cor20.ExportAddressTableJumps.Size = <uint32_t>len(data)
+            temp.extend(data)
+            current_rva += <uint32_t>len(data)
+
+        if old_header.ManagedNativeHeader.VirtualAddress != 0 and old_header.ManagedNativeHeader.Size != 0:
+            offset = self.__pe.get_offset_from_rva(old_header.ManagedNativeHeader.VirtualAddress)
+            data = self.__dpefile.get_exe_data()[offset:offset+old_header.ManagedNativeHeader.Size]
+            cor20.ManagedNativeHeader.VirtualAddress = current_rva
+            cor20.ManagedNativeHeader.Size = <uint32_t>len(data)
+            temp.extend(data)
+            current_rva += <uint32_t>len(data)
+        
+        result.extend(convert_pointer_to_bytes(&cor20, sizeof(IMAGE_COR20_HEADER)))
+        current_size += <uint32_t>len(temp)
+        result.extend(temp)
+        return current_size
 
     cdef size_t __build_resource_directory32(self, bytearray result, uint32_t resource_offset):
         return 0

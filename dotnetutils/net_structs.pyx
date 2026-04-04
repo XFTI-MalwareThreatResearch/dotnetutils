@@ -5,6 +5,7 @@
 import io
 import re
 from dotnetutils import net_exceptions
+from dotnetutils import compress_integer
 from libc.stdint cimport uint64_t
 import binascii
 
@@ -370,7 +371,9 @@ class DotNetResourceSet:
         self.__data_len = len(data)
         self.__resources = list()
         self.__debug = debug
+        self.__is_serialized_resource = False
         if DotNetResourceSet.is_resource(data):
+            self.__is_serialized_resource = True
             self.__parse_header_from_bytes()
             self.__parse_resource_data()
         else:
@@ -385,6 +388,33 @@ class DotNetResourceSet:
             self.__hashes = list()
             self.__name_offsets = list()
             self.__base_offset = 0
+
+    def get_data(self):
+        if not self.__is_serialized_resource:
+            return self.__resources[0].get_data()
+
+        result = bytearray()
+        result.extend(int.to_bytes(0xBEEFCACE, 4, 'little'))
+        result.extend(int.to_bytes(self.__header_version, 4, 'little'))
+        result.extend(int.to_bytes(self.__header_size, 4, 'little'))
+        result.extend(compress_integer(<uint32_t>len(self.__reader_type_name)))
+        result.extend(self.__reader_type_name)
+        result.extend(compress_integer(<uint32_t>len(self.__reader_set_type_name)))
+        result.extend(self.__reader_set_type_name)
+        result.extend(int.to_bytes(self.__version, 4, 'little'))
+        result.extend(int.to_bytes(self.__resource_count, 4, 'little'))
+        result.extend(int.to_bytes(len(self.__user_types), 4, 'little'))
+        for user_type in self.__user_types:
+            result.extend(compress_integer(<uint32_t>len(user_type)))
+            result.extend(user_type)
+        new_offset = (len(result) + 7) & ~7
+        amt_padding = new_offset - len(result)
+        result.extend(b'\x00'* amt_padding)
+        for h in self.__hashes:
+            result.extend(int.to_bytes(h, 4, 'little'))
+
+
+        
 
     
     def get_version(self):
