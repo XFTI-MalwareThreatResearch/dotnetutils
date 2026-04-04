@@ -63,6 +63,9 @@ cdef class NetRebuilder:
         PyBuffer_Release(&current_data)
         return len(stub)
 
+    cdef size_t __build_net_headers(self, bytearray result, uint32_t rva):
+        return 0
+
     cdef size_t __build_resource_directory32(self, bytearray result, uint32_t resource_offset):
         return 0
     
@@ -76,7 +79,6 @@ cdef class NetRebuilder:
         return 0
 
     cdef size_t __build_stub64(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset):
-
         return 0
 
 
