@@ -200,6 +200,10 @@ ctypedef struct IMAGE_BASE_RELOCATION:
     uint32_t VirtualAddress
     uint32_t BlockSize
 
+ctypedef struct IMAGE_IMPORT_BY_NAME:
+    uint16_t Hint
+    char Name[1]
+
 ctypedef union DUMMYUNIONIAT:
     uint32_t Characteristics
     uint32_t OriginalFirstThunk
