@@ -4,8 +4,11 @@
 from dotnetutils import net_exceptions
 from dotnetutils.net_structs cimport CorElementType
 from dotnetutils cimport net_sigs
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport uintptr_t, uint64_t
 from cpython.bytes cimport PyBytes_FromStringAndSize
+
+cdef uint32_t align_32(uint32_t val, uint32_t align):
+    return (val + align - 1) & ~(align - 1)
 
 cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size):
     return PyBytes_FromStringAndSize(<char*>address, <Py_ssize_t>size)
