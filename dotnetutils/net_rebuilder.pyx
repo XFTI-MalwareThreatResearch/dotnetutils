@@ -459,7 +459,7 @@ cdef class NetRebuilder:
         nt_headers.OptionalHeader.SizeOfCode = size_of_code
         nt_headers.OptionalHeader.SizeOfInitializedData = size_of_init_data
         nt_headers.OptionalHeader.SizeOfUninitializedData = size_of_uninit_data
-        nt_headers.OptionalHeader.SizeOfHeaders = align_32(dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader + (sizeof(IMAGE_SECTION_HEADER) * amt_sections), nt_headers.OptionalHeader.FileALignment)
+        nt_headers.OptionalHeader.SizeOfHeaders = align_32(dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader + (sizeof(IMAGE_SECTION_HEADER) * amt_sections), nt_headers.OptionalHeader.FileAlignment)
         nt_headers.OptionalHeader.SizeOfImage = nt_headers.OptionalHeader.SizeOfHeaders + size_of_image
         nt_headers.OptionalHeader.BaseOfCode = first_section_rva
         nt_headers.OptionalHeader.BaseOfData = first_section_rva + first_sect_vsize
