@@ -26,40 +26,42 @@ cdef class NetRebuilder:
     cdef size_t __build_imports32(self, DotNetPeFile dotnet, bytearray result, uint32_t rva):
         cdef IMAGE_IMPORT_DESCRIPTOR imp[2]
         cdef IMAGE_THUNK_DATA32 thunk[2]
-        cdef IMAGE_IMPORT_BY_NAME name
         cdef size_t imp_size = 0
         cdef size_t ilt_size = sizeof(IMAGE_THUNK_DATA32) * 2
-        cdef size_t name_offset = 0
-        cdef char * dllname = b'mscoree.dll'
-        cdef char * funcname = b'_CorExeMain'
+        cdef size_t func_name_offset = 0
+        cdef bytes dllname = b'mscoree.dll\x00'
+        cdef bytes funcname = b'_CorExeMain\x00'
         cdef bytes temp = None
-        cdef size_t dllname_size = strlen(dllname) + 1
-        cdef size_t funcname_size = strlen(funcname) + 1
+        cdef size_t dllname_size = len(dllname)
+        cdef uint32_t align_addr = 0
         memset(imp, 0, sizeof(imp))
         memset(thunk, 0, sizeof(thunk))
-        memset(&name, 0, sizeof(name))
         imp[0].DUMMYUNIONNAME1.OriginalFirstThunk = rva + sizeof(imp) + dllname_size
-        imp[0].Name = rva + sizeof(imp) + ilt_size
-        imp[0].FirstThunk = rva + sizeof(imp) + ilt_size + dllname_size + sizeof(thunk)
+        imp[0].Name = rva + sizeof(imp)
+        imp[0].FirstThunk = imp[0].DUMMYUNIONNAME1.OriginalFirstThunk + sizeof(thunk)
         if dotnet.get_pe().is_dll():
-            strcpy(funcname, '_CorDllMain')
-        name_offset = rva + sizeof(imp) + ilt_size + dllname_size + (sizeof(thunk) * 2)
-        thunk[0].u1.AddressOfData = rva + name_offset
+            funcname = b'_CorDllMain\x00'
+        func_name_offset = sizeof(imp) + dllname_size + (sizeof(thunk) * 2)
+        if (func_name_offset % 2) != 0:
+            func_name_offset += 1
+        thunk[0].u1.AddressOfData = rva + func_name_offset
         #start writing the iat
         temp = convert_pointer_to_bytes(<uintptr_t>imp, sizeof(imp))
         result.extend(temp)
         imp_size += len(temp)
-        temp = convert_pointer_to_bytes(<uintptr_t>dllname, dllname_size)
-        result.extend(temp)
-        imp_size += len(temp)
+        result.extend(dllname)
+        imp_size += len(dllname)
         temp = convert_pointer_to_bytes(<uintptr_t>thunk, sizeof(thunk))
         result.extend(temp)
         imp_size += len(temp)
         result.extend(temp)
         imp_size += len(temp)
-        temp = convert_pointer_to_bytes(<uintptr_t>funcname, funcname_size)
-        result.extend(temp)
-        imp_size += len(temp)
+        if (imp_size % 2) != 0:
+            result.extend(b'\x00')
+            imp_size += 1
+        result.extend(b'\x00\x00')
+        result.extend(funcname)
+        imp_size += len(funcname) + 2
         return imp_size
 
 
@@ -68,7 +70,7 @@ cdef class NetRebuilder:
         cdef bytes stub = None
         cdef IMAGE_IMPORT_DESCRIPTOR * imps = NULL
         PyObject_GetBuffer(result, &current_data, PyBUF_ANY_CONTIGUOUS)
-        imps = <IMAGE_IMPORT_DESCRIPTOR*>current_data.buf + imports_offset
+        imps = <IMAGE_IMPORT_DESCRIPTOR*>current_data.buf
         stub = b'\xFF\x25' + int.to_bytes(image_base + imps.FirstThunk, 4, 'little')
         result.extend(stub)
         PyBuffer_Release(&current_data)
@@ -114,7 +116,7 @@ cdef class NetRebuilder:
                 method = self.__dpefile.get_token_value(token)
                 old_method_rvas[method.get_token()] = method.get_column('RVA').get_raw_value()
                 method.get_column('RVA').set_raw_value(mrva)
-        if self.__dpefile.has_metadat_table('FieldRVA'):
+        if self.__dpefile.has_metadata_table('FieldRVA'):
             tobj = self.__dpefile.get_metadata_table('FieldRVA')
             for rid, mrva in field_rvas.items():
                 fieldrva = tobj.get(rid)
@@ -123,7 +125,7 @@ cdef class NetRebuilder:
 
         for heap_name in heaps_order:
             heap = self.__dpefile.get_heap(heap_name)
-            data = heap.get_data()
+            data = heap.to_bytes()
             results[heap_name] = offset
             tmp.extend(data)
             offset += <uint32_t>len(data)
@@ -132,7 +134,7 @@ cdef class NetRebuilder:
             tmp2.extend(int.to_bytes(0, 4, 'little'))
             streamhdr_offset += 4
             heap = self.__dpefile.get_heap(heap_name)
-            result.extend(int.to_bytes(len(heap.get_data()), 4, 'little'))
+            result.extend(int.to_bytes(len(heap.to_bytes()), 4, 'little'))
             results.extend(heap.get_name())
             versionstr_padding = align_32(<uint32_t>len(heap.get_name()), 4) - <uint32_t>len(heap.get_name())
             results.extend(b'\x00' * versionstr_padding)
@@ -168,9 +170,11 @@ cdef class NetRebuilder:
         cdef bytes data = None
         memset(&cor20, 0, sizeof(cor20))
         cor20.cb = sizeof(IMAGE_COR20_HEADER)
-        cor20.MajorRuntimeVersion = old_header.MajorImageVersion
-        cor20.MinorRuntimeVersion = old_header.MinorImageVersion
-        cor20.Flags = cor20.Flags
+        cor20.MajorRuntimeVersion = old_header.MajorRuntimeVersion
+        cor20.MinorRuntimeVersion = old_header.MinorRuntimeVersion
+        cor20.MajorImageVersion = old_header.MajorImageVersion
+        cor20.MinorImageVersion = old_header.MinorImageVersion
+        cor20.Flags = old_header.Flags
         if ep is not None:
             cor20.EntryPoint.EntryPointToken = ep.get_token()
         cor20.MetaData.VirtualAddress = metadata_rva
@@ -330,6 +334,7 @@ cdef class NetRebuilder:
         cdef uint32_t size_of_uninit_data = 0
         cdef uint32_t size_of_image
         cdef IMAGE_SECTION_HEADER * sechdrs = NULL
+        cdef bint has_rsrc = False
 
         cdef Py_buffer headers_view
         headers.extend(orig_data[:dos_header.e_lfanew])
@@ -344,7 +349,7 @@ cdef class NetRebuilder:
         first_sect_offset = (<uint32_t>len(headers)) + (amt_sections * sizeof(sect_header)) + methods_size
         fields_size = align_32(first_sect_offset, nt_headers.OptionalHeader.FileAlignment)
         first_sect_offset = fields_size
-        result.extend(b'\x00' (fields_size - first_sect_offset))
+        result.extend(b'\x00' * (fields_size - first_sect_offset))
         fields_size = 0
 
         first_section_rva = (<uint32_t>len(result)) + (amt_sections*sizeof(sect_header))
@@ -353,8 +358,10 @@ cdef class NetRebuilder:
             nt_headers.OptionalHeader.ImageBase = 0x10000000
         else:
             nt_headers.OptionalHeader.ImageBase = 0x00400000
+        imports_size = self.__build_imports32(self.__dpefile, temp, first_section_rva + 4, nt_headers.OptionalHeader.ImageBase)
         self.__build_stub32(self.__dpefile, result, first_section_rva + 4, nt_headers.OptionalHeader.ImageBase)
-        imports_size = self.__build_imports32(self.__dpefile, result, first_section_rva + 4)
+        result.extend(temp)
+        temp = bytearray()
         imports_rva = first_section_rva + 4
         #pad to four
         fields_size = align_32(imports_rva + imports_size, 4)
@@ -407,6 +414,7 @@ cdef class NetRebuilder:
         sect_header.SizeOfRawData = relocs_vsize
         headers.extend(convert_pointer_to_bytes(<uintptr_t>&sect_header, sizeof(IMAGE_SECTION_HEADER)))
         if data_dir.VirtualAddress != 0:
+            has_rsrc = True
             #we also need a .rsrc section.
             #For the data, just copy the original relocs
             offset = self.__pe.get_offset_from_rva(data_dir.VirtualAddress)
@@ -445,6 +453,16 @@ cdef class NetRebuilder:
         nt_headers.OptionalHeader.SizeOfImage = nt_headers.OptionalHeader.SizeOfHeaders + size_of_image
         nt_headers.OptionalHeader.BaseOfCode = first_section_rva
         nt_headers.OptionalHeader.BaseOfData = first_section_rva + first_sect_vsize
+        nt_headers.OptionalHeader.AddressOfEntryPoint = first_section_rva
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress = imports_rva
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size = imports_size
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress = cor_rva
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].Size = cor_size
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress = reloc_va
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size = reloc_size
+        if has_rsrc:
+            nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].VirtualAddress = resource_rva
+            nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].Size = resource_size
         PyBuffer_Release(&headers_view)
         #TODO: update OptionalHeader CheckSum
         return bytes(headers)
