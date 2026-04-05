@@ -129,15 +129,16 @@ cdef class NetRebuilder:
             results[heap_name] = offset
             tmp.extend(data)
             offset += <uint32_t>len(data)
+        #TODO add in metadata table headers
         for heap_name in heaps_order:
             streamhdr_offsets[heap_name] = streamhdr_offset
             tmp2.extend(int.to_bytes(0, 4, 'little'))
             streamhdr_offset += 4
             heap = self.__dpefile.get_heap(heap_name)
             result.extend(int.to_bytes(len(heap.to_bytes()), 4, 'little'))
-            results.extend(heap.get_name())
+            result.extend(heap.get_name())
             versionstr_padding = align_32(<uint32_t>len(heap.get_name()), 4) - <uint32_t>len(heap.get_name())
-            results.extend(b'\x00' * versionstr_padding)
+            result.extend(b'\x00' * versionstr_padding)
             streamhdr_offset += 4 + <uint32_t>len(heap.get_name()) + versionstr_padding
         for heap_name in heaps_order:
             offset = streamhdr_offsets[heap_name]
@@ -335,8 +336,13 @@ cdef class NetRebuilder:
         cdef uint32_t size_of_image
         cdef IMAGE_SECTION_HEADER * sechdrs = NULL
         cdef bint has_rsrc = False
-
+        cdef uint32_t relocs_size = 0
         cdef Py_buffer headers_view
+        cdef uint32_t rsrc_vsize = 0
+        cdef uint32_t rsrc_size = 0
+        cdef uint32_t reloc_va = 0
+        cdef uint32_t resource_size = 0
+        cdef uint32_t resource_rva = 0
         headers.extend(orig_data[:dos_header.e_lfanew])
         headers.extend(b'PE\x00\x00')
         headers.extend(orig_data[dos_header.e_lfanew + 4: dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER)])
@@ -358,7 +364,7 @@ cdef class NetRebuilder:
             nt_headers.OptionalHeader.ImageBase = 0x10000000
         else:
             nt_headers.OptionalHeader.ImageBase = 0x00400000
-        imports_size = self.__build_imports32(self.__dpefile, temp, first_section_rva + 4, nt_headers.OptionalHeader.ImageBase)
+        imports_size = self.__build_imports32(self.__dpefile, temp, first_section_rva + 4)
         self.__build_stub32(self.__dpefile, result, first_section_rva + 4, nt_headers.OptionalHeader.ImageBase)
         result.extend(temp)
         temp = bytearray()
@@ -407,11 +413,12 @@ cdef class NetRebuilder:
         sect_header.Characteristics = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_DISCARDABLE
         sect_header.PointerToRawData = first_sect_offset + first_sect_size
         sect_header.VirtualAddress = first_section_rva + first_sect_vsize
+        reloc_va = sect_header.VirtualAddress
         relocs_vsize = self.__build_relocations_directory32(result, first_section_rva + 2)
         sect_header.Misc_Union.VirtualSize = relocs_vsize
-        relocs_vsize = align_32(relocs_vsize, nt_headers.OptionalHeader.FileAlignment)
-        result.extend(b'\x00' * (relocs_vsize - sect_header.Misc_Union.VirtualSize))
-        sect_header.SizeOfRawData = relocs_vsize
+        relocs_size = align_32(relocs_vsize, nt_headers.OptionalHeader.FileAlignment)
+        result.extend(b'\x00' * (relocs_size - sect_header.Misc_Union.VirtualSize))
+        sect_header.SizeOfRawData = relocs_size
         headers.extend(convert_pointer_to_bytes(<uintptr_t>&sect_header, sizeof(IMAGE_SECTION_HEADER)))
         if data_dir.VirtualAddress != 0:
             has_rsrc = True
@@ -422,11 +429,14 @@ cdef class NetRebuilder:
             memset(&sect_header, 0, sizeof(sect_header))
             strcpy(sect_header.Name, '.rsrc')
             sect_header.Characteristics = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ
-            sect_header.PointerToRawData = first_sect_offset + first_sect_size + relocs_vsize
+            sect_header.PointerToRawData = first_sect_offset + first_sect_size + relocs_size
             sect_header.Misc_Union.VirtualSize = <uint32_t>len(data)
-            relocs_vsize = align_32(<uint32_t>len(data), nt_headers.OptionalHeader.FileAlignment)
-            sect_header.SizeOfRawData = relocs_vsize
-            data = data + b'\x00' * (relocs_vsize - len(data))
+            rsrc_size = align_32(<uint32_t>len(data), nt_headers.OptionalHeader.FileAlignment)
+            sect_header.VirtualAddress = first_section_rva + first_sect_size + relocs_vsize
+            resource_rva = sect_header.VirtualAddress
+            resource_size = sect_header.Misc_Union.VirtualSize
+            sect_header.SizeOfRawData = rsrc_size
+            data = data + b'\x00' * (rsrc_size - len(data))
             result.extend(data)
             headers.extend(convert_pointer_to_bytes(<uintptr_t>&sect_header, sizeof(IMAGE_SECTION_HEADER)))
         headers.extend(result)
@@ -445,7 +455,7 @@ cdef class NetRebuilder:
                 size_of_init_data += sect_header.SizeOfRawData
             if sect_header.Characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA:
                 size_of_uninit_data += sect_header.SizeOfRawData
-            size_of_image += sect_header.SizeOfRaWData
+            size_of_image = max(size_of_image, sect_header.Misc_Union.VirtualSize + sect_header.VirtualAddress)
         nt_headers.OptionalHeader.SizeOfCode = size_of_code
         nt_headers.OptionalHeader.SizeOfInitializedData = size_of_init_data
         nt_headers.OptionalHeader.SizeOfUninitializedData = size_of_uninit_data
@@ -459,7 +469,7 @@ cdef class NetRebuilder:
         nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].VirtualAddress = cor_rva
         nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR].Size = cor_size
         nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress = reloc_va
-        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size = reloc_size
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size = relocs_size
         if has_rsrc:
             nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].VirtualAddress = resource_rva
             nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].Size = resource_size
