@@ -2,7 +2,7 @@
 #distutils: language=c++
 
 from dotnetutils cimport net_sigs
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport uintptr_t, uint32_t
 from dotnetutils.net_structs cimport CorElementType
 
 cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size)

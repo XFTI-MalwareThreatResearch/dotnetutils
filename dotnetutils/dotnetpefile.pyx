@@ -52,7 +52,7 @@ cdef class PeFile:
         PyBuffer_Release(&self.__file_view)
 
     cpdef bint is_dll(self):
-        cdef IMAGE_FILE_HEADER *file_header = (<char*>self.get_data_view()) + self.__nt_headers_offset + 4
+        cdef IMAGE_FILE_HEADER *file_header = <IMAGE_FILE_HEADER*>((<char*>self.get_data_view()) + self.__nt_headers_offset + 4)
         return file_header.Characteristics & IMAGE_FILE_DLL != 0
 
     cdef void __add_section(self, IMAGE_SECTION_HEADER * sec_hdr):

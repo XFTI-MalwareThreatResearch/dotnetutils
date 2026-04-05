@@ -29,6 +29,10 @@ ctypedef struct IMAGE_DOS_HEADER:
     uint16_t e_res2[10]
     uint32_t e_lfanew
 
+ctypedef enum:
+    IMAGE_FILE_DLL = 0x2000
+    IMAGE_FILE_EXECUTABLE_IMAGE = 0x0002
+
 ctypedef struct IMAGE_FILE_HEADER:
     uint16_t Machine
     uint16_t NumberOfSections
@@ -235,6 +239,7 @@ ctypedef struct IMAGE_THUNK_DATA64:
 
 cdef enum:
     IMAGE_SCN_CNT_CODE = 0x20
+    IMAGE_SCN_MEM_DISCARDABLE = 0x02000000
     IMAGE_SCN_MEM_EXECUTE = 0x20000000
     IMAGE_SCN_MEM_READ = 0x40000000
     IMAGE_SCN_CNT_INITIALIZED_DATA = 0x40
