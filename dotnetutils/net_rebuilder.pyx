@@ -215,12 +215,19 @@ cdef class NetRebuilder:
         current_size += <uint32_t>len(temp)
         result.extend(temp)
         return current_size
-
-    cdef size_t __build_resource_directory32(self, bytearray result, uint32_t resource_offset):
-        return 0
     
-    cdef size_t __build_relocations_directory32(self, bytearray result, uint32_t relocations_offset):
-        return 0
+    cdef size_t __build_relocations_directory32(self, bytearray result, uint32_t stub_reloc_rva):
+        cdef IMAGE_BASE_RELOCATION base_reloc
+        cdef uint16_t entries[2]
+        cdef uint32_t page_off = stub_reloc_rva & 0xFFF
+        memset(&base_reloc, 0, sizeof(reloc))
+        base_reloc.VirtualAddress = stub_reloc_rva & ~0xFFF
+        base_reloc.BlockSize = 12
+        entries[0] = (3 << 12) | page_off
+        entries[1] = 0
+        result.extend(convert_pointer_to_bytes(&base_reloc, sizeof(base_reloc)))
+        result.extend(convert_pointer_to_bytes(entries, sizeof(entries)))
+        return 12
 
     cdef size_t __build_resource_directory64(self, bytearray result, uint32_t resource_offset):
         return 0
@@ -285,7 +292,7 @@ cdef class NetRebuilder:
         cdef uint32_t imports_size = 0
         cdef uint32_t first_section_rva = 0
         cdef uint32_t imports_rva = 0
-        cdef int amt_sections = 1
+        cdef int amt_sections = 2
         cdef IMAGE_DATA_DIRECTORY data_dir
         cdef bytearray temp = bytearray()
         cdef dict heap_mappings = None
@@ -307,15 +314,21 @@ cdef class NetRebuilder:
         cdef uint32_t first_sect_offset = 0
         cdef uint32_t first_sect_size = 0
         cdef uint32_t stub_rva = 0
+        cdef uint32_t first_sect_vsize = 0
+        cdef uint32_t relocs_vsize = 0
+        cdef uint32_t size_of_code = 0
+        cdef uint32_t size_of_init_data = 0
+        cdef uint32_t size_of_uninit_data = 0
+        cdef uint32_t size_of_image
+        cdef IMAGE_SECTION_HEADER * sechdrs = NULL
+
+        cdef Py_buffer headers_view
         headers.extend(orig_data[:dos_header.e_lfanew])
         headers.extend(b'PE\x00\x00')
         headers.extend(orig_data[dos_header.e_lfanew + 4: dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER)])
         memset(&sect_header, 0, sizeof(IMAGE_SECTION_HEADER))
         sect_header.Name = b'.text\x00\x00\x00'
         sect_header.Characteristics = IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_EXEUTE
-        data_dir = self.__pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_BASERELOC)
-        if data_dir.VirtualAddress != 0:
-            amt_sections += 1
         data_dir = self.__pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_RESOURCE)
         if data_dir.VirtualAddress != 0:
             amt_sections += 1
@@ -367,6 +380,7 @@ cdef class NetRebuilder:
         #align up TODO is 4 align above messing with this
         first_sect_size = align_32(<uint32_t>len(result), nt_headers.OptionalHeader.FileAlignment)
         sect_header.Misc_Union.VirtualSize = <uint32_t>len(result)
+        first_sect_vsize = sect_header.Misc_Union.VirtualSize
         sect_header.PointerToRawData = first_sect_offset
         sect_header.SizeOfRawData = first_sect_size
         sect_header.VirtualAddress = first_section_rva
@@ -374,31 +388,55 @@ cdef class NetRebuilder:
         headers.extend(convert_pointer_to_bytes(&sect_header, sizeof(sect_header)))
         memset(&sect_header, 0, sizeof(sect_header))
         sect_header.Name = b'.reloc\x00\x00'
-        sect_header.Characteristics = IMAGE_SCN_CNT_INITIALIZED_DATA
-        
-        
-
-
-        
-                
-
-
-        
-
-
-
-
+        sect_header.Characteristics = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_DISCARDABLE
+        sect_header.PointerToRawData = first_sect_offset + first_sect_size
+        sect_header.VirtualAddress = first_section_rva + first_Sect_vsize
+        relocs_vsize = self.__build_relocations_directory32(result, first_section_rva + 2)
+        sect_header.Misc_Union.VirtualSize = relocs_vsize
+        relocs_vsize = align_32(relocs_vsize, nt_headers.OptionalHeader.FileAlignment)
+        result.extend(b'\x00' * (relocs_vsize - sect_header.Misc_Union.VirtualSize))
+        sect_header.SizeOfRawData = relocs_vsize
+        headers.extend(convert_pointer_to_bytes(&sect_header, sizeof(IMAGE_SECTION_HEADER)))
+        if data_dir.VirtualAddress != 0:
+            #we also need a .rsrc section.
+            #For the data, just copy the original relocs
+            offset = self.__pe.get_offset_from_rva(data_dir.VirtualAddress)
+            data = old_exe_data[offset:offset+data_dir.Size]
+            memset(&sect_header, 0, sizeof(sect_header))
+            sect_header.Name = b'.rsrc\x00\x00\x00'
+            sect_header.Characteristics = IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ
+            sect_header.PointerToRawData = first_sect_offset + first_sect_size + relocs_vsize
+            sect_header.Misc_Union.VirtualSize = <uint32_t>len(data)
+            relocs_vsize = align_32(<uint32_t>len(data), nt_headers.OptionalHeader.FileAlignment)
+            sect_header.SizeOfRawData = relocs_vsize
+            data = data + b'\x00' * (relocs_vsize - len(data))
+            result.extend(data)
+            headers.extend(convert_pointer_to_bytes(&sect_header, sizeof(IMAGE_SECTION_HEADER)))
         headers.extend(result)
+        PyObject_GetBuffer(headers, &headers_view, PyBUF_WRITABLE)
+        dos_header = <IMAGE_DOS_HEADER*>headers_view.buf
+        nt_headers = <IMAGE_NT_HEADERS32*>((<char*>dos_header) + dos_header.e_lfanew)
+        nt_headers.FileHeader.NumberOfSections = amt_sections
+        nt_headers.FileHeader.PointerToSymbolTable = 0
+        nt_headers.FileHeader.NumberOfSymbols = 0
+        sechdrs = <IMAGE_SECTION_HEADER*>((<char*>nt_headers) + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader)
+        for x in range(nt_headers.FileHeader.NumberOfSections):
+            sect_header = sechdrs[x]
+            if sect_header.Characteristics & IMAGE_SCN_CNT_CODE:
+                size_of_code += sect_header.SizeOfRawData
+            if sect_header.Characteristics & IMAGE_SCN_CNT_INITIALIZED_DATA:
+                size_of_init_data += sect_header.SizeOfRawData
+            if sect_header.Characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA:
+                size_of_uninit_data += sect_header.SizeOfRawData
+            size_of_image += sect_header.SizeOfRaWData
+        nt_headers.OptionalHeader.SizeOfCode = size_of_code
+        nt_headers.OptionalHeader.SizeOfInitializedData = size_of_init_data
+        nt_headers.OptioanlHeader.SizeOfUninitializedData = size_of_uninit_data
+        nt_headers.OptionalHeader.SizeOfHeaders = align_32(dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader + (sizeof(IMAGE_SECTION_HEADER) * amt_sections), nt_headers.OptionalHeader.FileALignment)
+        nt_headers.OptionalHeader.SizeOfImage = nt_headers.OptionalHeader.SizeOfHeaders + size_of_image
+        nt_headers.OptionalHeader.BaseOfCode = first_section_rva
+        nt_headers.OptionalHeader.BaseOfData = first_section_rva + first_sect_vsize
         return bytes(headers)
-        
-        
-        
-
-        
-
-
-
-
 
     cdef bytes rebuild(self):
         cdef bytearray data = bytearray()
