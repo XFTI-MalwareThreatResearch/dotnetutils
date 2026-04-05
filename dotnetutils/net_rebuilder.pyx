@@ -54,13 +54,13 @@ cdef class NetRebuilder:
         return imp_size
 
 
-    cdef size_t __build_stub32(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset):
+    cdef size_t __build_stub32(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint32_t image_base):
         cdef Py_buffer current_data
         cdef bytes stub = None
         cdef IMAGE_IMPORT_DESCRIPTOR * imps = NULL
         PyObject_GetBuffer(result, &current_data, PyBUF_ANY_CONTIGUOUS)
-        imps = <IMAGE_IMPORT_DESCRIPTOR*>current_data.buf
-        stub = b'\xFF\x25' + int.to_bytes(imps.FirstThunk, 4, 'little')
+        imps = <IMAGE_IMPORT_DESCRIPTOR*>current_data.buf + imports_offset
+        stub = b'\xFF\x25' + int.to_bytes(image_base + imps.FirstThunk, 4, 'little')
         result.extend(stub)
         PyBuffer_Release(&current_data)
         return len(stub)
@@ -141,7 +141,11 @@ cdef class NetRebuilder:
         return results
 
     cdef size_t __build_net_resources(self, bytearray result, uint32_t rva):
-        return 0
+        cdef object rsrc = None
+        cdef size_t result_start = len(result)
+        for rsrc in self.__dpefile.get_resources():
+            result.extend(rsrc.get_data())
+        return len(result) - result_start
 
     cdef size_t __build_net_headers(self, bytearray result, uint32_t rva, uint32_t metadata_rva, uint32_t metadata_size):
         cdef IMAGE_COR20_HEADER cor20
@@ -292,23 +296,42 @@ cdef class NetRebuilder:
         cdef uint32_t methods_rva = 0
         cdef uint32_t metadata_rva = 0
         cdef uint32_t metadata_size = 0
+        cdef uint32_t cor_rva = 0
+        cdef uint32_t cor_size = 0
+        cdef Py_ssize_t x = 0
+        cdef dict data_dir_offsets = dict()
         cdef dict heaps_mappings = None
+        cdef uint32_t data_dir_rva = 0
+        cdef bytes data = None
+        cdef uint32_t offset = 0
+        cdef uint32_t first_sect_offset = 0
+        cdef uint32_t first_sect_size = 0
+        cdef uint32_t stub_rva = 0
         headers.extend(orig_data[:dos_header.e_lfanew])
         headers.extend(b'PE\x00\x00')
         headers.extend(orig_data[dos_header.e_lfanew + 4: dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER)])
         memset(&sect_header, 0, sizeof(IMAGE_SECTION_HEADER))
         sect_header.Name = b'.text\x00\x00\x00'
         sect_header.Characteristics = IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_EXEUTE
-        result.extend(b'\x00' * (sect_header.PointerToRawData - len(result)))
         data_dir = self.__pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_BASERELOC)
         if data_dir.VirtualAddress != 0:
             amt_sections += 1
         data_dir = self.__pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_RESOURCE)
         if data_dir.VirtualAddress != 0:
             amt_sections += 1
+        first_sect_offset = (<uint32_t>len(headers)) + (amt_sections * sizeof(sect_header)) + methods_size
+        fields_size = align_32(first_sect_offset, nt_headers.OptionalHeader.FileAlignment)
+        first_sect_offset = fields_size
+        result.extend(b'\x00' (fields_size - first_sect_offset))
+        fields_size = 0
+
         first_section_rva = (<uint32_t>len(result)) + (amt_sections*sizeof(sect_header))
         first_section_rva = align_32(first_section_rva, nt_headers.OptionalHeader.SectionAlignment)
-        self.__build_stub32(self.__dpefile, result, first_section_rva + 4)
+        if self.__pe.is_dll():
+            nt_headers.OptionalHeader.ImageBase = 0x10000000
+        else:
+            nt_headers.OptionalHeader.ImageBase = 0x00400000
+        self.__build_stub32(self.__dpefile, result, first_section_rva + 4, nt_headers.OptionalHeader.ImageBase)
         imports_size = self.__build_imports32(self.__dpefile, result, first_section_rva + 4)
         imports_rva = first_section_rva + 4
         #pad to four
@@ -328,8 +351,36 @@ cdef class NetRebuilder:
         heaps_mappings = self.__build_net_heaps(result,  method_mappings, field_mappings, list(self.__dpefile.get_heaps().keys()))
         metadata_size = <uint32_t>len(result) - metadata_size
         metadata_rva = methods_rva + methods_size + fields_size
+        cor_rva = metadata_rva + metadata_size
+        cor_size = self.__build_net_headers(result, cor_rva, metadata_rva, metadata_size)
+        data_dir_rva = cor_rva + cor_size
+        for x in range(nt_headers.OptionalHeader.NumberOfRvaAndSizes):
+            if x != IMAGE_DIRECTORY_ENTRY_IMPORT and x != IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR and x != IMAGE_DIRECTORY_ENTRY_BASERELOC and x != IMAGE_DIRECTORY_ENTRY_RESOURCE:
+                offset = nt_headers.OptionalHeader.DataDirectory[x].VirtualAddress
+                if offset == 0:
+                    continue
+                data_dir_offsets[x] = (data_dir_rva, nt_headers.OptionalHeader.DataDirectory[x].Size)
+                
+                offset = self.__pe.get_offset_from_rva(offset)
+                result.extend(orig_data[offset:offset + nt_headers.OptionalHeader.DataDirectory[x].Size])
+
+        #align up TODO is 4 align above messing with this
+        first_sect_size = align_32(<uint32_t>len(result), nt_headers.OptionalHeader.FileAlignment)
+        sect_header.Misc_Union.VirtualSize = <uint32_t>len(result)
+        sect_header.PointerToRawData = first_sect_offset
+        sect_header.SizeOfRawData = first_sect_size
+        sect_header.VirtualAddress = first_section_rva
+        result.extend(b'\x00' * (first_sect_size - len(result)))
+        headers.extend(convert_pointer_to_bytes(&sect_header, sizeof(sect_header)))
+        memset(&sect_header, 0, sizeof(sect_header))
+        sect_header.Name = b'.reloc\x00\x00'
+        sect_header.Characteristics = IMAGE_SCN_CNT_INITIALIZED_DATA
+        
+        
+
 
         
+                
 
 
         

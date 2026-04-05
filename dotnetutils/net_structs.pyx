@@ -413,9 +413,30 @@ class DotNetResourceSet:
         for h in self.__hashes:
             result.extend(int.to_bytes(h, 4, 'little'))
 
-
+        names = list()
+        total_names_len = 0
+        for x in range(len(self.__resource_infos)):
+            rsrc_info = self.__resource_infos[x]
+            name = rsrc_info.name
+            data = compress_integer(<uint32_t>len(name)) + name
+            names.append(data)
+            total_names_len += len(data)
         
-
+        data_offset = 0
+        names_data = bytearray()
+        for x in range(len(self.__resource_infos)):
+            rsrc_info = self.__resource_infos[x]
+            rsrc = self.__resources[x]
+            name = names[x]
+            names_data.extend(name)
+            data_len = len(rsrc.get_data())
+            names_data.extend(int.to_bytes(data_offset, 4, 'little'))
+            data_offset += data_len
+        data_offset = len(result) + 4 + len(names_data)
+        for x in range(len(self.__resources)):
+            names_data.extend(self.__resources[x].get_data())
+        result.extend(names_data)
+        return result
     
     def get_version(self):
         return self.__version
