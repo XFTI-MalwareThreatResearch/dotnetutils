@@ -7525,9 +7525,16 @@ cdef class DotNetResolveEventHandler(DotNetObject):
         pass
 
     cdef StackCell ctor(self, StackCell * params, int nparams):
-        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL:
+        if nparams != 1 and nparams != 2:
             raise net_exceptions.InvalidArgumentsException()
-        self.__method_object = <DotNetRuntimeMethodHandle>params[0].item.ref
+        if nparams == 1 and (params[0].tag != CorElementType.ELEMENT_TYPE_OBJECT or params[0].item.ref == NULL):
+            raise net_exceptions.InvalidArgumentsException()
+        if nparams == 2 and check_object(params[1]):
+            raise net_exceptions.InvalidArgumentsException()
+        if nparams == 1:
+            self.__method_object = <DotNetRuntimeMethodHandle>params[0].item.ref
+        else:
+            self.__method_object = <DotNetRuntimeMethodHandle>params[1].item.ref
         return self.get_emulator_obj().pack_object(self)
 
     cpdef net_row_objects.MethodDefOrRef get_method_obj(self):

@@ -355,7 +355,7 @@ class NETReactor(Deobfuscator):
             reader.read_int32()
         num1 = reader.read_int32()
         num2 = reader.read_int32()
-        if num2 == 4 or num2 == 1:
+        if num2 == 4:
             print('not supported yet')
             return False
         initial_entries = dict()
@@ -367,6 +367,26 @@ class NETReactor(Deobfuscator):
             initial_entries[rva] = towrite
             offset = dotnet.get_pe().get_offset_from_rva(rva)
             exe_data = exe_data[:offset] + int.to_bytes(towrite, 4, 'little') + exe_data[offset + 4:]
+
+        if num2 == 1:
+            amt_decrypted = 0
+            while reader.tell() < (reader.get_length() - 1):
+                rva = reader.read_int32() + rva_offset
+                amt_dwords = reader.read_int32()
+                amt_decrypted += 1
+                for x in range(amt_dwords):
+                    dword_rva = rva + (x * 4)
+                    offset = dotnet.get_pe().get_offset_from_rva(dword_rva)
+                    exe_data = exe_data[:offset] + reader.read(4) + exe_data[offset + 4:]
+            dotnet.set_exe_data(exe_data)
+            dotnet.reinit_dpe(False)
+            for xref_rid, xref_offset in encryption_method.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)
+            print(f'Decrypted {amt_decrypted} methods using RVA patching mode.')
+            dotnet.reinit_dpe(False)
+            return True
+
         amt_entries = reader.read_int32()
         second_entries = dict()
         while reader.tell() < (reader.get_length() - 1):
