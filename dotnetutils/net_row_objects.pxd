@@ -100,6 +100,8 @@ cdef class ColumnValue:
 
 cdef class TypeDefOrRef(RowObject):
 
+    cpdef bint is_explicit(self)
+
     cpdef MethodDef get_static_constructor(self)
 
     cpdef list get_constructors(self)

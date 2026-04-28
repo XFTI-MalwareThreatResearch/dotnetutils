@@ -793,6 +793,24 @@ cdef class MemberRefTable(TableObject):
                 return item
         return None
 
+cdef class FieldLayoutTable(TableObject):
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):
+        TableObject.__init__(self, dotnetpe, name, tid)
+        self.__field_layouts = dict()
+
+    cpdef net_row_objects.RowObject get_layout_for_field(self, net_row_objects.Field obj):
+        return self.__field_layouts.get(obj, None)
+
+    cdef void process(self):
+        cdef net_row_objects.RowObject row = None
+        cdef net_row_objects.Field field = None
+        for row in self:
+            field = row['Field'].get_value()
+            if field is None:
+                continue
+            self.__field_layouts[field.get_rid()] = row
+
+
 NET_METADATA_TABLE_TYPES = {
     'Module': TableObject,
     'TypeRef': TypeRefTable,
@@ -810,7 +828,7 @@ NET_METADATA_TABLE_TYPES = {
     'FieldMarshal': TableObject,
     'DeclSecurity': TableObject,
     'ClassLayout': ClassLayoutTable,
-    'FieldLayout': TableObject,
+    'FieldLayout': FieldLayoutTable,
     'StandAloneSig': TableObject,
     'EventMap': TableObject,
     'EventPtr': TableObject,

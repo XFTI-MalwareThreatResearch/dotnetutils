@@ -8121,7 +8121,7 @@ cdef class DotNetFieldInfo(DotNetObject):
             obj = <DotNetObject>params[0].item.ref
             obj.set_field(field_rid, cell)
         else:
-            self.get_emulator_obj().set_slimobj_field(params[0], field_rid, cell)
+            self.get_emulator_obj().set_slimobj_field(params[0], self.internal_field.get_rid(), cell)
         return self.get_emulator_obj().pack_blanktag()
 
     cdef StackCell GetValue(self, StackCell * params, int nparams):

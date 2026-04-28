@@ -435,6 +435,9 @@ cdef class TypeDefOrRef(RowObject):
     cpdef MethodDef get_static_constructor(self):
         return None
 
+    cpdef bint is_explicit(self):
+        return False
+
     cpdef list get_constructors(self):
         return list()
 
@@ -816,6 +819,9 @@ cdef class TypeDef(TypeDefOrRef):
             if method.get_column('Name').get_value() == name:
                 result.append(method)
         return result
+
+    cpdef bint is_explicit(self):
+        return self.get_column('Flags').get_value() & net_structs.CorTypeAttr.tdExplicitLayout != 0
 
     def __str__(self):
         self.get_superclass()  # ensure superclass is populated.

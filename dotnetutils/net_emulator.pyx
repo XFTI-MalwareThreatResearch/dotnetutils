@@ -2898,7 +2898,7 @@ cdef bint handle_shr_un_instruction(DotNetEmulator emu):
         emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
 
     Returns:
-        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+        bool: True if the emulator shoustfldld increment EIP and move to the next instruction, False if we have already done that within the handler.
     """
     cdef StackCell bits1 = emu.stack.pop()
     cdef StackCell value2 = emu.stack.pop()
@@ -3905,6 +3905,10 @@ cdef class EmulatorAppDomain:
         cdef list fields_list = None
         cdef int counter = 0
         cdef net_row_objects.Field field
+        cdef dict explicit_offsets = None
+        cdef net_table_objects.FieldLayoutTable layouts = self.__emu_obj.get_method_obj().get_dotnetpe().get_metadata_table('FieldLayout')
+        cdef net_row_objects.RowObject layout = None
+        cdef int offset = 0
         if tdeftable is None:
             return
 
@@ -3923,14 +3927,33 @@ cdef class EmulatorAppDomain:
                     ptr = (<net_row_objects.TypeSpec>ptr).get_type()
                     continue
                 if isinstance(ptr, net_row_objects.TypeDef):
-                    fields_list = ptr.get_column('FieldList').get_formatted_value()
-                    if fields_list is not None:
-                        for field in fields_list:
-                            if field.is_static():
-                                continue
-                            self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
-                            self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
-                            counter += 1
+                    if ptr.is_explicit():
+                        if layouts is None:
+                            raise net_exceptions.EmulatorExecutionException(self.__emu_obj, 'FieldLayout table doesnt exist but we have an explicit type')
+                        field_list = ptr.get_column('FieldList').get_formatted_value()
+                        if fields_list is not None:
+                            explicit_offsets = dict()
+                            for field in fields_list:
+                                layout = layouts.get_layout_for_field(field)
+                                if layout is None:
+                                    raise net_exceptions.EmulatorExecutionException(self.__emu_obj, 'Layout doesnt exist for field')
+                                offset = layout.get_column('Offset').get_value()
+                                if offset not in explicit_offsets:
+                                    explicit_offsets[offset] = counter
+                                    counter += 1
+                                self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
+                                self.__field_counter_registrations[tdef.get_token()][explicit_offsets[offset]] = field.get_rid()
+
+
+                    else:
+                        fields_list = ptr.get_column('FieldList').get_formatted_value()
+                        if fields_list is not None:
+                            for field in fields_list:
+                                if field.is_static():
+                                    continue
+                                self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
+                                self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
+                                counter += 1
                     ptr = ptr.get_superclass()
 
     cdef int get_field_rid(self, int field_index, int type_token):
@@ -7899,11 +7922,14 @@ cdef class DotNetEmulator:
             raise net_exceptions.InvalidArgumentsException()
         cdef int field_index = self.get_appdomain().get_field_index(idno, slim_obj.item.slim_object.type_token)
         cdef StackCell * fields = slim_obj.item.slim_object.fields
-        cdef StackCell old = fields[field_index]
         cdef net_table_objects.TableObject field_table = self.get_method_obj().get_dotnetpe().get_metadata_table('Field')
         cdef net_row_objects.Field field = field_table.get(idno)
         cdef net_sigs.FieldSig fsig = field.get_field_signature()
         cdef StackCell new = self.cast_cell(val, fsig.get_type_sig())
+        cdef StackCell old
+        cdef net_table_objects.FieldLayoutTable layouts = self.get_method_obj().get_dotnetpe().get_metadata_table('FieldLayout')
+        cdef net_row_objects.RowObject layout = None
+        old = fields[field_index]
         self.ref_cell(new)
         self.deref_cell(old)
         self.dealloc_cell(old)
@@ -7941,6 +7967,7 @@ cdef class DotNetEmulator:
                 raise net_exceptions.OperationNotSupportedException()
             self.set_slimobj_field(slim_obj, idno, cell)
             self.dealloc_cell(cell)
+
         return self.duplicate_cell(fields[instr_index])
 
     cdef str slimobj_to_str(self, StackCell cell):

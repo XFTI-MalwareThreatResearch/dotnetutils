@@ -106,6 +106,11 @@ cdef class MemberRefTable(TableObject):
 
     cpdef net_row_objects.MemberRef get_ref_by_name(self, bytes name)
 
+cdef class FieldLayoutTable(TableObject):
+    cdef dict __field_layouts
+
+    cpdef net_row_objects.RowObject get_layout_for_field(self, net_row_objects.Field)
+
 cdef dict NET_METADATA_TABLE_HANDLERS
 cdef dict NET_METADATA_TABLE_TYPES
 
