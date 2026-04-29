@@ -3930,19 +3930,24 @@ cdef class EmulatorAppDomain:
                     if ptr.is_explicit():
                         if layouts is None:
                             raise net_exceptions.EmulatorExecutionException(self.__emu_obj, 'FieldLayout table doesnt exist but we have an explicit type')
-                        field_list = ptr.get_column('FieldList').get_formatted_value()
+                        fields_list = ptr.get_column('FieldList').get_formatted_value()
                         if fields_list is not None:
                             explicit_offsets = dict()
                             for field in fields_list:
                                 layout = layouts.get_layout_for_field(field)
-                                if layout is None:
-                                    raise net_exceptions.EmulatorExecutionException(self.__emu_obj, 'Layout doesnt exist for field')
-                                offset = layout.get_column('Offset').get_value()
-                                if offset not in explicit_offsets:
-                                    explicit_offsets[offset] = counter
+                                if field.is_static():
+                                    continue
+                                if layout is not None:
+                                    offset = layout.get_column('Offset').get_value()
+                                    if offset not in explicit_offsets:
+                                        explicit_offsets[offset] = counter
+                                        counter += 1
+                                    self.__field_index_registrations[tdef.get_token()][field.get_rid()] = explicit_offsets[offset]
+                                    self.__field_counter_registrations[tdef.get_token()][explicit_offsets[offset]] = field.get_rid()
+                                else:
+                                    self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
+                                    self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
                                     counter += 1
-                                self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
-                                self.__field_counter_registrations[tdef.get_token()][explicit_offsets[offset]] = field.get_rid()
 
 
                     else:
@@ -3976,7 +3981,7 @@ cdef class EmulatorAppDomain:
         cdef int result = 0
         if type_token not in self.__field_counter_registrations:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Type token not in reg {}'.format(hex(type_token)))
-        mapping = self.__field_counter_registrations[type_token]
+        mapping = self.__field_counter_registrations[type_token]                
         result = mapping[field_index]
         return result
 
@@ -3997,8 +4002,7 @@ cdef class EmulatorAppDomain:
         if type_token == 0:
             raise net_exceptions.InvalidArgumentsException()
         cdef dict mapping = self.__field_index_registrations[type_token]
-        cdef int result = mapping[field_rid]
-        return result
+        return mapping[field_rid]
 
     cdef int get_amt_static_fields(self):
         """ Obtain the amount of static fields present in the app domain.
@@ -7926,10 +7930,7 @@ cdef class DotNetEmulator:
         cdef net_row_objects.Field field = field_table.get(idno)
         cdef net_sigs.FieldSig fsig = field.get_field_signature()
         cdef StackCell new = self.cast_cell(val, fsig.get_type_sig())
-        cdef StackCell old
-        cdef net_table_objects.FieldLayoutTable layouts = self.get_method_obj().get_dotnetpe().get_metadata_table('FieldLayout')
-        cdef net_row_objects.RowObject layout = None
-        old = fields[field_index]
+        cdef StackCell old = fields[field_index]
         self.ref_cell(new)
         self.deref_cell(old)
         self.dealloc_cell(old)

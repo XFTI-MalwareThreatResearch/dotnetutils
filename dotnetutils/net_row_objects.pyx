@@ -821,7 +821,7 @@ cdef class TypeDef(TypeDefOrRef):
         return result
 
     cpdef bint is_explicit(self):
-        return self.get_column('Flags').get_value() & net_structs.CorTypeAttr.tdExplicitLayout != 0
+        return (self.get_column('Flags').get_value() & net_structs.CorTypeAttr.tdExplicitLayout) != 0
 
     def __str__(self):
         self.get_superclass()  # ensure superclass is populated.
