@@ -595,6 +595,8 @@ cdef class DotNetObject:
                 str_val += '{'
                 for x in range(self.__num_fields):
                     rid = self.get_emulator_obj().get_appdomain().get_field_rid(x, self.orig_type_token)
+                    if rid == -1:
+                        continue
                     str_val += str(rid) + ': ' + self.get_emulator_obj().cell_to_str(self.__fields[x]) + ','
                 str_val = str_val.rstrip(',') + '}'
                 return str_val                
@@ -604,6 +606,8 @@ cdef class DotNetObject:
                 str_val = object.__str__(self) + ',fields={'
                 for x in range(self.__num_fields):
                     rid = self.get_emulator_obj().get_appdomain().get_field_rid(x, self.orig_type_token)
+                    if rid == -1:
+                        continue
                     str_val += str(rid) + ': ' + self.get_emulator_obj().cell_to_str(self.__fields[x]) + ','
                 str_val = str_val.rstrip(',') + '}'
                 return str_val                
@@ -6782,12 +6786,17 @@ cdef class DotNetArray(DotNetObject):
     cdef StackCell _get_item(self, int64_t index):
         cdef StackCell cell
         cdef SlimStackCell slim_cell
+        cdef net_sigs.CorLibTypeSig cor_sig = None
         if 0 <= index < <int64_t>self.__size:
             slim_cell = self.__internal_array[index]
             if slim_cell.tag == CorElementType.ELEMENT_TYPE_END:
                 self.setup_default_value(index, 1)
             slim_cell = self.__internal_array[index]
             cell = self.get_emulator_obj().unslim_cell(self.get_emulator_obj(), slim_cell)
+            cor_sig = net_utils.get_cor_type_from_name(self.element_type.get_full_name())
+            if cor_sig is not None:
+                Py_XDECREF(cell.emulator_obj)
+                return self.get_emulator_obj().cast_cell(cell, cor_sig)
             Py_XDECREF(cell.emulator_obj) # we need to get rid of our extra emulator_obj xref to return back to normal state
             return self.get_emulator_obj().duplicate_cell(cell)
         else:
@@ -7219,7 +7228,7 @@ cdef class DotNetThread(DotNetObject):
         raise net_exceptions.FeatureNotImplementedException()
 
     cdef StackCell Join(self, StackCell * params, int nparams):
-        if self.__internal_thread == None:
+        if self.__internal_thread is None:
             raise net_exceptions.InvalidArgumentsException()
         self.__internal_thread.join()
         return self.get_emulator_obj().pack_blanktag()
@@ -8096,6 +8105,7 @@ cdef class DotNetFieldInfo(DotNetObject):
         cdef net_row_objects.TypeDefOrRef ref = None
         cdef DotNetType type_obj = None
         cdef bytes name = None
+        cdef net_sigs.TypeSig next_sig = None
         #TODO: Change corlibtypesig to actually work as a typedeforref sig.
         if isinstance(sig, net_sigs.CorLibTypeSig):
             name = net_utils.get_cor_type_name(sig.get_element_type())
@@ -8104,6 +8114,13 @@ cdef class DotNetFieldInfo(DotNetObject):
             ref = sig.get_type()
         elif isinstance(sig, net_sigs.GenericInstSig):
             ref = sig.get_generic_type()
+        elif isinstance(sig, net_sigs.SZArraySig):
+            next_sig = sig.get_next()
+            if isinstance(next_sig, net_sigs.CorLibTypeSig):
+                type_obj = DotNetType(self.get_emulator_obj(), self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(b'System.Array'), sig, self.get_emulator_obj().get_method_obj().get_dotnetpe().get_typeref_by_full_name(net_utils.get_cor_type_name(next_sig.get_element_type())))
+                return self.get_emulator_obj().pack_object(type_obj)
+            else:
+                raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'couldnt handle sig {}'.format(sig))
         else:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'couldnt handle sig {}'.format(sig))
         type_obj = DotNetType(self.get_emulator_obj(), ref, sig)
@@ -8161,6 +8178,7 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
         DotNetMethodBase.__init__(self, emulator_obj, internal_method)
         self.add_function(b'get_ReturnType', <emu_func_type>self.get_ReturnType)
         self.add_function(b'Invoke', <emu_func_type>self.Invoke)
+        self.add_function(b'get_IsVirtual', <emu_func_type>self.get_IsVirtual)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef):
         return tdef.get_full_name() == b'System.Reflection.MethodInfo' or DotNetMethodBase.isinst(self, tdef)
@@ -8172,6 +8190,9 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
         cdef DotNetMethodInfo minfo = DotNetMethodInfo(self.get_emulator_obj(), self.internal_method)
         DotNetMethodBase.duplicate_into(self, minfo)
         return minfo
+
+    cdef StackCell get_IsVirtual(self, StackCell * params, int nparams):
+        return self.get_emulator_obj().pack_bool(self.internal_method.is_virtual())
 
     cdef StackCell get_ReturnType(self, StackCell * params, int nparams):
         cdef net_sigs.TypeSig return_sig = self.internal_method.get_method_signature().get_return_type()

@@ -1751,7 +1751,7 @@ cdef class DotNetPeFile:
         """
         #this is used so little times that we may as well just use PeFile for it.
         #TODO: Eventually remove this dependency for pefile.
-        if self.__versioninfo_str == None:
+        if self.__versioninfo_str is None:
             pe = pefile.PE(data=self.get_exe_data())
             for fileinfo in pe.FileInfo:
                 for item in fileinfo:
@@ -1762,6 +1762,9 @@ cdef class DotNetPeFile:
                                     return entry[1].decode()
             self.__versioninfo_str = ''
         return self.__versioninfo_str
+
+    def __eq__(self, other):
+        return isinstance(other, DotNetPeFile) and other.get_exe_data() == self.get_exe_data()
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path='', bytes pe_data=bytes(), bint dont_process=False):
     """ Obtains a DotNetPeFile from either a file_path or pe_data. 

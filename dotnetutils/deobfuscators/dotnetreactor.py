@@ -630,30 +630,6 @@ class NETReactor(Deobfuscator):
         emu.run_function()
         print('starting to replace strings.')
         us_heap = dotnet.get_heap('#US')
-        new_method = dotnet.get_method_by_rid(242)
-        #block antitamper checks
-        antitamper_field = None
-        for instr in new_method.disassemble_method():
-            if instr.get_opcode() == net_opcodes.Opcodes.Stsfld:
-                arg = instr.get_argument()
-                if isinstance(arg, net_row_objects.Field) and arg.is_static():
-                    fsig = arg.get_field_signature()
-                    if fsig.get_type_sig() == net_sigs.get_CorSig_Int32():
-                        antitamper_field = arg
-                        break
-                        
-                        
-
-        new_emu = emu.spawn_new_emulator(new_method)
-        dnint = net_emu_types.DotNetInt32(new_emu, None)
-        dnint.from_int(0xEE0)
-        if antitamper_field is not None:
-            new_emu.set_static_field_obj(antitamper_field.get_rid(), dnint)
-        new_emu.setup_method_params([dnint])
-        new_emu.set_print_debugging(True, False)
-        new_emu.run_function()
-        raise Exception()
-        return
         us_heap.begin_append_tx()
         string_methods = [strm]
         while string_methods:

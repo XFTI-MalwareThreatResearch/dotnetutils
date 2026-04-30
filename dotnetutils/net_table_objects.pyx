@@ -583,18 +583,18 @@ cdef class MethodDefTable(TableObject):
                     #traceback.print_exc()
                     logger.debug('Error processing method {}.  Its possible the method is encrypted: {}.  Please contact developers for assistance if it is not.'.format(hex(method_obj.get_token()), str(e)))
                     disasm_obj = None
-                if disasm_obj != None:
+                if disasm_obj is not None:
                     for x in range(len(disasm_obj)):
                         instr = disasm_obj[x]
                         instr_name = instr.get_name()
                         if instr_name == 'call' or instr_name == 'callvirt' or instr_name == 'newobj':
                             #handle method references here.
                             instr_arg = instr.get_argument()
-                            if instr_arg != None and hasattr(instr_arg, '_add_xref'):
+                            if instr_arg is not None and hasattr(instr_arg, '_add_xref'):
                                 instr_arg._add_xref(method_obj.get_rid(), instr.get_instr_offset())
                         elif instr_name == 'stsfld' or instr_name == 'ldsfld' or instr_name == 'ldfld' or instr_name == 'stfld':
                             instr_arg = instr.get_argument()
-                            if instr_arg != None and hasattr(instr_arg, '_add_xref'):
+                            if instr_arg is not None and hasattr(instr_arg, '_add_xref'):
                                 instr_arg._add_xref(method_obj.get_rid(), instr.get_instr_offset())
 
 
@@ -799,7 +799,7 @@ cdef class FieldLayoutTable(TableObject):
         self.__field_layouts = dict()
 
     cpdef net_row_objects.RowObject get_layout_for_field(self, net_row_objects.Field obj):
-        return self.__field_layouts.get(obj, None)
+        return self.__field_layouts.get(obj.get_rid(), None)
 
     cdef void process(self):
         cdef net_row_objects.RowObject row = None

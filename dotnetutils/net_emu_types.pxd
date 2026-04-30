@@ -1330,6 +1330,8 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
     
     cdef StackCell get_ReturnType(self, StackCell * params, int nparams)
 
+    cdef StackCell get_IsVirtual(self, StackCell * params, int nparams)
+
 cdef class DotNetParameterInfo(DotNetObject):
     cdef net_sigs.TypeSig internal_param
 

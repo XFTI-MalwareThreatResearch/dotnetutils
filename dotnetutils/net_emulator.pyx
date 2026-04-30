@@ -847,6 +847,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
     cdef DotNetEmulator current_emu = None
     cdef StackCell * orig_method_args = NULL
     cdef net_sigs.TypeSig psig = None
+    cdef net_row_objects.RowObject res_scope = None
+    cdef net_row_objects.RowObject res_tdef = None
     memset(&obj_ref_initial, 0, sizeof(StackCell))
     if force_method_obj is not None:
         method_obj = force_method_obj
@@ -906,6 +908,19 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         if force_extern_type is None and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec): #generics etc.
             if isinstance(method_obj.get_parent_type().get_type(), net_row_objects.TypeDef): #TODO: Look over this logic in terms of DotNetDelegate.Invoke() calls.
                 return do_virtcall(emu, force_virtcall=True, force_virt_type=method_obj.get_parent_type().get_type())
+        if isinstance(method_obj.get_parent_type(), net_row_objects.TypeRef):
+            res_scope = method_obj.get_parent_type().get_column('ResolutionScope').get_value()
+            res_tdef = method_obj.get_parent_type()
+            while True:
+                if not isinstance(res_scope, net_row_objects.TypeRef):
+                    break
+                res_scope = res_scope.get_column('ResolutionScope').get_value()
+            if res_scope is not None:
+                if res_scope.get_table_name() == 'Module':
+                    res_tdef = method_obj.get_dotnetpe().get_type_by_full_name(res_tdef.get_full_name())
+                    if res_tdef is None:
+                        raise net_exceptions.EmulatorExecutionException(emu, 'Could not find matching type for {}'.format(method_obj.get_parent_type().get_full_name()))
+                    return do_virtcall(emu, force_virtcall=True, force_virt_type=res_tdef)
         method_name = method_obj.get_name()
         amt_args = <int>len(method_obj.get_param_types())
         push_obj_reference = False
@@ -1124,10 +1139,16 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     cdef int x = 0
     cdef net_sigs.GenericInstMethodSig genmethodsig = None
     cdef net_sigs.GenericInstSig gentypesig = None
+    cdef net_row_objects.RowObject res_scope = None
+
     if not force_virtcall:
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(),
                                                                             net_row_objects.TypeRef):
-            return do_call(emu, True, False, None, None, NULL, 0, method_obj)
+            res_scope = method_obj.get_parent_type().get_column('ResolutionScope').get_value()
+            while isinstance(res_scope, net_row_objects.TypeRef):
+                res_scope = res_scope.get_column('ResolutionScope').get_value()
+            if res_scope.get_table_name() != 'Module':
+                return do_call(emu, True, False, None, None, NULL, 0, method_obj)
         
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec):
             parent_type = method_obj.get_parent_type()
@@ -1172,7 +1193,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
             if method_impl_table is not None:
                 #first check the methodimpl table.
                 def_method = method_impl_table.get_method_definition(method_obj, obj_type)
-                if def_method != None:
+                if def_method is not None:
                     actual_method_obj = def_method
                     break
 
@@ -1202,10 +1223,6 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
                         if curr_method_obj.has_body() or curr_method_obj.get_table_name() == 'MemberRef':
                             actual_method_obj = curr_method_obj
                             break
-            if not actual_method_obj:
-                #Last resort, try treating it as a call with a forced type.  If this doesnt work, it should error.
-                return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, None, obj_type, NULL, 0, method_obj)
-            
         if isinstance(obj_type, net_row_objects.TypeDef):
             obj_type = obj_type.get_superclass()
         else:
@@ -3981,7 +3998,9 @@ cdef class EmulatorAppDomain:
         cdef int result = 0
         if type_token not in self.__field_counter_registrations:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Type token not in reg {}'.format(hex(type_token)))
-        mapping = self.__field_counter_registrations[type_token]                
+        mapping = self.__field_counter_registrations[type_token]
+        if field_index not in mapping:
+            return -1             
         result = mapping[field_index]
         return result
 
@@ -7993,6 +8012,8 @@ cdef class DotNetEmulator:
             str_val += '{'
             for x in range(num_fields):
                 rid = self.get_appdomain().get_field_rid(x, cell.item.slim_object.type_token)
+                if rid == -1:
+                    continue
                 str_val += str(rid) + ': ' + self.cell_to_str(fields[x]) + ','
             str_val = str_val.rstrip(',') + '}'
             return str_val                
@@ -8234,7 +8255,7 @@ cdef class DotNetEmulator:
                 raise net_exceptions.EmulatorExecutionException(self, 'PyErr_CheckSignals() returned -1')
             self.should_break = False
             self.instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
-            if self.instr == None:
+            if self.instr is None:
                 raise net_exceptions.InvalidArgumentsException()
             if self.instr.get_opcode() == net_opcodes.Opcodes.Invalid:
                 raise net_exceptions.InstructionNotSupportedException(self.instr.get_name())
