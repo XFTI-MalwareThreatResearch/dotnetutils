@@ -133,6 +133,8 @@ cdef class EmulatorAppDomain:
 
     cdef int get_amt_static_fields(self)
 
+    cpdef void remove_instr_handler(self, Opcodes opcode)
+
 cdef class DotNetStack:
     cdef DotNetEmulator __emulator
     cdef vector[StackCell] __internal_stack
@@ -204,6 +206,8 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
     cdef bint __init_open_generics_as_object
+
+    cdef StackCell convert_from_slimobject(self, StackCell cell)
 
     cpdef net_cil_disas.Instruction get_instr(self)
 

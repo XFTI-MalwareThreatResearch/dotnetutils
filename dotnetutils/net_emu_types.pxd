@@ -69,6 +69,8 @@ cdef class DotNetObject:
 
     cdef void __clear_fields(self)
 
+    cpdef DotNetObject get_field_obj(self, int rid)
+
     cdef emu_func_type get_function(self, bytes name)
 
     cdef void add_function(self, bytes name, emu_func_type func)

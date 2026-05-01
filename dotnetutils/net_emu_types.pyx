@@ -462,6 +462,24 @@ cdef class DotNetObject:
         
         return self.get_emulator_obj().duplicate_cell(self.__fields[instr_index])
 
+
+    cpdef DotNetObject get_field_obj(self, int rid):
+        cdef StackCell cell = self.get_field(rid)
+        cdef StackCell boxed
+        cdef DotNetObject result = None
+        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+            return None
+
+        if cell.is_slim_object:
+            boxed = self.get_emulator_obj().convert_from_slimobject(cell)
+        else:
+            boxed = self.get_emulator_obj().box_value(cell, None)
+        if boxed.item.ref != NULL:
+            result = <DotNetObject>boxed.item.ref
+        self.get_emulator_obj().dealloc_cell(cell)
+        self.get_emulator_obj().dealloc_cell(boxed)
+        return result
+
     cpdef net_row_objects.TypeDefOrRef get_type_obj(self):
         """ Obtain the metadata type object associated with this object.
 
@@ -8081,6 +8099,9 @@ cdef class DotNetFieldInfo(DotNetObject):
         self.add_function(b'get_Name', <emu_func_type>self.get_Name)
         self.add_function(b'get_MetadataToken', <emu_func_type>self.get_MetadataToken)
         self.add_function(b'GetValue', <emu_func_type>self.GetValue)
+
+    cpdef object as_python_obj(self):
+        return self.internal_field
 
     def __str__(self):
         return 'FieldObject {} {}'.format(hex(self.internal_field.get_token()), self.internal_field.get_full_name())

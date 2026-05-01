@@ -1668,7 +1668,7 @@ cdef class MethodDef(MethodDefOrRef):
         return self.get_column('Name').get_value() == b'.ctor'
 
     def __str__(self):
-        return 'MethodDef:{}='.format(self.get_rid()) + self.get_full_name().__str__()
+        return '({}) - MethodDef:{}='.format(hex(self.get_token()), self.get_rid()) + self.get_full_name().__str__()
 
     cpdef bytes get_method_data(self):
         """  Obtains the byte data, including headers, for the method.

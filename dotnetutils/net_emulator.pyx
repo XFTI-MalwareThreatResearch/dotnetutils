@@ -3896,6 +3896,9 @@ cdef class EmulatorAppDomain:
         """
         self.__user_instr_handlers[opcode] = (instrFn, param)
 
+    cpdef void remove_instr_handler(self, Opcodes opcode):
+        del self.__user_instr_handlers[opcode]
+
     cdef tuple get_instr_handler(self, Opcodes opcode):
         """ Used by the emulator to obtain instr handlers.
         """
@@ -4523,6 +4526,10 @@ cdef class DotNetStack:
         self.__internal_stack.pop_back()
         self.__emulator.deref_cell(obj)
         self.__emulator.dealloc_cell(obj)
+        if boxed_obj.is_slim_object:
+            obj = self.__emulator.convert_from_slimobject(boxed_obj)
+            self.__emulator.dealloc_cell(boxed_obj)
+            boxed_obj = obj
         if boxed_obj.item.ref != NULL:
             return_value = <net_emu_types.DotNetObject>boxed_obj.item.ref
         self.__emulator.dealloc_cell(boxed_obj)
@@ -4544,6 +4551,10 @@ cdef class DotNetStack:
         cdef net_emu_types.DotNetObject return_value = None
         self.__emulator.deref_cell(obj)
         self.__emulator.dealloc_cell(obj)
+        if boxed_obj.is_slim_object:
+            obj = self.__emulator.convert_from_slimobject(boxed_obj)
+            self.__emulator.dealloc_cell(boxed_obj)
+            boxed_obj = obj
         if boxed_obj.item.ref != NULL:
             return_value = <net_emu_types.DotNetObject>boxed_obj.item.ref
         self.__emulator.dealloc_cell(boxed_obj)
@@ -4813,6 +4824,15 @@ cdef class DotNetEmulator:
 
     cpdef net_cil_disas.Instruction get_instr(self):
         return self.instr
+
+    cdef StackCell convert_from_slimobject(self, StackCell cell):
+        if not cell.is_slim_object:
+            return self.duplicate_cell(cell)
+
+        cdef net_emu_types.DotNetObject obj_ref = net_emu_types.DotNetObject(self)
+        obj_ref.initialize_type(self.get_method_obj().get_dotnetpe().get_token_value(cell.item.slim_object.type_token))
+        obj_ref.copy_fields_from_slimobject(cell.item.slim_object)
+        return self.pack_object(obj_ref)
 
     cdef StackCell convert_unsigned(self, StackCell cell):
         """ For numbers, this will convert a StackCell to its unsigned counterpart and return a duplicate.
@@ -7730,16 +7750,16 @@ cdef class DotNetEmulator:
         cdef StackCell cell = self.get_appdomain().get_static_field(idno)
         cdef StackCell boxed = self.box_value(cell, None)
         cdef net_emu_types.DotNetObject obj = None
-        if cell.tag == CorElementType.ELEMENT_TYPE_END:
+        if boxed.tag == CorElementType.ELEMENT_TYPE_END:
             self.dealloc_cell(boxed)
             self.dealloc_cell(cell)
             return None
 
         if boxed.is_slim_object:
             self.dealloc_cell(cell)
-            self.dealloc_cell(boxed)
-            return None #Not supported really.
-        if boxed.item.ref != NULL:
+            cell = self.convert_from_slimobject(boxed)
+            obj = <net_emu_types.DotNetObject>cell.item.ref
+        elif boxed.item.ref != NULL:
             obj = <net_emu_types.DotNetObject>boxed.item.ref
         self.dealloc_cell(cell)
         self.dealloc_cell(boxed)
@@ -8129,7 +8149,12 @@ cdef class DotNetEmulator:
         if self.cell_is_null(boxed_cell):
             result = None
         else:
-            result = <net_emu_types.DotNetObject>boxed_cell.item.ref
+            if boxed_cell.is_slim_object:
+                self.dealloc_cell(ret_val)
+                ret_val = self.convert_from_slimobject(boxed_cell)
+                result = <net_emu_types.DotNetObject>ret_val.item.ref
+            else:
+                result = <net_emu_types.DotNetObject>boxed_cell.item.ref
         self.dealloc_cell(boxed_cell)
         self.dealloc_cell(ret_val)
         return result
