@@ -11,6 +11,7 @@ from dotnetutils.net_structs cimport CorElementType
 from dotnetutils.net_opcodes cimport Opcodes
 from cpython.ref cimport Py_INCREF, Py_XDECREF
 from libcpp.utility cimport pair
+from libcpp.algorithm cimport find
 from cpython.exc cimport PyErr_CheckSignals
 from dotnetutils.net_emu_structs cimport StackCell, SlimStackCell, SlimObject
 
@@ -2499,6 +2500,7 @@ cdef bint handle_ldsfld_instruction(DotNetEmulator emu):
     cdef net_row_objects.RowObject field_obj = emu.instr.get_argument()
     cdef net_row_objects.TypeDefOrRef parent_type = field_obj.get_parent_type()
     cdef net_row_objects.MethodDef cctor_method
+    cdef EmulatorAppDomain app_domain = emu.get_appdomain()
     cdef list args
     cdef str field_name
     cdef str type_name
@@ -2511,7 +2513,7 @@ cdef bint handle_ldsfld_instruction(DotNetEmulator emu):
         parent_type = parent_type.get_type()
     cctor_method = parent_type.get_static_constructor()
     if cctor_method:
-        if emu.executed_cctors.can_execute(cctor_method) and not emu.dont_execute_cctor:
+        if app_domain.mark_constructor_executed(cctor_method) and not emu.dont_execute_cctor:
             new_emu = emu.spawn_new_emulator(cctor_method, caller=emu)
             new_emu._allocate_params(0)
             new_emu.run_function()
@@ -3009,6 +3011,7 @@ cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
     cdef bint fsig_equal = False
     cdef net_row_objects.TypeSpec tspec = None
     cdef bint was_set = False
+    cdef EmulatorAppDomain app_domain = emu.get_appdomain()
     if emu.get_appdomain().has_static_func(ref_obj.get_token()):
         if set_val.tag != CorElementType.ELEMENT_TYPE_END:
             raise net_exceptions.EmulatorExecutionException(emu, 'Erorr invalid state')
@@ -3041,7 +3044,7 @@ cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
                 if fsig_equal:
                     cctor_method = tspec.get_type().get_static_constructor()
                     if cctor_method:
-                        if emu.executed_cctors.can_execute(cctor_method) and not emu.dont_execute_cctor:
+                        if app_domain.mark_constructor_executed(cctor_method) and not emu.dont_execute_cctor:
                             new_emu = emu.spawn_new_emulator(cctor_method, caller=emu)
                             new_emu.setup_method_params([])
                             new_emu.run_function()
@@ -3829,29 +3832,6 @@ cdef bint handle_newobj_instruction(DotNetEmulator emu):
 A lot of the stuff below is for internal use mainly.
 """
 
-cdef class CctorRegistry:
-    """ Used to keep track of the .cctor methods that have already been executed.
-        This class will be removed eventually as its sort of pointless and unneeded.
-
-    Notes:
-        __executed_cctors (list[int]): A list of static constructor rids that have been executed.
-    """
-    def __init__(self):
-        self.__executed_cctors = list()
-
-    cpdef bint can_execute(self, net_row_objects.MethodDef method_obj):
-        """ Will be removed eventually.  Returns True if a cctor should be executed.
-
-        Args:
-            method_obj (net_row_objects.MethodDef): the method to execute.
-        Returns:
-            bool: True if the cctor hasnt been executed, False otherwise.
-        """
-        if method_obj.get_rid() not in self.__executed_cctors:
-            self.__executed_cctors.append(method_obj.get_rid())
-            return True
-        return False
-
 cdef class EmulatorAppDomain:
     """
     Represents the AppDomain of an emulator.  Contains static variables, resolve handlers, loaded assemblies, globals and other important info.
@@ -3883,6 +3863,19 @@ cdef class EmulatorAppDomain:
         self.__field_counter_registrations = dict()
         self.__user_instr_handlers = dict()
         self.__known_enums = [b'System.Security.Cryptography.CipherMode', b'System.Security.Cryptography.CryptoStreamMode']
+
+    cpdef bint mark_constructor_executed(self, net_row_objects.MethodDef method_obj):
+        """ Will be removed eventually.  Returns True if a cctor should be executed.
+
+        Args:
+            method_obj (net_row_objects.MethodDef): the method to execute.
+        Returns:
+            bool: True if the cctor hasnt been executed, False otherwise.
+        """
+        if find(self.__executed_constructors.begin(), self.__executed_constructors.end(), method_obj.get_rid()) == self.__executed_constructors.end():
+            self.__executed_constructors.push_back(method_obj.get_rid())
+            return True
+        return False
 
     cpdef list get_known_enums(self):
         return self.__known_enums
@@ -4689,7 +4682,6 @@ cdef class DotNetEmulator:
         localvars (vector[net_emu_structs.StackCell]): a vector containing all the locals for the method.
         local_var_sigs (vector[PyObject*/net_sigs.TypeSig]): A vector containing the signatures for various local vars.
         end_method_rid (int): The method rid which to handle end_offset for.
-        executed_cctors (net_emulator.CctorRegistry): An object handling which cctor methods have been executed.
         curent_eip (unsigned int): the current eip counter.
         current_offset (unsigned int): The current method code offset.
         __last_instr_end (uint64_t): Used to hold a timestamp for the last instruction execution, if enabled.
@@ -4774,7 +4766,6 @@ cdef class DotNetEmulator:
         self.end_method_rid = end_method_rid
         if self.spec_obj is None and spec_obj is not None:
             self.spec_obj = spec_obj
-        self.executed_cctors = CctorRegistry()
         if start_offset > -1:
             self.current_eip = self.disasm_obj.get_instr_index_by_offset(start_offset)
         else:
@@ -7771,16 +7762,6 @@ cdef class DotNetEmulator:
         """
         return self.app_domain
 
-    cpdef CctorRegistry get_executed_cctors(self):
-        """ Get the CctorRegistry associated with this execution.
-
-            May be removed once CctorRegistry is removed.
-
-        Returns:
-            net_exceptions.CctorRegistry: the cctor registry associated with the execution.
-        """
-        return self.executed_cctors
-
     cpdef void set_static_field_obj(self, int idno, net_emu_types.DotNetObject obj):
         """ For users to set the values of static fields before emulator execution.  Similar to setup_method_params(), it unboxes any value then sets it.
 
@@ -7975,7 +7956,7 @@ cdef class DotNetEmulator:
         """
         cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset, end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj, strict_typing=strict_typing, init_open_generics_as_object=self.__init_open_generics_as_object)
         cdef net_row_objects.MethodDef cctor_method = None
-        new_emu.executed_cctors = self.executed_cctors
+        cdef EmulatorAppDomain app_domain = None
         if end_method_rid == -1:
             new_emu.end_method_rid = self.end_method_rid
             if self.end_method_rid != -1:
@@ -8007,7 +7988,8 @@ cdef class DotNetEmulator:
             if new_emu.method_obj.get_parent_type() is not None:
                 cctor_method = new_emu.method_obj.get_parent_type().get_static_constructor()
                 if cctor_method is not None:
-                    new_emu.executed_cctors.can_execute(cctor_method)
+                    app_domain = new_emu.get_appdomain()
+                    app_domain.mark_constructor_executed(cctor_method)
         return new_emu
 
     cdef void set_slimobj_field(self, StackCell slim_obj, int idno, StackCell val):
@@ -8325,12 +8307,12 @@ cdef class DotNetEmulator:
                 if self.method_obj.get_parent_type():
                     cctor_method = self.method_obj.get_parent_type().get_static_constructor()
                     if cctor_method and cctor_method.is_static_constructor():
-                        if self.executed_cctors.can_execute(cctor_method):
+                        if app_domain.mark_constructor_executed(cctor_method):
                             emu = self.spawn_new_emulator(cctor_method, caller=self)
                             emu._allocate_params(0) #Cctor methods dont have params
                             emu.run_function()
             else:
-                self.executed_cctors.can_execute(self.method_obj)
+                app_domain.mark_constructor_executed(self.method_obj)
         if isinstance(self.method_obj, net_row_objects.MethodDef):
             if self.method_obj.get_rid() in self.print_debug_methods:
                 self.print_debug = True

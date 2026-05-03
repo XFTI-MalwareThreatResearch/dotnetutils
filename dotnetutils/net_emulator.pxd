@@ -38,11 +38,6 @@ cdef class StackCellWrapper:
     
     cdef StackCell get_wrapped(self)
 
-cdef class CctorRegistry:
-    cdef list __executed_cctors
-
-    cpdef bint can_execute(self, net_row_objects.MethodDef method_obj)
-
 cdef class EmulatorAppDomain:
     cdef list __assemblyresolve_handlers
     cdef list __resourceresolve_handlers
@@ -61,7 +56,10 @@ cdef class EmulatorAppDomain:
     cdef dict __field_index_registrations
     cdef dict __field_counter_registrations
     cdef vector[StackCell] __static_fields
+    cdef vector[int] __executed_constructors
     cdef list __known_enums
+
+    cpdef bint mark_constructor_executed(self, net_row_objects.MethodDef mdef)
 
     cpdef list get_known_enums(self)
     
@@ -174,7 +172,6 @@ cdef class DotNetEmulator:
     cdef vector[StackCell] localvars
     cdef vector[PyObject*] local_var_sigs
     cdef public int end_method_rid
-    cdef CctorRegistry executed_cctors
     cdef public unsigned int current_eip
     cdef public unsigned int current_offset
     cdef uint64_t __last_instr_start
@@ -380,8 +377,6 @@ cdef class DotNetEmulator:
     cdef void print_string(self, str string, int print_debug_level)
 
     cpdef void print_current_state(self)
-
-    cpdef CctorRegistry get_executed_cctors(self)
 
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*, int timeout_seconds=*, bint strict_typing=*, bint dont_execute_first_cctor=*)
 

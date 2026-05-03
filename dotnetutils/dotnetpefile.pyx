@@ -1369,12 +1369,9 @@ cdef class DotNetPeFile:
             if method_type:
                 return method_type.get_methods_by_name(method_name)
         # check through memberrefs to be safe
-        #TODO: update this to use get_member_refs().
         results = list()
         if self.has_metadata_table('MemberRef'):
-            for member in self.get_metadata_table('MemberRef'):
-                if member.get_full_name() == full_name:
-                    results.append(member)
+            results.extend(self.get_metadata_table('MemberRef').get_member_refs_by_full_name(full_name))
         return results
 
     cpdef net_row_objects.TypeRef get_typeref_by_full_name(self, bytes full_name):

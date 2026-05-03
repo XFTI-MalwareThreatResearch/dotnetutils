@@ -602,13 +602,11 @@ class NETReactor(Deobfuscator):
         if static_field_method is None:
             print('Could not find static field method')
             return
-    
-    
         emu = passed_emu.spawn_new_emulator(static_field_method)
         emu.setup_method_params([])
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, None)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
-        emu.get_executed_cctors().can_execute(static_field_method.get_parent_type().get_static_constructor())
+        emu.get_appdomain().mark_constructor_executed(static_field_method.get_parent_type().get_static_constructor())
         print('running junk field constructor.')
         emu.run_function()
         print('finished running junk static field constructor.  patching out junk variables.')
