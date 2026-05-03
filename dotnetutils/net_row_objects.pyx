@@ -432,6 +432,9 @@ cdef class TypeDefOrRef(RowObject):
     cdef void _add_method(self, MethodDefOrRef method_obj):
         pass #This should never be called.
 
+    cpdef bytes get_name(self):
+        return None
+
     cpdef MethodDef get_static_constructor(self):
         return None
 
@@ -510,6 +513,9 @@ cdef class TypeDef(TypeDefOrRef):
         self.__is_valuetype = False
         self.__cctor_method = None
         self.__full_name = None
+
+    cpdef bytes get_name(self):
+        return self.get_column('TypeName').get_value()
 
     cpdef MethodDef get_static_constructor(self):
         """ Obtain the type's static constructor if exists.
@@ -962,6 +968,9 @@ cdef class TypeRef(TypeDefOrRef):
         self.__full_name = None
         self._memberrefs = list()
         self.__enum_value = 0
+
+    cpdef bytes get_name(self):
+        return self.get_column('TypeName').get_value()
 
     cpdef bint is_enum(self):
         """ Checks if the type's name matches System.Enum and thus is an Enum.
@@ -2069,6 +2078,9 @@ cdef class TypeSpec(TypeDefOrRef):
                     pass
             return None
         return type_obj.get_full_name()
+
+    cpdef bytes get_name(self):
+        return self.get_type().get_name()
     
     cpdef list get_methods(self):
         """  Obtain a list of methods associated with a typespecs generic type.

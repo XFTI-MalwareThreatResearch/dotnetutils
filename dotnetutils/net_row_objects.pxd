@@ -142,6 +142,8 @@ cdef class TypeDefOrRef(RowObject):
 
     cpdef TypeDefOrRef get_type(self)
 
+    cpdef bytes get_name(self)
+
 cdef class TypeDef(TypeDefOrRef):
     cdef RowObject __classlayout_obj
     cdef list __interfaces

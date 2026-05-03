@@ -1052,6 +1052,7 @@ cdef class MetadataTableHeapObject(HeapObject):
         cdef vector[int] col_sizes
         cdef char* file_buffer = <char*>self.get_dotnetpe().get_pe().get_data_view()
         cdef int tbl_col_idx = 0
+        cdef Py_ssize_t amt_cols = 0
         self.header = self.get_dotnetpe().get_metadata_dir().get_metadata_table_header()
         self.items = dict()
         self.end_offset = 0
@@ -1066,6 +1067,7 @@ cdef class MetadataTableHeapObject(HeapObject):
             fill_sizes = True
             sizes = list()
             col_sizes.clear()
+            amt_cols = len(col_type_handler.items())
             for x in range(table_amt_rows):
                 raw_row = list()
                 row_offset = tables_curr_offset
@@ -1075,7 +1077,7 @@ cdef class MetadataTableHeapObject(HeapObject):
                         fill_sizes = False
                     if field_type is None:
                         raise net_exceptions.InvalidMetadataException
-                    if col_sizes.size() < <size_t>table_amt_rows:
+                    if <Py_ssize_t>col_sizes.size() != amt_cols:
                         if field_type.get_fixed_size() != -1:
                             size_of_value = field_type.get_fixed_size()
                         else:
@@ -1103,8 +1105,7 @@ cdef class MetadataTableHeapObject(HeapObject):
                                         if identifier == -1:
                                             raise net_exceptions.FeatureNotImplementedException()
 
-                                        table_ids.append(identifier)
-                                    
+                                        table_ids.append(identifier)                                    
                                     size_of_value = net_table_objects.get_multiple_table_index_size(table_ids,
                                                                                 self.get_header().table_amt_rows,
                                                                                 field_type.get_bits())
@@ -1119,6 +1120,7 @@ cdef class MetadataTableHeapObject(HeapObject):
                     elif size_of_value == 1:
                         field_value = <unsigned int>(<unsigned char*>file_buffer)[0]
                     else:
+                        print('bad size of value {}'.format(size_of_value))
                         raise net_exceptions.FeatureNotImplementedException()
                     raw_row.append(field_value)
                     

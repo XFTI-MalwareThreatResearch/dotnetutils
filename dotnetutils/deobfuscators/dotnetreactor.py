@@ -821,7 +821,6 @@ class NETReactor(Deobfuscator):
                         print('adding additional string method {}'.format(hex(xfm.get_token())))
                         string_methods.append(xfm)
                         continue
-                    print('running strings for method {} patch start {} patch end {}'.format(hex(xfm.get_token()), hex(patch_start), hex(call_instr.get_instr_offset() + len(call_instr))))
                     new_emu = emu.spawn_new_emulator(xfm, start_offset=patch_start, end_offset=call_instr.get_instr_offset() + len(call_instr), dont_execute_first_cctor=True)
                     new_emu.setup_method_params([])
                     worked = False

@@ -1141,6 +1141,9 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     cdef net_sigs.GenericInstMethodSig genmethodsig = None
     cdef net_sigs.GenericInstSig gentypesig = None
     cdef net_row_objects.RowObject res_scope = None
+    cdef int mapped_token = 0
+    cdef EmulatorAppDomain app_domain = emu.get_appdomain()
+    cdef int orig_obj_type = 0
 
     if not force_virtcall:
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(),
@@ -1186,6 +1189,10 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec):
         gentypesig = method_obj.get_parent_type().get_sig_obj()
     
+    mapped_token = app_domain.get_method_mapping(obj_type.get_token(), method_obj.get_token())
+    if mapped_token > 0:
+        return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, method_obj.get_dotnetpe().get_token_value(mapped_token), None, NULL, 0, method_obj)
+    orig_obj_type = obj_type.get_token()
     actual_method_obj = None
     initial_method_sig = method_obj.get_method_signature()
     method_impl_table = method_obj.get_dotnetpe().get_metadata_table('MethodImpl')
@@ -1232,6 +1239,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     if not actual_method_obj:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj.get_full_name()))
+    app_domain.map_method(orig_obj_type, method_obj.get_token(), actual_method_obj.get_token())
     return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None, NULL, 0, method_obj)
 
 cdef bint handle_callvirt_instruction(DotNetEmulator emu): 
@@ -3011,6 +3019,7 @@ cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
     cdef bint fsig_equal = False
     cdef net_row_objects.TypeSpec tspec = None
     cdef bint was_set = False
+    cdef int mapped_token = 0
     cdef EmulatorAppDomain app_domain = emu.get_appdomain()
     if emu.get_appdomain().has_static_func(ref_obj.get_token()):
         if set_val.tag != CorElementType.ELEMENT_TYPE_END:
@@ -3029,7 +3038,25 @@ cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
             raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to do a virt field lookup when the parent isnt a typespec.')
         if parent_type is None:
             return emu.pack_blanktag()
+        mapped_token = app_domain.get_field_mapping(parent_type.get_token(), ref_obj.get_token())
         tspec = <net_row_objects.TypeSpec>parent_type
+        if mapped_token > 0:
+            field_obj = ref_obj.get_dotnetpe().get_token_value(mapped_token)
+            cctor_method = tspec.get_type().get_static_constructor()
+            if cctor_method:
+                if app_domain.mark_constructor_executed(cctor_method) and not emu.dont_execute_cctor:
+                    new_emu = emu.spawn_new_emulator(cctor_method, caller=emu)
+                    new_emu.setup_method_params([])
+                    new_emu.run_function()
+            if set_val.tag == CorElementType.ELEMENT_TYPE_END:
+                current_obj = emu.get_appdomain().get_static_field(field_obj.get_rid())
+                return current_obj
+            else:
+                emu.get_appdomain().set_static_field(field_obj.get_rid(), set_val)
+                was_set = True
+            if not was_set:
+                raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to get or set a virtual field but nothing was actually done.')
+            return emu.pack_blanktag()
         col_val = tspec.get_type().get_column('FieldList')
         if col_val is None:
             return emu.pack_blanktag()
@@ -3048,6 +3075,7 @@ cdef StackCell do_virt_field_lookup(DotNetEmulator emu, StackCell set_val):
                             new_emu = emu.spawn_new_emulator(cctor_method, caller=emu)
                             new_emu.setup_method_params([])
                             new_emu.run_function()
+                    app_domain.map_field(parent_type.get_token(), ref_obj.get_token(), field_obj.get_token())
                     if set_val.tag == CorElementType.ELEMENT_TYPE_END:
                         current_obj = emu.get_appdomain().get_static_field(field_obj.get_rid())
                         return current_obj
@@ -3863,6 +3891,34 @@ cdef class EmulatorAppDomain:
         self.__field_counter_registrations = dict()
         self.__user_instr_handlers = dict()
         self.__known_enums = [b'System.Security.Cryptography.CipherMode', b'System.Security.Cryptography.CryptoStreamMode']
+        self.__virtual_field_mappings = dict()
+        self.__virtual_method_mappings = dict()
+
+    cdef int get_field_mapping(self, int type_token, int field_token):
+        if type_token not in self.__virtual_field_mappings:
+            return -1
+        cdef dict fields = self.__virtual_field_mappings[type_token]
+        if field_token not in fields:
+            return -1
+        return fields[field_token]
+
+    cdef int get_method_mapping(self, int type_token, int method_token):
+        if type_token not in self.__virtual_method_mappings:
+            return -1
+        cdef dict methods = self.__virtual_method_mappings[type_token]
+        if method_token not in methods:
+            return -1
+        return methods[method_token]
+
+    cdef void map_method(self, int type_token, int method_token, int mapped_item):
+        if type_token not in self.__virtual_method_mappings:
+            self.__virtual_method_mappings[type_token] = dict()
+        self.__virtual_method_mappings[type_token][method_token] = mapped_item
+
+    cdef void map_field(self, int type_token, int field_token, int mapped_item):
+        if type_token not in self.__virtual_field_mappings:
+            self.__virtual_field_mappings[type_token] = dict()
+        self.__virtual_field_mappings[type_token][field_token] = mapped_item
 
     cpdef bint mark_constructor_executed(self, net_row_objects.MethodDef method_obj):
         """ Will be removed eventually.  Returns True if a cctor should be executed.

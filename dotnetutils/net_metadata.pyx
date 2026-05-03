@@ -30,7 +30,7 @@ cdef class MetaDataHeader:
         dotnetpe (dotnetpefile.DotNetPeFile): the current dotnetpe.
     """
     
-    def __cinit__(self, dotnetpefile.DotNetPeFile dotnetpe, uintptr_t file_data, long offset, Py_ssize_t file_size):
+    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, long offset, Py_ssize_t file_size):
         """ Construct a new MetadataHeader.
 
         Args:
@@ -55,7 +55,7 @@ cdef class MetaDataHeader:
         self.streamheaders = list()
         self.end_offset = 0
         self.dotnetpe = dotnetpe
-        self.parse_metadata_header(<char*>file_data, file_size)
+        self.parse_metadata_header(<char*>self.dotnetpe.get_pe().get_data_view(), file_size)
 
     cdef void parse_metadata_header(self, char * file_data, Py_ssize_t file_size):
         """ Parse the metadata header from file bytes.
@@ -74,8 +74,10 @@ cdef class MetaDataHeader:
         current_offset = self.start_offset
         signature = (<int*>(<char*>file_data + current_offset))[0]
         if signature != self.signature:
+            print('signature mismatch', hex(signature), hex(self.signature), hex(current_offset))
             raise net_exceptions.NotADotNetFile
         if (current_offset + 16) >= file_size:
+            print('past filesize 1')
             raise net_exceptions.NotADotNetFile
         current_offset += 4
         self.majorversion = <int>(<unsigned short*>(<char*>file_data + current_offset))[0]
@@ -87,6 +89,7 @@ cdef class MetaDataHeader:
         self.versionstr_length = (<int*>(<char*>file_data + current_offset))[0]
         current_offset += 4
         if (current_offset + self.versionstr_length) >= file_size:
+            print('past filesize 2')
             raise net_exceptions.NotADotNetFile
         self.versionstr = self.dotnetpe.get_exe_data()[current_offset:current_offset + self.versionstr_length]
         current_offset += self.versionstr_length
@@ -97,6 +100,7 @@ cdef class MetaDataHeader:
         for x in range(self.num_streams):
             header_start = current_offset
             if (current_offset + 8) >= file_size:
+                print('past filesize 3')
                 raise net_exceptions.NotADotNetFile
             offset = (<int*>(<char*>file_data + current_offset))[0]
             current_offset += 4
@@ -115,6 +119,7 @@ cdef class MetaDataHeader:
 
             current_offset = header_start + header_size
             if current_offset >= file_size:
+                print('past filesize 4')
                 raise net_exceptions.NotADotNetFile
             
             self.streamheaders.append([self.start_offset + offset, size, name])
@@ -235,7 +240,7 @@ cdef class MetaDataDirectory:
         self.net_header_offset = com_offset
         metadata_dir = cor_header.MetaData
         metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
-        self.metadata_header = MetaDataHeader(self.dotnetpe, <char*>file_data_view.buf, metadata_offset, len(file_data))
+        self.metadata_header = MetaDataHeader(self.dotnetpe, metadata_offset, len(file_data))
         for file_offset, size, name in self.metadata_header.get_stream_headers():
             if name == b'#~' or name == b'#-':
                 self.metadata_file_offset = file_offset

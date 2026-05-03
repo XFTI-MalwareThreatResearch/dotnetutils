@@ -805,7 +805,7 @@ cdef class MemberRefTable(TableObject):
     cpdef list get_member_refs_by_full_name(self, bytes name):
         if name in self.__full_name_mapping:
             return self.__full_name_mapping[name]
-        return None
+        return list()
 
 cdef class FieldLayoutTable(TableObject):
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, str name, int tid):

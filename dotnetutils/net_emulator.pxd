@@ -52,12 +52,22 @@ cdef class EmulatorAppDomain:
     cdef unordered_map[int, static_func_type] __static_functions
     cdef unordered_map[int, newobj_func_type] __newobj_ctors
     cdef unordered_map[int, int] __static_field_mappings
+    cdef dict __virtual_field_mappings
+    cdef dict __virtual_method_mappings
     cdef dict __user_instr_handlers
     cdef dict __field_index_registrations
     cdef dict __field_counter_registrations
     cdef vector[StackCell] __static_fields
     cdef vector[int] __executed_constructors
     cdef list __known_enums
+
+    cdef int get_field_mapping(self, int type_token, int field_token)
+
+    cdef int get_method_mapping(self, int type_token, int method_token)
+
+    cdef void map_method(self, int type_token, int method_token, int mapped_item)
+
+    cdef void map_field(self, int type_token, int field_token, int mapped_item)
 
     cpdef bint mark_constructor_executed(self, net_row_objects.MethodDef mdef)
 
