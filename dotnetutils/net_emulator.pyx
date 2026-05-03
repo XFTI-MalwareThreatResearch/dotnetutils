@@ -4001,13 +4001,14 @@ cdef class EmulatorAppDomain:
                     continue
                 if isinstance(ptr, net_row_objects.TypeDef):
                     if ptr.is_explicit():
-                        if layouts is None:
-                            raise net_exceptions.EmulatorExecutionException(self.__emu_obj, 'FieldLayout table doesnt exist but we have an explicit type')
                         fields_list = ptr.get_column('FieldList').get_formatted_value()
                         if fields_list is not None:
                             explicit_offsets = dict()
                             for field in fields_list:
-                                layout = layouts.get_layout_for_field(field)
+                                if layouts is not None:
+                                    layout = layouts.get_layout_for_field(field)
+                                else:
+                                    layout = None
                                 if field.is_static():
                                     continue
                                 if layout is not None:
