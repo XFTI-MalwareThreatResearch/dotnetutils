@@ -17,7 +17,33 @@ def dnr_skip_obf_methods(emulator, argument):
 def dnr_skip_obf_invoke_methods(emulator, argument):
     instr = emulator.get_instr()
     name = instr.get_argument().get_full_name()
-    if name == b'System.Reflection.MethodBase.Invoke':
+    if name == b'System.Array.SetValue' and argument is not None:
+        if 0 not in argument:
+            argument[0] = set()
+        stack = emulator.get_stack()
+        stack_len = len(stack)
+        array_obj = stack[stack_len - 3]
+        value_obj = stack[stack_len - 2]
+        index_obj = stack[stack_len - 1]
+        has_16 = False
+        has_32 = False
+        if len(array_obj) == 32:
+            if value_obj.as_python_obj() != 0:
+                if 32 not in argument:
+                    argument[32] = array_obj
+            if index_obj.as_python_obj() == 31 and 32 in argument:
+                has_32 = True
+        if len(array_obj) == 16:
+            if value_obj.as_python_obj() != 0:
+                if 16 not in argument:
+                    argument[16] = array_obj
+            if index_obj.as_python_obj() == 15 and 16 in argument:
+                has_16 = True
+
+        if has_16 and has_32:
+            raise net_exceptions.EmulatorEndExecutionException(emulator, emulator.get_method_obj().get_rid(), 0, 0, 0)
+
+    elif name == b'System.Reflection.MethodBase.Invoke':
         stack = emulator.get_stack()
         stack_len = len(stack)
         methodinfo = stack[stack_len - 3]
@@ -29,7 +55,6 @@ def dnr_skip_obf_invoke_methods(emulator, argument):
 
         if not internal.is_static_method():
             return True
-        
         stack.remove_obj()
         stack.remove_obj()
         stack.remove_obj()
@@ -105,11 +130,6 @@ def dnr_encrypt_stop_ldelema(emulator, argument):
 def dnr_skip_time_check(emulator, argument):
     instr = emulator.get_instr()
     arg = instr.get_argument()
-
-    if instr.get_argument().get_full_name() == b'System.Reflection.FieldInfo.SetValue':
-        print('called setvalue from skip_time_check')
-
-        
     if not isinstance(arg, net_row_objects.MethodDef):
         return True
     if not arg.is_static_method():
@@ -684,17 +704,100 @@ class NETReactor(Deobfuscator):
         if not dotnet.has_heap('#US'):
             net_patch.insert_blank_userstrings(dotnet)
         cctor_method = strm.get_parent_type().get_static_constructor()
+        emu_output = dict()
         emu = emu.spawn_new_emulator(cctor_method)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
-        emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, None)
-        #emu.set_print_debugging(True, False, print_debug_methods=[582])
+        emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, emu_output)
         emu.setup_method_params([])
         print('Emulating string cctor.')
         emu.run_function()
+        string_field = None
+        string_dis = strm.disassemble_method()
+        first_call = None
+        rsrc_name = None
+        for x in range(len(string_dis)):
+            if string_dis[x].get_opcode() == net_opcodes.Opcodes.Ldsfld and string_field is None:
+                if string_dis[x+1].get_opcode() == net_opcodes.Opcodes.Ldlen:
+                    string_field = string_dis[x].get_argument()
+            elif string_dis[x].get_opcode() == net_opcodes.Opcodes.Ldstr:
+                if len(string_dis[x].get_argument()) > 1:
+                    rsrc_name = string_dis[x].get_argument()
+            elif string_dis[x].get_opcode() == net_opcodes.Opcodes.Call:
+                first_call = string_dis[x]
+            if string_field is not None and rsrc_name is not None and first_call is not None:
+                break
+        if string_field is None or rsrc_name is None or first_call is None:
+            print('Could not get string field.')
+            return
+        rsrc_name = rsrc_name.decode('utf-16le').encode('utf-8')
+        string_decode_method = None
+        for xref_rid, xref_offset in string_field.get_xrefs():
+            xfm = dotnet.get_method_by_rid(xref_rid)
+            dis = xfm.disassemble_method()
+            instr = dis.get_instr_at_offset(xref_offset)
+            if instr.get_opcode() == net_opcodes.Opcodes.Stsfld:
+                if len(xfm.get_param_types()) > 1:
+                    string_decode_method = xfm
+                    break
+        if string_decode_method is None:
+            print('Couldnt find string resource decode method.')
+            return
+        rsrc = dotnet.get_resource_by_name(rsrc_name)
+        if rsrc is None:
+            print('Couldnt find resource')
+            return
+        first_str_emu = emu.spawn_new_emulator(strm, end_offset=first_call.get_instr_offset() + len(first_call))
+        dnint = net_emu_types.DotNetInt32(first_str_emu, None)
+        dnint.from_int(0)
+        first_str_emu.setup_method_params([dnint])
+        worked = False
+        try:
+            first_str_emu.run_function()
+        except net_exceptions.EmulatorEndExecutionException:
+            worked = True
+
+        if not worked:
+            print('probably didnt get keys')
+            return
+        #Do a fake run of the string method just to get the key, then follow up with a run of the string decode method to get the correct data.
+        #Theres a bug in the emulator that causes .NET Reactor to attempt to DES decrypt the data even when its not enabled.
+        #That does mean that this deobfuscator may not currently support whatever option causes that, need to look into it.
+        str_emu = emu.spawn_new_emulator(string_decode_method, dont_execute_first_cctor=True)
+        dnarray = net_emu_types.DotNetArray(str_emu, len(rsrc), dotnet.get_typeref_by_full_name(b'System.Byte'))
+        dnarray.from_python_obj(list(rsrc))
+        dnobj = net_emu_types.DotNetObject(str_emu)
+        args = [dnobj, emu_output[32], emu_output[16], dnarray]
+        str_emu.setup_method_params(args)
+        print('running main string decode method')
+        str_emu.run_function()
         print('starting to replace strings.')
         us_heap = dotnet.get_heap('#US')
         us_heap.begin_append_tx()
         string_methods = [strm]
+        emu.get_appdomain().remove_instr_handler(net_opcodes.Opcodes.Callvirt)
+        emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, None)
+
+        def is_string_method(method_obj):
+            nonlocal strm
+            dis = method_obj.disassemble_method()
+            if len(method_obj.get_param_types()) != 1:
+                return False
+            if len(dis) > 10:
+                return False
+            for instr in dis:
+                if instr.get_name().startswith('ldarg') and instr.get_argument() == 0:
+                    continue
+                if instr.is_absolute_jmp():
+                    continue
+                if instr.get_name() == 'call' and instr.get_argument() in (None, strm):
+                    continue
+                if instr.get_name() == 'ret':
+                    continue
+                if instr.get_name() == 'nop':
+                    continue
+                return False
+            return True
+        string_indexes = dict()
         while string_methods:
             string_method = string_methods.pop()
             for xref_rid, xref_offset in string_method.get_xrefs():
@@ -716,7 +819,7 @@ class NETReactor(Deobfuscator):
                     print('Could not find start instr')
                 else:
                     patch_start = start_instr.get_instr_offset()
-                    if patch_start == 0x8 and start_instr.get_opcode() == net_opcodes.Opcodes.Ldarg:
+                    if is_string_method(xfm):
                         print('adding additional string method {}'.format(hex(xfm.get_token())))
                         string_methods.append(xfm)
                         continue
@@ -725,7 +828,6 @@ class NETReactor(Deobfuscator):
                     new_emu.setup_method_params([])
                     worked = False
                     try:
-                        new_emu.set_print_debugging(True, False, print_debug_methods=[242])
                         new_emu.run_function()
                     except net_exceptions.EmulatorEndExecutionException:
                         worked = True
@@ -737,7 +839,14 @@ class NETReactor(Deobfuscator):
                         if not isinstance(str_obj, net_emu_types.DotNetString):
                             print('Error not string!!!')
                         else:
-                            print('found string {}'.format(str_obj))
+                            patch_size = (call_instr.get_instr_offset() + len(call_instr)) - patch_start
+                            data = str_obj.get_str_data_as_str().encode('utf-16le')
+                            if data not in string_indexes:
+                                string_indexes[data] = us_heap.append_tx(data)
+                            index = string_indexes[data]
+                            new_instr = b'\x72' + int.to_bytes(index, 3, 'little') + b'\x70'
+                            new_instr += (b'\x00' * (patch_size - 5))
+                            dotnet.patch_instruction(xfm, new_instr, patch_start, patch_size)
         us_heap.end_append_tx()
 
     def remove_antitamper_antidebug_method(self, dotnet):

@@ -2379,6 +2379,8 @@ cdef bint handle_bge_un_instruction(DotNetEmulator emu):
     if emu.cell_is_ge(value1, value2):
         emu.dealloc_cell(value2)
         emu.dealloc_cell(value1)
+        emu.dealloc_cell(val2)
+        emu.dealloc_cell(val1)
         return handle_general_jump(emu)
     emu.dealloc_cell(value2)
     emu.dealloc_cell(value1)
@@ -2714,6 +2716,8 @@ cdef bint handle_ble_un_instruction(DotNetEmulator emu):
     if emu.cell_is_le(value1, value2):
         emu.dealloc_cell(value1)
         emu.dealloc_cell(value2)
+        emu.dealloc_cell(val2)
+        emu.dealloc_cell(val1)
         return handle_general_jump(emu)
     emu.dealloc_cell(value1)
     emu.dealloc_cell(value2)
@@ -5010,52 +5014,110 @@ cdef class DotNetEmulator:
         return not self.cell_is_equal(one, two)
 
     cdef StackCell cell_and(self, StackCell one, StackCell two):
-        """ Performs an and operation on two numeric cells.
-        
-        Args:
-            one (net_emu_structs.StackCell): The first argument for the operation.
-            two (net_emu_structs.StackCell): the second argument for the opeartion.
-
-        Returns:
-            net_emu_structs.StackCell: A duplicated result.  The result must be freed.
-
-        Raises:
-            net_exceptions.InvalidArgumentsException: The operation currently cant handle the provided types.
-        """
         cdef CorElementType tag1 = <CorElementType>one.tag
         cdef CorElementType tag2 = <CorElementType>two.tag
         cdef StackCell result = self.duplicate_cell(one)
-        if tag1 == CorElementType.ELEMENT_TYPE_I4 or tag1 == CorElementType.ELEMENT_TYPE_U4:
-            if tag2 == CorElementType.ELEMENT_TYPE_U4 or tag2 == CorElementType.ELEMENT_TYPE_I4:
-                result.item.i4 &= two.item.i4
+
+        if tag1 == CorElementType.ELEMENT_TYPE_I4:
+            if tag2 == CorElementType.ELEMENT_TYPE_I4:
+                result.item.i4 = one.item.i4 & two.item.i4
                 return result
-            elif tag2 == CorElementType.ELEMENT_TYPE_I or tag2 == CorElementType.ELEMENT_TYPE_U:
-                if self.__is_64bit:
-                    result.item.i4 &= two.item.i8
-                else:
-                    result.item.i4 &= two.item.i4
+            elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                result.item.i4 = one.item.i4 & <int32_t>two.item.u4
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_I8 or tag1 == CorElementType.ELEMENT_TYPE_U8:
-            if tag2 == CorElementType.ELEMENT_TYPE_U8 or tag2 == CorElementType.ELEMENT_TYPE_I8:
-                result.item.i8 &= two.item.i8
+
+        elif tag1 == CorElementType.ELEMENT_TYPE_U4:
+            if tag2 == CorElementType.ELEMENT_TYPE_I4:
+                result.item.u4 = one.item.u4 & <uint32_t>two.item.i4
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_I or tag1 == CorElementType.ELEMENT_TYPE_U:
-            if tag2 == CorElementType.ELEMENT_TYPE_I or tag2 == CorElementType.ELEMENT_TYPE_U:
-                if self.__is_64bit:
-                    result.item.i8 &= two.item.i8
-                else:
-                    result.item.i4 &= two.item.i4
+            elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                result.item.u4 = one.item.u4 & two.item.u4
                 return result
-            elif tag2 == CorElementType.ELEMENT_TYPE_I4 or tag2 == CorElementType.ELEMENT_TYPE_U4:
-                if self.__is_64bit:
-                    result.item.i8 &= two.item.i4
-                else:
-                    result.item.i4 &= two.item.i4
+
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            if tag2 == CorElementType.ELEMENT_TYPE_I8:
+                result.item.i8 = one.item.i8 & two.item.i8
                 return result
-            elif tag2 == CorElementType.ELEMENT_TYPE_I8 or tag2 == CorElementType.ELEMENT_TYPE_U8:
-                if self.__is_64bit:
-                    result.item.i8 &= two.item.i8
+            elif tag2 == CorElementType.ELEMENT_TYPE_U8:
+                result.item.i8 = one.item.i8 & <int64_t>two.item.u8
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                result.item.i8 = one.item.i8 & <int64_t>two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                result.item.i8 = one.item.i8 & <int64_t><uint64_t>two.item.u4
+                return result
+
+        elif tag1 == CorElementType.ELEMENT_TYPE_U8:
+            if tag2 == CorElementType.ELEMENT_TYPE_I8:
+                result.item.u8 = one.item.u8 & <uint64_t>two.item.i8
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_U8:
+                result.item.u8 = one.item.u8 & two.item.u8
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                result.item.u8 = one.item.u8 & <uint64_t><int64_t>two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                result.item.u8 = one.item.u8 & <uint64_t>two.item.u4
+                return result
+
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if self.__is_64bit:
+                if tag2 == CorElementType.ELEMENT_TYPE_I:
+                    result.item.i8 = one.item.i8 & two.item.i8
                     return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_U:
+                    result.item.i8 = one.item.i8 & <int64_t>two.item.u8
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                    result.item.i8 = one.item.i8 & <int64_t>two.item.i4
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                    result.item.i8 = one.item.i8 & <int64_t><uint64_t>two.item.u4
+                    return result
+            else:
+                if tag2 == CorElementType.ELEMENT_TYPE_I:
+                    result.item.i4 = one.item.i4 & two.item.i4
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_U:
+                    result.item.i4 = one.item.i4 & <int32_t>two.item.u4
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                    result.item.i4 = one.item.i4 & two.item.i4
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                    result.item.i4 = one.item.i4 & <int32_t>two.item.u4
+                    return result
+
+        elif tag1 == CorElementType.ELEMENT_TYPE_U:
+            if self.__is_64bit:
+                if tag2 == CorElementType.ELEMENT_TYPE_I:
+                    result.item.u8 = one.item.u8 & <uint64_t>two.item.i8
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_U:
+                    result.item.u8 = one.item.u8 & two.item.u8
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                    result.item.u8 = one.item.u8 & <uint64_t><int64_t>two.item.i4
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                    result.item.u8 = one.item.u8 & <uint64_t>two.item.u4
+                    return result
+            else:
+                if tag2 == CorElementType.ELEMENT_TYPE_I:
+                    result.item.u4 = one.item.u4 & <uint32_t>two.item.i4
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_U:
+                    result.item.u4 = one.item.u4 & two.item.u4
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                    result.item.u4 = one.item.u4 & <uint32_t>two.item.i4
+                    return result
+                elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                    result.item.u4 = one.item.u4 & two.item.u4
+                    return result
+
         raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_add(self, StackCell one, StackCell two):
@@ -5111,7 +5173,7 @@ cdef class DotNetEmulator:
                 else:
                     result.item.i4 += two.item.i4
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag2 == CorElementType.ELEMENT_TYPE_R8:
+        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag1 == CorElementType.ELEMENT_TYPE_R8:
             if tag1 == tag2:
                 result.item.r8 += two.item.r8
                 return result
@@ -5207,7 +5269,7 @@ cdef class DotNetEmulator:
                 else:
                     result.item.u4 /= two.item.u4
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag2 == CorElementType.ELEMENT_TYPE_R8:
+        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag1 == CorElementType.ELEMENT_TYPE_R8:
             if tag1 == tag2:
                 result.item.r8 /= two.item.r8
                 return result
@@ -5285,7 +5347,7 @@ cdef class DotNetEmulator:
                 else:
                     result.item.i4 -= two.item.i4
                 return result
-        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag2 == CorElementType.ELEMENT_TYPE_R8:
+        elif tag1 == CorElementType.ELEMENT_TYPE_R4 or tag1 == CorElementType.ELEMENT_TYPE_R8:
             if tag1 == tag2:
                 result.item.r8 -= two.item.r8
                 return result
@@ -5316,7 +5378,7 @@ cdef class DotNetEmulator:
                 result.item.i8 <<= (two.item.u8 & 63)
                 return result
             elif tag2 == CorElementType.ELEMENT_TYPE_U4 or tag2 == CorElementType.ELEMENT_TYPE_I4:
-                result.item.i8 <<= (two.item.u4 & 31)
+                result.item.i8 <<= (two.item.u4 & 63)
                 return result
         elif tag1 == CorElementType.ELEMENT_TYPE_I or tag1 == CorElementType.ELEMENT_TYPE_U:
             if tag2 == CorElementType.ELEMENT_TYPE_I or tag2 == CorElementType.ELEMENT_TYPE_U:
@@ -5361,9 +5423,9 @@ cdef class DotNetEmulator:
                     return result
             elif tag2 == CorElementType.ELEMENT_TYPE_I4:
                 if tag1 == CorElementType.ELEMENT_TYPE_I8:
-                    result.item.i8 >>= (two.item.u4 & 31)
+                    result.item.i8 >>= (two.item.u4 & 63)
                 else:
-                    result.item.u8 >>= (two.item.u4 & 31)
+                    result.item.u8 >>= (two.item.u4 & 63)
                 return result
         elif tag1 == CorElementType.ELEMENT_TYPE_I or tag1 == CorElementType.ELEMENT_TYPE_U:
             if tag2 == CorElementType.ELEMENT_TYPE_I:
@@ -8278,6 +8340,8 @@ cdef class DotNetEmulator:
         while self.current_eip < len(self.disasm_obj):
             if PyErr_CheckSignals() == -1:
                 raise net_exceptions.EmulatorExecutionException(self, 'PyErr_CheckSignals() returned -1')
+
+
             self.should_break = False
             self.instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if self.instr is None:
@@ -8287,7 +8351,6 @@ cdef class DotNetEmulator:
             if should_check_offset:
                 if self.current_offset <= end_offset < (self.current_offset + self.instr.get_instr_size()):
                     raise net_exceptions.EmulatorEndExecutionException(self, self.method_obj.get_rid(), self.end_method_rid, end_offset, self.current_offset)
-
             if (self.print_debug and len(self.print_debug_instrs) == 0) or (self.print_debug and self.instr.get_name() in self.print_debug_instrs):
                 self.print_instr(self.instr)
 

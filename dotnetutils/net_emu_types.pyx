@@ -574,7 +574,7 @@ cdef class DotNetObject:
                 raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'unknown sigtype for initialize_field {}'.format(type(type_sig)))
 
 
-    cdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj):
+    cpdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj):
         """ Initialize the object as type type_obj.
 
         Args:
@@ -5983,7 +5983,7 @@ cdef class DotNetStream(DotNetObject):
         for x in range(count):
             num = self.ReadByte(NULL, 0)
             casted = self.get_emulator_obj().cast_cell(num, net_sigs.get_CorSig_Byte())
-            buffer._set_item(x, casted)
+            buffer._set_item(offset + x, casted)
             self.get_emulator_obj().dealloc_cell(num)
             self.get_emulator_obj().dealloc_cell(casted)
         return self.get_emulator_obj().pack_i4(count)
@@ -6021,7 +6021,7 @@ cdef class DotNetStream(DotNetObject):
         cdef int count = params[2].item.i4
         cdef StackCell cell
         for x in range(count):
-            cell = buffer._get_item(x)
+            cell = buffer._get_item(x + offset)
             self._internal._set_item(<int>self._position + x, cell)
             self.get_emulator_obj().dealloc_cell(cell)
         self._position += count
@@ -6105,7 +6105,7 @@ cdef class DotNetCryptoStream(DotNetStream):
         return self.get_emulator_obj().pack_blanktag()
 
     cdef StackCell FlushFinalBlock(self, StackCell * params, int nparams):
-        cdef DotNetArray original = self._internal
+        cdef DotNetArray original = self._internal.duplicate()
         cdef bytes data = None
         cdef int block_size = 0
         cdef StackCell cell
@@ -6173,7 +6173,7 @@ cdef class DotNetMemoryStream(DotNetStream):
         return tdef.get_full_name() == b'System.IO.MemoryStream' or DotNetStream.isinst(self, tdef)
 
     cdef StackCell ToArray(self, StackCell * params, int nparams):
-        return self.get_emulator_obj().pack_object(self._internal)
+        return self.get_emulator_obj().pack_object(self._internal.duplicate())
 
     def __str__(self):
         cdef Py_ssize_t x = 0
@@ -6843,7 +6843,6 @@ cdef class DotNetArray(DotNetObject):
             cell = self._get_item(x)
             result._set_item(x, cell)
             self.get_emulator_obj().dealloc_cell(cell)
-        DotNetObject.duplicate_into(self, result) #TODO FIXME: need to do this for the others to get type_obj
         return result
 
     cdef void duplicate_into(self, DotNetObject result):

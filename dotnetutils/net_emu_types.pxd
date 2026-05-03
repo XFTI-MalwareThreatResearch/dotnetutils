@@ -91,7 +91,7 @@ cdef class DotNetObject:
 
     cdef void _initialize_field(self, int field_rid)
 
-    cdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj)
+    cpdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj)
 
     cdef void duplicate_into(self, DotNetObject result)
 
