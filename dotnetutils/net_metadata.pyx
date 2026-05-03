@@ -8,7 +8,7 @@ from dotnetutils cimport dotnetpefile
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing
 from libc.stdint cimport uintptr_t, uint64_t
-from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS
+from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS, Py_buffer
 
 
 cdef class MetaDataHeader:
@@ -29,7 +29,8 @@ cdef class MetaDataHeader:
         end_offset (int): The end offset of the header.
         dotnetpe (dotnetpefile.DotNetPeFile): the current dotnetpe.
     """
-    def __init__(self, dotnetpefile.DotNetPeFile dotnetpe, bytes file_data, long offset):
+    
+    def __cinit__(self, dotnetpefile.DotNetPeFile dotnetpe, uintptr_t file_data, long offset, Py_ssize_t file_size):
         """ Construct a new MetadataHeader.
 
         Args:
@@ -54,9 +55,9 @@ cdef class MetaDataHeader:
         self.streamheaders = list()
         self.end_offset = 0
         self.dotnetpe = dotnetpe
-        self.parse_metadata_header(file_data)
+        self.parse_metadata_header(<char*>file_data, file_size)
 
-    cdef void parse_metadata_header(self, bytes file_data):
+    cdef void parse_metadata_header(self, char * file_data, Py_ssize_t file_size):
         """ Parse the metadata header from file bytes.
 
         Args:
@@ -71,40 +72,50 @@ cdef class MetaDataHeader:
         cdef int header_start = 0
         cdef int header_size = 0
         current_offset = self.start_offset
-        signature = int.from_bytes(file_data[current_offset: current_offset + 4], 'little')
+        signature = (<int*>(<char*>file_data + current_offset))[0]
         if signature != self.signature:
             raise net_exceptions.NotADotNetFile
+        if (current_offset + 16) >= file_size:
+            raise net_exceptions.NotADotNetFile
         current_offset += 4
-        self.majorversion = int.from_bytes(file_data[current_offset:current_offset + 2], 'little')
+        self.majorversion = <int>(<unsigned short*>(<char*>file_data + current_offset))[0]
         current_offset += 2
-        self.minorversion = int.from_bytes(file_data[current_offset:current_offset + 2], 'little')
+        self.minorversion = <int>(<unsigned short*>(<char*>file_data + current_offset))[0]
         current_offset += 2
-        self.reserved = int.from_bytes(file_data[current_offset:current_offset + 4], 'little')
+        self.reserved = (<int*>(<char*>file_data + current_offset))[0]
         current_offset += 4
-        self.versionstr_length = int.from_bytes(file_data[current_offset:current_offset + 4], 'little')
+        self.versionstr_length = (<int*>(<char*>file_data + current_offset))[0]
         current_offset += 4
-        self.versionstr = file_data[current_offset:current_offset + self.versionstr_length]
+        if (current_offset + self.versionstr_length) >= file_size:
+            raise net_exceptions.NotADotNetFile
+        self.versionstr = self.dotnetpe.get_exe_data()[current_offset:current_offset + self.versionstr_length]
         current_offset += self.versionstr_length
-        self.flags = int.from_bytes(file_data[current_offset:current_offset + 2], 'little')
+        self.flags = <int>(<unsigned short*>(<char*>file_data + current_offset))[0]
         current_offset += 2
-        self.num_streams = int.from_bytes(file_data[current_offset:current_offset + 2], 'little')
+        self.num_streams = <int>(<unsigned short*>(<char*>file_data + current_offset))[0]
         current_offset += 2
         for x in range(self.num_streams):
             header_start = current_offset
-            offset = int.from_bytes(file_data[current_offset:current_offset + 4], 'little')
+            if (current_offset + 8) >= file_size:
+                raise net_exceptions.NotADotNetFile
+            offset = (<int*>(<char*>file_data + current_offset))[0]
             current_offset += 4
-            size = int.from_bytes(file_data[current_offset:current_offset + 4], 'little')
+            size = (<int*>(<char*>file_data + current_offset))[0]
             current_offset += 4
             name = bytes()
             while file_data[current_offset] != 0:
-                name += bytes([file_data[current_offset]])
+                if current_offset >= file_size:
+                    raise net_exceptions.NotADotNetFile
+                name += bytes([(<char*>file_data)[current_offset]])
                 current_offset += 1
             current_offset += 1
             header_size = current_offset - header_start
             while header_size % 4 != 0:
                 header_size += 1
-            
+
             current_offset = header_start + header_size
+            if current_offset >= file_size:
+                raise net_exceptions.NotADotNetFile
             
             self.streamheaders.append([self.start_offset + offset, size, name])
         self.end_offset = current_offset
@@ -224,7 +235,7 @@ cdef class MetaDataDirectory:
         self.net_header_offset = com_offset
         metadata_dir = cor_header.MetaData
         metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
-        self.metadata_header = MetaDataHeader(self.dotnetpe, file_data, metadata_offset)
+        self.metadata_header = MetaDataHeader(self.dotnetpe, <char*>file_data_view.buf, metadata_offset, len(file_data))
         for file_offset, size, name in self.metadata_header.get_stream_headers():
             if name == b'#~' or name == b'#-':
                 self.metadata_file_offset = file_offset

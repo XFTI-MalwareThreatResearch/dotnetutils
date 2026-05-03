@@ -23,7 +23,7 @@ cdef class MetaDataHeader:
     cdef int end_offset
     cdef dotnetpefile.DotNetPeFile dotnetpe
 
-    cdef void parse_metadata_header(self, bytes file_data)
+    cdef void parse_metadata_header(self, char * file_data, Py_ssize_t file_size)
 
     cpdef bytes to_bytes(self)
 

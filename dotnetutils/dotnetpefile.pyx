@@ -1508,24 +1508,26 @@ cdef class DotNetPeFile:
         cdef uint64_t com_offset
         cdef uint64_t resources_offset
         cdef unsigned long resources_size
+        cdef unsigned int resource_offset = 0
         cdef bytes rsrc_name
         cdef bytes rsrc_data
         cdef IMAGE_DATA_DIRECTORY * resources_dir
         cdef IMAGE_DATA_DIRECTORY com_table_directory
+        cdef char * data_view = <char*>self.get_pe().get_data_view()
         results = list()
         resources = self.get_metadata_table('ManifestResource')
         if resources:
             com_table_directory = self.get_pe().get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
             com_offset = self.get_pe().get_physical_by_rva(com_table_directory.VirtualAddress)
             com_offset += 24
-            resources_dir = <IMAGE_DATA_DIRECTORY*>(<uintptr_t>self.get_pe().get_data_view() + com_offset)
+            resources_dir = <IMAGE_DATA_DIRECTORY*>(<char*>data_view + com_offset)
             resources_offset = self.get_pe().get_physical_by_rva(resources_dir.VirtualAddress)
             for item in resources:
                 if item['Implementation'].get_raw_value() == 0:
-                    resource_offset = resources_offset + item['Offset'].get_raw_value()
-                    resource_size = int.from_bytes(self.get_exe_data()[resource_offset:resource_offset + 4], 'little')
+                    resource_offset = <unsigned int>resources_offset + item['Offset'].get_raw_value()
+                    resource_size = (<int*>(data_view + resource_offset))[0]
                     resource_offset += 4
-                    rsrc_name = item['Name'].get_value()
+                    rsrc_name = item.get_column('Name').get_value()
                     rsrc_data = self.get_exe_data()[resource_offset:resource_offset + resource_size]
                     results.append(DotNetResourceSet(rsrc_data, self, force_name=rsrc_name))
         return results

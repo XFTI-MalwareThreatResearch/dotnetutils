@@ -8,6 +8,7 @@ from dotnetutils cimport dotnetpefile, net_tokens, net_table_objects, net_struct
 from libcpp.vector cimport vector
 from libc.stdint cimport uint64_t
 from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
+from cpython.buffer cimport Py_buffer
 from dotnetutils cimport net_cil_disas, net_opcodes
 
 cdef unsigned long read_compressed_int(bytearray data):
@@ -1039,7 +1040,7 @@ cdef class MetadataTableHeapObject(HeapObject):
         cdef net_structs.CorHeapBitmask bitmask
         cdef list table_ids
         cdef int identifier
-        cdef unsigned long field_value
+        cdef unsigned int field_value
         cdef unsigned long rid
         cdef int ref_table_id
         cdef net_table_objects.TableObject current_table = None
@@ -1047,6 +1048,10 @@ cdef class MetadataTableHeapObject(HeapObject):
         cdef unsigned long table_start_offset = 0
         cdef unsigned long actual_table_size = 0
         cdef unsigned long expected_table_size = 0
+        cdef Py_ssize_t file_size = len(file_data)
+        cdef vector[int] col_sizes
+        cdef char* file_buffer = <char*>self.get_dotnetpe().get_pe().get_data_view()
+        cdef int tbl_col_idx = 0
         self.header = self.get_dotnetpe().get_metadata_dir().get_metadata_table_header()
         self.items = dict()
         self.end_offset = 0
@@ -1060,55 +1065,71 @@ cdef class MetadataTableHeapObject(HeapObject):
             current_table = net_table_objects.NET_METADATA_TABLE_TYPES[tbl_name](self.dotnetpe, tbl_name, table_id)
             fill_sizes = True
             sizes = list()
+            col_sizes.clear()
             for x in range(table_amt_rows):
                 raw_row = list()
                 row_offset = tables_curr_offset
-
+                tbl_col_idx = 0
                 for field_name, field_type in col_type_handler.items():
                     if fill_sizes and len(sizes) == len(col_type_handler):
                         fill_sizes = False
                     if field_type is None:
                         raise net_exceptions.InvalidMetadataException
-                    if field_type.get_fixed_size() != -1:
-                        size_of_value = field_type.get_fixed_size()
-                    else:
-                        if field_type.is_stream():
-                            if field_type.get_token_types()[0] == '#Blob':
-                                bitmask = net_structs.CorHeapBitmask.BITMASK_BLOB
-                            elif field_type.get_token_types()[0] == '#GUID':
-                                bitmask = net_structs.CorHeapBitmask.BITMASK_GUID
-                            elif field_type.get_token_types()[0] == '#Strings':
-                                bitmask = net_structs.CorHeapBitmask.BITMASK_STRINGS
-                            else:
-                                raise net_exceptions.FeatureNotImplementedException()
-                            size_of_value = self.get_header().get_heap_offset_size(bitmask)
+                    if col_sizes.size() < <size_t>table_amt_rows:
+                        if field_type.get_fixed_size() != -1:
+                            size_of_value = field_type.get_fixed_size()
                         else:
-                            if len(field_type.get_token_types()) == 1:
-                                ref_table_id = net_table_objects.get_table_id_from_name(field_type.get_token_types()[0])
-                                size_of_value = net_table_objects.get_single_table_index_size(ref_table_id, self.get_header().table_amt_rows)
+                            if field_type.is_stream():
+                                if field_type.get_token_types()[0] == '#Blob':
+                                    bitmask = net_structs.CorHeapBitmask.BITMASK_BLOB
+                                elif field_type.get_token_types()[0] == '#GUID':
+                                    bitmask = net_structs.CorHeapBitmask.BITMASK_GUID
+                                elif field_type.get_token_types()[0] == '#Strings':
+                                    bitmask = net_structs.CorHeapBitmask.BITMASK_STRINGS
+                                else:
+                                    raise net_exceptions.FeatureNotImplementedException()
+                                size_of_value = self.get_header().get_heap_offset_size(bitmask)
                             else:
-                                table_ids = list()
-                                for table_name in field_type.get_token_types():
-                                    if table_name == '':
-                                        continue
+                                if len(field_type.get_token_types()) == 1:
+                                    ref_table_id = net_table_objects.get_table_id_from_name(field_type.get_token_types()[0])
+                                    size_of_value = net_table_objects.get_single_table_index_size(ref_table_id, self.get_header().table_amt_rows)
+                                else:
+                                    table_ids = list()
+                                    for table_name in field_type.get_token_types():
+                                        if table_name == '':
+                                            continue
 
-                                    identifier = net_table_objects.get_table_id_from_name(table_name)
-                                    if identifier == -1:
-                                        raise net_exceptions.FeatureNotImplementedException()
+                                        identifier = net_table_objects.get_table_id_from_name(table_name)
+                                        if identifier == -1:
+                                            raise net_exceptions.FeatureNotImplementedException()
 
-                                    table_ids.append(identifier)
-                                
-                                size_of_value = net_table_objects.get_multiple_table_index_size(table_ids,
-                                                                              self.get_header().table_amt_rows,
-                                                                              field_type.get_bits())
-                    
-                    field_value = int.from_bytes(file_data[tables_curr_offset:tables_curr_offset + size_of_value], 'little', signed=False)
+                                        table_ids.append(identifier)
+                                    
+                                    size_of_value = net_table_objects.get_multiple_table_index_size(table_ids,
+                                                                                self.get_header().table_amt_rows,
+                                                                                field_type.get_bits())
+                        col_sizes.push_back(size_of_value)
+                    else:
+                        size_of_value = col_sizes[tbl_col_idx]
+
+                    if size_of_value == 4:
+                        field_value = (<unsigned int*>(<char*>file_buffer + tables_curr_offset))[0]
+                    elif size_of_value == 2:
+                        field_value = <unsigned int>(<unsigned short*>(<char*>file_buffer + tables_curr_offset))[0]
+                    elif size_of_value == 1:
+                        field_value = <unsigned int>(<unsigned char*>file_buffer)[0]
+                    else:
+                        raise net_exceptions.FeatureNotImplementedException()
                     raw_row.append(field_value)
                     
                     tables_curr_offset += size_of_value
 
+                    if <Py_ssize_t>tables_curr_offset >= file_size:
+                        raise net_exceptions.NotADotNetFile
+
                     if fill_sizes:
                         sizes.append(size_of_value)
+                    tbl_col_idx += 1
                 raw_row.append(row_offset)
                 rid = x + 1
                 current_table.add_row(net_row_objects.get_rowobject_for_table(tbl_name)(self.dotnetpe, raw_row, rid, sizes,
