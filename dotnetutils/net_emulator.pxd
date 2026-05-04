@@ -38,11 +38,6 @@ cdef class StackCellWrapper:
     
     cdef StackCell get_wrapped(self)
 
-cdef class CctorRegistry:
-    cdef list __executed_cctors
-
-    cpdef bint can_execute(self, net_row_objects.MethodDef method_obj)
-
 cdef class EmulatorAppDomain:
     cdef list __assemblyresolve_handlers
     cdef list __resourceresolve_handlers
@@ -57,11 +52,24 @@ cdef class EmulatorAppDomain:
     cdef unordered_map[int, static_func_type] __static_functions
     cdef unordered_map[int, newobj_func_type] __newobj_ctors
     cdef unordered_map[int, int] __static_field_mappings
+    cdef dict __virtual_field_mappings
+    cdef dict __virtual_method_mappings
     cdef dict __user_instr_handlers
     cdef dict __field_index_registrations
     cdef dict __field_counter_registrations
     cdef vector[StackCell] __static_fields
+    cdef vector[int] __executed_constructors
     cdef list __known_enums
+
+    cdef int get_field_mapping(self, int type_token, int field_token)
+
+    cdef int get_method_mapping(self, int type_token, int method_token)
+
+    cdef void map_method(self, int type_token, int method_token, int mapped_item)
+
+    cdef void map_field(self, int type_token, int field_token, int mapped_item)
+
+    cpdef bint mark_constructor_executed(self, net_row_objects.MethodDef mdef)
 
     cpdef list get_known_enums(self)
     
@@ -133,6 +141,8 @@ cdef class EmulatorAppDomain:
 
     cdef int get_amt_static_fields(self)
 
+    cpdef void remove_instr_handler(self, Opcodes opcode)
+
 cdef class DotNetStack:
     cdef DotNetEmulator __emulator
     cdef vector[StackCell] __internal_stack
@@ -172,7 +182,6 @@ cdef class DotNetEmulator:
     cdef vector[StackCell] localvars
     cdef vector[PyObject*] local_var_sigs
     cdef public int end_method_rid
-    cdef CctorRegistry executed_cctors
     cdef public unsigned int current_eip
     cdef public unsigned int current_offset
     cdef uint64_t __last_instr_start
@@ -204,6 +213,8 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
     cdef bint __init_open_generics_as_object
+
+    cdef StackCell convert_from_slimobject(self, StackCell cell)
 
     cpdef net_cil_disas.Instruction get_instr(self)
 
@@ -376,8 +387,6 @@ cdef class DotNetEmulator:
     cdef void print_string(self, str string, int print_debug_level)
 
     cpdef void print_current_state(self)
-
-    cpdef CctorRegistry get_executed_cctors(self)
 
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*, int timeout_seconds=*, bint strict_typing=*, bint dont_execute_first_cctor=*)
 

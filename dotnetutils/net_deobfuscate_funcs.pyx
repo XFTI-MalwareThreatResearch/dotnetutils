@@ -225,9 +225,9 @@ cdef void remove_unk_obf_1_string_obfuscation(dotnetpefile.DotNetPeFile dotnet):
                                     if len(arg_sig.get_parameters()) == 0:
                                         target_cctor_method = method_obj
                                         break
-        if target_cctor_method != None:
+        if target_cctor_method is not None:
             break
-    if target_cctor_method == None:
+    if target_cctor_method is None:
         print('Couldnt find target')
         return
     # now that we have our target cctor, we need to populate the delegate mapping.
@@ -1021,14 +1021,14 @@ cdef int __is_junk_method(dotnetpefile.DotNetPeFile dpe, net_row_objects.MethodD
             return 0
 
         if instr.get_name() == 'ldsfld':
-            if field_id != None:
+            if field_id is not None:
                 return 0
 
             field_id = instr.get_argument()
         if instr.get_name() == 'ceq':
             has_compare = True
 
-    if field_id != None:
+    if field_id is not None:
         for method_rid, xref_offset in field_id.get_xrefs():
             method_obj2 = dpe.get_method_by_rid(method_rid)
             disasm_obj = method_obj2.disassemble_method()

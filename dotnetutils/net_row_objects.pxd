@@ -100,6 +100,8 @@ cdef class ColumnValue:
 
 cdef class TypeDefOrRef(RowObject):
 
+    cpdef bint is_explicit(self)
+
     cpdef MethodDef get_static_constructor(self)
 
     cpdef list get_constructors(self)
@@ -139,6 +141,8 @@ cdef class TypeDefOrRef(RowObject):
     cpdef list get_methods_by_name(self, bytes name)
 
     cpdef TypeDefOrRef get_type(self)
+
+    cpdef bytes get_name(self)
 
 cdef class TypeDef(TypeDefOrRef):
     cdef RowObject __classlayout_obj

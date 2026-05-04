@@ -64,7 +64,7 @@ class InvalidHeapNameException(DotNetUtilsException):
 
 class InvalidArgumentsException(DotNetUtilsException):
     def __init__(self, expected=None, actual=None):
-        if expected == None and actual == None:
+        if expected is None and actual is None:
             Exception.__init__(self, "invalid arguments")
         else:
             Exception.__init__(self, 'Invalid arguments: expected={}, actual={}'.format(expected, actual))

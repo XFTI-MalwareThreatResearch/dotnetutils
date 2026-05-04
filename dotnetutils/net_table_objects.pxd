@@ -18,6 +18,10 @@ cdef class TableObject:
 
     cdef void add_row(self, net_row_objects.RowObject row)
 
+    cdef void on_add(self, net_row_objects.RowObject row)
+
+    cdef void on_processed(self, net_row_objects.RowObject row)
+
     cpdef bint has_index(self, int index)
         
     cdef void process(self)
@@ -57,40 +61,53 @@ cdef class MetadataTableHeader:
 
 cdef class TypeDefTable(TableObject):
 
+    cdef dict __name_mappings
+    cdef dict __full_name_mappings
+
     cpdef net_row_objects.TypeDef get_type_by_full_name(self, bytes full_name)
 
     cpdef list get_types_by_name(self, bytes name)
 
 cdef class ClassLayoutTable(TableObject):
 
+    cdef dict __layout_mappings
+
     cpdef net_row_objects.RowObject get_layout_by_parent(self, int parent)
 
 
 cdef class MethodDefTable(TableObject):
+
+    cdef dict __name_mappings
 
     cpdef list get_methods_by_name(self, bytes name)
 
     cdef void post_process(self)
 
 cdef class FieldRVATable(TableObject):
+    cdef dict __rva_mappings
     cpdef net_row_objects.RowObject get_by_field_rid(self, int field_rid)
 
 cdef class TypeRefTable(TableObject):
+    cdef dict __full_name_mappings
 
     cpdef net_row_objects.TypeRef get_type_by_full_name(self, bytes name)
 
 cdef class MethodImplTable(TableObject):
     cdef dict __method_dict
+    cdef vector[int] __method_tokens
 
     cdef void post_process(self)
 
     cpdef net_row_objects.MethodDefOrRef get_method_body(self, net_row_objects.MethodDefOrRef method_obj)
 
-    cpdef bint is_method_in_table(self, net_row_objects.RowObject method_obj)
+    cpdef bint is_method_in_table(self, net_row_objects.MethodDefOrRef method_obj)
     
-    cpdef net_row_objects.MethodDef get_method_definition(self, net_row_objects.RowObject method_obj, net_row_objects.TypeDef class_obj)
+    cpdef net_row_objects.MethodDef get_method_definition(self, net_row_objects.MethodDefOrRef method_obj, net_row_objects.TypeDef class_obj)
     
 cdef class MethodSemanticsTable(TableObject):
+
+    cdef dict __semantic_association_mappings
+    cdef vector[int] __method_tokens
 
     cpdef list get_semantics_for_item(self, net_row_objects.RowObject item)
     
@@ -98,13 +115,21 @@ cdef class MethodSemanticsTable(TableObject):
 
 cdef class PropertyMapTable(TableObject):
 
+    cdef dict __parent_mappings
+
     cpdef list get_properties_for_parent(self, net_row_objects.RowObject parent)
     
     cpdef net_row_objects.RowObject get_parent_for_property(self, net_row_objects.RowObject prop)
 
 cdef class MemberRefTable(TableObject):
+    cdef dict __full_name_mapping
 
-    cpdef net_row_objects.MemberRef get_ref_by_name(self, bytes name)
+    cpdef list get_member_refs_by_full_name(self, bytes name)
+
+cdef class FieldLayoutTable(TableObject):
+    cdef dict __field_layouts
+
+    cpdef net_row_objects.RowObject get_layout_for_field(self, net_row_objects.Field)
 
 cdef dict NET_METADATA_TABLE_HANDLERS
 cdef dict NET_METADATA_TABLE_TYPES

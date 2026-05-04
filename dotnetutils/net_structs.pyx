@@ -414,9 +414,9 @@ class DotNetResourceSet:
         #figure out if its deserializing or not
         deserializing_regex = r"^System\.Resources\.Extensions\.DeserializingResourceReader,\s*System\.Resources\.Extensions"
         reader_regex = r"^System\.Resources\.ResourceReader,\s*mscorlib"
-        if re.match(reader_regex, self.__reader_type_name) != None:
+        if re.match(reader_regex, self.__reader_type_name) is not None:
             self.__regular_reader = True
-        elif re.match(deserializing_regex, self.__reader_type_name) != None:
+        elif re.match(deserializing_regex, self.__reader_type_name) is not None:
             self.__deserializing_reader = True
         else:
             raise net_exceptions.InvalidAssemblyException()

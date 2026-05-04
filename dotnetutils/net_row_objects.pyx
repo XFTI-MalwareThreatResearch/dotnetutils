@@ -218,7 +218,7 @@ cdef class ColumnValue:
         Returns:
             object: The original value.  Usually either bytes, RowObject or int.
         """
-        if self.original_value == None:
+        if self.original_value is None:
             self.get_value()
         return self.original_value
 
@@ -238,7 +238,7 @@ cdef class ColumnValue:
         cdef int table_rid = 0
         cdef int orig_value = self.raw_value
         cdef net_processing.HeapObject stream = None
-        if self.original_value == None:
+        if self.original_value is None:
             self.get_value()
         if new_value is None:
             raise net_exceptions.InvalidArgumentsException()
@@ -312,13 +312,13 @@ cdef class ColumnValue:
         #check if value was changed
         if self.__has_no_value:
             return None
-        if self.cached_value == None:
+        if self.cached_value is None:
             try:
                 self.cached_value = self.__retrieve_value()
             except:
                 self.__has_no_value = True
 
-        if self.original_value == None:
+        if self.original_value is None:
             self.original_value = self.cached_value
 
         return self.cached_value
@@ -338,7 +338,7 @@ cdef class ColumnValue:
             object: The formatted value, usually a list.
         """
         #formatter method sig: def formatter_method(ColumnValue, DotNetPeFile, RowObject, object)
-        if self.formatted_value == None and self.__formatter_method != None:
+        if self.formatted_value is None and self.__formatter_method is not None:
             self.set_formatted_value(self.__formatter_method(self, self.dotnetpe, self.row_obj, self.__formatter_param))
         return self.formatted_value
 
@@ -432,8 +432,14 @@ cdef class TypeDefOrRef(RowObject):
     cdef void _add_method(self, MethodDefOrRef method_obj):
         pass #This should never be called.
 
+    cpdef bytes get_name(self):
+        return None
+
     cpdef MethodDef get_static_constructor(self):
         return None
+
+    cpdef bint is_explicit(self):
+        return False
 
     cpdef list get_constructors(self):
         return list()
@@ -507,6 +513,9 @@ cdef class TypeDef(TypeDefOrRef):
         self.__is_valuetype = False
         self.__cctor_method = None
         self.__full_name = None
+
+    cpdef bytes get_name(self):
+        return self.get_column('TypeName').get_value()
 
     cpdef MethodDef get_static_constructor(self):
         """ Obtain the type's static constructor if exists.
@@ -817,6 +826,9 @@ cdef class TypeDef(TypeDefOrRef):
                 result.append(method)
         return result
 
+    cpdef bint is_explicit(self):
+        return (self.get_column('Flags').get_value() & net_structs.CorTypeAttr.tdExplicitLayout) != 0
+
     def __str__(self):
         self.get_superclass()  # ensure superclass is populated.
         extends_name = None
@@ -893,7 +905,7 @@ cdef class Field(RowObject):
             self.__sig_obj = sig_reader.read_signature()
             if isinstance(self.__sig_obj, net_sigs.FieldSig):
                 type_obj = self.__sig_obj.get_type_sig()
-                if isinstance(type_obj, net_sigs.TypeDefOrRefSig) and type_obj.get_type() != None:
+                if isinstance(type_obj, net_sigs.TypeDefOrRefSig) and type_obj.get_type() is not None:
                     typedef_obj = type_obj.get_type()
                     self.__field_type = typedef_obj
                     if isinstance(typedef_obj, TypeDef) and typedef_obj.get_classlayout_obj():
@@ -956,6 +968,9 @@ cdef class TypeRef(TypeDefOrRef):
         self.__full_name = None
         self._memberrefs = list()
         self.__enum_value = 0
+
+    cpdef bytes get_name(self):
+        return self.get_column('TypeName').get_value()
 
     cpdef bint is_enum(self):
         """ Checks if the type's name matches System.Enum and thus is an Enum.
@@ -1081,11 +1096,27 @@ cdef class TypeRef(TypeDefOrRef):
         Returns:
             bytes: the full name of the type, e.x System.Object
         """
-        cdef bytes type_namespace
-        cdef bytes type_name
-        if not self.__full_name:
-            type_namespace = self.get_column('TypeNamespace').get_value()
-            type_name = self.get_column('TypeName').get_value()
+        cdef bytes type_namespace = bytes()
+        cdef bytes type_name = bytes()
+        cdef RowObject res_scope = self.get_column('ResolutionScope').get_value()
+        cdef TypeRef last_tref = self
+        if self.__full_name is None:
+            if self.get_column('TypeName').get_value() is None:
+                return None
+            if isinstance(res_scope, TypeRef):
+                while isinstance(res_scope, TypeRef):
+                    if len(type_name) == 0:
+                        type_name = res_scope.get_column('TypeName').get_value()
+                    else:
+                        type_name = res_scope.get_column('TypeName').get_value() + b'.' + type_name
+                    last_tref = res_scope
+                    res_scope = res_scope.get_column('ResolutionScope').get_value()
+                type_namespace = last_tref.get_column('TypeNamespace').get_value()
+            else:
+                type_namespace = self.get_column('TypeNamespace').get_value()
+            if len(type_name) != 0:
+                type_name = type_name + b'.'
+            type_name = type_name + last_tref.get_column('TypeName').get_value()
             if type_name:
                 if type_namespace:
                     self.__full_name = type_namespace + b'.' + type_name
@@ -1096,7 +1127,7 @@ cdef class TypeRef(TypeDefOrRef):
         return self.__full_name
 
     def __str__(self):
-        return self.get_full_name().decode('utf-8')
+        return 'TypeRef: {} {} - '.format(self.get_rid(), hex(self.get_token())) + self.get_full_name().decode('utf-8')
 
 cdef class MethodDefOrRef(RowObject):
 
@@ -1646,7 +1677,7 @@ cdef class MethodDef(MethodDefOrRef):
         return self.get_column('Name').get_value() == b'.ctor'
 
     def __str__(self):
-        return 'MethodDef:{}='.format(self.get_rid()) + self.get_full_name().__str__()
+        return '({}) - MethodDef:{}='.format(hex(self.get_token()), self.get_rid()) + self.get_full_name().__str__()
 
     cpdef bytes get_method_data(self):
         """  Obtains the byte data, including headers, for the method.
@@ -1767,7 +1798,7 @@ cdef class MemberRef(MethodDefOrRef):
             elif class_obj.get_table_name() == 'TypeSpec':
                 sig_type = class_obj.get_type()
                 self._set_parent_type(class_obj)
-                if sig_type != None:
+                if sig_type is not None:
                     sig_type._memberrefs.append(self)
 
     cpdef MethodDef get_method_impl(self):
@@ -1893,7 +1924,7 @@ cdef class MemberRef(MethodDefOrRef):
         Returns:
             net_sigs.CallingConventionSig: The signature object for the member.
         """
-        if self.__sig_obj == None:
+        if self.__sig_obj is None:
             try:
                 self.__sig_obj = net_sigs.SignatureReader(self.get_dotnetpe(), self.get_column('Signature').get_value_as_bytes()).read_signature()
             except Exception as e:
@@ -2047,6 +2078,9 @@ cdef class TypeSpec(TypeDefOrRef):
                     pass
             return None
         return type_obj.get_full_name()
+
+    cpdef bytes get_name(self):
+        return self.get_type().get_name()
     
     cpdef list get_methods(self):
         """  Obtain a list of methods associated with a typespecs generic type.

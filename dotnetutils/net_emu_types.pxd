@@ -69,6 +69,8 @@ cdef class DotNetObject:
 
     cdef void __clear_fields(self)
 
+    cpdef DotNetObject get_field_obj(self, int rid)
+
     cdef emu_func_type get_function(self, bytes name)
 
     cdef void add_function(self, bytes name, emu_func_type func)
@@ -89,7 +91,7 @@ cdef class DotNetObject:
 
     cdef void _initialize_field(self, int field_rid)
 
-    cdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj)
+    cpdef void initialize_type(self, net_row_objects.TypeDefOrRef type_obj)
 
     cdef void duplicate_into(self, DotNetObject result)
 
@@ -1329,6 +1331,8 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
     cdef void duplicate_into(self, DotNetObject result)
     
     cdef StackCell get_ReturnType(self, StackCell * params, int nparams)
+
+    cdef StackCell get_IsVirtual(self, StackCell * params, int nparams)
 
 cdef class DotNetParameterInfo(DotNetObject):
     cdef net_sigs.TypeSig internal_param

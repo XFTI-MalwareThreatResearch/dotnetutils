@@ -1369,12 +1369,9 @@ cdef class DotNetPeFile:
             if method_type:
                 return method_type.get_methods_by_name(method_name)
         # check through memberrefs to be safe
-        #TODO: update this to use get_member_refs().
         results = list()
         if self.has_metadata_table('MemberRef'):
-            for member in self.get_metadata_table('MemberRef'):
-                if member.get_full_name() == full_name:
-                    results.append(member)
+            results.extend(self.get_metadata_table('MemberRef').get_member_refs_by_full_name(full_name))
         return results
 
     cpdef net_row_objects.TypeRef get_typeref_by_full_name(self, bytes full_name):
@@ -1511,24 +1508,26 @@ cdef class DotNetPeFile:
         cdef uint64_t com_offset
         cdef uint64_t resources_offset
         cdef unsigned long resources_size
+        cdef unsigned int resource_offset = 0
         cdef bytes rsrc_name
         cdef bytes rsrc_data
         cdef IMAGE_DATA_DIRECTORY * resources_dir
         cdef IMAGE_DATA_DIRECTORY com_table_directory
+        cdef char * data_view = <char*>self.get_pe().get_data_view()
         results = list()
         resources = self.get_metadata_table('ManifestResource')
         if resources:
             com_table_directory = self.get_pe().get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
             com_offset = self.get_pe().get_physical_by_rva(com_table_directory.VirtualAddress)
             com_offset += 24
-            resources_dir = <IMAGE_DATA_DIRECTORY*>(<uintptr_t>self.get_pe().get_data_view() + com_offset)
+            resources_dir = <IMAGE_DATA_DIRECTORY*>(<char*>data_view + com_offset)
             resources_offset = self.get_pe().get_physical_by_rva(resources_dir.VirtualAddress)
             for item in resources:
                 if item['Implementation'].get_raw_value() == 0:
-                    resource_offset = resources_offset + item['Offset'].get_raw_value()
-                    resource_size = int.from_bytes(self.get_exe_data()[resource_offset:resource_offset + 4], 'little')
+                    resource_offset = <unsigned int>resources_offset + item['Offset'].get_raw_value()
+                    resource_size = (<int*>(data_view + resource_offset))[0]
                     resource_offset += 4
-                    rsrc_name = item['Name'].get_value()
+                    rsrc_name = item.get_column('Name').get_value()
                     rsrc_data = self.get_exe_data()[resource_offset:resource_offset + resource_size]
                     results.append(DotNetResourceSet(rsrc_data, self, force_name=rsrc_name))
         return results
@@ -1751,7 +1750,7 @@ cdef class DotNetPeFile:
         """
         #this is used so little times that we may as well just use PeFile for it.
         #TODO: Eventually remove this dependency for pefile.
-        if self.__versioninfo_str == None:
+        if self.__versioninfo_str is None:
             pe = pefile.PE(data=self.get_exe_data())
             for fileinfo in pe.FileInfo:
                 for item in fileinfo:
@@ -1762,6 +1761,9 @@ cdef class DotNetPeFile:
                                     return entry[1].decode()
             self.__versioninfo_str = ''
         return self.__versioninfo_str
+
+    def __eq__(self, other):
+        return isinstance(other, DotNetPeFile) and other.get_exe_data() == self.get_exe_data()
 
 cpdef DotNetPeFile try_get_dotnetpe(str file_path='', bytes pe_data=bytes(), bint dont_process=False):
     """ Obtains a DotNetPeFile from either a file_path or pe_data. 

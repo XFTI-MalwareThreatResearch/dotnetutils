@@ -231,7 +231,7 @@ def main():
         print('invalid mode')
         exit()
     new_data = dotnet.get_exe_data()
-    if new_data != None:
+    if new_data is not None:
         with open(output_exe, 'wb') as outfile:
             outfile.write(new_data)
         print('Done')

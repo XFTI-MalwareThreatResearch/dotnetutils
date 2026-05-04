@@ -12,6 +12,12 @@ cdef class TypeSig:
 
     cpdef net_structs.CorElementType get_element_type(self):
         return self.__element_type
+    
+    def __str__(self):
+        return 'TypeSig with element type {}'.format(self.get_element_type())
+    
+    def __repr__(self):
+        return self.__str__()
 
 cdef class LeafSig(TypeSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next):
@@ -48,14 +54,26 @@ cdef class ClassOrValueTypeSig(TypeDefOrRefSig):
         TypeDefOrRefSig.__init__(self, element_type, _next, type_def_or_ref)        
 
     def __eq__(self, other):
-        return isinstance(other, ClassOrValueTypeSig) and self.get_type() == other.get_type()
+        if not isinstance(other, ClassOrValueTypeSig):
+            return False
+        cdef net_row_objects.TypeDefOrRef type1 = self.get_type()
+        cdef net_row_objects.TypeDefOrRef type2 = other.get_type()
+        if type1 == type2:
+            return True
+        return type1.get_dotnetpe() == type2.get_dotnetpe() and type1.get_full_name() == type2.get_full_name()
 
 cdef class ValueTypeSig(ClassOrValueTypeSig):
     def __init__(self, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
         ClassOrValueTypeSig.__init__(self, net_structs.CorElementType.ELEMENT_TYPE_VALUETYPE, _next, type_def_or_ref)
 
     def __eq__(self, other):
-        return isinstance(other, ValueTypeSig) and other.get_type() == self.get_type()
+        if not isinstance(other, ValueTypeSig):
+            return False
+        cdef net_row_objects.TypeDefOrRef type1 = self.get_type()
+        cdef net_row_objects.TypeDefOrRef type2 = other.get_type()
+        if type1 == type2:
+            return True
+        return type1.get_dotnetpe() == type2.get_dotnetpe() and type1.get_full_name() == type2.get_full_name()
 
 cdef class ClassSig(ClassOrValueTypeSig):
     def __init__(self, TypeSig _next, net_row_objects.RowObject type_def_or_ref):
@@ -68,7 +86,13 @@ cdef class ClassSig(ClassOrValueTypeSig):
         return hash(self.get_type())
 
     def __eq__(self, other):
-        return isinstance(other, ClassSig) and other.get_type() == self.get_type()
+        if not isinstance(other, ClassSig):
+            return False
+        cdef net_row_objects.TypeDefOrRef type1 = self.get_type()
+        cdef net_row_objects.TypeDefOrRef type2 = other.get_type()
+        if type1 == type2:
+            return True
+        return type1.get_dotnetpe() == type2.get_dotnetpe() and type1.get_full_name() == type2.get_full_name()
 
 cdef class GenericSig(LeafSig):
     def __init__(self, net_structs.CorElementType element_type, TypeSig _next, bint is_type_var, int number):
@@ -315,7 +339,7 @@ cdef class MethodBaseSig(CallingConventionSig):
         self.method = method
 
     def __eq__(self, other):
-        if other == None:
+        if other is None:
             return False
         if not isinstance(other, MethodBaseSig):
             return False

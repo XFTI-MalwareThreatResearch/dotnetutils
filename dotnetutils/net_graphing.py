@@ -779,7 +779,7 @@ class FunctionGraph:
         else:
             to_block = self.get_block_by_offset(to_offset)
             from_block = self.get_block_by_offset(from_offset)
-        if to_block == None or from_block == None:
+        if to_block is None or from_block is None:
             raise net_exceptions.OperationNotSupportedException
 
         explored = []
