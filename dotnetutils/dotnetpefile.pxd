@@ -19,6 +19,8 @@ cdef class PeFile:
 
     cpdef bint is_64bit(self)
 
+    cpdef bint is_dll(self)
+
     cdef void __parse(self) except *
 
     cdef void __parse_64(self)

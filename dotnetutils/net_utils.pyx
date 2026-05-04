@@ -4,11 +4,35 @@
 from dotnetutils import net_exceptions
 from dotnetutils.net_structs cimport CorElementType
 from dotnetutils cimport net_sigs
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport uintptr_t, uint64_t
 from cpython.bytes cimport PyBytes_FromStringAndSize
+
+cdef uint32_t align_32(uint32_t val, uint32_t align):
+    return (val + align - 1) & ~(align - 1)
 
 cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size):
     return PyBytes_FromStringAndSize(<char*>address, <Py_ssize_t>size)
+
+cpdef bytes compress_integer(uint32_t number):
+    """ Utility function for compressing integers.
+    """
+    cdef int b0 = 0
+    cdef int b1 = 0
+    cdef int b2 = 0
+    cdef int b3 = 0
+    if number <= 0x7F:
+        return bytes([number & 0x7F])
+    elif number <= 0x3FFF:
+        b0 = <int>(0x80 | ((number >> 8) & 0x3F))
+        b1 = <int>(number & 0xFF)
+        return bytes([b0, b1])
+    else:
+        # 110vvvvv vvvvvvvv vvvvvvvv vvvvvvvv
+        b0 = <int>(0xC0 | ((number >> 24) & 0x1F))
+        b1 = <int>((number >> 16) & 0xFF)
+        b2 = <int>((number >> 8) & 0xFF)
+        b3 = <int>(number & 0xFF)
+        return bytes([b0, b1, b2, b3])
 
 cdef int get_size_of_cortype(CorElementType cor_type, bint is_64bit):
     """ Obtain the size of a CorElementType.

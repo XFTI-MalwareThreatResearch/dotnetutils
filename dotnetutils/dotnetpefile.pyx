@@ -16,7 +16,7 @@ from dotnetutils cimport net_structs, net_processing, net_cil_disas
 from libc.stdint cimport uintptr_t, uint32_t, uint64_t
 from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_RESOURCE_DIRECTORY_ENTRY, VS_VERSIONINFO, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
 from dotnetutils.net_structs cimport IMAGE_SCN_CNT_CODE, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_OPTIONAL_HEADER32, IMAGE_OPTIONAL_HEADER64, IMAGE_BASE_RELOCATION, IMAGE_DEBUG_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64
-from dotnetutils.net_structs cimport IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_DEBUG_DIRECTORY, IMAGE_ORDINAL_FLAG64, IMAGE_NT_OPTIONAL_HDR32_MAGIC
+from dotnetutils.net_structs cimport IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_FILE_DLL, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_DEBUG_DIRECTORY, IMAGE_ORDINAL_FLAG64, IMAGE_NT_OPTIONAL_HDR32_MAGIC
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS, PyBUF_WRITABLE
 from cpython.bytes cimport PyBytes_FromStringAndSize
 from cpython.ref cimport PyObject
@@ -50,6 +50,10 @@ cdef class PeFile:
 
     def __dealloc__(self):
         PyBuffer_Release(&self.__file_view)
+
+    cpdef bint is_dll(self):
+        cdef IMAGE_FILE_HEADER *file_header = <IMAGE_FILE_HEADER*>((<char*>self.get_data_view()) + self.__nt_headers_offset + 4)
+        return file_header.Characteristics & IMAGE_FILE_DLL != 0
 
     cdef void __add_section(self, IMAGE_SECTION_HEADER * sec_hdr):
         """Internal method used to add an IMAGE_SECTION_HEADER to the internal python list of sections.
