@@ -1224,7 +1224,23 @@ cdef class DotNetPeFile:
         self.__versioninfo_str = None
         if not self.metadata_dir.is_valid_directory:
             return
-        self.metadata_dir.process_metadata_heap(no_processing)
+        self.process_metadata_heap(no_processing)
+
+    cdef void process_metadata_heap(self, bint dont_process):
+        """ Process the metadata heaps
+        """
+        cdef net_processing.MetadataTableHeapObject mheap = None
+        cdef net_processing.UserStringsHeapObject usheap = None
+        self.metadata_dir.metadata_table_header = net_table_objects.MetadataTableHeader(self, self.metadata_dir.metadata_file_offset)
+        mheap = net_processing.MetadataTableHeapObject(self.metadata_file_offset, self.metadata_dir.metadata_file_size, b'#~', self)
+        self.metadata_dir.heaps['#~'] = mheap
+        self.metadata_dir.heaps = dict(sorted(self.metadata_dir.heaps.items(), key=lambda item: item[1].get_offset()))
+        self.metadata_dir.metadata_heap_size = self.metadata_dir.metadata_file_size
+        if not dont_process:
+            mheap.process_tables()
+            if '#US' in self.metadata_dir.heaps:
+                usheap = self.metadata_dir.heaps['#US']
+                usheap._fill_methods() #Fill methods after processing for #US updates.  Patching wont work if processing isnt done.
 
     cpdef uint32_t get_cor_header_offset(self):
         """ Obtain the file offset of the IMAGE_COR20_HEADER structure.

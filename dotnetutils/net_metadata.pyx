@@ -10,6 +10,54 @@ from dotnetutils cimport net_processing
 from libc.stdint cimport uintptr_t, uint64_t
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS, Py_buffer
 
+cdef bint process_directory(MetaDataDirectory mdir, dotnetpefile.DotNetPeFile dpe) except *:
+    """ Process the information in the metadata directory.
+    """
+    cdef dotnetpefile.PeFile pe = dpe.get_pe()
+    cdef IMAGE_DATA_DIRECTORY com_table_directory = pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
+    cdef uint64_t com_offset = pe.get_physical_by_rva(com_table_directory.VirtualAddress)
+    cdef Py_buffer file_data_view
+    cdef IMAGE_COR20_HEADER * cor_header = NULL
+    cdef IMAGE_DATA_DIRECTORY metadata_dir
+    cdef uint64_t metadata_offset
+    cdef unsigned int file_offset
+    cdef unsigned int size
+    cdef bytes name
+    cdef bytes file_data = dpe.get_exe_data()
+    if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
+        raise net_exceptions.NotADotNetFile
+    PyObject_GetBuffer(file_data, &file_data_view, PyBUF_ANY_CONTIGUOUS)
+    cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>file_data_view.buf + <uintptr_t>com_offset)
+    mdir.net_header = cor_header[0]
+    mdir.net_header_offset = com_offset
+    metadata_dir = cor_header.MetaData
+    metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
+    mdir.metadata_header = MetaDataHeader(dpe, metadata_offset, len(file_data))
+    for file_offset, size, name in mdir.metadata_header.get_stream_headers():
+        if name == b'#~' or name == b'#-':
+            mdir.metadata_file_offset = file_offset
+            mdir.metadata_file_size = size
+        elif name == b'#Strings':
+            if mdir._validate_stream_not_there('#Strings'):
+                mdir.heaps['#Strings'] = net_processing.StringHeapObject(file_offset, size, name, dpe)
+        elif name == b'#GUID':
+            if mdir._validate_stream_not_there('#GUID'):
+                mdir.heaps['#GUID'] = net_processing.GuidHeapObject(file_offset, size, name, dpe)
+        elif name == b'#US':
+            if mdir._validate_stream_not_there('#US'):
+                mdir.heaps['#US'] = net_processing.UserStringsHeapObject(file_offset, size, name, dpe)
+        elif name == b'#Blob':
+            if mdir._validate_stream_not_there('#Blob'):
+                mdir.heaps['#Blob'] = net_processing.BlobHeapObject(file_offset, size, name, dpe)
+        else:
+            # Dont throw exceptions on unknown streams, parse it as a generic stream.
+            if mdir._validate_stream_not_there(name.decode('ascii')):
+                mdir.heaps[name.decode('ascii')] = net_processing.HeapObject(file_offset, size, name, dpe)
+    if not (mdir.metadata_file_offset != 0 and mdir.metadata_file_size != 0):
+        raise net_exceptions.InvalidMetadataException
+
+    PyBuffer_Release(&file_data_view)
+    return True
 
 cdef class MetaDataHeader:
     """ Represents the header at the beginning of the section where .NET stores metadata.
@@ -54,10 +102,9 @@ cdef class MetaDataHeader:
         self.num_streams = 0
         self.streamheaders = list()
         self.end_offset = 0
-        self.dotnetpe = dotnetpe
-        self.parse_metadata_header(<char*>self.dotnetpe.get_pe().get_data_view(), file_size)
+        self.parse_metadata_header(<char*>dotnetpe.get_pe().get_data_view(), file_size, dotnetpe.get_exe_data())
 
-    cdef void parse_metadata_header(self, char * file_data, Py_ssize_t file_size):
+    cdef void parse_metadata_header(self, char * file_data, Py_ssize_t file_size, bytes file_data_bytes):
         """ Parse the metadata header from file bytes.
 
         Args:
@@ -74,10 +121,8 @@ cdef class MetaDataHeader:
         current_offset = self.start_offset
         signature = (<int*>(<char*>file_data + current_offset))[0]
         if signature != self.signature:
-            print('signature mismatch', hex(signature), hex(self.signature), hex(current_offset))
             raise net_exceptions.NotADotNetFile
         if (current_offset + 16) >= file_size:
-            print('past filesize 1')
             raise net_exceptions.NotADotNetFile
         current_offset += 4
         self.majorversion = <int>(<unsigned short*>(<char*>file_data + current_offset))[0]
@@ -89,9 +134,8 @@ cdef class MetaDataHeader:
         self.versionstr_length = (<int*>(<char*>file_data + current_offset))[0]
         current_offset += 4
         if (current_offset + self.versionstr_length) >= file_size:
-            print('past filesize 2')
             raise net_exceptions.NotADotNetFile
-        self.versionstr = self.dotnetpe.get_exe_data()[current_offset:current_offset + self.versionstr_length]
+        self.versionstr = file_data_bytes[current_offset:current_offset + self.versionstr_length]
         current_offset += self.versionstr_length
         self.flags = <int>(<unsigned short*>(<char*>file_data + current_offset))[0]
         current_offset += 2
@@ -100,7 +144,6 @@ cdef class MetaDataHeader:
         for x in range(self.num_streams):
             header_start = current_offset
             if (current_offset + 8) >= file_size:
-                print('past filesize 3')
                 raise net_exceptions.NotADotNetFile
             offset = (<int*>(<char*>file_data + current_offset))[0]
             current_offset += 4
@@ -119,7 +162,6 @@ cdef class MetaDataHeader:
 
             current_offset = header_start + header_size
             if current_offset >= file_size:
-                print('past filesize 4')
                 raise net_exceptions.NotADotNetFile
             
             self.streamheaders.append([self.start_offset + offset, size, name])
@@ -185,14 +227,13 @@ cdef class MetaDataDirectory:
         metadata_file_size (int): the size of #~
     """
     def __init__(self, dotnetpefile.DotNetPeFile dotnetpe):
-        self.dotnetpe = dotnetpe
         self.metadata_header = None
         self.metadata_table_header = None
         self.heaps = dict()
         self.metadata_heap_size = 0
         self.metadata_file_offset = 0
         self.metadata_file_size = 0
-        self.is_valid_directory = self.process_directory(self.dotnetpe.get_exe_data())
+        self.is_valid_directory = process_directory(self, dotnetpe)
 
     cpdef net_processing.HeapObject get_heap(self, str name):
         """ Obtain a heap from the metadata directory.
@@ -218,67 +259,3 @@ cdef class MetaDataDirectory:
         """ Check that a stream hasnt already been added.
         """
         return name not in self.heaps.keys()
-
-    cdef bint process_directory(self, bytes file_data) except *:
-        """ Process the information in the metadata directory.
-        """
-        cdef dotnetpefile.PeFile pe = dotnetpefile.PeFile(file_data)
-        cdef IMAGE_DATA_DIRECTORY com_table_directory = pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
-        cdef uint64_t com_offset = pe.get_physical_by_rva(com_table_directory.VirtualAddress)
-        cdef Py_buffer file_data_view
-        cdef IMAGE_COR20_HEADER * cor_header = NULL
-        cdef IMAGE_DATA_DIRECTORY metadata_dir
-        cdef uint64_t metadata_offset
-        cdef unsigned int file_offset
-        cdef unsigned int size
-        cdef bytes name
-        if com_table_directory.VirtualAddress == 0 or com_table_directory.Size == 0:
-            raise net_exceptions.NotADotNetFile
-        PyObject_GetBuffer(file_data, &file_data_view, PyBUF_ANY_CONTIGUOUS)
-        cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>file_data_view.buf + <uintptr_t>com_offset)
-        self.net_header = cor_header[0]
-        self.net_header_offset = com_offset
-        metadata_dir = cor_header.MetaData
-        metadata_offset = pe.get_physical_by_rva(metadata_dir.VirtualAddress)
-        self.metadata_header = MetaDataHeader(self.dotnetpe, metadata_offset, len(file_data))
-        for file_offset, size, name in self.metadata_header.get_stream_headers():
-            if name == b'#~' or name == b'#-':
-                self.metadata_file_offset = file_offset
-                self.metadata_file_size = size
-            elif name == b'#Strings':
-                if self.__validate_stream_not_there('#Strings'):
-                    self.heaps['#Strings'] = net_processing.StringHeapObject(file_offset, size, name, self.dotnetpe)
-            elif name == b'#GUID':
-                if self.__validate_stream_not_there('#GUID'):
-                    self.heaps['#GUID'] = net_processing.GuidHeapObject(file_offset, size, name, self.dotnetpe)
-            elif name == b'#US':
-                if self.__validate_stream_not_there('#US'):
-                    self.heaps['#US'] = net_processing.UserStringsHeapObject(file_offset, size, name, self.dotnetpe)
-            elif name == b'#Blob':
-                if self.__validate_stream_not_there('#Blob'):
-                    self.heaps['#Blob'] = net_processing.BlobHeapObject(file_offset, size, name, self.dotnetpe)
-            else:
-                # Dont throw exceptions on unknown streams, parse it as a generic stream.
-                if self.__validate_stream_not_there(name.decode('ascii')):
-                    self.heaps[name.decode('ascii')] = net_processing.HeapObject(file_offset, size, name, self.dotnetpe)
-        if not (self.metadata_file_offset != 0 and self.metadata_file_size != 0):
-            raise net_exceptions.InvalidMetadataException
-
-        PyBuffer_Release(&file_data_view)
-        return True
-
-    cdef void process_metadata_heap(self, bint dont_process):
-        """ Process the metadata heaps
-        """
-        cdef net_processing.MetadataTableHeapObject mheap = None
-        cdef net_processing.UserStringsHeapObject usheap = None
-        self.metadata_table_header = net_table_objects.MetadataTableHeader(self.dotnetpe, self.metadata_file_offset)
-        mheap = net_processing.MetadataTableHeapObject(self.metadata_file_offset, self.metadata_file_size, b'#~', self.dotnetpe)
-        self.heaps['#~'] = mheap
-        self.heaps = dict(sorted(self.heaps.items(), key=lambda item: item[1].get_offset()))
-        self.metadata_heap_size = self.metadata_file_size
-        if not dont_process:
-            mheap.process_tables()
-            if '#US' in self.heaps:
-                usheap = self.heaps['#US']
-                usheap._fill_methods() #Fill methods after processing for #US updates.  Patching wont work if processing isnt done.

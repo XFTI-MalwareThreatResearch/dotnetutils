@@ -60,6 +60,8 @@ cdef class DotNetPeFile:
     cdef PeFile pe
     cdef bint raise_exc_on_invalid_method
 
+    cdef void process_metadata_heap(self, bint dont_process)
+
     cdef bint should_raise_exc_on_invalid_method(self)
 
     cpdef void verify_dpe(self, bint dont_check_method_align) except *
