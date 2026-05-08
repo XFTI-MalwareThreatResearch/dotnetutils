@@ -6,7 +6,7 @@ from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing
 
 from cpython.buffer cimport Py_buffer
-from libc.stdint cimport uintptr_t, uint64_t, int64_t
+from libc.stdint cimport uintptr_t, uint64_t, int64_t, uint32_t
 from dotnetutils.net_structs cimport IMAGE_RESOURCE_DIRECTORY, IMAGE_DATA_DIRECTORY, IMAGE_COR20_HEADER, IMAGE_SECTION_HEADER, IMAGE_RESOURCE_DIRECTORY_ENTRY
 
 cdef class PeFile:
@@ -29,9 +29,9 @@ cdef class PeFile:
 
     cdef void __parse_32(self)
     
-    cpdef uint64_t get_offset_from_rva(self, uint64_t rva)
+    cpdef uint32_t get_offset_from_rva(self, uint32_t rva)
 
-    cpdef uint64_t get_rva_from_offset(self, uint64_t offset)
+    cpdef uint32_t get_rva_from_offset(self, uint32_t offset)
 
     cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, unsigned int idx)
 
@@ -43,11 +43,11 @@ cdef class PeFile:
 
     cpdef bytes get_file_data(self)
 
-    cpdef uint64_t get_physical_by_rva(self, uint64_t rva)
+    cpdef uint32_t get_physical_by_rva(self, uint32_t rva)
 
-    cdef int get_sec_index_va(self, uint64_t va_addr)
+    cdef int get_sec_index_va(self, uint32_t va_addr)
 
-    cdef int get_sec_index_phys(self, uint64_t offset)
+    cdef int get_sec_index_phys(self, uint32_t offset)
 
     cpdef IMAGE_COR20_HEADER get_net_header(self)
 
@@ -64,25 +64,25 @@ cdef class DotNetPeFile:
 
     cpdef void verify_dpe(self, bint dont_check_method_align) except *
 
-    cdef void verify_resources(self, uint64_t rs_offset, uint64_t orig_rs_offset, Py_buffer new_exe_view) except *
+    cdef void verify_resources(self, uint32_t rs_offset, uint32_t orig_rs_offset, Py_buffer new_exe_view) except *
 
-    cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end, bint dont_update_methods)
+    cpdef void patch_dpe(self, uint32_t va, int diff, bytes stream_name, uint32_t target_va, bytes new_data, uint32_t target_end, bint dont_update_methods)
 
-    cdef void __update_net_vas(self, uint64_t va_addr, int difference, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference, bint dont_update_methods, bytes new_data, uint64_t target_end)
+    cdef void __update_net_vas(self, uint32_t va_addr, int difference, bytes stream_name, uint32_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference, bint dont_update_methods, bytes new_data, uint32_t target_end)
 
-    cpdef void __patch_dpe32(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bint dont_update_methods, bytes new_data, uint64_t target_end)
+    cpdef void __patch_dpe32(self, uint32_t va, int diff, bytes stream_name, uint32_t target_va, bint dont_update_methods, bytes new_data, uint32_t target_end)
 
-    cpdef void __patch_dpe64(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bint dont_update_methods, bytes new_data, uint64_t target_end)
+    cpdef void __patch_dpe64(self, uint32_t va, int diff, bytes stream_name, uint32_t target_va, bint dont_update_methods, bytes new_data, uint32_t target_end)
 
-    cdef uint64_t __get_offset_from_memview(self, Py_buffer view_obj, uint64_t rva)
+    cdef uint32_t __get_offset_from_memview(self, Py_buffer view_obj, uint32_t rva)
 
-    cdef uint64_t __get_rva_from_memview(self, Py_buffer view_obj, uint64_t offset)
+    cdef uint32_t __get_rva_from_memview(self, Py_buffer view_obj, uint32_t offset)
     
     cpdef void reinit_dpe(self, bint no_processing)
 
     cpdef void update_streams(self)
 
-    cpdef uint64_t get_cor_header_offset(self)
+    cpdef uint32_t get_cor_header_offset(self)
 
     cpdef net_row_objects.MethodDef get_entry_point(self)
 

@@ -7,7 +7,7 @@ cdef class NetRebuilder:
     cdef DotNetPeFile __dpefile
     cdef PeFile __pe
 
-    cdef bytes rebuild(self)
+    cpdef bytes rebuild(self)
 
     cdef size_t __build_imports32(self, DotNetPeFile dotnet, bytearray result, uint32_t rva)
 
@@ -31,6 +31,12 @@ cdef class NetRebuilder:
 
     cdef dict __build_fieldrva_data(self, bytearray result, uint32_t fieldrva_rva)
 
+    cdef size_t __build_imports64(self, DotNetPeFile dotnet, bytearray result, uint32_t rva)
+
+    cdef size_t __build_imports32(self, DotNetPeFile dotnet, bytearray result, uint32_t rva)
+
     cdef bytes __rebuild_64(self)
 
     cdef bytes __rebuild_32(self)
+
+    cdef uint32_t calculate_pe_checksum(self, unsigned char * data, size_t length,  size_t checksum_offset)

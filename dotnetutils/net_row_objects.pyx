@@ -12,6 +12,7 @@ from dotnetutils cimport net_cil_disas
 from dotnetutils cimport net_tokens
 from dotnetutils cimport net_table_objects
 from dotnetutils cimport net_processing, net_opcodes
+from libc.stdint cimport uint32_t
 
 cdef class RowObject:
 
@@ -932,7 +933,7 @@ cdef class Field(RowObject):
                 Useful for obtaining the initial data that a field is eventually set to by the CLR.
         """
         cdef int rva
-        cdef uint64_t offset
+        cdef uint32_t offset
         if not self.__rva_object:
             return None
 
@@ -1421,8 +1422,8 @@ cdef class MethodDef(MethodDefOrRef):
         cdef int new_method_size = <int>len(data)
         cdef int difference = 0
         cdef dotnetpefile.PeFile pe = self.get_dotnetpe().get_pe()
-        cdef uint64_t rva = <uint64_t>self.get_column('RVA').get_value_as_int()
-        cdef uint64_t file_offset = pe.get_offset_from_rva(rva)
+        cdef uint32_t rva = <uint32_t>self.get_column('RVA').get_value_as_int()
+        cdef uint32_t file_offset = pe.get_offset_from_rva(rva)
         cdef bytes final_data = None
         cdef int amt_padding = 0
         difference = new_method_size - orig_method_size
@@ -1490,7 +1491,7 @@ cdef class MethodDef(MethodDefOrRef):
         Returns:
             bytes: the original method's data before any manipulation
         """
-        cdef uint64_t file_offset
+        cdef uint32_t file_offset
         cdef unsigned long method_size
         if self.get_column('RVA').get_original_value() == 0:
             return None
@@ -1685,7 +1686,7 @@ cdef class MethodDef(MethodDefOrRef):
         Returns:
             bytes: The bytes representing the method, including headers and trailers.
         """
-        cdef uint64_t file_offset
+        cdef uint32_t file_offset
         cdef int method_size
         if self.get_column('RVA').get_value() == 0:
             return None

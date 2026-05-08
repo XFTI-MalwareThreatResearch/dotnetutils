@@ -3,7 +3,7 @@
 
 from dotnetutils import net_exceptions
 from dotnetutils cimport dotnetpefile
-from libc.stdint cimport uintptr_t, uint64_t, uint32_t
+from libc.stdint cimport uintptr_t, uint32_t
 from libc.string cimport memcmp
 from dotnetutils.net_structs cimport IMAGE_SECTION_HEADER, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_FILE_HEADER, IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DIRECTORY
 
@@ -14,24 +14,24 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
         dotnetpe (dotnetpefile.DotNetPeFile): the dotnetpe to add to.
     """
     cdef bytearray new_exe_data
-    cdef uint64_t metadata_offset
-    cdef uint64_t streams_offset
+    cdef uint32_t metadata_offset
+    cdef uint32_t streams_offset
     cdef int number_of_streams
     cdef int length_of_str
-    cdef uint64_t current_offset
+    cdef uint32_t current_offset
     cdef int x
     cdef bytes name
     cdef int us_size
-    cdef uint64_t new_header_offset
-    cdef uint64_t us_offset
+    cdef uint32_t new_header_offset
+    cdef uint32_t us_offset
     cdef bytes new_streamheader
-    cdef uint64_t new_stream_offset
-    cdef uint64_t new_data_va
-    cdef uint64_t stream_amt_offset
-    cdef uint64_t new_data_offset
+    cdef uint32_t new_stream_offset
+    cdef uint32_t new_data_va
+    cdef uint32_t stream_amt_offset
+    cdef uint32_t new_data_offset
     cdef bytes number_of_streams_bytes
     cdef bytes exe_data = dotnetpe.get_pe().get_file_data()
-    cdef uint64_t va_addr = 0
+    cdef uint32_t va_addr = 0
     new_exe_data = bytearray(exe_data)
 
     metadata_offset = dotnetpe.get_pe().get_offset_from_rva(dotnetpe.get_pe().get_net_header().MetaData.VirtualAddress)
@@ -77,16 +77,16 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     dotnetpe.patch_dpe(new_data_va, 1, b'#US', new_data_va - 1, new_streamheader, new_data_offset, False)
     dotnetpe.reinit_dpe(False)
 
-cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr):
+cdef void fixup_resource_directory(uint32_t rs_offset, uint32_t rs_rva, uint32_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint32_t va_addr, int difference, uint32_t target_addr):
     """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.
     """
     cdef IMAGE_RESOURCE_DIRECTORY * rsrc_dir = NULL
-    cdef uint64_t usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
+    cdef uint32_t usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
     cdef int x
     cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * sub_entry = NULL
-    cdef uint64_t r_offset
-    cdef uint64_t rva
-    cdef uint64_t fixed_rva
+    cdef uint32_t r_offset
+    cdef uint32_t rva
+    cdef uint32_t fixed_rva
     cdef IMAGE_RESOURCE_DATA_ENTRY * data_struct = NULL
     rsrc_dir = <IMAGE_RESOURCE_DIRECTORY*>(<uintptr_t>new_exe_view.buf + <uintptr_t>rs_offset)
     for x in range(rsrc_dir.NumberOfNamedEntries + rsrc_dir.NumberOfIdEntries):
@@ -102,7 +102,7 @@ cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t
             data_struct.OffsetToData = <uint32_t>fixed_rva
         usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
 
-cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view, uint64_t addr, uint64_t old_userstrings_va, int userstrings_difference, uint64_t target_addr):
+cdef uint32_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view, uint32_t addr, uint32_t old_userstrings_va, int userstrings_difference, uint32_t target_addr):
     """ Take an RVA, and obtain its "fixed" value.  The fixed value of an RVA is the RVA after accounting for the amount of bytes that will be added or subtracted by an operation.
     """
     cdef IMAGE_SECTION_HEADER old_section

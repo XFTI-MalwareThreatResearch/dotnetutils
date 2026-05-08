@@ -6,7 +6,7 @@ import binascii
 from dotnetutils import net_exceptions
 from dotnetutils cimport dotnetpefile, net_tokens, net_table_objects, net_structs, net_row_objects
 from libcpp.vector cimport vector
-from libc.stdint cimport uint64_t
+from libc.stdint cimport uint32_t
 from cpython.ref cimport PyObject, Py_INCREF, Py_XDECREF
 from cpython.buffer cimport Py_buffer
 from dotnetutils cimport net_cil_disas, net_opcodes
@@ -254,7 +254,7 @@ cdef class StringHeapObject(HeapObject):
     cpdef void end_append_tx(self):
         cdef int x = 0
         cdef int new_offset = 0
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if not self.in_append_tx:
             raise net_exceptions.OperationNotSupportedException()
         self.in_append_tx = False
@@ -275,7 +275,7 @@ cdef class StringHeapObject(HeapObject):
         cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS)
         cdef int old_metadata_size = heap_obj.get_size()
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         cdef int difference = 0
         if heap_offset_size == 2 and new_size > 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_STRINGS, 4)
@@ -374,7 +374,7 @@ cdef class StringHeapObject(HeapObject):
         cdef int difference = 0
         cdef bytes bitem = None
         cdef int off = 0
-        cdef uint64_t va_addr
+        cdef uint32_t va_addr
         if len(b) and b[-1] != 0:
             b += b'\x00'
         if not self.has_offset(offset):
@@ -395,7 +395,7 @@ cdef class StringHeapObject(HeapObject):
         cdef bytes b = <bytes> item
         cdef int new_offset = <int>len(self.raw_data)
         cdef int potential = 0
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if len(b) > 0 and b[-1] != 0:
             b += b'\x00'
         potential = self.get_offset_of_item(b)
@@ -457,7 +457,7 @@ cdef class StringHeapObject(HeapObject):
         cdef bytes item = self.read_item(offset)
         cdef int difference = -1 * <int>len(item)
         cdef int off = 0
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if not self.is_offset_referenced(offset):
             self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
@@ -482,7 +482,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB)
         cdef int old_metadata_size = heap_obj.get_size()
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         cdef int difference = 0
         if heap_offset_size == 2 and new_size > 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_BLOB, 4)
@@ -575,7 +575,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef bytes orig_item = self.read_item(offset)
         cdef bytes final = compressed_size + b
         cdef bytes bitem = None
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         cdef int difference = <int>(len(final) - len(orig_item))
         self.update_bitmask(self.get_size() + difference)
         self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(orig_item):]
@@ -592,7 +592,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef int offset = <int>len(self.raw_data)
         cdef bytes final = self.compress_integer(<unsigned long>len(item)) + <bytes>item
         cdef int potential = self.get_offset_of_item(final)
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if potential == -1:
             self.update_bitmask(self.get_size() + <int>len(final))
             self.raw_data += final
@@ -617,7 +617,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef bytes item = <bytes>self.read_item(offset)
         cdef int difference = <int>len(item) * -1
         cdef int off = 0
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if not self.is_offset_referenced(offset):
             self.update_bitmask(self.get_size() + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
@@ -654,7 +654,7 @@ cdef class GuidHeapObject(HeapObject):
         cdef MetadataTableHeapObject heap_obj = <MetadataTableHeapObject>self.get_dotnetpe().get_heap('#~')
         cdef int heap_offset_size = heap_obj.get_header().get_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID)
         cdef int old_metadata_size = heap_obj.get_size()
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         cdef int difference = 0
         if heap_offset_size == 2 and new_size > 65535:
             heap_obj.get_header().set_heap_offset_size(net_structs.CorHeapBitmask.BITMASK_GUID, 4)
@@ -727,7 +727,7 @@ cdef class GuidHeapObject(HeapObject):
     cpdef int del_item(self, int offset):
         cdef int difference = -16
         cdef int off = 0
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if not self.has_offset(offset):
             raise net_exceptions.InvalidArgumentsException()
         if not self.is_offset_referenced(offset):
@@ -754,7 +754,7 @@ cdef class GuidHeapObject(HeapObject):
             raise net_exceptions.InvalidArgumentsException()
         cdef int offset = <int>len(self.raw_data)
         cdef int potential = self.get_offset_of_item(item)
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if potential == -1:
             self.update_bitmask(self.get_size() + 16)
             self.raw_data += item
@@ -783,7 +783,7 @@ cdef class UserStringsHeapObject(HeapObject):
     cpdef void end_append_tx(self):
         cdef int x = 0
         cdef int new_offset = 0
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if not self.in_append_tx:
             raise net_exceptions.OperationNotSupportedException()
         self.in_append_tx = False
@@ -930,7 +930,7 @@ cdef class UserStringsHeapObject(HeapObject):
         cdef bytes old_item = self.read_item(offset)
         cdef int difference = 0
         cdef int off = 0
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if old_item is None:
             return 0
         difference = <int>len(old_item) * -1
@@ -953,7 +953,7 @@ cdef class UserStringsHeapObject(HeapObject):
         cdef int difference = 0
         cdef int off = 0
         cdef bytes bitem = None
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         if b is None:
             return 0
         final = self.sanitize_input(b)
@@ -969,7 +969,7 @@ cdef class UserStringsHeapObject(HeapObject):
         cdef bytes final = None
         cdef int new_offset = <int>len(self.raw_data)
         cdef int potential = 0
-        cdef uint64_t va_addr = 0
+        cdef uint32_t va_addr = 0
         final = self.sanitize_input(b)
         potential = self.get_offset_of_item(final)
         if potential == -1:

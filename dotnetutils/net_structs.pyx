@@ -5,7 +5,7 @@
 import io
 import re
 from dotnetutils import net_exceptions
-from dotnetutils import compress_integer
+from dotnetutils.net_utils import compress_integer
 from libc.stdint cimport uint64_t
 import binascii
 
