@@ -9,7 +9,7 @@ from dotnetutils.net_structs cimport IMAGE_SCN_CNT_CODE, IMAGE_SCN_MEM_READ, IMA
 from dotnetutils.net_structs cimport IMAGE_IMPORT_DESCRIPTOR, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64, IMAGE_COR20_HEADER, IMAGE_BASE_RELOCATION
 from dotnetutils.net_structs cimport IMAGE_IMPORT_BY_NAME, IMAGE_DATA_DIRECTORY, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_SCN_MEM_DISCARDABLE
 from dotnetutils.net_structs cimport IMAGE_SCN_MEM_EXECUTE, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, IMAGE_SCN_MEM_DISCARDABLE
-from dotnetutils.net_structs cimport IMAGE_RESOURCE_DIRECTORY, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_OPTIONAL_HEADER32, IMAGE_OPTIONAL_HEADER64
+from dotnetutils.net_structs cimport IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_RESOURCE_DIRECTORY, IMAGE_RESOURCE_DIRECTORY_ENTRY, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_OPTIONAL_HEADER32, IMAGE_OPTIONAL_HEADER64
 from dotnetutils.net_processing cimport HeapObject
 from libc.string cimport memcmp, memset, memcpy, strcpy, strlen
 from libc.stdint cimport uint16_t, uintptr_t, int64_t, uint32_t, uint64_t
@@ -595,6 +595,9 @@ cdef class NetRebuilder:
         if has_rsrc:
             nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].VirtualAddress = resource_rva
             nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].Size = resource_vsize
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress = 0
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size = 0
+
         checksum_offset = dos_header.e_lfanew + 4 + <uint32_t>sizeof(IMAGE_FILE_HEADER)
         checksum_offset += <uint32_t>( <uint64_t>(&nt_headers.OptionalHeader.CheckSum) - <uint64_t>(&nt_headers.OptionalHeader))
         checksum = self.calculate_pe_checksum(<unsigned char *>headers_view.buf, <size_t>len(headers), checksum_offset)
@@ -689,6 +692,7 @@ cdef class NetRebuilder:
         cdef uint32_t resource_vsize = 0
         cdef uint32_t checksum = 0
         cdef size_t checksum_offset = 0
+        cdef uint32_t header_padding = 0
         headers.extend(orig_data[:dos_header.e_lfanew])
         headers.extend(b'PE\x00\x00')
         headers.extend(orig_data[dos_header.e_lfanew + 4: dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader])
@@ -698,14 +702,14 @@ cdef class NetRebuilder:
         data_dir = self.__pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_RESOURCE)
         if data_dir.VirtualAddress != 0:
             amt_sections += 1
-        first_sect_offset = (<uint32_t>len(headers)) + (amt_sections * sizeof(sect_header)) + methods_size
-        fields_size = align_32(first_sect_offset, nt_headers.OptionalHeader.FileAlignment)
-        result.extend(b'\x00' * (fields_size - first_sect_offset))
-        first_sect_offset = fields_size
-        fields_size = 0
+        first_sect_offset = (
+            <uint32_t>len(headers) +
+            <uint32_t>(amt_sections * sizeof(IMAGE_SECTION_HEADER))
+        )
+        first_sect_offset = align_32(first_sect_offset, nt_headers.OptionalHeader.FileAlignment)
 
-        first_section_rva = (<uint32_t>len(result)) + (amt_sections*sizeof(sect_header))
-        first_section_rva = align_32(first_section_rva, nt_headers.OptionalHeader.SectionAlignment)
+        first_section_rva = align_32(first_sect_offset, nt_headers.OptionalHeader.SectionAlignment)
+
         if self.__pe.is_dll():
             nt_headers.OptionalHeader.ImageBase = 0x10000000
         else:
@@ -721,7 +725,6 @@ cdef class NetRebuilder:
         fields_size = 0
         result.extend(b'\x00' * methods_size)
         methods_rva = imports_rva + imports_size + methods_size
-        methods_size = 0
         methods_size = <uint32_t>len(result)
         method_mappings = self.__build_method_data(result, methods_rva)
         methods_size = <uint32_t>len(result) - methods_size
@@ -746,7 +749,7 @@ cdef class NetRebuilder:
                 result.extend(orig_data[offset:offset + nt_headers.OptionalHeader.DataDirectory[x].Size])
 
         #align up TODO is 4 align above messing with this
-        first_sect_size = <uint32_t>len(result)
+        first_sect_size = <uint32_t>(len(result) - header_padding)
         first_sect_size = align_32(first_sect_size, nt_headers.OptionalHeader.FileAlignment)
         sect_header.Misc.VirtualSize = <uint32_t>len(result)
         first_sect_vsize = sect_header.Misc.VirtualSize
@@ -781,6 +784,7 @@ cdef class NetRebuilder:
             data = data + b'\x00' * (rsrc_size - len(data))
             result.extend(data)
             headers.extend(convert_pointer_to_bytes(<uintptr_t>&sect_header, sizeof(IMAGE_SECTION_HEADER)))
+        headers.extend(b'\x00' * (first_sect_offset - len(headers)))
         headers.extend(result)
         PyObject_GetBuffer(headers, &headers_view, PyBUF_WRITABLE)
         dos_header = <IMAGE_DOS_HEADER*>headers_view.buf
@@ -815,6 +819,8 @@ cdef class NetRebuilder:
         if has_rsrc:
             nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].VirtualAddress = resource_rva
             nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].Size = resource_vsize
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress = 0
+        nt_headers.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].Size = 0
 
         checksum_offset = dos_header.e_lfanew + 4 + <uint32_t>sizeof(IMAGE_FILE_HEADER)
         checksum_offset += <size_t>( <size_t>(&nt_headers.OptionalHeader.CheckSum) - <size_t>(&nt_headers.OptionalHeader))
