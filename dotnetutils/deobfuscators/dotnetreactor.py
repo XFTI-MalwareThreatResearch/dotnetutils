@@ -1,6 +1,6 @@
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils import net_row_objects, net_sigs, net_emulator, net_exceptions, net_emu_types, net_opcodes, net_graph_analyzer
-from dotnetutils import net_structs, dotnetpefile, net_patch, net_deobfuscate_funcs
+from dotnetutils import net_structs, dotnetpefile, net_patch, net_deobfuscate_funcs, net_rebuilder
 
 def dnr_skip_obf_methods(emulator, argument):
     method_obj = emulator.get_method_obj()
@@ -405,7 +405,10 @@ class NETReactor(Deobfuscator):
                 xfm = dotnet.get_method_by_rid(xref_rid)
                 dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)
             print(f'Decrypted {amt_decrypted} methods using RVA patching mode.')
+            rebuild = net_rebuilder.NetRebuilder(dotnet)
+            dotnet.set_exe_data(rebuild.rebuild())
             dotnet.reinit_dpe(False)
+            #We need to get the exe data to match with the context for this to work properly
             return True
 
         amt_entries = reader.read_int32()
@@ -472,6 +475,9 @@ class NETReactor(Deobfuscator):
         for xref_rid, xref_offset in encryption_method.get_xrefs():
             xfm = dotnet.get_method_by_rid(xref_rid)
             dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)
+        rebuild = net_rebuilder.NetRebuilder(dotnet)
+        dotnet.set_exe_data(rebuild.rebuild())
+        dotnet.reinit_dpe(False)
         print('Done decrypting {} methods'.format(amt_entries))
         return True
     
@@ -517,6 +523,7 @@ class NETReactor(Deobfuscator):
         for field_token, method_token in tokens_dict.items():
             is_virt = method_token & 0x40000000 > 0
             method_token &= 0x3fffffff
+            print('mapping field {} to {}'.format(hex(field_token), hex(method_token)))
             field_obj = dotnet.get_token_value(field_token)
             mdef_obj = dotnet.get_token_value(method_token)
             msig = mdef_obj.get_method_signature()
@@ -874,8 +881,6 @@ class NETReactor(Deobfuscator):
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
         is_encrypted = self.fix_encrypted_methods(dotnet, emu)
-        dotnet.add_string('DNU_NETREACTOR_WATERMARK')
-        return True
         emu = net_emulator.DotNetEmulator(delegate_method)
         if is_encrypted:
             #remove delegatges again for decrypted methods.

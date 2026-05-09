@@ -301,8 +301,11 @@ cdef class NetRebuilder:
     cdef size_t __build_net_resources(self, bytearray result, uint32_t rva):
         cdef object rsrc = None
         cdef size_t result_start = len(result)
+        cdef bytes data = None
         for rsrc in self.__dpefile.get_resources():
-            result.extend(rsrc.get_data())
+            data = rsrc.get_data()
+            result.extend(int.to_bytes(<uint32_t>len(data), 4, 'little'))
+            result.extend(data)
         return len(result) - result_start
 
     cdef size_t __build_net_headers(self, bytearray result, uint32_t rva, uint32_t metadata_rva, uint32_t metadata_size):
