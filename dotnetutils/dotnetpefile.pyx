@@ -847,16 +847,14 @@ cdef class DotNetPeFile:
         cdef uint32_t offset = 0
         cdef uint32_t patch_offset = 0
         cdef bytes exe_data = None
-
-        if method_obj['RVA'].get_raw_value() != 0:
+        if method_obj is None:
+            raise Exception('Cant patch a NoneType method object')
+        if method_obj.get_column('RVA').get_raw_value() != 0:
             disas = method_obj.disassemble_method()
-            if disas is None:
-                raise net_exceptions.InvalidArgumentsException()
-            rva = <uint32_t>method_obj['RVA'].get_raw_value()
-            offset = self.get_pe().get_offset_from_rva(rva)
-            patch_offset = offset + disas.get_header_size() + instr_offset  # needs to be zero based not 1 based.
-            exe_data = self.get_exe_data()
-            self.set_exe_data(exe_data[:patch_offset] + patch_bytes + exe_data[patch_offset + orig_size:])
+            patch_offset = disas.get_header_size() + instr_offset  # needs to be zero based not 1 based.
+            exe_data = method_obj.get_method_data()
+            exe_data = exe_data[:patch_offset] + patch_bytes + exe_data[patch_offset + orig_size:]
+            method_obj.set_method_data(exe_data)
 
     cpdef net_row_objects.MethodDef get_entry_point(self):
         """ Obtains a MethodDef representing the managed entrypoint of the executable.

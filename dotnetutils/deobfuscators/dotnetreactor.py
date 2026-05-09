@@ -472,7 +472,6 @@ class NETReactor(Deobfuscator):
         for xref_rid, xref_offset in encryption_method.get_xrefs():
             xfm = dotnet.get_method_by_rid(xref_rid)
             dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)
-        dotnet.reinit_dpe(False)
         print('Done decrypting {} methods'.format(amt_entries))
         return True
     
@@ -875,6 +874,8 @@ class NETReactor(Deobfuscator):
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
         is_encrypted = self.fix_encrypted_methods(dotnet, emu)
+        dotnet.add_string('DNU_NETREACTOR_WATERMARK')
+        return True
         emu = net_emulator.DotNetEmulator(delegate_method)
         if is_encrypted:
             #remove delegatges again for decrypted methods.

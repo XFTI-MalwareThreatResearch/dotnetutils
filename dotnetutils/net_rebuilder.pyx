@@ -1,7 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 from dotnetutils.dotnetpefile cimport DotNetPeFile
-from dotnetutils.net_row_objects cimport MethodDef, RowObject
+from dotnetutils.net_row_objects cimport MethodDef, RowObject, Field
 from dotnetutils.net_table_objects cimport TableObject
 from dotnetutils.net_metadata cimport MetaDataHeader
 from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_NT_OPTIONAL_HDR64_MAGIC, IMAGE_FILE_HEADER, IMAGE_SECTION_HEADER
@@ -412,7 +412,7 @@ cdef class NetRebuilder:
             return results
         for mdef in self.__dpefile.get_metadata_table('MethodDef'):
             data = mdef.get_method_data()
-            if len(data) != 0:# Should allow for the insertion of new methods.
+            if mdef.has_body() and len(data) != 0:# Should allow for the insertion of new methods.
                 results[mdef.get_token()] = methods_rva + offset
                 offset += <uint32_t>len(data)
                 amt_padding = offset
@@ -427,10 +427,12 @@ cdef class NetRebuilder:
         cdef dict results = dict()
         cdef uint32_t offset = 0
         cdef bytes data = None
+        cdef Field fobj = None
         if not self.__dpefile.has_metadata_table('FieldRVA'):
             return results
         for fieldrva in self.__dpefile.get_metadata_table('FieldRVA'):
-            data = fieldrva.get_data()
+            fobj = fieldrva.get_column('Field').get_value()
+            data = fobj.get_data()
             if data is None:
                 raise Exception('Could not get fieldrva\'s data')
             results[fieldrva.get_rid()] = fieldrva_rva + offset

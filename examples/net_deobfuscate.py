@@ -4,7 +4,7 @@ import hashlib
 from dotnetutils.deobfuscators.confuserex import ConfuserExDeobfuscator
 from dotnetutils.deobfuscators.dotnetreactor import NETReactor
 from dotnetutils.deobfuscators import deobfuscator
-from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer
+from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer, net_rebuilder
 
 def main():
     if len(sys.argv) < 4:
@@ -198,7 +198,8 @@ def main():
                                 sha_obj = hashlib.sha256()
                                 sha_obj.update(current_dotnet.get_exe_data())
                                 print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
-                                results.add(current_dotnet.get_exe_data())
+                                rebuilder = net_rebuilder.NetRebuilder(current_dotnet)
+                                results.add(rebuilder.rebuild())
                                 current_work.append(current_dotnet)
                             else:
                                 print('Deobfuscation failed for {}'.format(deob.NAME))
