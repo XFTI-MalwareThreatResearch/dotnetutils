@@ -202,11 +202,11 @@ cdef class NetRebuilder:
         return imp_size
 
 
-    cdef size_t __build_stub32(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint32_t image_base):
+    cdef size_t __build_stub32(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint32_t image_base, bytearray temp):
         cdef Py_buffer current_data
         cdef bytes stub = None
         cdef IMAGE_IMPORT_DESCRIPTOR * imps = NULL
-        PyObject_GetBuffer(result, &current_data, PyBUF_ANY_CONTIGUOUS)
+        PyObject_GetBuffer(temp, &current_data, PyBUF_ANY_CONTIGUOUS)
         imps = <IMAGE_IMPORT_DESCRIPTOR*>current_data.buf
         stub = b'\xFF\x25' + int.to_bytes(image_base + imps.FirstThunk, 4, 'little')
         PyBuffer_Release(&current_data)
@@ -411,8 +411,8 @@ cdef class NetRebuilder:
         if not self.__dpefile.has_metadata_table('MethodDef'):
             return results
         for mdef in self.__dpefile.get_metadata_table('MethodDef'):
-            if mdef.has_body():
-                data = mdef.get_method_data()
+            data = mdef.get_method_data()
+            if len(data) != 0:# Should allow for the insertion of new methods.
                 results[mdef.get_token()] = methods_rva + offset
                 offset += <uint32_t>len(data)
                 amt_padding = offset
@@ -716,7 +716,7 @@ cdef class NetRebuilder:
             nt_headers.OptionalHeader.ImageBase = 0x00400000
         imports_rva = first_section_rva + 6
         imports_size = <uint32_t>self.__build_imports32(self.__dpefile, temp, imports_rva)
-        self.__build_stub32(self.__dpefile, result, first_section_rva + 4, nt_headers.OptionalHeader.ImageBase)
+        self.__build_stub32(self.__dpefile, result, first_section_rva + 4, nt_headers.OptionalHeader.ImageBase, temp)
         result.extend(temp)
         temp = bytearray()
         #pad to four

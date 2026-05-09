@@ -469,7 +469,6 @@ class NETReactor(Deobfuscator):
             old_sig = old_table.get(x)
             old_sig.get_column('Signature').set_raw_value(new_sig.get_column('Signature').get_raw_value())
         rva = dotnet.get_pe().get_rva_from_offset(dotnet.get_metadata_table('Module').get(1).get_file_offset())
-        dotnet.patch_dpe(rva, 0, b'#~', rva + 1, None, 0, False)
         for xref_rid, xref_offset in encryption_method.get_xrefs():
             xfm = dotnet.get_method_by_rid(xref_rid)
             dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)

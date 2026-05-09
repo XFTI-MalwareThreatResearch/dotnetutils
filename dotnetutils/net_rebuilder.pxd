@@ -11,7 +11,7 @@ cdef class NetRebuilder:
 
     cdef size_t __build_imports32(self, DotNetPeFile dotnet, bytearray result, uint32_t rva)
 
-    cdef size_t __build_stub32(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint32_t image_base)
+    cdef size_t __build_stub32(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint32_t image_base, bytearray temp)
 
     cdef dict __build_net_heaps(self, bytearray result, dict method_rvas, dict field_rvas, list heaps_order)
 

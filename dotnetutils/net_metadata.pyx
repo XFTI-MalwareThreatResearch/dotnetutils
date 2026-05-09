@@ -167,6 +167,12 @@ cdef class MetaDataHeader:
             self.streamheaders.append([self.start_offset + offset, size, name])
         self.end_offset = current_offset
 
+    cpdef void add_stream_header(self, bytes name, int size):
+        cdef int last_stream_size = self.streamheaders[len(self.streamheaders)-1][1]
+        cdef int last_stream_offset = self.streamheaders[len(self.streamheaders)-1][0]
+        cdef int new_stream_offset = last_stream_size + last_stream_offset
+        self.streamheaders.append((new_stream_offset, size, name))
+
     cpdef bytes to_bytes(self):
         """ Convert the header to its bytes representation.
 
@@ -255,7 +261,7 @@ cdef class MetaDataDirectory:
         """
         return self.metadata_table_header
 
-    cdef bint __validate_stream_not_there(self, str name):
+    cdef bint _validate_stream_not_there(self, str name):
         """ Check that a stream hasnt already been added.
         """
         return name not in self.heaps.keys()
