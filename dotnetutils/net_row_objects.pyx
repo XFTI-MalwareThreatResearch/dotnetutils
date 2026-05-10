@@ -897,10 +897,10 @@ cdef class Field(RowObject):
                     if isinstance(typedef_obj, TypeDef) and typedef_obj.get_classlayout_obj():
                         self.__class_size = typedef_obj.get_classlayout_obj().get_column('ClassSize').get_value()
                 elif isinstance(type_obj, net_sigs.CorLibTypeSig):
-                    if type_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_I8:
-                        self.__class_size = 8
-                    elif type_obj.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_R4:
-                        self.__class_size = 4
+                    try:
+                        self.__class_size = net_utils.get_size_of_cortype(type_obj.get_element_type(), self.dotnetpe.get_pe().is_64bit())
+                    except net_exceptions.InvalidArgumentsException:
+                        pass
 
     cpdef bint is_static(self):
         """ Checks if the field is static or not.

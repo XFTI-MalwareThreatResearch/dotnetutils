@@ -12,6 +12,7 @@ from dotnetutils import net_structs
 from dotnetutils import net_emulator
 from dotnetutils import net_patch
 from dotnetutils import net_deobfuscate_funcs
+from dotnetutils import net_rebuilder
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils.net_opcodes import Opcodes
 
@@ -449,6 +450,8 @@ class ConfuserExDeobfuscator(Deobfuscator):
         return [new_data]
     
     def __deobfuscate_strings(self, dotnet):
+        rebuilder = net_rebuilder.NetRebuilder(dotnet)
+        dotnet.set_exe_data(rebuilder.rebuild())
         dotnet.reinit_dpe(False)
         self.__identify_string_methods(dotnet)
         if len(self.string_methods) == 0:
@@ -501,7 +504,9 @@ class ConfuserExDeobfuscator(Deobfuscator):
         #instead of deobfuscating here, maybe just emulate with no op hooks for potential problematic instructions?  Also since we already identified the code decryption func earlier, we can proabably just reuse that for detection.
         fgraph = net_graphing.FunctionGraph(string_data_method)
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
-        fanalyzer.simplify_control_flow()        
+        fanalyzer.simplify_control_flow()
+        rebuild = net_rebuilder.NetRebuilder(dotnet)
+        dotnet.set_exe_data(rebuild.rebuild())  
         dotnet.reinit_dpe(False)
         us_heap = dotnet.get_heap('#US')
         self.__identify_string_methods(dotnet)

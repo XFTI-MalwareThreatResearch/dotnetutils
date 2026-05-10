@@ -437,7 +437,7 @@ cdef class NetRebuilder:
             fobj = fieldrva.get_column('Field').get_value()
             data = fobj.get_data()
             if data is None:
-                raise Exception('Could not get fieldrva\'s data')
+                raise Exception('Could not get fieldrva\'s data {} {}'.format(fieldrva.get_rid(), hex(fobj.get_token())))
             results[fieldrva.get_rid()] = fieldrva_rva + offset
             offset += <uint32_t>len(data)
             result.extend(data)

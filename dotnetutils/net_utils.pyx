@@ -52,7 +52,7 @@ cdef int get_size_of_cortype(CorElementType cor_type, bint is_64bit):
     elif cor_type == CorElementType.ELEMENT_TYPE_U2 or cor_type == CorElementType.ELEMENT_TYPE_I2 or cor_type == CorElementType.ELEMENT_TYPE_CHAR:
         return 2
     elif cor_type == CorElementType.ELEMENT_TYPE_BOOLEAN:
-        return sizeof(bint)
+        return 1
     elif cor_type == CorElementType.ELEMENT_TYPE_I4 or cor_type == CorElementType.ELEMENT_TYPE_U4 or cor_type == CorElementType.ELEMENT_TYPE_R4:
         return 4
     elif cor_type == CorElementType.ELEMENT_TYPE_I8 or cor_type == CorElementType.ELEMENT_TYPE_U8 or cor_type == CorElementType.ELEMENT_TYPE_R8:
