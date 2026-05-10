@@ -155,6 +155,7 @@ def main():
             for item in os.listdir(obf_exe):
                 fp = os.path.join(obf_exe, item)
                 if os.path.isfile(fp):
+                    print('reading in file {}'.format(fp))
                     dotnet = dotnetpefile.try_get_dotnetpe(file_path=fp)
                     if dotnet is not None:
                         work.append((dotnet, fp))

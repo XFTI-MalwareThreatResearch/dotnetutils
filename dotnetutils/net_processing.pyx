@@ -64,7 +64,6 @@ cdef class HeapObject:
         self.in_append_tx = False
         if offset == -1 or name is None or size == -1:
             self.offset = 0
-            self.name = None
             self.size = size
         else:
             self.read()
@@ -311,6 +310,8 @@ cdef class StringHeapObject(HeapObject):
         cdef int end_offset = 0
         if self.in_append_tx:
             raise Exception()
+        if offset < 0 or offset >= <int>len(self.raw_data):
+            return False #cant be referenced if its not within the table
         if offset > 0:
             if self.raw_data[offset-1] != 0:
                 while start_offset > 0 and self.raw_data[start_offset] != 0:
@@ -745,8 +746,9 @@ cdef class UserStringsHeapObject(HeapObject):
     def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
         HeapObject.__init__(self, offset, size, name, dotnetpe)
         self.warned = False
-        if self.offset == -1:
+        if self.raw_data is None:
             self.raw_data = bytearray([0])
+            self.size = 1
 
     cdef void _fill_methods(self):
         cdef net_table_objects.MethodDefTable table = self.get_dotnetpe().get_metadata_table('MethodDef')

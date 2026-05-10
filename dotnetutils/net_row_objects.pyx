@@ -181,7 +181,10 @@ cdef class ColumnValue:
             self.raw_value = stream.append_item(new_value)
             if orig_value != 0:
                 if not stream.is_offset_referenced(orig_value):
-                    stream.del_item(orig_value)
+                    try:
+                        stream.del_item(orig_value)
+                    except net_exceptions.InvalidArgumentsException:
+                        pass #silently fail the delete, the data was likely bad and not actually there.
         elif self.col_type.is_fixed_value():
             self.raw_value = new_value
         else:

@@ -94,7 +94,9 @@ cdef class DotNetDataReader:
         cdef unsigned int length
         cdef bytes str_data
         length = self.read_encoded_uint32()
-        if length <= 0:
+        if length == 0:
+            return ''
+        if length < 0:
             return None
         str_data = self.read(length)
         return str_data.decode(encoding)
@@ -398,9 +400,9 @@ class DotNetResourceSet:
         result.extend(int.to_bytes(self.__header_version, 4, 'little'))
         result.extend(int.to_bytes(self.__header_size, 4, 'little'))
         result.extend(compress_integer(<uint32_t>len(self.__reader_type_name)))
-        result.extend(self.__reader_type_name)
+        result.extend(self.__reader_type_name.encode('utf-8'))
         result.extend(compress_integer(<uint32_t>len(self.__reader_set_type_name)))
-        result.extend(self.__reader_set_type_name)
+        result.extend(self.__reader_set_type_name.encode('utf-8'))
         result.extend(int.to_bytes(self.__version, 4, 'little'))
         result.extend(int.to_bytes(self.__resource_count, 4, 'little'))
         result.extend(int.to_bytes(len(self.__user_types), 4, 'little'))
@@ -436,7 +438,7 @@ class DotNetResourceSet:
         for x in range(len(self.__resources)):
             names_data.extend(self.__resources[x].get_data())
         result.extend(names_data)
-        return result
+        return bytes(result)
     
     def get_version(self):
         return self.__version

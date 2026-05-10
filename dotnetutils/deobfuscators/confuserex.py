@@ -461,6 +461,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             net_patch.insert_blank_userstrings(dotnet)
             self.__identify_string_methods(dotnet)
             if not dotnet.has_heap('#US'):
+                print(dotnet.get_metadata_dir().get_heaps())
                 raise Exception('Internal error adding #US stream')
         us_heap = dotnet.get_heap('#US')
         string_defs = list()
@@ -506,7 +507,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
         fanalyzer.simplify_control_flow()
         rebuild = net_rebuilder.NetRebuilder(dotnet)
-        dotnet.set_exe_data(rebuild.rebuild())  
+        dotnet.set_exe_data(rebuild.rebuild())
         dotnet.reinit_dpe(False)
         us_heap = dotnet.get_heap('#US')
         self.__identify_string_methods(dotnet)

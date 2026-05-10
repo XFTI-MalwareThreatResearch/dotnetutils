@@ -17,8 +17,8 @@ cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe):
     """
     cdef net_metadata.MetaDataDirectory mdir = dotnetpe.get_metadata_dir()
     mdir.metadata_header.num_streams += 1
-    mdir.metadata_header.add_stream_header(b'US', 1)
-    mdir.heaps[b'US'] = net_processing.UserStringsHeapObject(-1, 0, None)
+    mdir.metadata_header.add_stream_header(b'#US', 1)
+    mdir.heaps['#US'] = net_processing.UserStringsHeapObject(-1, 0, b'#US', dotnetpe)
 
 cdef void fixup_resource_directory(uint32_t rs_offset, uint32_t rs_rva, uint32_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint32_t va_addr, int difference, uint32_t target_addr):
     """ Fixups offsets relating to the PE's resource directory.  This method is mostly used internally.
