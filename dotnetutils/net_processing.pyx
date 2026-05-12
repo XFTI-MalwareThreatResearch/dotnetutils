@@ -196,7 +196,7 @@ cdef class HeapObject:
     cpdef bint has_offset(self, int offset):
         """ Does an offset exist within a heap?
         """
-        return 0 < offset < self.get_size()
+        return 0 < offset < <int>len(self.raw_data)
 
     cpdef bint has_item(self, object item):
         """ Does a heap have item?
@@ -239,6 +239,12 @@ cdef class StringHeapObject(HeapObject):
         if self.amt_trailing_zeroes < 0:
             self.amt_trailing_zeroes = 0
 
+    cpdef int get_offset_of_item(self, object item):
+        cdef bytes data = <bytes>item
+        if not data.endswith(b'\x00'):
+            data = data + b'\x00'
+        return <int>self.raw_data.find(data)
+
     cdef void __build_metadata_references(self):
         cdef str table_name = None
         cdef dict table_types = None
@@ -260,7 +266,7 @@ cdef class StringHeapObject(HeapObject):
         self.in_append_tx = False
         if len(self.tx_data) == 0:
             return
-        self.update_bitmask(<int>len(self.tx_data) + self.get_size())
+        self.update_bitmask(<int>len(self.tx_data) + <int>len(self.raw_data))
         if self.amt_trailing_zeroes > 0:
             self.raw_data = self.raw_data[:-1 * self.amt_trailing_zeroes]
         new_offset = <int>len(self.raw_data)
@@ -293,10 +299,10 @@ cdef class StringHeapObject(HeapObject):
         if new_offset <= 0:
             new_offset = <int>self.raw_data.find(new_item)
             if new_offset <= 0:
-                new_offset = self.get_size() + <int>len(self.tx_data) - self.amt_trailing_zeroes
+                new_offset = <int>len(self.raw_data) + <int>len(self.tx_data) - self.amt_trailing_zeroes
                 self.tx_data.extend(new_item)
         else:
-            new_offset = self.get_size() + new_offset - self.amt_trailing_zeroes
+            new_offset = <int>len(self.raw_data) + new_offset - self.amt_trailing_zeroes
         return new_offset
 
     cpdef bint is_offset_referenced(self, int offset):
@@ -318,7 +324,7 @@ cdef class StringHeapObject(HeapObject):
                     start_offset -= 1
         
         end_offset = offset
-        while end_offset < self.get_size() and self.raw_data[end_offset] != 0:
+        while end_offset < <int>len(self.raw_data) and self.raw_data[end_offset] != 0:
             end_offset += 1
         #above is for partial reference handling, something specific to the #string heap.
         for table_name, col_names in self.metadata_references.items():
@@ -381,7 +387,7 @@ cdef class StringHeapObject(HeapObject):
             raise net_exceptions.InvalidArgumentsException()
         difference = <int>(len(b) - len(old_item))
         #first replace in raw_data
-        self.update_bitmask(self.get_size() + difference)
+        self.update_bitmask(<int>len(self.raw_data) + difference)
         self.raw_data = self.raw_data[:offset] + b + self.raw_data[offset + len(old_item):]
         self.update(offset, offset, difference)
 
@@ -395,7 +401,7 @@ cdef class StringHeapObject(HeapObject):
         potential = self.get_offset_of_item(b)
         if potential == -1:
             #we need to make sure were appending at the last item.
-            self.update_bitmask(self.get_size() + <int>len(b))
+            self.update_bitmask(<int>len(self.raw_data) + <int>len(b))
             if self.amt_trailing_zeroes > 0:
                 #Take care of any extra 0s on the end.
                 self.raw_data = self.raw_data[:-1 * self.amt_trailing_zeroes]
@@ -411,7 +417,7 @@ cdef class StringHeapObject(HeapObject):
         return <int>len(self.raw_data) - self.amt_trailing_zeroes
 
     cpdef bint has_offset(self, int offset):
-        return 0 < offset < self.get_size()
+        return 0 < offset < <int>len(self.raw_data)
 
     cdef bytes read_item(self, int offset):
         cdef Py_ssize_t end_index = 0
@@ -437,7 +443,7 @@ cdef class StringHeapObject(HeapObject):
         cdef int index = 1
         if len(self.raw_data) == 0:
             return result
-        while index < self.get_size():
+        while index < <int>len(self.raw_data):
             item = self.read_item(index)
             index += <int>len(item)
             result.append(item[:-1])
@@ -451,7 +457,7 @@ cdef class StringHeapObject(HeapObject):
         cdef int off = 0
         cdef uint32_t va_addr = 0
         if not self.is_offset_referenced(offset):
-            self.update_bitmask(self.get_size() + difference)
+            self.update_bitmask(<int>len(self.raw_data) + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
             return difference
@@ -565,7 +571,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef bytes bitem = None
         cdef uint32_t va_addr = 0
         cdef int difference = <int>(len(final) - len(orig_item))
-        self.update_bitmask(self.get_size() + difference)
+        self.update_bitmask(<int>len(self.raw_data) + difference)
         self.raw_data = self.raw_data[:offset] + final + self.raw_data[offset + len(orig_item):]
         self.update(offset, offset, difference)
         return difference
@@ -580,7 +586,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef int potential = self.get_offset_of_item(final)
         cdef uint32_t va_addr = 0
         if potential == -1:
-            self.update_bitmask(self.get_size() + <int>len(final))
+            self.update_bitmask(<int>len(self.raw_data) + <int>len(final))
             self.raw_data += final
             return offset
         else:
@@ -603,7 +609,7 @@ cdef class BlobHeapObject(HeapObject):
         cdef int off = 0
         cdef uint32_t va_addr = 0
         if not self.is_offset_referenced(offset):
-            self.update_bitmask(self.get_size() + difference)
+            self.update_bitmask(<int>len(self.raw_data) + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + len(item):]
             self.update(offset, -1, difference)
             return difference
@@ -711,7 +717,7 @@ cdef class GuidHeapObject(HeapObject):
         if not self.has_offset(offset):
             raise net_exceptions.InvalidArgumentsException()
         if not self.is_offset_referenced(offset):
-            self.update_bitmask(self.get_size() + difference)
+            self.update_bitmask(<int>len(self.raw_data) + difference)
             self.raw_data = self.raw_data[:offset] + self.raw_data[offset + 16:]
             self.update(offset, offset, difference)
             return difference
@@ -734,7 +740,7 @@ cdef class GuidHeapObject(HeapObject):
         cdef int potential = self.get_offset_of_item(item)
         cdef uint32_t va_addr = 0
         if potential == -1:
-            self.update_bitmask(self.get_size() + 16)
+            self.update_bitmask(<int>len(self.raw_data) + 16)
             self.raw_data += item
             return offset
         return potential
@@ -781,10 +787,10 @@ cdef class UserStringsHeapObject(HeapObject):
         if new_offset <= 0:
             new_offset = <int>self.raw_data.find(new_item)
             if new_offset <= 0:
-                new_offset = self.get_size() + <int>len(self.tx_data)
+                new_offset = <int>len(self.raw_data) + <int>len(self.tx_data)
                 self.tx_data.extend(new_item)
         else:
-            new_offset = self.get_size() + new_offset
+            new_offset = <int>len(self.raw_data) + new_offset
         return new_offset
 
     cdef bytes sanitize_input(self, bytes data):

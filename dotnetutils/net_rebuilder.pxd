@@ -1,7 +1,7 @@
 #cython: language_level=3
 #distutils: language=c++
 from dotnetutils.dotnetpefile cimport DotNetPeFile, PeFile
-from libc.stdint cimport uint32_t
+from libc.stdint cimport uint32_t, uint64_t
 
 cdef class NetRebuilder:
     cdef DotNetPeFile __dpefile
@@ -25,7 +25,7 @@ cdef class NetRebuilder:
     
     cdef size_t __build_relocations_directory64(self, bytearray result, uint32_t relocations_offset)
 
-    cdef size_t __build_stub64(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset)
+    cdef size_t __build_stub64(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint64_t image_base, bytearray temp)
 
     cdef dict __build_method_data(self, bytearray result, uint32_t methods_rva)
 

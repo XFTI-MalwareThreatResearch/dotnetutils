@@ -420,7 +420,7 @@ class DotNetResourceSet:
         for x in range(len(self.__resource_infos)):
             rsrc_info = self.__resource_infos[x]
             name = rsrc_info.name
-            data = compress_integer(<uint32_t>len(name)) + name
+            data = compress_integer(<uint32_t>len(name)) + name.encode('utf-16le')
             names.append(data)
             total_names_len += len(data)
         

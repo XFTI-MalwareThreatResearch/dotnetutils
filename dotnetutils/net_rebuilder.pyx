@@ -131,7 +131,6 @@ cdef class NetRebuilder:
         cdef bytes funcname = b'_CorExeMain\x00'
         cdef bytes temp = None
         cdef size_t dllname_size = len(dllname)
-        cdef uint32_t align_addr = 0
         memset(imp, 0, sizeof(imp))
         memset(thunk, 0, sizeof(thunk))
         imp[0].DUMMYUNIONNAME1.OriginalFirstThunk = rva + <uint32_t>sizeof(imp) + <uint32_t>dllname_size
@@ -143,7 +142,6 @@ cdef class NetRebuilder:
         if (func_name_offset % 2) != 0:
             func_name_offset += 1
         thunk[0].u1.AddressOfData = rva + <uint32_t>func_name_offset
-        #start writing the iat
         temp = convert_pointer_to_bytes(<uintptr_t>imp, sizeof(imp))
         result.extend(temp)
         imp_size += len(temp)
@@ -161,7 +159,6 @@ cdef class NetRebuilder:
         result.extend(funcname)
         imp_size += len(funcname) + 2
         return imp_size
-
 
     cdef size_t __build_imports64(self, DotNetPeFile dotnet, bytearray result, uint32_t rva):
         cdef IMAGE_IMPORT_DESCRIPTOR imp[2]
@@ -200,17 +197,6 @@ cdef class NetRebuilder:
         result.extend(funcname)
         imp_size += len(funcname) + 2
         return imp_size
-
-    cdef size_t __build_stub32(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint32_t image_base, bytearray temp):
-        cdef Py_buffer current_data
-        cdef bytes stub = None
-        cdef IMAGE_IMPORT_DESCRIPTOR * imps = NULL
-        PyObject_GetBuffer(temp, &current_data, PyBUF_ANY_CONTIGUOUS)
-        imps = <IMAGE_IMPORT_DESCRIPTOR*>current_data.buf
-        stub = b'\xFF\x25' + int.to_bytes(image_base + imps.FirstThunk, 4, 'little')
-        PyBuffer_Release(&current_data)
-        result.extend(stub)
-        return len(stub)
 
     cdef dict __build_net_heaps(self, bytearray result, dict method_rvas, dict field_rvas, list heaps_order):
         cdef HeapObject heap = None
@@ -397,10 +383,28 @@ cdef class NetRebuilder:
         # need a relocation entry for the import thunk reference.
         return 0
 
-    cdef size_t __build_stub64(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset):
+    cdef size_t __build_stub64(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint64_t image_base, bytearray temp):
         cdef uint32_t stub_rva = imports_offset - 6
+        cdef bytes stub = None
+        cdef Py_buffer current_data
         cdef int rel32 = <int>imports_offset - <int>(stub_rva + 6)
-        cdef bytes stub = b'\xFF\x25' + int.to_bytes(rel32, 4, 'little', signed=True)
+        cdef uint32_t target_rva = 0
+        PyObject_GetBuffer(temp, &current_data, PyBUF_ANY_CONTIGUOUS)
+        imps = <IMAGE_IMPORT_DESCRIPTOR*>current_data.buf
+        rel32 = <uint32_t>(imps.FirstThunk - (stub_rva + 6))
+        stub = b'\xFF\x25' + int.to_bytes(rel32, 4, 'little')
+        PyBuffer_Release(&current_data)
+        result.extend(stub)
+        return len(stub)
+
+    cdef size_t __build_stub32(self, DotNetPeFile dotnet, bytearray result, uint32_t imports_offset, uint32_t image_base, bytearray temp):
+        cdef Py_buffer current_data
+        cdef bytes stub = None
+        cdef IMAGE_IMPORT_DESCRIPTOR * imps = NULL
+        PyObject_GetBuffer(temp, &current_data, PyBUF_ANY_CONTIGUOUS)
+        imps = <IMAGE_IMPORT_DESCRIPTOR*>current_data.buf
+        stub = b'\xFF\x25' + int.to_bytes(image_base + imps.FirstThunk, 4, 'little')
+        PyBuffer_Release(&current_data)
         result.extend(stub)
         return len(stub)
 
@@ -493,22 +497,25 @@ cdef class NetRebuilder:
         data_dir = self.__pe.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_RESOURCE)
         if data_dir.VirtualAddress != 0:
             amt_sections += 1
+        first_sect_offset = (
+            <uint32_t>len(headers) +
+            <uint32_t>(amt_sections * sizeof(IMAGE_SECTION_HEADER))
+        )
+        first_sect_offset = align_32(first_sect_offset, nt_headers.OptionalHeader.FileAlignment)
 
-        first_sect_offset = align_32(<uint32_t>(dos_header.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt_headers.FileHeader.SizeOfOptionalHeader + (amt_sections * sizeof(IMAGE_SECTION_HEADER))), nt_headers.OptionalHeader.FileAlignment)
-        first_section_rva = align_32(<uint32_t>nt_headers.OptionalHeader.SizeOfHeaders, nt_headers.OptionalHeader.SectionAlignment)
-        if first_section_rva == 0:
-            first_section_rva = align_32(first_sect_offset, nt_headers.OptionalHeader.SectionAlignment)
+        first_section_rva = align_32(first_sect_offset, nt_headers.OptionalHeader.SectionAlignment)
 
         if self.__pe.is_dll():
             nt_headers.OptionalHeader.ImageBase = 0x0000000180000000
         else:
             nt_headers.OptionalHeader.ImageBase = 0x0000000140000000
+        imports_rva = first_section_rva + 6
 
-        imports_size = <uint32_t>self.__build_imports64(self.__dpefile, temp, first_section_rva + 6)
-        self.__build_stub64(self.__dpefile, result, first_section_rva + 6)
+        imports_size = <uint32_t>self.__build_imports64(self.__dpefile, temp, imports_rva)
+
+        self.__build_stub64(self.__dpefile, result, imports_rva, nt_headers.OptionalHeader.ImageBase, temp)
         result.extend(temp)
         temp = bytearray()
-        imports_rva = first_section_rva + 6
 
         fields_size = align_32(imports_rva + imports_size, 4)
         methods_size = fields_size - imports_rva - imports_size
@@ -564,7 +571,6 @@ cdef class NetRebuilder:
             result.extend(data + b'\x00' * (rsrc_size - len(data)))
             headers.extend(convert_pointer_to_bytes(<uintptr_t>&sect_header, sizeof(IMAGE_SECTION_HEADER)))
 
-        headers.extend(b'\x00' * (first_sect_offset - len(headers)))
         headers.extend(b'\x00' * (first_sect_offset - len(headers)))
         headers.extend(result)
         PyObject_GetBuffer(headers, &headers_view, PyBUF_WRITABLE)
