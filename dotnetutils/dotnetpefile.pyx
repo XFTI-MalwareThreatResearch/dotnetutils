@@ -369,12 +369,17 @@ cdef class DotNetPeFile:
     cpdef void reinit_dpe(self, bint no_processing):
         """ Reparse the dotnet file.  Eventually likely to remove this in favor of removing state variables that cause issues requiring this.
         """
+        cdef int token
         self.original_exe_data = bytes(self.exe_data)
         self.metadata_dir = net_metadata.MetaDataDirectory(self)
         self.__versioninfo_str = None
         if not self.metadata_dir.is_valid_directory:
             return
         self.process_metadata_heap(no_processing)
+        token = self.get_pe().get_net_header().EntryPoint.EntryPointToken
+        if token == 0:
+            return
+        self.ep_method = self.get_token_value(token)
 
     cdef void process_metadata_heap(self, bint dont_process):
         """ Process the metadata heaps
@@ -862,10 +867,7 @@ cdef class DotNetPeFile:
         Returns:
             net_row_objects.MethodDef: A MethodDef object representing the executable's entry point, or None if it doesnt exist.
         """
-        try:
-            return self.get_token_value(self.get_pe().get_net_header().EntryPoint.EntryPointToken)
-        except net_exceptions.InvalidTokenException:
-            return None
+        return self.ep_method
 
     cpdef void set_entry_point(self, unsigned int ep_token):
         """ Patches the executable to change the entry point to ep_token
@@ -873,15 +875,7 @@ cdef class DotNetPeFile:
         Args:
             ep_token (unsigned int): The new entrypoint's metadata token.
         """
-        cdef IMAGE_COR20_HEADER new_net_header = self.get_pe().get_net_header()
-        cdef bytes new_cor_bytes
-        cdef bytes current_exe_data
-        cdef bytes new_exe_data
-        new_net_header.EntryPoint.EntryPointToken = ep_token
-        current_exe_data = self.get_exe_data()
-        new_cor_bytes = PyBytes_FromStringAndSize(<char*>&new_net_header, sizeof(IMAGE_COR20_HEADER))
-        new_exe_data = current_exe_data[:self.get_cor_header_offset()] + new_cor_bytes + current_exe_data[self.get_cor_header_offset() + new_net_header.cb:]
-        self.set_exe_data(new_exe_data)
+        self.ep_method = self.get_token_value(ep_token)
 
     cpdef object get_token_value(self, unsigned long token):
         """ Obtains a python representation of a metadata token.

@@ -470,7 +470,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 string_defs.append(mspec.get_method())
 
         #first identify which constructor methods need to be executed.
-
         string_data_field = None
         for instr in string_defs[0].disassemble_method():
             if instr.get_opcode() == Opcodes.Ldsfld:
@@ -479,7 +478,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         if string_data_field is None:
             print('Could not find string data field.')
             return
-                
+        print('string data field is', string_data_field)
         string_data_instr = None
         string_data_method = None
         string_compress_method = None
@@ -487,6 +486,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             xfm = dotnet.get_method_by_rid(xref_rid)
             if xfm in string_defs:
                 continue
+            print('checking method for string data fields', xfm)
             dis = xfm.disassemble_method()
             instr = dis.get_instr_at_offset(xref_offset)
             if instr.get_opcode() == Opcodes.Stsfld:
@@ -498,7 +498,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
                     break
 
         if string_data_instr is None or string_data_method is None or string_compress_method is None:
-            print('Could not find where data is set.')
+            print('Could not find where data is set.', string_data_instr, string_data_method, string_compress_method)
             return
                 
         #first deobfuscate the control flow of the string encryption method to make parsing easier.

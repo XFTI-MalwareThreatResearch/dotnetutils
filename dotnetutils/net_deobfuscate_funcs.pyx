@@ -1924,21 +1924,18 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
     cdef list method_tokens = list()
     for mobj in dotnet.get_metadata_table("MethodDef"):
         method_tokens.append(mobj.get_token())
-    print('deobfuscating control flow for methods.')
     for mobj_token in method_tokens:
         mobj = dotnet.get_token_value(mobj_token)
         if not mobj.has_body():
             continue
         if mobj.disassemble_method() is None:
             continue
-        print('Deobfuscating control flow for method', hex(mobj.get_token()))
         fgraph = net_graphing.FunctionGraph(mobj)
         fgraph.validate_blocks()
         fanalyzer = net_graph_analyzer.GraphAnalyzer(mobj, fgraph)
         try:
             new_graph = fanalyzer.simplify_control_flow()
             if new_graph is None:
-                print('function is not obfuscated.')
                 continue
         except net_exceptions.EmulatorExecutionException as e:
             print('emulation failed due to error')

@@ -196,11 +196,14 @@ def main():
                             print('{}: Executable recognized as {} obfuscated executable.'.format(exe_hash, deob.NAME))
                             if deob.deobfuscate(current_dotnet, ctx):
                                 print('Deobfuscation completed for {}'.format(deob.NAME))
-                                sha_obj = hashlib.sha256()
-                                sha_obj.update(current_dotnet.get_exe_data())
-                                print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
                                 rebuilder = net_rebuilder.NetRebuilder(current_dotnet)
-                                results.add(rebuilder.rebuild())
+                                new_data = rebuilder.rebuild()
+                                current_dotnet.set_exe_data(new_data)
+                                current_dotnet.reinit_dpe(False)
+                                results.add(new_data)
+                                sha_obj = hashlib.sha256()
+                                sha_obj.update(new_data)
+                                print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
                                 current_work.append(current_dotnet)
                             else:
                                 print('Deobfuscation failed for {}'.format(deob.NAME))

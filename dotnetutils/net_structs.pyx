@@ -419,8 +419,10 @@ class DotNetResourceSet:
         total_names_len = 0
         for x in range(len(self.__resource_infos)):
             rsrc_info = self.__resource_infos[x]
+            result.extend(int.to_bytes(total_names_len, 4, 'little'))
             name = rsrc_info.name
-            data = compress_integer(<uint32_t>len(name)) + name.encode('utf-16le')
+            bname = name.encode('utf-16le')
+            data = compress_integer(<uint32_t>len(bname)) + bname
             names.append(data)
             total_names_len += len(data)
         
@@ -435,6 +437,8 @@ class DotNetResourceSet:
             names_data.extend(int.to_bytes(data_offset, 4, 'little'))
             data_offset += data_len
         data_offset = len(result) + 4 + len(names_data)
+        result.extend(int.to_bytes(data_offset, 4, 'little'))
+
         for x in range(len(self.__resources)):
             names_data.extend(self.__resources[x].get_data())
         result.extend(names_data)

@@ -59,6 +59,7 @@ cdef class DotNetPeFile:
     cdef bytes original_exe_data
     cdef PeFile pe
     cdef bint raise_exc_on_invalid_method
+    cdef net_row_objects.MethodDef ep_method
 
     cdef void process_metadata_heap(self, bint dont_process)
 

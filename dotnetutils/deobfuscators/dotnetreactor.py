@@ -229,7 +229,6 @@ class NETReactor(Deobfuscator):
     def identify_string_method(self, dotnet):
         toint32 = dotnet.get_methods_by_full_name(b'System.BitConverter.ToInt32')
         if len(toint32) != 1:
-            print('error len toint32 isnt 1')
             return None
         toint32 = toint32[0]
         for xref_rid, xref_offset in toint32.get_xrefs():

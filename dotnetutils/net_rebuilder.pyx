@@ -843,6 +843,10 @@ cdef class NetRebuilder:
         cdef bytearray data = bytearray()
         cdef IMAGE_DOS_HEADER * dos_header = <IMAGE_DOS_HEADER*>self.__pe.get_data_view()
         cdef IMAGE_NT_HEADERS32 * nt_headers = <IMAGE_NT_HEADERS32*>((<char*>dos_header) + dos_header.e_lfanew)
+        cdef bytes result = None
         if nt_headers.OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC:
-            return self.__rebuild_64()
-        return self.__rebuild_32()
+            result = self.__rebuild_64()
+        else:
+            result = self.__rebuild_32()
+        self.__dpefile.set_exe_data(result)
+        return result
