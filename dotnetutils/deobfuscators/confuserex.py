@@ -450,8 +450,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
         return [new_data]
     
     def __deobfuscate_strings(self, dotnet):
-        rebuilder = net_rebuilder.NetRebuilder(dotnet)
-        dotnet.set_exe_data(rebuilder.rebuild())
         dotnet.reinit_dpe(False)
         self.__identify_string_methods(dotnet)
         if len(self.string_methods) == 0:
@@ -506,11 +504,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         fgraph = net_graphing.FunctionGraph(string_data_method)
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
         fanalyzer.simplify_control_flow()
-        rebuild = net_rebuilder.NetRebuilder(dotnet)
-        dotnet.set_exe_data(rebuild.rebuild())
-        dotnet.reinit_dpe(False)
         us_heap = dotnet.get_heap('#US')
-        self.__identify_string_methods(dotnet)
         #we need to rerun so that the end offset is updated for the new control flow.
         string_data_method = dotnet.get_token_value(string_data_method.get_token())
         start_offset = -1

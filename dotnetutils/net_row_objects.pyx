@@ -852,6 +852,9 @@ cdef class Field(RowObject):
         """
         self.__xrefs.append((rid, instr_offset))
 
+    cpdef void clear_xrefs(self):
+        self.__xrefs.clear()
+
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type):
         """ Internal method to register parent types.
         """
@@ -1142,6 +1145,9 @@ cdef class MethodDefOrRef(RowObject):
     cpdef void _add_xref(self, int rid, int instr_offset):
         pass
 
+    cpdef void clear_xrefs(self):
+        pass
+
     cpdef void _set_parent_type(self, TypeDefOrRef parent_type):
         pass
 
@@ -1306,6 +1312,9 @@ cdef class MethodDef(MethodDefOrRef):
         """
         self.__xrefs.append((rid, instr_offset))
 
+    cpdef void clear_xrefs(self):
+        self.__xrefs.clear()
+
     cpdef list get_xrefs(self):
         """ Obtains a list of tuples (method_rid, instr_offset) representing xrefs of a method.
             A method xref is when call or callvirt is used on a methoddef object.
@@ -1332,8 +1341,11 @@ cdef class MethodDef(MethodDefOrRef):
         cdef net_table_objects.TableObject param_table = self.get_dotnetpe().get_metadata_table('Param')
         cdef net_table_objects.TableObject paramptr_table = self.get_dotnetpe().get_metadata_table('ParamPtr')
         cdef net_table_objects.TableObject methoddef_table = self.get_dotnetpe().get_metadata_table('MethodDef')
-
-
+        self.__method_data = None
+        try:
+            self.get_method_data()
+        except:
+            pass
         # process paramslist
         if param_table is not None and self.get_column('ParamList').get_raw_value() != 0:
             if paramptr_table is None:
@@ -1359,6 +1371,7 @@ cdef class MethodDef(MethodDefOrRef):
                 else:
                     paramlist.append(paramptr_table.get(x).get_column('Param').get_value())
             self.get_column('ParamList').set_formatted_value(paramlist)
+
 
     cpdef list get_param_types(self):
         """ Obtain the TypeSigs for each parameter in the function.
@@ -1567,6 +1580,9 @@ cdef class MemberRef(MethodDefOrRef):
         """ Internal method to register xrefs
         """
         self.__xrefs.append((rid, instr_offset))
+
+    cpdef void clear_xrefs(self):
+        self.__xrefs.clear()
 
     cpdef TypeDefOrRef get_parent_type(self):
         """ Obtain the memberref's parent.
@@ -1780,6 +1796,9 @@ cdef class MethodSpec(MethodDefOrRef):
         """ Internal method to add xrefs
         """
         self.__xrefs.append((rid, instr_offset))
+
+    cpdef void clear_xrefs(self):
+        self.__xrefs.clear()
 
     cpdef MethodDefOrRef get_method(self):
         """ Obtain the methodspecs base method.

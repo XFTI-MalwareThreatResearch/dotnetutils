@@ -203,6 +203,8 @@ cdef class Field(RowObject):
     cdef TypeDefOrRef __field_type
     cdef list __xrefs
 
+    cpdef void clear_xrefs(self)
+
     cpdef list get_xrefs(self)
 
     cpdef void _add_xref(self, int rid, int instr_offset)
@@ -312,6 +314,8 @@ cdef class MethodDefOrRef(RowObject):
     cpdef int get_amt_params(self)
 
     cpdef void set_method_data(self, bytes data)
+
+    cpdef void clear_xrefs(self)
 
 cdef class MethodDef(MethodDefOrRef):
     cdef public list _generic_params

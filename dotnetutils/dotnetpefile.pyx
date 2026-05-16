@@ -13,6 +13,7 @@ from logging import getLogger
 from dotnetutils cimport net_tokens, net_metadata
 from dotnetutils cimport net_row_objects, net_table_objects, net_patch
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
+from dotnetutils cimport net_opcodes
 from libc.stdint cimport uintptr_t, uint64_t, uint32_t
 from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_RESOURCE_DIRECTORY_ENTRY, VS_VERSIONINFO, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
 from dotnetutils.net_structs cimport IMAGE_SCN_CNT_CODE, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_OPTIONAL_HEADER32, IMAGE_OPTIONAL_HEADER64, IMAGE_BASE_RELOCATION, IMAGE_DEBUG_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64
@@ -488,6 +489,43 @@ cdef class DotNetPeFile:
         elif c == 3:
             return 32
         return 0
+
+    cpdef void redo_xrefs(self):
+        cdef net_table_objects.TableObject tobj = None
+        cdef net_row_objects.MethodDefOrRef mobj = None
+        cdef net_row_objects.Field fobj = None
+        cdef net_row_objects.MethodDef mdef = None
+        cdef net_cil_disas.MethodDisassembler mdis = None
+        cdef net_cil_disas.Instruction instr = None
+        cdef net_opcodes.Opcodes op = net_opcodes.Opcodes.Invalid
+        cdef net_row_objects.RowObject robj = None
+
+        tobj = self.get_metadata_table('MemberRef')
+        if tobj is not None:
+            for mobj in tobj:
+                mobj.clear_xrefs()
+        tobj = self.get_metadata_table('MethodSpec')
+        if tobj is not None:
+            for mobj in tobj:
+                mobj.clear_xrefs()
+        tobj = self.get_metadata_table('Field')
+        if tobj is not None:
+            for fobj in tobj:
+                fobj.clear_xrefs()
+        tobj = self.get_metadata_table('MethodDef')
+        if tobj is not None:
+            for mobj in tobj:
+                mobj.clear_xrefs()
+            for mobj in tobj:
+                mdis = mobj.disassemble_method()
+                if mdis is None:
+                    continue
+                for instr in mdis:
+                    op = instr.get_opcode()
+                    if op in (net_opcodes.Opcodes.Call, net_opcodes.Opcodes.Callvirt, net_opcodes.Opcodes.Stfld, net_opcodes.Opcodes.Stsfld, net_opcodes.Opcodes.Ldfld, net_opcodes.Opcodes.Ldsfld): #TODO: should ldftn be considered
+                        robj = instr.get_argument()
+                        if robj is not None:
+                            robj._add_xref(mobj.get_rid(), instr.get_instr_offset())
 
     cpdef list get_methods_by_name(self, bytes name):
         """ Obtains a list of MethodDef objects matching a provided name.

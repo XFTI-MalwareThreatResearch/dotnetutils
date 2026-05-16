@@ -61,6 +61,8 @@ cdef class DotNetPeFile:
     cdef bint raise_exc_on_invalid_method
     cdef net_row_objects.MethodDef ep_method
 
+    cpdef void redo_xrefs(self)
+
     cdef void process_metadata_heap(self, bint dont_process)
 
     cdef bint should_raise_exc_on_invalid_method(self)

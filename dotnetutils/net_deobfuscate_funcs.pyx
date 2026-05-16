@@ -1943,5 +1943,5 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
         except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
             print('Possible control flow misidentification:', str(e))
             continue
-    dotnet.reinit_dpe(False) #xrefs
+    dotnet.redo_xrefs()
     print('Done with control flow check')
