@@ -705,7 +705,22 @@ cdef class DotNetChar(DotNetUInt16):
 
     cpdef DotNetNumber cast(self, CorElementType new_type)
 
-cdef class DotNetType(DotNetObject):
+cdef class DotNetMemberInfo(DotNetObject):
+    cdef net_row_objects.RowObject internal_method
+
+    cpdef net_row_objects.RowObject get_internal_method(self)
+
+    cdef StackCell get_DeclaringType(self, StackCell * params, int nparams)
+
+    cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
+
+    cdef DotNetObject duplicate(self)
+
+    cdef void duplicate_into(self, DotNetObject result)
+
+    cdef StackCell get_Name(self, StackCell * params, int nparams)
+
+cdef class DotNetType(DotNetMemberInfo):
     cdef net_row_objects.TypeDefOrRef type_handle
     cdef net_sigs.TypeSig sig_obj
     cdef net_row_objects.TypeDefOrRef element_type
@@ -921,6 +936,7 @@ cdef class DotNetAssembly(DotNetObject):
 
 cdef class DotNetList(DotNetObject):
     cdef vector[StackCell] internal
+    cdef long _list_uid
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -952,6 +968,9 @@ cdef class DotNetArray(DotNetObject):
     cdef SlimStackCell * __internal_array
     cdef uint64_t __size
     cdef net_row_objects.TypeDefOrRef element_type
+    cdef long _arr_uid
+
+    cdef net_row_objects.TypeDefOrRef get_element_type(self)
 
     cpdef object as_python_obj(self)
 
@@ -1012,19 +1031,6 @@ cdef class DotNetStackFrame(DotNetObject):
     cdef StackCell ctor(self, StackCell * params, int nparams)
 
     cdef StackCell GetMethod(self, StackCell * params, int nparams)
-
-    cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
-
-    cdef DotNetObject duplicate(self)
-
-    cdef void duplicate_into(self, DotNetObject result)
-
-cdef class DotNetMemberInfo(DotNetObject):
-    cdef net_row_objects.MethodDefOrRef internal_method
-
-    cpdef net_row_objects.MethodDefOrRef get_internal_method(self)
-
-    cdef StackCell get_DeclaringType(self, StackCell * params, int nparams)
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
@@ -1195,8 +1201,6 @@ cdef class DotNetString(DotNetObject):
     @staticmethod
     cdef StackCell Concat(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
-    cdef StackCell IndexOf(self, StackCell * params, int nparams)
-
     cdef StackCell StartsWith(self, StackCell * params, int nparams)
 
     cdef StackCell Replace(self, StackCell * params, int nparams)
@@ -1229,11 +1233,16 @@ cdef class DotNetModule(DotNetObject):
 
     cdef StackCell ResolveField(self, StackCell * params, int nparams)
 
+    cdef StackCell ResolveMember(self, StackCell * params, int nparams)
+
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 
     cdef DotNetObject duplicate(self)
 
-    cdef void duplicate_into(self, DotNetObject result)
+    cdef void duplicate_into(self, DotNetObject result)  
+    
+    @staticmethod
+    cdef StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
 cdef class DotNetModuleHandle(DotNetObject):
     cdef net_row_objects.RowObject internal_module
@@ -1279,7 +1288,7 @@ cdef class DotNetRuntimeFieldHandle(DotNetObject):
 
     cdef void duplicate_into(self, DotNetObject result)
 
-cdef class DotNetFieldInfo(DotNetObject):
+cdef class DotNetFieldInfo(DotNetMemberInfo):
     cdef net_row_objects.Field internal_field
 
     cdef StackCell get_FieldType(self, StackCell * params, int nparams)

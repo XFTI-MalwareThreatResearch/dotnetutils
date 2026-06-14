@@ -21,6 +21,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
 
 cdef void __init_handlers()
 
+cpdef object _get_cur_emu()
+
 cdef class StackCellWrapper:
     """ Used to represent stackcells in instances where they absolutely have to be python objects.
     """
@@ -214,6 +216,8 @@ cdef class DotNetEmulator:
     cdef bint is_destroyed
     cdef bint __init_open_generics_as_object
 
+    cdef net_sigs.TypeSig get_sig_from_type(self, net_row_objects.TypeDefOrRef tdefref)
+
     cdef StackCell convert_from_slimobject(self, StackCell cell)
 
     cpdef net_cil_disas.Instruction get_instr(self)
@@ -326,7 +330,7 @@ cdef class DotNetEmulator:
 
     cdef str cell_to_str(self, StackCell cell)
 
-    cdef StackCell pack_slimobject(self, net_row_objects.TypeDef ref)
+    cdef StackCell pack_slimobject(self, net_row_objects.TypeDefOrRef ref)
 
     cdef StackCell pack_blanktag(self)
 
