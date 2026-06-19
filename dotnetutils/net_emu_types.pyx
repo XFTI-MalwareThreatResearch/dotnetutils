@@ -6130,6 +6130,7 @@ cdef class DotNetCryptoStream(DotNetStream):
 
         self.__mstream = <DotNetMemoryStream>params[0].item.ref
         self.__transform = <DotNetICryptoTransform>params[1].item.ref
+        print('Cryptostream ctor called with {}'.format(self.get_emulator_obj().cell_to_str(params[2])))
         return self.get_emulator_obj().pack_object(self)
 
     cdef StackCell Write(self, StackCell * params, int nparams):
@@ -6140,6 +6141,7 @@ cdef class DotNetCryptoStream(DotNetStream):
         cdef int offset = params[1].item.i4
         cdef int count = params[2].item.i4
         cdef uint64_t amt_needed = self._position + count
+        print('DotNetCryptoStream write called {} {} {}'.format(input, offset, count))
         if self._internal is None or (<uint64_t>len(self._internal)) < amt_needed:
             self.expand(amt_needed)
         DotNetStream.Write(self, params, nparams)
@@ -6168,7 +6170,7 @@ cdef class DotNetCryptoStream(DotNetStream):
         args = <StackCell*>malloc(sizeof(StackCell) * 3)
         if args == NULL:
             raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'memory error')
-        
+        print('DotNetCryptoStream FlushFinalBlock called {}'.format(original))
         args[0] = self.get_emulator_obj().pack_object(original)
         args[1] = self.get_emulator_obj().pack_i4(0)
         args[2] = self.get_emulator_obj().pack_i4(<int>len(original))
@@ -11180,7 +11182,6 @@ cdef class DotNetNullable(DotNetObject):
         if nparams != 1:
             raise net_exceptions.InvalidArgumentsException()
         #TODO: This function doesnt technically work, although it seems to be fooling the emulator well enough.  May need to look into it.
-        print('calling dotnetnullable.getunderlyingtype on {}'.format(app_domain.get_emulator_obj().cell_to_str(params[0])))
         return app_domain.get_emulator_obj().pack_null()
 
 cdef class DotNetEnum(DotNetObject):

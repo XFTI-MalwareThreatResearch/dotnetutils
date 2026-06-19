@@ -28,12 +28,14 @@ def dnr_skip_obf_invoke_methods(emulator, argument):
         has_16 = False
         has_32 = False
         if len(array_obj) == 32:
+            print('array setvalue called on 32 length array {} {} {}'.format(index_obj, array_obj, value_obj))
             if value_obj.as_python_obj() != 0:
                 if 32 not in argument:
                     argument[32] = array_obj
             if index_obj.as_python_obj() == 31 and 32 in argument:
                 has_32 = True
         if len(array_obj) == 16:
+            print('array setvalue called on 32 length array {} {} {}'.format(index_obj, array_obj, value_obj))
             if value_obj.as_python_obj() != 0:
                 if 16 not in argument:
                     argument[16] = array_obj
@@ -747,7 +749,7 @@ class NETReactor(Deobfuscator):
         first_str_emu = emu.spawn_new_emulator(strm, end_offset=first_call.get_instr_offset() + len(first_call))
         dnint = net_emu_types.DotNetInt32(first_str_emu, None)
         dnint.from_int(0)
-        #first_str_emu.set_print_debugging(True, True)
+        first_str_emu.set_print_debugging(True, True)
         first_str_emu.setup_method_params([dnint])
         worked = False
         try:
