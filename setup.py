@@ -40,7 +40,8 @@ ext_modules = cythonize([
     gen_extension('net_row_objects'),
     gen_extension('net_patch'),
     gen_extension('net_sigs'),
-    gen_extension('net_emu_structs')
+    gen_extension('net_emu_structs'),
+    gen_extension('net_rebuilder')
 ], annotate=True, gdb_debug=True, show_all_warnings=True, compiler_directives={'embedsignature': True, 'linetrace': True, 'binding': True})
 
 setup(

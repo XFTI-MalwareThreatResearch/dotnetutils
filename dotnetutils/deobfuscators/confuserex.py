@@ -12,6 +12,7 @@ from dotnetutils import net_structs
 from dotnetutils import net_emulator
 from dotnetutils import net_patch
 from dotnetutils import net_deobfuscate_funcs
+from dotnetutils import net_rebuilder
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils.net_opcodes import Opcodes
 
@@ -458,6 +459,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             net_patch.insert_blank_userstrings(dotnet)
             self.__identify_string_methods(dotnet)
             if not dotnet.has_heap('#US'):
+                print(dotnet.get_metadata_dir().get_heaps())
                 raise Exception('Internal error adding #US stream')
         us_heap = dotnet.get_heap('#US')
         string_defs = list()
@@ -466,7 +468,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 string_defs.append(mspec.get_method())
 
         #first identify which constructor methods need to be executed.
-
         string_data_field = None
         for instr in string_defs[0].disassemble_method():
             if instr.get_opcode() == Opcodes.Ldsfld:
@@ -475,7 +476,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         if string_data_field is None:
             print('Could not find string data field.')
             return
-                
+        print('string data field is', string_data_field)
         string_data_instr = None
         string_data_method = None
         string_compress_method = None
@@ -483,6 +484,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             xfm = dotnet.get_method_by_rid(xref_rid)
             if xfm in string_defs:
                 continue
+            print('checking method for string data fields', xfm)
             dis = xfm.disassemble_method()
             instr = dis.get_instr_at_offset(xref_offset)
             if instr.get_opcode() == Opcodes.Stsfld:
@@ -494,17 +496,15 @@ class ConfuserExDeobfuscator(Deobfuscator):
                     break
 
         if string_data_instr is None or string_data_method is None or string_compress_method is None:
-            print('Could not find where data is set.')
+            print('Could not find where data is set.', string_data_instr, string_data_method, string_compress_method)
             return
                 
         #first deobfuscate the control flow of the string encryption method to make parsing easier.
         #instead of deobfuscating here, maybe just emulate with no op hooks for potential problematic instructions?  Also since we already identified the code decryption func earlier, we can proabably just reuse that for detection.
         fgraph = net_graphing.FunctionGraph(string_data_method)
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
-        fanalyzer.simplify_control_flow()        
-        dotnet.reinit_dpe(False)
+        fanalyzer.simplify_control_flow()
         us_heap = dotnet.get_heap('#US')
-        self.__identify_string_methods(dotnet)
         #we need to rerun so that the end offset is updated for the new control flow.
         string_data_method = dotnet.get_token_value(string_data_method.get_token())
         start_offset = -1

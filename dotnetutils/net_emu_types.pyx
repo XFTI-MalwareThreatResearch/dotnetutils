@@ -8518,24 +8518,6 @@ cdef class DynamicMethodObject(net_row_objects.MethodDef):
         self.__sig_obj = sig
         self.__method_data = method_data
 
-    cpdef object get_recompile_graph(self):
-        return None
-
-    cpdef bint begin_recompile(self):
-        raise net_exceptions.OperationNotSupportedException()
-
-    cpdef bint replace_instruction(self, unsigned int offset, net_cil_disas.Instruction instr):
-        raise net_exceptions.OperationNotSupportedException()
-
-    cpdef bint add_instruction(self, unsigned int offset, net_cil_disas.Instruction instr):
-        raise net_exceptions.OperationNotSupportedException()
-
-    cpdef bint finish_recompile(self):
-        raise net_exceptions.OperationNotSupportedException()
-
-    cpdef bint remove_instruction(self, unsigned int offset):
-        raise net_exceptions.OperationNotSupportedException()
-
     cpdef void set_method_data(self, bytes data):
         self.__method_data = data
 

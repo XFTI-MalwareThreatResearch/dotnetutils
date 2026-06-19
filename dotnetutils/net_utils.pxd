@@ -2,7 +2,7 @@
 #distutils: language=c++
 
 from dotnetutils cimport net_sigs
-from libc.stdint cimport uintptr_t
+from libc.stdint cimport uintptr_t, uint32_t
 from dotnetutils.net_structs cimport CorElementType
 
 cdef bytes convert_pointer_to_bytes(uintptr_t address, unsigned long size)
@@ -18,3 +18,7 @@ cdef bint is_cortype_number(CorElementType etype)
 cdef bint is_cortype_signed(CorElementType etype)
 
 cdef bint is_cortype_unsigned(CorElementType etype)
+
+cdef uint32_t align_32(uint32_t val, uint32_t align)
+
+cpdef bytes compress_integer(uint32_t number)

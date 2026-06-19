@@ -2,10 +2,10 @@
 #distutils: language=c++
 
 from dotnetutils cimport dotnetpefile
-from libc.stdint cimport uint64_t
+from libc.stdint cimport uint32_t
 
-cdef uint64_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view, uint64_t addr, uint64_t old_userstrings_va, int userstrings_difference, uint64_t target_addr)
+cdef uint32_t get_fixed_rva(dotnetpefile.PeFile old_pe, Py_buffer exe_data_view, uint32_t addr, uint32_t old_userstrings_va, int userstrings_difference, uint32_t target_addr)
 
 cpdef void insert_blank_userstrings(dotnetpefile.DotNetPeFile dotnetpe)
 
-cdef void fixup_resource_directory(uint64_t rs_offset, uint64_t rs_rva, uint64_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint64_t va_addr, int difference, uint64_t target_addr)
+cdef void fixup_resource_directory(uint32_t rs_offset, uint32_t rs_rva, uint32_t orig_rs_offset, dotnetpefile.PeFile old_pe, Py_buffer new_exe_view, uint32_t va_addr, int difference, uint32_t target_addr)

@@ -4,7 +4,7 @@ import hashlib
 from dotnetutils.deobfuscators.confuserex import ConfuserExDeobfuscator
 from dotnetutils.deobfuscators.dotnetreactor import NETReactor
 from dotnetutils.deobfuscators import deobfuscator
-from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer
+from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer, net_rebuilder
 
 def main():
     if len(sys.argv) < 4:
@@ -155,6 +155,7 @@ def main():
             for item in os.listdir(obf_exe):
                 fp = os.path.join(obf_exe, item)
                 if os.path.isfile(fp):
+                    print('reading in file {}'.format(fp))
                     dotnet = dotnetpefile.try_get_dotnetpe(file_path=fp)
                     if dotnet is not None:
                         work.append((dotnet, fp))
@@ -195,10 +196,14 @@ def main():
                             print('{}: Executable recognized as {} obfuscated executable.'.format(exe_hash, deob.NAME))
                             if deob.deobfuscate(current_dotnet, ctx):
                                 print('Deobfuscation completed for {}'.format(deob.NAME))
+                                rebuilder = net_rebuilder.NetRebuilder(current_dotnet)
+                                new_data = rebuilder.rebuild()
+                                current_dotnet.set_exe_data(new_data)
+                                current_dotnet.reinit_dpe(False)
+                                results.add(new_data)
                                 sha_obj = hashlib.sha256()
-                                sha_obj.update(current_dotnet.get_exe_data())
+                                sha_obj.update(new_data)
                                 print('{} deobfuscator outputted file {}'.format(deob.NAME, sha_obj.hexdigest()))
-                                results.add(current_dotnet.get_exe_data())
                                 current_work.append(current_dotnet)
                             else:
                                 print('Deobfuscation failed for {}'.format(deob.NAME))
