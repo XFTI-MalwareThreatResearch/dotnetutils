@@ -936,7 +936,6 @@ cdef class DotNetAssembly(DotNetObject):
 
 cdef class DotNetList(DotNetObject):
     cdef vector[StackCell] internal
-    cdef long _list_uid
 
     cdef bint isinst(self, net_row_objects.TypeDefOrRef tdef)
 

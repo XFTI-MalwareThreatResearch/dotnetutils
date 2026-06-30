@@ -241,6 +241,9 @@ cdef class NetRebuilder:
             results[heap_name] = heap_data_offset
             heap_data.extend(data)
             heap_data_offset += <uint32_t>len(data)
+            padding = align_32(heap_data_offset, 4) - heap_data_offset
+            heap_data.extend(b'\x00' * padding)
+            heap_data_offset += padding
 
         root_header_size = 4 + 2 + 2 + 4 + 4 + <uint32_t>len(mdatahdr.versionstr)
         root_header_size = align_32(root_header_size, 4)

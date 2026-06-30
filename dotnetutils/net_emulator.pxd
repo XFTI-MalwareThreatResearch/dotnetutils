@@ -21,8 +21,6 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
 
 cdef void __init_handlers()
 
-cpdef object _get_cur_emu()
-
 cdef class StackCellWrapper:
     """ Used to represent stackcells in instances where they absolutely have to be python objects.
     """
