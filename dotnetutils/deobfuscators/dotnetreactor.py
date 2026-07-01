@@ -851,9 +851,13 @@ class NETReactor(Deobfuscator):
                     if strarg in identifier_strings or this_assembly in strarg:
                         methods_to_remove.append(mdef)
                         break
+        
         for mdef in methods_to_remove:
+            print('removing antitamper method', mdef)
             for xref_rid, xref_offset in mdef.get_xrefs():
                 xfm = dotnet.get_method_by_rid(xref_rid)
+                print('removing call at {} {}'.format(hex(xfm.get_token()), hex(xref_offset)))
+
                 dis = xfm.disassemble_method()
                 instr = dis.get_instr_at_offset(xref_offset)
                 dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
@@ -873,8 +877,6 @@ class NETReactor(Deobfuscator):
             self.remove_delegates(dotnet, delegate_method, emu)
         print('Removing junk static fields')
         self.remove_junk_static_fields(dotnet, emu)
-        print('removing antitamper method calls.')
-        self.remove_antitamper_antidebug_method(dotnet)
         rebuilder = net_rebuilder.NetRebuilder(dotnet)
         data = rebuilder.rebuild()
         dotnet.set_exe_data(data)
@@ -883,6 +885,9 @@ class NETReactor(Deobfuscator):
         string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
         self.remove_string_obfuscation(emu, dotnet, string_method)
+        print('removing antitamper method calls.')
+        self.remove_antitamper_antidebug_method(dotnet)
+
         print('Cleaning up names')
         #net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')

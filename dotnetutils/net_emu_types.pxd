@@ -725,6 +725,8 @@ cdef class DotNetType(DotNetMemberInfo):
     cdef net_sigs.TypeSig sig_obj
     cdef net_row_objects.TypeDefOrRef element_type
 
+    cdef StackCell GetMethod(self, StackCell * params, int nparams)
+
     cdef StackCell GetElementType(self, StackCell * params, int nparams)
 
     cdef StackCell get_TypeHandle(self, StackCell * params, int nparams)
@@ -1213,6 +1215,8 @@ cdef class DotNetString(DotNetObject):
     cdef StackCell Substring(self, StackCell * params, int nparams)
 
     cdef StackCell Split(self, StackCell * params, int nparams)
+
+    cdef StackCell Trim(self, StackCell * params, int nparams)
 
     @staticmethod
     cdef StackCell op_Equality(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)

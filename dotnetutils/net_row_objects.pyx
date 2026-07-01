@@ -1876,6 +1876,8 @@ cdef class TypeSpec(TypeDefOrRef):
             element_type = sig_obj.get_element_type()
             element_type_name = net_utils.get_cor_type_name(element_type)
             return self.get_dotnetpe().get_typeref_by_full_name(element_type_name)
+        elif isinstance(sig_obj, net_sigs.SZArraySig):
+            return self.get_dotnetpe().get_typeref_by_full_name(b'System.Array')
         if hasattr(sig_obj, 'get_type'):
             return sig_obj.get_type()
         #TODO: There is a possibility this will require updating as semantics of other signatures are revealed.

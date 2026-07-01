@@ -104,6 +104,8 @@ cdef bytes get_cor_type_name(CorElementType element_type):
         return b'System.UIntPtr'
     elif element_type == CorElementType.ELEMENT_TYPE_BYREF:
         return b'ELEMENT_TYPE_BYREF'
+    elif element_type == CorElementType.ELEMENT_TYPE_PTR:
+        return b'ELEMENT_TYPE_PTR'
     raise net_exceptions.InvalidArgumentsException(actual=element_type)
 
 cdef bint is_cortype_number(CorElementType etype):

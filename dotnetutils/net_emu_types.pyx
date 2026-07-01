@@ -5537,6 +5537,8 @@ cdef class DotNetType(DotNetMemberInfo):
             self.type_handle = type_handle
         elif isinstance(type_handle, net_row_objects.TypeSpec):
             self.type_handle = type_handle.get_type()
+            if self.type_handle is None:
+                raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'error type handle is none {}'.format(type_handle.get_sig_obj()))
         else:
             raise net_exceptions.FeatureNotImplementedException()
         DotNetMemberInfo.__init__(self, emulator_obj, self.type_handle)
@@ -5553,6 +5555,23 @@ cdef class DotNetType(DotNetMemberInfo):
         self.add_function(b'get_IsEnum', <emu_func_type>self.get_IsEnum)
         self.add_function(b'get_TypeHandle', <emu_func_type>self.get_TypeHandle)
         self.add_function(b'GetElementType', <emu_func_type>self.GetElementType)
+        self.add_function(b'GetMethod', <emu_func_type>self.GetMethod)
+
+    cdef StackCell GetMethod(self, StackCell * params, int nparams):
+        """ Currently this does an extremely basic check
+        It will fail if the executable has two or more methods with the same name as the target.
+        TODO: implement signature compare.
+        """
+        if nparams != 2 or params[0].tag != CorElementType.ELEMENT_TYPE_STRING or params[0].item.ref == NULL:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef DotNetString mname = <DotNetString>params[0].item.ref
+        cdef bytes full_name = self.type_handle.get_full_name() + b'.' + mname.get_str_data_as_str().encode('utf-8')
+        cdef list methods = self.type_handle.get_dotnetpe().get_methods_by_full_name(full_name)
+        cdef net_row_objects.MethodDefOrRef mdef = None
+        if len(methods) == 1:
+            mdef = methods[0]
+            return self.get_emulator_obj().pack_object(DotNetMethodInfo(self.get_emulator_obj(), mdef))
+        raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), f'GetMethods error with methods {methods}')
 
     cdef StackCell GetElementType(self, StackCell * params, int nparams):
         if self.element_type is None:
@@ -7660,7 +7679,11 @@ cdef class DotNetString(DotNetObject):
         self.add_function(b'ToString', <emu_func_type>self.ToString)
         self.add_function(b'ctor', <emu_func_type>self.ctor)
         self.add_function(b'ToCharArray', <emu_func_type>self.ToCharArray)
+        self.add_function(b'Trim', <emu_func_type>self.Trim)
 
+    cdef StackCell Trim(self, StackCell * params, int nparams):
+        cdef str new_str = self.get_str_data_as_str().strip()
+        return self.get_emulator_obj().pack_string(DotNetString(self.get_emulator_obj(), new_str.encode(self.str_encoding), self.str_encoding))
 
     cpdef object as_python_obj(self):
         return self.get_str_data_as_str()
@@ -8100,7 +8123,7 @@ cdef class DotNetRuntimeTypeHandle(DotNetObject):
         pass
 
     def __str__(self):
-        return 'DotNetRuntimeTypeHandle: {}-{} - {}'.format(self.internal_typedef.get_table_name(), self.internal_typedef.get_rid(),
+        return 'DotNetRuntimeTypeHandle: {} - {} - {} - {}'.format(self.internal_typedef.get_table_name(), self.internal_typedef.get_rid(), hex(self.internal_typedef.get_token()),
                                                             self.internal_typedef.get_full_name())
 
 cdef class DotNetRuntimeMethodHandle(DotNetObject):
@@ -8309,7 +8332,7 @@ cdef class DotNetMethodInfo(DotNetMethodBase):
             args[0] = self.get_emulator_obj().duplicate_cell(params[0])
         for x in range(<int>len(arr_dnobj)):
             args[args_start + x] = arr_dnobj._get_item(x)
-        net_emulator.do_call(self.get_emulator_obj(), False, self.internal_method.get_name() == b'.ctor', self.internal_method, None, args, amt_args, self.internal_method)
+        net_emulator.do_call(self.get_emulator_obj(), False, self.internal_method.get_name() == b'.ctor', self.internal_method, None, args, amt_args, self.internal_method, False)
         for x in range(amt_args):
             self.get_emulator_obj().dealloc_cell(args[x])
         free(args)
@@ -8600,7 +8623,7 @@ cdef class DotNetDelegate(DotNetObject):
             memcpy(&args[1], params, sizeof(StackCell) * nparams)
         else:
             memcpy(args, params, sizeof(StackCell) * nparams)
-        net_emulator.do_call(self.get_emulator_obj(), False, self.dn_methodinfo.internal_method.get_name() == b'.ctor', self.dn_methodinfo.internal_method, None, args, amt_args, self.dn_methodinfo.internal_method)
+        net_emulator.do_call(self.get_emulator_obj(), False, self.dn_methodinfo.internal_method.get_name() == b'.ctor', self.dn_methodinfo.internal_method, None, args, amt_args, self.dn_methodinfo.internal_method, False)
         if self.dn_type.tag != CorElementType.ELEMENT_TYPE_END:
             self.get_emulator_obj().dealloc_cell(args[0])
         free(args)

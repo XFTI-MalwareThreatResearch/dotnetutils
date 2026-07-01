@@ -16,6 +16,10 @@ cdef struct ByRefItem:
     int64_t idx
     void * owner
 
+cdef struct ArrayPtrItem:
+    uint64_t offset
+    StackCell *array
+
 """ Used to represent objects which dont require any additional methods (TypeDefs usually).
     Takes up a lot less memory than DotNetObject
 
@@ -62,6 +66,7 @@ cdef union StackCellItem:
     PyObject * ref
     ByRefItem byref
     SlimObject * slim_object
+    ArrayPtrItem array_item
 
 """ A slimmed down version of StackCell for storage where extra fields arent required.
 
