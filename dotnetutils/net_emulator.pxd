@@ -87,8 +87,6 @@ cdef class EmulatorAppDomain:
 
     cdef int get_field_rid(self, int field_counter, int type_token)
 
-    cdef void __create_field_mappings(self)
-
     cdef newobj_func_type get_ctor_func(self, int token)
 
     cdef bint has_ctor_func(self, int token)
@@ -142,6 +140,8 @@ cdef class EmulatorAppDomain:
     cdef int get_amt_static_fields(self)
 
     cpdef void remove_instr_handler(self, Opcodes opcode)
+
+    cdef void __register_field_for_type(self, int type_token)
 
 cdef class DotNetStack:
     cdef DotNetEmulator __emulator

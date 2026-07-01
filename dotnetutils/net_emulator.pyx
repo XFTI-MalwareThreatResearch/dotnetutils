@@ -4121,14 +4121,12 @@ cdef class EmulatorAppDomain:
         self.load_dotnetpe_as_assembly(self.__starter_dpe)
         self.register_static_functions()
         self.__reserve_static_fields()
-        self.__create_field_mappings()
 
-    cdef void __create_field_mappings(self):
+    cdef void __register_field_for_type(self, int type_token):
         """ Create mappings that map types to field rids to counters and vice versa.
         This is used so that we can malloc() an array of StackCells when storing TypeDef fields.  Saves a ton of space versus unordered_maps.
         """
-        cdef net_table_objects.TableObject tdeftable = self.__emu_obj.get_method_obj().get_dotnetpe().get_metadata_table('TypeDef')
-        cdef net_row_objects.TypeDef tdef = None
+        cdef net_row_objects.TypeDef tdef = self.__emu_obj.get_method_obj().get_dotnetpe().get_token_value(type_token)
         cdef net_row_objects.TypeDefOrRef ptr = None
         cdef Py_ssize_t x = 0
         cdef list fields_list = None
@@ -4138,58 +4136,53 @@ cdef class EmulatorAppDomain:
         cdef net_table_objects.FieldLayoutTable layouts = self.__emu_obj.get_method_obj().get_dotnetpe().get_metadata_table('FieldLayout')
         cdef net_row_objects.RowObject layout = None
         cdef int offset = 0
-        if tdeftable is None:
-            return
-
-        for x in range(1, len(tdeftable) + 1):
-            tdef = tdeftable.get(<int>x)
-            ptr = tdef
-            counter = 0
-            if tdef.get_token() not in self.__field_index_registrations:
-                self.__field_index_registrations[tdef.get_token()] = dict()
-            if tdef.get_token() not in self.__field_counter_registrations:
-                self.__field_counter_registrations[tdef.get_token()] = dict()
-            while ptr is not None:
-                if isinstance(ptr, net_row_objects.TypeRef):
-                    break
-                if isinstance(ptr, net_row_objects.TypeSpec):
-                    ptr = (<net_row_objects.TypeSpec>ptr).get_type()
-                    continue
-                if isinstance(ptr, net_row_objects.TypeDef):
-                    if ptr.is_explicit():
-                        fields_list = ptr.get_column('FieldList').get_formatted_value()
-                        if fields_list is not None:
-                            explicit_offsets = dict()
-                            for field in fields_list:
-                                if layouts is not None:
-                                    layout = layouts.get_layout_for_field(field)
-                                else:
-                                    layout = None
-                                if field.is_static():
-                                    continue
-                                if layout is not None:
-                                    offset = layout.get_column('Offset').get_value()
-                                    if offset not in explicit_offsets:
-                                        explicit_offsets[offset] = counter
-                                        counter += 1
-                                    self.__field_index_registrations[tdef.get_token()][field.get_rid()] = explicit_offsets[offset]
-                                    self.__field_counter_registrations[tdef.get_token()][explicit_offsets[offset]] = field.get_rid()
-                                else:
-                                    self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
-                                    self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
+        ptr = tdef
+        counter = 0
+        if tdef.get_token() not in self.__field_index_registrations:
+            self.__field_index_registrations[tdef.get_token()] = dict()
+        if tdef.get_token() not in self.__field_counter_registrations:
+            self.__field_counter_registrations[tdef.get_token()] = dict()
+        while ptr is not None:
+            if isinstance(ptr, net_row_objects.TypeRef):
+                break
+            if isinstance(ptr, net_row_objects.TypeSpec):
+                ptr = (<net_row_objects.TypeSpec>ptr).get_type()
+                continue
+            if isinstance(ptr, net_row_objects.TypeDef):
+                if ptr.is_explicit():
+                    fields_list = ptr.get_column('FieldList').get_formatted_value()
+                    if fields_list is not None:
+                        explicit_offsets = dict()
+                        for field in fields_list:
+                            if layouts is not None:
+                                layout = layouts.get_layout_for_field(field)
+                            else:
+                                layout = None
+                            if field.is_static():
+                                continue
+                            if layout is not None:
+                                offset = layout.get_column('Offset').get_value()
+                                if offset not in explicit_offsets:
+                                    explicit_offsets[offset] = counter
                                     counter += 1
-
-
-                    else:
-                        fields_list = ptr.get_column('FieldList').get_formatted_value()
-                        if fields_list is not None:
-                            for field in fields_list:
-                                if field.is_static():
-                                    continue
+                                self.__field_index_registrations[tdef.get_token()][field.get_rid()] = explicit_offsets[offset]
+                                self.__field_counter_registrations[tdef.get_token()][explicit_offsets[offset]] = field.get_rid()
+                            else:
                                 self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
                                 self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
                                 counter += 1
-                    ptr = ptr.get_superclass()
+
+
+                else:
+                    fields_list = ptr.get_column('FieldList').get_formatted_value()
+                    if fields_list is not None:
+                        for field in fields_list:
+                            if field.is_static():
+                                continue
+                            self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
+                            self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
+                            counter += 1
+                ptr = ptr.get_superclass()
 
     cdef int get_field_rid(self, int field_index, int type_token):
         """ Get the RID of a field by index and type token.
@@ -4210,7 +4203,9 @@ cdef class EmulatorAppDomain:
         cdef dict mapping = None
         cdef int result = 0
         if type_token not in self.__field_counter_registrations:
-            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Type token not in reg {}'.format(hex(type_token)))
+            self.__register_field_for_type(type_token)
+            if type_token not in self.__field_counter_registrations:
+                raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Type token not in reg {}'.format(hex(type_token)))
         mapping = self.__field_counter_registrations[type_token]
         if field_index not in mapping:
             return -1             
@@ -4233,6 +4228,8 @@ cdef class EmulatorAppDomain:
         """
         if type_token == 0:
             raise net_exceptions.InvalidArgumentsException()
+        if type_token not in self.__field_index_registrations:
+            self.__register_field_for_type(type_token)
         cdef dict mapping = self.__field_index_registrations[type_token]
         return mapping[field_rid]
 
