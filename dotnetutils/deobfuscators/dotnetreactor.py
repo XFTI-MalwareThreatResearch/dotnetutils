@@ -18,41 +18,11 @@ def dnr_skip_obf_methods(emulator, argument):
 def dnr_skip_obf_invoke_methods(emulator, argument):
     instr = emulator.get_instr()
     name = instr.get_argument().get_full_name()
-    if name == b'System.Array.SetValue' and argument is not None:
-        if 0 not in argument:
-            argument[0] = set()
-        stack = emulator.get_stack()
-        stack_len = len(stack)
-        array_obj = stack[stack_len - 3]
-        value_obj = stack[stack_len - 2]
-        index_obj = stack[stack_len - 1]
-        has_16 = False
-        has_32 = False
-        if len(array_obj) == 32:
-            print('array setvalue called on 32 length array {} {} {}'.format(index_obj, array_obj, value_obj))
-            if value_obj.as_python_obj() != 0:
-                if 32 not in argument:
-                    argument[32] = array_obj
-            if index_obj.as_python_obj() == 31 and 32 in argument:
-                has_32 = True
-        if len(array_obj) == 16:
-            print('array setvalue called on 32 length array {} {} {}'.format(index_obj, array_obj, value_obj))
-            if value_obj.as_python_obj() != 0:
-                if 16 not in argument:
-                    argument[16] = array_obj
-            if index_obj.as_python_obj() == 15 and 16 in argument:
-                has_16 = True
-
-        if has_16 and has_32:
-            raise net_exceptions.EmulatorEndExecutionException(emulator, emulator.get_method_obj().get_rid(), 0, 0, 0)
-
-    elif name == b'System.Reflection.MethodBase.Invoke':
+    if name == b'System.Reflection.MethodBase.Invoke':
         stack = emulator.get_stack()
         stack_len = len(stack)
         methodinfo = stack[stack_len - 3]
         internal = methodinfo.get_internal_method()
-        if internal.get_token() == 0x06000119:
-            raise Exception('executing no no method')
         if internal.has_return_value() or internal.method_has_this():
             return True
         if len(internal.get_param_types()) > 0:
@@ -786,7 +756,6 @@ class NETReactor(Deobfuscator):
             string_method = string_methods.pop()
             for xref_rid, xref_offset in string_method.get_xrefs():
                 xfm = dotnet.get_method_by_rid(xref_rid)
-                print('checking xref for method {} {}'.format(xfm, hex(xref_offset)))
                 dis = xfm.disassemble_method()
                 call_instr = dis.get_instr_at_offset(xref_offset)
                 instrs = dis.get_list_of_instrs()
@@ -801,14 +770,12 @@ class NETReactor(Deobfuscator):
                         start_instr = instr
                         break
                 if start_instr is None:
-                    print('Could not find start instr')
+                    pass
                 else:
                     patch_start = start_instr.get_instr_offset()
                     if is_string_method(xfm):
-                        print('adding additional string method {}'.format(hex(xfm.get_token())))
                         string_methods.append(xfm)
                         continue
-                    print('emulating method {} {}'.format(xfm, hex(patch_start)))
                     new_emu = emu.spawn_new_emulator(xfm, start_offset=patch_start, end_offset=call_instr.get_instr_offset() + len(call_instr), dont_execute_first_cctor=True)
                     new_emu.setup_method_params([])
                     #new_emu.set_print_debugging(False, True, print_debug_methods=[1447])
@@ -823,14 +790,13 @@ class NETReactor(Deobfuscator):
                     else:
                         str_obj = new_emu.get_stack().pop_obj()
                         if not isinstance(str_obj, net_emu_types.DotNetString):
-                            print('Error not string!!!')
+                            pass
                         else:
                             patch_size = (call_instr.get_instr_offset() + len(call_instr)) - patch_start
                             data = str_obj.get_str_data_as_str().encode('utf-16le')
                             if data not in string_indexes:
                                 string_indexes[data] = us_heap.append_tx(data)
                             index = string_indexes[data]
-                            print('found string {}'.format(data))
                             new_instr = b'\x72' + int.to_bytes(index, 3, 'little') + b'\x70'
                             new_instr += (b'\x00' * (patch_size - 5))
                             dotnet.patch_instruction(xfm, new_instr, patch_start, patch_size)
