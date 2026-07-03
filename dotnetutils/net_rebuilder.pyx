@@ -287,14 +287,31 @@ cdef class NetRebuilder:
         return results
 
     cdef size_t __build_net_resources(self, bytearray result, uint32_t rva):
-        cdef object rsrc = None
         cdef size_t result_start = len(result)
-        cdef bytes data = None
-        for rsrc in self.__dpefile.get_resources():
-            data = rsrc.get_data()
+        cdef bytes data
+        for data in self.__resource_blobs:
             result.extend(int.to_bytes(<uint32_t>len(data), 4, 'little'))
             result.extend(data)
         return len(result) - result_start
+
+    cdef void __assign_resource_offsets(self):
+        cdef uint32_t off = 0
+        cdef bytes data
+        cdef list sets
+        cdef uint32_t idx = 0
+        self.__resource_blobs = []
+        idx = 0
+        sets = self.__dpefile.get_resources()
+        if len(sets) == 0:
+            return
+        for item in self.__dpefile.get_metadata_table('ManifestResource'):
+            if item['Implementation'].get_raw_value() != 0:
+                continue                       # external resource: Offset targets another file
+            data = sets[idx].get_data()
+            idx += 1
+            self.__resource_blobs.append(data)
+            item['Offset'].set_raw_value(off)
+            off += 4 + <uint32_t>len(data)
 
     cdef size_t __build_net_headers(self, bytearray result, uint32_t rva, uint32_t metadata_rva, uint32_t metadata_size):
         cdef IMAGE_COR20_HEADER cor20
@@ -533,6 +550,7 @@ cdef class NetRebuilder:
         field_mappings = self.__build_fieldrva_data(result, methods_rva + methods_size)
         fields_size = <uint32_t>len(result) - fields_size
         metadata_size = <uint32_t>len(result)
+        self.__assign_resource_offsets()
         heaps_mappings = self.__build_net_heaps(result, method_mappings, field_mappings, list(self.__dpefile.get_heaps().keys()))
         metadata_size = <uint32_t>len(result) - metadata_size
         metadata_rva = methods_rva + methods_size + fields_size
@@ -745,6 +763,7 @@ cdef class NetRebuilder:
         field_mappings = self.__build_fieldrva_data(result, methods_rva + methods_size)
         fields_size = <uint32_t>len(result) - fields_size
         metadata_size = <uint32_t>len(result)
+        self.__assign_resource_offsets()
         heaps_mappings = self.__build_net_heaps(result,  method_mappings, field_mappings, list(self.__dpefile.get_heaps().keys()))
         metadata_size = <uint32_t>len(result) - metadata_size
         metadata_rva = methods_rva + methods_size + fields_size

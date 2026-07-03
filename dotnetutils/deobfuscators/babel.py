@@ -14,6 +14,8 @@ class Babel(Deobfuscator):
 
     def identify_babel_string_method(self, dotnet):
         methods = dotnet.get_methods_by_full_name(b'System.String.ToCharArray')
+        if len(methods) == 0:
+            return None
         method = methods[0]
         methods = dotnet.get_methods_by_full_name(b'System.String..ctor')
         rids = set()

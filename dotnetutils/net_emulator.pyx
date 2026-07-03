@@ -8766,9 +8766,10 @@ cdef class DotNetEmulator:
             except Exception as e:
                 if not self.print_debug:
                     self.print_debug = True
-                self.print_string('3: Error on method: {}:{} - Offset: {} {}'.format(self.method_obj,
-                                                                               hex(self.method_obj.get_token()),
-                                                                               hex(self.instr.get_instr_offset()), str(e)), 1)
+                if not isinstance(e, net_exceptions.EmulatorEndExecutionException):
+                    self.print_string('3: Error on method: {}:{} - Offset: {} {}'.format(self.method_obj,
+                                                                                hex(self.method_obj.get_token()),
+                                                                                hex(self.instr.get_instr_offset()), str(e)), 1)
                 if not self.already_init:
                     self.get_appdomain().set_calling_dotnetpe(None)
                 raise e

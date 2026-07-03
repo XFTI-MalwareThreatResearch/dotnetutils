@@ -6,6 +6,7 @@ from libc.stdint cimport uint32_t, uint64_t
 cdef class NetRebuilder:
     cdef DotNetPeFile __dpefile
     cdef PeFile __pe
+    cdef list __resource_blobs
 
     cpdef bytes rebuild(self)
 
@@ -35,6 +36,8 @@ cdef class NetRebuilder:
 
     cdef size_t __build_imports32(self, DotNetPeFile dotnet, bytearray result, uint32_t rva)
 
+    cdef void __assign_resource_offsets(self)
+    
     cdef bytes __rebuild_64(self)
 
     cdef bytes __rebuild_32(self)

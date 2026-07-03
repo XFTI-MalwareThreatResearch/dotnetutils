@@ -273,6 +273,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         #A binary can be confuserex obfuscated and simply not have any strings.
         if dotnet.has_string(b'DNU_CEX_WATERMARK'):
             return False
+
         mspec_table = dotnet.get_metadata_table('MethodSpec')
         if mspec_table is None:
             return False
@@ -438,8 +439,9 @@ class ConfuserExDeobfuscator(Deobfuscator):
         self.__identify_code_decryption_method(new_dpe)
         if self.code_decrypt_method is None or len(self.code_decrypt_method.get_xrefs()) == 0:
             new_dpe.set_entry_point(ep_token)
+            rebuilder = net_rebuilder.NetRebuilder(new_dpe)
             self.code_decrypt_method = None
-            return [new_dpe.get_exe_data()]
+            return [rebuilder.rebuild()]
         md5_hash = hashlib.md5()
         md5_hash.update(new_data)
         if not ctx.has_item('Entry'):
@@ -459,7 +461,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
             net_patch.insert_blank_userstrings(dotnet)
             self.__identify_string_methods(dotnet)
             if not dotnet.has_heap('#US'):
-                print(dotnet.get_metadata_dir().get_heaps())
                 raise Exception('Internal error adding #US stream')
         us_heap = dotnet.get_heap('#US')
         string_defs = list()
@@ -476,7 +477,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
         if string_data_field is None:
             print('Could not find string data field.')
             return
-        print('string data field is', string_data_field)
         string_data_instr = None
         string_data_method = None
         string_compress_method = None
@@ -484,7 +484,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
             xfm = dotnet.get_method_by_rid(xref_rid)
             if xfm in string_defs:
                 continue
-            print('checking method for string data fields', xfm)
             dis = xfm.disassemble_method()
             instr = dis.get_instr_at_offset(xref_offset)
             if instr.get_opcode() == Opcodes.Stsfld:
@@ -586,6 +585,12 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 if dis is None:
                     print('error disassembling method {}'.format(hex(xfm.get_token())))
                     continue
+                if xfm == string_data_method:
+                    for instr in dis:
+                        if instr.get_opcode() in (Opcodes.Call, Opcodes.Callvirt):
+                            if instr.get_argument() == mspec:
+                                xref_offset = instr.get_instr_offset()
+                                break
                 instr = dis.get_instr_at_offset(xref_offset)
                 prev_instr = dis[instr.get_instr_index() - 1]
                 if not prev_instr.get_name().startswith('ldc.i4'):
