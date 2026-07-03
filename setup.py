@@ -14,8 +14,10 @@ elif sys.platform == 'darwin':
     compile_args = ['-g', '-Werror', '-Wno-unreachable-code-fallthrough', '-Wno-unused-but-set-variable', '-Wno-unused-function', '-Wno-unused-const-variable']
     link_args = ['-g']
 else:
-    compile_args = ['/DEBUG', '/WX', '/wd4551', '/Zi'] 
-    link_args = ['/DEBUG']
+    #compile_args = ['/DEBUG', '/WX', '/wd4551', '/Zi'] 
+    #link_args = ['/DEBUG']
+    compile_args = ['/O2', '/WX', '/wd4551']
+    link_args = []
 
 def gen_extension(name):
     global compile_args
@@ -40,8 +42,11 @@ ext_modules = cythonize([
     gen_extension('net_row_objects'),
     gen_extension('net_patch'),
     gen_extension('net_sigs'),
-    gen_extension('net_emu_structs')
-], annotate=True, gdb_debug=True, show_all_warnings=True, compiler_directives={'embedsignature': True, 'linetrace': True, 'binding': True})
+    gen_extension('net_emu_structs'),
+    gen_extension('net_rebuilder')
+], show_all_warnings=True)
+
+#], annotate=True, gdb_debug=True, show_all_warnings=True, compiler_directives={'embedsignature': True, 'linetrace': True, 'binding': True})
 
 setup(
     ext_modules=ext_modules,

@@ -222,7 +222,7 @@ cdef void __init_handlers():
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stelem_I8] = handle_stelem_i8_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stelem_R4] = handle_stelem_r4_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stelem_R8] = handle_stelem_r8_instruction
-    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stelem_Ref] = handle_stelem_instruction
+    emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stelem_Ref] = handle_stelem_ref_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Ldelem] = handle_ldelem_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Stelem] = handle_stelem_instruction
     emu_func_handlers[<uint16_t>net_opcodes.Opcodes.Unbox_Any] = handle_unbox_any_instruction
@@ -353,8 +353,27 @@ cdef bint handle_stind_i1_instruction(DotNetEmulator emu):
     cdef StackCell num = emu.stack.pop()
     cdef StackCell addr = emu.stack.pop()
     cdef StackCell casted
-    if not net_utils.is_cortype_number(<CorElementType>num.tag) or addr.tag != CorElementType.ELEMENT_TYPE_BYREF:
+    cdef StackCell result
+    cdef StackCell ref_ptr
+    if not net_utils.is_cortype_number(<CorElementType>num.tag) or (addr.tag != CorElementType.ELEMENT_TYPE_BYREF and addr.tag != CorElementType.ELEMENT_TYPE_PTR):
         raise net_exceptions.InvalidArgumentsException()
+
+    if addr.tag == CorElementType.ELEMENT_TYPE_PTR:
+        if addr.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        memcpy(&ref_ptr, addr.item.array_item.array, sizeof(StackCell))
+        if ref_ptr.item.byref.kind != 3:
+            raise net_exceptions.OperationNotSupportedException()
+        array = <net_emu_types.DotNetArray>ref_ptr.item.byref.owner
+        base_offset = addr.item.array_item.offset
+        if base_offset >= <uint64_t>len(array):
+            raise net_exceptions.InvalidArgumentsException()
+        result = emu.cast_cell(num, net_sigs.get_CorSig_SByte())
+        array._set_item(base_offset, result)
+        emu.dealloc_cell(addr)
+        emu.dealloc_cell(result)
+        emu.dealloc_cell(num)
+        return False
     casted = emu.cast_cell(num, net_sigs.get_CorSig_SByte())
     emu.set_ref(addr, casted)
     emu.dealloc_cell(num)
@@ -395,8 +414,33 @@ cdef bint handle_stind_i4_instruction(DotNetEmulator emu):
     cdef StackCell num = emu.stack.pop()
     cdef StackCell addr = emu.stack.pop()
     cdef StackCell casted
-    if not net_utils.is_cortype_number(<CorElementType>num.tag) or addr.tag != CorElementType.ELEMENT_TYPE_BYREF:
+    cdef uint64_t base_offset = 0
+    cdef Py_ssize_t x = 0
+    cdef StackCell result
+    cdef StackCell ref_ptr
+    cdef char buffer[4]
+    if not net_utils.is_cortype_number(<CorElementType>num.tag) or (addr.tag != CorElementType.ELEMENT_TYPE_BYREF and addr.tag != CorElementType.ELEMENT_TYPE_PTR):
         raise net_exceptions.InvalidArgumentsException()
+    if addr.tag == CorElementType.ELEMENT_TYPE_PTR:
+        if addr.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        memcpy(&ref_ptr, addr.item.array_item.array, sizeof(StackCell))
+        if ref_ptr.item.byref.kind != 3:
+            raise net_exceptions.OperationNotSupportedException()
+        array = <net_emu_types.DotNetArray>ref_ptr.item.byref.owner
+        base_offset = addr.item.array_item.offset
+        if base_offset + 4 >= <uint64_t>len(array):
+            raise net_exceptions.InvalidArgumentsException()
+        casted = emu.cast_cell(num, net_sigs.get_CorSig_Int32())
+        (<int32_t*>buffer)[0] = casted.item.i4
+        for x in range(4):
+            result = emu.pack_u1(buffer[x])
+            array._set_item(base_offset + x, result)
+            emu.dealloc_cell(result)
+        emu.dealloc_cell(addr)
+        emu.dealloc_cell(casted)
+        emu.dealloc_cell(num)
+        return False
     casted = emu.cast_cell(num, net_sigs.get_CorSig_Int32())
     emu.set_ref(addr, casted)
     emu.dealloc_cell(num)
@@ -682,8 +726,35 @@ cdef bint handle_ldind_u1_instruction(DotNetEmulator emu):
     cdef StackCell ref_obj
     cdef StackCell casted
     cdef StackCell result
-    if addr_obj.tag != CorElementType.ELEMENT_TYPE_BYREF:
+    cdef uint64_t base_offset = 0
+    cdef StackCell ref_ptr
+    cdef net_emu_types.DotNetArray array
+    cdef char buffer[1]
+    if addr_obj.tag != CorElementType.ELEMENT_TYPE_BYREF and addr_obj.tag != CorElementType.ELEMENT_TYPE_PTR:
         raise net_exceptions.OperationNotSupportedException()
+    if addr_obj.tag == CorElementType.ELEMENT_TYPE_PTR:
+        if addr_obj.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        memcpy(&ref_ptr, addr_obj.item.array_item.array, sizeof(StackCell))
+        if ref_ptr.item.byref.kind != 3:
+            raise net_exceptions.OperationNotSupportedException()
+        array = <net_emu_types.DotNetArray>ref_ptr.item.byref.owner
+        base_offset = addr_obj.item.array_item.offset
+        if base_offset >= <uint64_t>len(array):
+            raise net_exceptions.InvalidArgumentsException()
+        result = array._get_item(base_offset)
+        if result.tag != CorElementType.ELEMENT_TYPE_U1:
+            raise net_exceptions.OperationNotSupportedException()
+        buffer[0] = result.item.u1
+        emu.dealloc_cell(result)
+
+        casted = emu.pack_u1(buffer[0])
+        result = emu.cast_cell(casted, net_sigs.get_CorSig_Int32())
+        emu.stack.append(result)
+        emu.dealloc_cell(addr_obj)
+        emu.dealloc_cell(casted)
+        emu.dealloc_cell(result)
+        return False
     ref_obj = emu.get_ref(addr_obj)
     if not net_utils.is_cortype_number(<CorElementType>ref_obj.tag):
         raise net_exceptions.InvalidArgumentsException()
@@ -736,8 +807,38 @@ cdef bint handle_ldind_u4_instruction(DotNetEmulator emu):
     cdef StackCell ref_obj
     cdef StackCell casted
     cdef StackCell result
-    if addr_obj.tag != CorElementType.ELEMENT_TYPE_BYREF:
+    cdef StackCell ref_ptr
+    cdef net_emu_types.DotNetArray array = None
+    cdef char buffer[4]
+    cdef uint64_t base_offset = 0
+    cdef Py_ssize_t x = 0
+    if addr_obj.tag != CorElementType.ELEMENT_TYPE_BYREF and addr_obj.tag != CorElementType.ELEMENT_TYPE_PTR:
         raise net_exceptions.OperationNotSupportedException()
+
+    if addr_obj.tag == CorElementType.ELEMENT_TYPE_PTR:
+        if addr_obj.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        memcpy(&ref_ptr, addr_obj.item.array_item.array, sizeof(StackCell))
+        if ref_ptr.item.byref.kind != 3:
+            raise net_exceptions.OperationNotSupportedException()
+        array = <net_emu_types.DotNetArray>ref_ptr.item.byref.owner
+        base_offset = addr_obj.item.array_item.offset
+        if base_offset + 4 >= <uint64_t>len(array):
+            raise net_exceptions.InvalidArgumentsException()
+        for x in range(4):
+            result = array._get_item(base_offset + x)
+            if result.tag != CorElementType.ELEMENT_TYPE_U1:
+                raise net_exceptions.OperationNotSupportedException()
+            buffer[x] = result.item.u1
+            emu.dealloc_cell(result)
+
+        casted = emu.pack_u4((<uint32_t*>buffer)[0])
+        result = emu.cast_cell(casted, net_sigs.get_CorSig_Int32())
+        emu.stack.append(result)
+        emu.dealloc_cell(addr_obj)
+        emu.dealloc_cell(casted)
+        emu.dealloc_cell(result)
+        return False
     ref_obj = emu.get_ref(addr_obj)
     if not net_utils.is_cortype_number(<CorElementType>ref_obj.tag):
         raise net_exceptions.InvalidArgumentsException()
@@ -794,7 +895,7 @@ cdef bint handle_brtrue_instruction(DotNetEmulator emu):
     emu.dealloc_cell(value1)
     return False
 
-cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDefOrRef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj) except *: 
+cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDefOrRef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj, bint force_obj_lookup) except *: 
     """ Handles a lot of the legwork for call instructions.  Creates new emulator objects, calls imported methods etc.
 
     Args:
@@ -859,8 +960,8 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if method_obj.get_parent_type():
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
-                    return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0, initial_method_obj)
-    if method_obj.get_table_name() == 'MethodDef' and not force_extern_type:
+                    return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0, initial_method_obj, False)
+    if method_obj.get_table_name() == 'MethodDef' and not force_extern_type and not force_obj_lookup:
         method_name = method_obj.get_name()
         amt_args = <int>len(method_obj.get_param_types())
         if not isinstance(initial_method_obj, net_row_objects.MethodSpec):
@@ -905,7 +1006,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             emu.dealloc_cell(cell)
         new_emu.run_function()
         # the handler for ret instruction handles cleaning up the stack after this.
-    elif method_obj.get_table_name() == 'MemberRef' or force_extern_type:
+    elif method_obj.get_table_name() == 'MemberRef' or force_extern_type or force_obj_lookup:
         if force_extern_type is None and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec): #generics etc.
             if isinstance(method_obj.get_parent_type().get_type(), net_row_objects.TypeDef): #TODO: Look over this logic in terms of DotNetDelegate.Invoke() calls.
                 return do_virtcall(emu, force_virtcall=True, force_virt_type=method_obj.get_parent_type().get_type())
@@ -1094,7 +1195,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 obj_ref.copy_fields_to_slimobject(boxed_this.item.slim_object)
             emu.dealloc_cell(boxed_this)
     elif method_obj.get_table_name() == 'MethodSpec':
-        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0, method_obj)
+        return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0, method_obj, False)
     else:
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj))
@@ -1109,7 +1210,7 @@ cdef bint handle_call_instruction(DotNetEmulator emu):
     Returns:
         bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
     """
-    return do_call(emu, False, False, None, None, NULL, 0, emu.instr.get_argument())
+    return do_call(emu, False, False, None, None, NULL, 0, emu.instr.get_argument(), False)
 
 cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_objects.TypeDefOrRef force_virt_type=None) except *: 
     """ Does the legwork for callvirt instructions.
@@ -1152,15 +1253,12 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
             while isinstance(res_scope, net_row_objects.TypeRef):
                 res_scope = res_scope.get_column('ResolutionScope').get_value()
             if res_scope.get_table_name() != 'Module':
-                return do_call(emu, True, False, None, None, NULL, 0, method_obj)
+                return do_call(emu, True, False, None, None, NULL, 0, method_obj, False)
         
         if isinstance(method_obj, net_row_objects.MemberRef) and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec):
             parent_type = method_obj.get_parent_type()
             if isinstance(parent_type.get_type(), net_row_objects.TypeRef):
-                return do_call(emu, True, False, None, parent_type.get_type(), NULL, 0, method_obj)
-
-        if isinstance(method_obj, net_row_objects.MethodDef) and method_obj.has_body():
-            return do_call(emu, True, False, None, None, NULL, 0, method_obj)
+                return do_call(emu, True, False, None, parent_type.get_type(), NULL, 0, method_obj, False)
     if force_virt_type is None:
         amt_args = method_obj.get_amt_params() 
         if method_obj.method_has_this():
@@ -1170,7 +1268,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
         obj_ref_boxed = emu.box_value(obj_ref_cell, None)
         if not obj_ref_boxed.is_slim_object:
             if obj_ref_boxed.item.ref == NULL:
-                raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to do virtcall on null ref')
+                raise net_exceptions.EmulatorExecutionException(emu, 'Attempted to do virtcall on null ref {}'.format(method_obj))
             obj_ref = <net_emu_types.DotNetObject>obj_ref_boxed.item.ref
             obj_type = obj_ref.get_type_obj()
         else:
@@ -1191,7 +1289,7 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
     
     mapped_token = app_domain.get_method_mapping(obj_type.get_token(), method_obj.get_token())
     if mapped_token > 0:
-        return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, method_obj.get_dotnetpe().get_token_value(mapped_token), None, NULL, 0, method_obj)
+        return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, method_obj.get_dotnetpe().get_token_value(mapped_token), None, NULL, 0, method_obj, False)
     orig_obj_type = obj_type.get_token()
     actual_method_obj = None
     initial_method_sig = method_obj.get_method_signature()
@@ -1210,37 +1308,36 @@ cdef bint do_virtcall(DotNetEmulator emu, bint force_virtcall=False, net_row_obj
                 if method_obj.is_hidebysig():
                     if curr_method_obj.get_name() == method_obj.get_name():
                         if net_sigs.method_sig_compare(curr_method_obj.get_method_signature(), method_obj.get_method_signature(), genmethodsig, gentypesig):
-                            if curr_method_obj.has_body():
-                                actual_method_obj = curr_method_obj
-                                break
-                else:
-                    if curr_method_obj.get_name() == method_obj.get_name():
-                        if curr_method_obj.has_body():
                             actual_method_obj = curr_method_obj
                             break
+                else:
+                    if curr_method_obj.get_name() == method_obj.get_name():
+                        actual_method_obj = curr_method_obj
+                        break
         else:
             for curr_method_obj in obj_type.get_methods():
                 if method_obj.is_hidebysig():
                     if curr_method_obj.get_name() == method_obj.get_name():
                         if net_sigs.method_sig_compare(curr_method_obj.get_method_signature(), method_obj.get_method_signature(), genmethodsig, gentypesig):
-                            if curr_method_obj.has_body() or curr_method_obj.get_table_name() == 'MemberRef':
-                                actual_method_obj = curr_method_obj
-                                break
-                else:
-                    if curr_method_obj.get_name() == method_obj.get_name():
-                        if curr_method_obj.has_body() or curr_method_obj.get_table_name() == 'MemberRef':
                             actual_method_obj = curr_method_obj
                             break
+                else:
+                    if curr_method_obj.get_name() == method_obj.get_name():
+                        actual_method_obj = curr_method_obj
+                        break
         if isinstance(obj_type, net_row_objects.TypeDef):
             obj_type = obj_type.get_superclass()
         else:
             break
 
     if not actual_method_obj:
+        if method_obj.get_name() == b'Invoke' and obj_type is not None and obj_type.get_full_name() == b'System.MulticastDelegate':
+            return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, None, None, NULL, 0, method_obj, True)
+
         raise net_exceptions.EmulatorMethodNotFoundException(
             str(method_obj.get_full_name()))
     app_domain.map_method(orig_obj_type, method_obj.get_token(), actual_method_obj.get_token())
-    return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None, NULL, 0, method_obj)
+    return do_call(emu, True, emu.instr.get_opcode() == net_opcodes.Opcodes.Newobj, actual_method_obj, None, NULL, 0, method_obj, False)
 
 cdef bint handle_callvirt_instruction(DotNetEmulator emu): 
     """ Performs callvirt instruction.
@@ -1619,9 +1716,20 @@ cdef bint handle_conv_u_instruction(DotNetEmulator emu):
     """
     cdef StackCell value1 = emu.stack.pop()
     cdef StackCell casted
-    if value1.tag == CorElementType.ELEMENT_TYPE_BYREF or value1.tag == CorElementType.ELEMENT_TYPE_OBJECT or value1.tag == CorElementType.ELEMENT_TYPE_STRING:
+    cdef StackCell ref
+    cdef StackCell array_obj
+    if value1.tag == CorElementType.ELEMENT_TYPE_OBJECT or value1.tag == CorElementType.ELEMENT_TYPE_STRING:
         raise net_exceptions.OperationNotSupportedException()
-    casted = emu.cast_cell(value1, net_sigs.get_CorSig_UIntPtr())
+    if value1.tag == CorElementType.ELEMENT_TYPE_BYREF:
+        ref = emu.get_ref(value1)
+        if value1.item.byref.kind != 3 or ref.tag != CorElementType.ELEMENT_TYPE_U1 or value1.item.byref.owner == NULL:
+            raise net_exceptions.OperationNotSupportedException()
+        array_obj = emu.duplicate_cell(value1)
+        emu.dealloc_cell(ref)
+        casted = emu.pack_arrayptr(array_obj, <uint64_t>value1.item.byref.idx)
+        emu.dealloc_cell(array_obj)
+    else:
+        casted = emu.cast_cell(value1, net_sigs.get_CorSig_UIntPtr())
     emu.stack.append(casted)
     emu.dealloc_cell(value1)
     emu.dealloc_cell(casted)
@@ -1783,6 +1891,7 @@ cdef bint handle_ldelem_instruction(DotNetEmulator emu):
     cdef int64_t index_val = casted.item.i8
     cdef net_emu_types.DotNetArray array_obj = None
     cdef StackCell result
+    cdef net_sigs.TypeSig cast_sig = emu.get_sig_from_type(emu.instr.get_argument())
     emu.dealloc_cell(casted)
     if not net_utils.is_cortype_number(<CorElementType>index.tag) or arr.tag != CorElementType.ELEMENT_TYPE_OBJECT or arr.item.ref == NULL:
         raise net_exceptions.OperationNotSupportedException()
@@ -1794,14 +1903,16 @@ cdef bint handle_ldelem_instruction(DotNetEmulator emu):
     result = array_obj._get_item(index_val)
     if result.tag == CorElementType.ELEMENT_TYPE_END:
         raise net_exceptions.EmulatorExecutionException(emu, 'Error ldelem element')
-    if result.tag == CorElementType.ELEMENT_TYPE_OBJECT or result.tag == CorElementType.ELEMENT_TYPE_STRING:
-        if result.item.ref != NULL:
-            result_obj = <net_emu_types.DotNetObject>result.item.ref
+    casted = emu.cast_cell(result, cast_sig)
+    if casted.tag == CorElementType.ELEMENT_TYPE_OBJECT or casted.tag == CorElementType.ELEMENT_TYPE_STRING:
+        if casted.item.ref != NULL:
+            result_obj = <net_emu_types.DotNetObject>casted.item.ref
             result_obj.initialize_type(emu.instr.get_argument())
-    emu.stack.append(result)
+    emu.stack.append(casted)
     emu.dealloc_cell(index)
     emu.dealloc_cell(arr)
     emu.dealloc_cell(result)
+    emu.dealloc_cell(casted)
     return False
 
 cdef bint handle_ldelem_i_instruction(DotNetEmulator emu):
@@ -2105,10 +2216,10 @@ cdef bint handle_ldelem_ref_instruction(DotNetEmulator emu):
 
     Returns:
         bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
-    
+
     Raises:
         net_exceptions.OperationNotSupportedException: An invalid instruction operand was popped off the stack.
-    
+
     """
     cdef net_emu_types.DotNetObject result_obj = None
     cdef StackCell index = emu.stack.pop()
@@ -2116,20 +2227,26 @@ cdef bint handle_ldelem_ref_instruction(DotNetEmulator emu):
     cdef StackCell casted = emu.cast_cell(index, net_sigs.get_CorSig_Int64())
     cdef int64_t index_val = casted.item.i8
     cdef net_emu_types.DotNetArray array_obj = None
-    cdef StackCell cell
+    cdef StackCell result
+    cdef net_sigs.TypeSig cast_sig = None
     emu.dealloc_cell(casted)
     if not net_utils.is_cortype_number(<CorElementType>index.tag) or arr.tag != CorElementType.ELEMENT_TYPE_OBJECT or arr.item.ref == NULL:
         raise net_exceptions.OperationNotSupportedException()
-    
+
     result_obj = <net_emu_types.DotNetObject> arr.item.ref
     if not isinstance(result_obj, net_emu_types.DotNetArray):
         raise net_exceptions.OperationNotSupportedException()
-    array_obj = <net_emu_types.DotNetObject>result_obj
-    cell = emu.pack_ref(3, index_val, <void*><PyObject*>array_obj)
-    emu.stack.append(cell)
+    array_obj = <net_emu_types.DotNetArray>result_obj
+    cast_sig = emu.get_sig_from_type(array_obj.get_element_type())
+    result = array_obj._get_item(index_val)
+    if result.tag == CorElementType.ELEMENT_TYPE_END:
+        raise net_exceptions.EmulatorExecutionException(emu, 'Error ldelem.ref element')
+    casted = emu.cast_cell(result, cast_sig)
+    emu.stack.append(casted)
+    emu.dealloc_cell(casted)
     emu.dealloc_cell(index)
     emu.dealloc_cell(arr)
-    emu.dealloc_cell(cell)
+    emu.dealloc_cell(result)
     return False
 
 cdef bint handle_ldelem_i8_instruction(DotNetEmulator emu):
@@ -2914,12 +3031,14 @@ cdef bint handle_shr_instruction(DotNetEmulator emu):
         bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
     """
     cdef StackCell bits = emu.stack.pop()
-    cdef StackCell value1 = emu.stack.pop()
+    cdef StackCell value2 = emu.stack.pop()
+    cdef StackCell value1 = emu.convert_signed(value2)
     cdef StackCell result = emu.cell_shr(value1, bits)
     emu.stack.append(result)
     emu.dealloc_cell(bits)
     emu.dealloc_cell(value1)
     emu.dealloc_cell(result)
+    emu.dealloc_cell(value2)
     return False
 
 cdef bint handle_shr_un_instruction(DotNetEmulator emu):
@@ -3180,13 +3299,50 @@ cdef bint handle_stelem_instruction(DotNetEmulator emu):
     cdef StackCell casted = emu.cast_cell(index, net_sigs.get_CorSig_Int64())
     cdef int64_t index_val = casted.item.i8
     cdef net_emu_types.DotNetArray array_obj = None
+    cdef net_sigs.TypeSig cast_sig = emu.get_sig_from_type(emu.instr.get_argument())
     emu.dealloc_cell(casted)
     if not net_utils.is_cortype_number(<CorElementType>index.tag) or arr.tag != CorElementType.ELEMENT_TYPE_OBJECT:
         raise net_exceptions.OperationNotSupportedException()
     if not isinstance(<net_emu_types.DotNetObject>arr.item.ref, net_emu_types.DotNetArray):
         raise net_exceptions.OperationNotSupportedException()
     array_obj = <net_emu_types.DotNetArray>arr.item.ref
-    array_obj._set_item(index_val, value1)
+    casted = emu.cast_cell(value1, cast_sig)
+    array_obj._set_item(index_val, casted)
+    emu.dealloc_cell(casted)
+    emu.dealloc_cell(value1)
+    emu.dealloc_cell(index)
+    emu.dealloc_cell(arr)
+    return False
+
+cdef bint handle_stelem_ref_instruction(DotNetEmulator emu):
+    """ Performs stelem instruction.
+
+    Args:
+        emu (net_emulator.DotNetEmulator): The emulator object to perform the instruction on.
+
+    Returns:
+        bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
+
+    Raises:
+        net_exceptions.OperationNotSupportedException: Popped an invalid item (not an object or not an array) off the stack.
+    """
+    cdef StackCell value1 = emu.stack.pop()
+    cdef StackCell index = emu.stack.pop()
+    cdef StackCell arr = emu.stack.pop()
+    cdef StackCell casted = emu.cast_cell(index, net_sigs.get_CorSig_Int64())
+    cdef int64_t index_val = casted.item.i8
+    cdef net_emu_types.DotNetArray array_obj = None
+    cdef net_sigs.TypeSig cast_sig = None
+    emu.dealloc_cell(casted)
+    if not net_utils.is_cortype_number(<CorElementType>index.tag) or arr.tag != CorElementType.ELEMENT_TYPE_OBJECT:
+        raise net_exceptions.OperationNotSupportedException()
+    if not isinstance(<net_emu_types.DotNetObject>arr.item.ref, net_emu_types.DotNetArray):
+        raise net_exceptions.OperationNotSupportedException()
+    array_obj = <net_emu_types.DotNetArray>arr.item.ref
+    cast_sig = emu.get_sig_from_type(array_obj.get_element_type())
+    casted = emu.cast_cell(value1, cast_sig)
+    array_obj._set_item(index_val, casted)
+    emu.dealloc_cell(casted)
     emu.dealloc_cell(value1)
     emu.dealloc_cell(index)
     emu.dealloc_cell(arr)
@@ -3654,7 +3810,7 @@ cdef bint handle_ldlen_instruction(DotNetEmulator emu):
     if value_obj.tag != CorElementType.ELEMENT_TYPE_OBJECT or value_obj.item.ref == NULL:
         raise net_exceptions.OperationNotSupportedException()
     obj = <net_emu_types.DotNetObject> value_obj.item.ref
-    result = emu.pack_u8(len(obj))
+    result = emu.pack_u(<uint64_t>len(obj))
     emu.stack.append(result)
     emu.dealloc_cell(result)
     emu.dealloc_cell(value_obj)
@@ -3854,7 +4010,7 @@ cdef bint handle_newobj_instruction(DotNetEmulator emu):
     Returns:
         bool: True if the emulator should increment EIP and move to the next instruction, False if we have already done that within the handler.
     """
-    return do_call(emu, False, True, None, None, NULL, 0, emu.instr.get_argument())
+    return do_call(emu, False, True, None, None, NULL, 0, emu.instr.get_argument(), False)
 
 """
 A lot of the stuff below is for internal use mainly.
@@ -3965,14 +4121,12 @@ cdef class EmulatorAppDomain:
         self.load_dotnetpe_as_assembly(self.__starter_dpe)
         self.register_static_functions()
         self.__reserve_static_fields()
-        self.__create_field_mappings()
 
-    cdef void __create_field_mappings(self):
+    cdef void __register_field_for_type(self, int type_token):
         """ Create mappings that map types to field rids to counters and vice versa.
         This is used so that we can malloc() an array of StackCells when storing TypeDef fields.  Saves a ton of space versus unordered_maps.
         """
-        cdef net_table_objects.TableObject tdeftable = self.__emu_obj.get_method_obj().get_dotnetpe().get_metadata_table('TypeDef')
-        cdef net_row_objects.TypeDef tdef = None
+        cdef net_row_objects.TypeDef tdef = self.__emu_obj.get_method_obj().get_dotnetpe().get_token_value(type_token)
         cdef net_row_objects.TypeDefOrRef ptr = None
         cdef Py_ssize_t x = 0
         cdef list fields_list = None
@@ -3982,58 +4136,53 @@ cdef class EmulatorAppDomain:
         cdef net_table_objects.FieldLayoutTable layouts = self.__emu_obj.get_method_obj().get_dotnetpe().get_metadata_table('FieldLayout')
         cdef net_row_objects.RowObject layout = None
         cdef int offset = 0
-        if tdeftable is None:
-            return
-
-        for x in range(1, len(tdeftable) + 1):
-            tdef = tdeftable.get(<int>x)
-            ptr = tdef
-            counter = 0
-            if tdef.get_token() not in self.__field_index_registrations:
-                self.__field_index_registrations[tdef.get_token()] = dict()
-            if tdef.get_token() not in self.__field_counter_registrations:
-                self.__field_counter_registrations[tdef.get_token()] = dict()
-            while ptr is not None:
-                if isinstance(ptr, net_row_objects.TypeRef):
-                    break
-                if isinstance(ptr, net_row_objects.TypeSpec):
-                    ptr = (<net_row_objects.TypeSpec>ptr).get_type()
-                    continue
-                if isinstance(ptr, net_row_objects.TypeDef):
-                    if ptr.is_explicit():
-                        fields_list = ptr.get_column('FieldList').get_formatted_value()
-                        if fields_list is not None:
-                            explicit_offsets = dict()
-                            for field in fields_list:
-                                if layouts is not None:
-                                    layout = layouts.get_layout_for_field(field)
-                                else:
-                                    layout = None
-                                if field.is_static():
-                                    continue
-                                if layout is not None:
-                                    offset = layout.get_column('Offset').get_value()
-                                    if offset not in explicit_offsets:
-                                        explicit_offsets[offset] = counter
-                                        counter += 1
-                                    self.__field_index_registrations[tdef.get_token()][field.get_rid()] = explicit_offsets[offset]
-                                    self.__field_counter_registrations[tdef.get_token()][explicit_offsets[offset]] = field.get_rid()
-                                else:
-                                    self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
-                                    self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
+        ptr = tdef
+        counter = 0
+        if tdef.get_token() not in self.__field_index_registrations:
+            self.__field_index_registrations[tdef.get_token()] = dict()
+        if tdef.get_token() not in self.__field_counter_registrations:
+            self.__field_counter_registrations[tdef.get_token()] = dict()
+        while ptr is not None:
+            if isinstance(ptr, net_row_objects.TypeRef):
+                break
+            if isinstance(ptr, net_row_objects.TypeSpec):
+                ptr = (<net_row_objects.TypeSpec>ptr).get_type()
+                continue
+            if isinstance(ptr, net_row_objects.TypeDef):
+                if ptr.is_explicit():
+                    fields_list = ptr.get_column('FieldList').get_formatted_value()
+                    if fields_list is not None:
+                        explicit_offsets = dict()
+                        for field in fields_list:
+                            if layouts is not None:
+                                layout = layouts.get_layout_for_field(field)
+                            else:
+                                layout = None
+                            if field.is_static():
+                                continue
+                            if layout is not None:
+                                offset = layout.get_column('Offset').get_value()
+                                if offset not in explicit_offsets:
+                                    explicit_offsets[offset] = counter
                                     counter += 1
-
-
-                    else:
-                        fields_list = ptr.get_column('FieldList').get_formatted_value()
-                        if fields_list is not None:
-                            for field in fields_list:
-                                if field.is_static():
-                                    continue
+                                self.__field_index_registrations[tdef.get_token()][field.get_rid()] = explicit_offsets[offset]
+                                self.__field_counter_registrations[tdef.get_token()][explicit_offsets[offset]] = field.get_rid()
+                            else:
                                 self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
                                 self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
                                 counter += 1
-                    ptr = ptr.get_superclass()
+
+
+                else:
+                    fields_list = ptr.get_column('FieldList').get_formatted_value()
+                    if fields_list is not None:
+                        for field in fields_list:
+                            if field.is_static():
+                                continue
+                            self.__field_index_registrations[tdef.get_token()][field.get_rid()] = counter
+                            self.__field_counter_registrations[tdef.get_token()][counter] = field.get_rid()
+                            counter += 1
+                ptr = ptr.get_superclass()
 
     cdef int get_field_rid(self, int field_index, int type_token):
         """ Get the RID of a field by index and type token.
@@ -4054,7 +4203,9 @@ cdef class EmulatorAppDomain:
         cdef dict mapping = None
         cdef int result = 0
         if type_token not in self.__field_counter_registrations:
-            raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Type token not in reg {}'.format(hex(type_token)))
+            self.__register_field_for_type(type_token)
+            if type_token not in self.__field_counter_registrations:
+                raise net_exceptions.EmulatorExecutionException(self.get_emulator_obj(), 'Type token not in reg {}'.format(hex(type_token)))
         mapping = self.__field_counter_registrations[type_token]
         if field_index not in mapping:
             return -1             
@@ -4077,6 +4228,8 @@ cdef class EmulatorAppDomain:
         """
         if type_token == 0:
             raise net_exceptions.InvalidArgumentsException()
+        if type_token not in self.__field_index_registrations:
+            self.__register_field_for_type(type_token)
         cdef dict mapping = self.__field_index_registrations[type_token]
         return mapping[field_rid]
 
@@ -4467,23 +4620,23 @@ cdef class EmulatorAppDomain:
                 mdef_obj = <net_row_objects.MethodDef> mrefdef_obj
                 arg_two = net_emu_types.DotNetResolveEventArgs(self.get_emulator_obj())
                 arg_two.ctor(&name_cell, 1)
-                emu_obj = self.get_emulator_obj().spawn_new_emulator(mdef_obj, caller=self)
+                emu_obj = self.get_current_emulator().spawn_new_emulator(mdef_obj, caller=self.get_emulator_obj())
                 emu_obj._allocate_params(2)
-                cell = self.__emu_obj.pack_null()
+                cell = self.get_current_emulator().pack_null()
                 emu_obj._add_param(0, cell)
-                self.__emu_obj.dealloc_cell(cell)
-                cell = self.__emu_obj.pack_object(arg_two)
+                self.get_current_emulator().dealloc_cell(cell)
+                cell = self.get_current_emulator().pack_object(arg_two)
                 emu_obj._add_param(1, cell)
-                self.__emu_obj.dealloc_cell(cell)
+                self.get_current_emulator().dealloc_cell(cell)
                 emu_obj.run_function()
-                result_obj = emu_obj.get_stack().pop()
-                if not self.get_emulator_obj().cell_is_null(result_obj) and isinstance(<net_emu_types.DotNetObject>result_obj.item.ref, net_emu_types.DotNetAssembly):
+                result_obj = self.get_emulator_obj().get_stack().pop()
+                if not self.get_current_emulator().cell_is_null(result_obj) and isinstance(<net_emu_types.DotNetObject>result_obj.item.ref, net_emu_types.DotNetAssembly):
                     result = <net_emu_types.DotNetAssembly>result_obj.item.ref
-                    self.__emu_obj.dealloc_cell(result_obj)
-                    self.__emu_obj.dealloc_cell(name_cell)
+                    self.get_current_emulator().dealloc_cell(result_obj)
+                    self.get_current_emulator().dealloc_cell(name_cell)
                     return result.get_module().get_dotnetpe().get_resource_by_name(rsrc_name)
-                self.__emu_obj.dealloc_cell(result_obj)
-        self.__emu_obj.dealloc_cell(name_cell)
+                self.get_current_emulator().dealloc_cell(result_obj)
+        self.get_current_emulator().dealloc_cell(name_cell)
         return None
 
 cdef class DotNetStack:
@@ -4852,6 +5005,7 @@ cdef class DotNetEmulator:
         self.__is_64bit = self.method_obj.get_dotnetpe().get_processor_bits() == 64
         if app_domain is None:
             self.app_domain = EmulatorAppDomain(self.method_obj.get_dotnetpe(), self)
+            self.app_domain.set_current_emulator(self)
             self.app_domain._initialize()
         else:
             self.app_domain = app_domain
@@ -4876,6 +5030,23 @@ cdef class DotNetEmulator:
 
     cpdef net_cil_disas.Instruction get_instr(self):
         return self.instr
+
+    cdef net_sigs.TypeSig get_sig_from_type(self, net_row_objects.TypeDefOrRef tdefref):
+        cdef net_sigs.CorLibTypeSig cor_type = net_utils.get_cor_type_from_name(tdefref.get_full_name())
+        if cor_type is None:
+            if tdefref.is_enum() or tdefref.is_valuetype():
+                return net_sigs.ValueTypeSig(None, tdefref)
+            elif tdefref.get_full_name() == b'System.Array':
+                raise net_exceptions.EmulatorExecutionException(self, 'get_sig_from_type doesnt support arrays yet')
+            else:
+                return net_sigs.ClassSig(None, tdefref)
+        if net_utils.is_cortype_number(cor_type.get_element_type()):
+            return net_sigs.CorLibTypeSig(cor_type, None, None)
+        elif cor_type.get_element_type() == CorElementType.ELEMENT_TYPE_OBJECT:
+            return net_sigs.get_CorSig_Object()
+        elif cor_type.get_element_type() == CorElementType.ELEMENT_TYPE_STRING:
+            return net_sigs.get_CorSig_String()
+        raise net_exceptions.EmulatorExecutionException(self, 'Could not cast typeref to sig {}'.format(net_utils.get_cor_type_name(cor_type)))
 
     cdef StackCell convert_from_slimobject(self, StackCell cell):
         if not cell.is_slim_object:
@@ -4979,6 +5150,8 @@ cdef class DotNetEmulator:
         cdef StackCell new_cell
         cdef int x = 0
         cdef SlimObject * slim = NULL
+        cdef StackCell ref_cell
+        cdef StackCell duplicate
         memcpy(&new_cell, &cell, sizeof(new_cell))
         if cell.tag == CorElementType.ELEMENT_TYPE_END:
             return self.pack_blanktag()
@@ -4998,6 +5171,12 @@ cdef class DotNetEmulator:
             else:
                 if new_cell.item.ref != NULL:
                     Py_INCREF(<net_emu_types.DotNetObject>new_cell.item.ref)
+        elif new_cell.tag == CorElementType.ELEMENT_TYPE_PTR:
+            new_cell.item.array_item.array = <StackCell*>malloc(sizeof(StackCell))
+            if new_cell.item.array_item.array == NULL:
+                raise net_exceptions.EmulatorExecutionException(self, 'Error allocating memory')
+            duplicate = self.duplicate_cell(cell.item.array_item.array[0])
+            memcpy(new_cell.item.array_item.array, &duplicate, sizeof(StackCell))
         return new_cell
 
     cdef StackCell duplicate_cell_object(self, StackCell cell):
@@ -5225,7 +5404,26 @@ cdef class DotNetEmulator:
             if tag1 == tag2:
                 result.item.r8 += two.item.r8
                 return result
-        raise net_exceptions.InvalidArgumentsException()
+        elif tag1 == CorElementType.ELEMENT_TYPE_PTR:
+            if tag2 == CorElementType.ELEMENT_TYPE_U:
+                if self.__is_64bit:
+                    result.item.array_item.offset += two.item.u8
+                else:
+                    result.item.array_item.offset += two.item.u4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                if self.__is_64bit:
+                    result.item.array_item.offset += two.item.i8
+                else:
+                    result.item.array_item.offset += two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                result.item.array_item.offset += two.item.u4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                result.item.array_item.offset += two.item.i4
+                return result
+        raise net_exceptions.EmulatorExecutionException(self, f'Error adding cells {net_utils.get_cor_type_name(tag1)} {net_utils.get_cor_type_name(tag2)} {self.cell_to_str(one)} {self.cell_to_str(two)}')
 
     cdef StackCell cell_divide(self, StackCell one, StackCell two):
         """ Performs an divide operation on two numeric cells.
@@ -5321,6 +5519,10 @@ cdef class DotNetEmulator:
             if tag1 == tag2:
                 result.item.r8 /= two.item.r8
                 return result
+
+        elif tag1 == CorElementType.ELEMENT_TYPE_PTR and tag2 == CorElementType.ELEMENT_TYPE_I4:
+            if two.item.i4 == 1:
+                return result
         raise net_exceptions.InvalidArgumentsException()
     
     cdef StackCell cell_sub(self, StackCell one, StackCell two):
@@ -5399,6 +5601,34 @@ cdef class DotNetEmulator:
             if tag1 == tag2:
                 result.item.r8 -= two.item.r8
                 return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_PTR:
+            if tag2 == CorElementType.ELEMENT_TYPE_U:
+                if self.__is_64bit:
+                    result.item.array_item.offset -= two.item.u8
+                else:
+                    result.item.array_item.offset -= two.item.u4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I:
+                if self.__is_64bit:
+                    result.item.array_item.offset -= two.item.i8
+                else:
+                    result.item.array_item.offset -= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_U4:
+                result.item.array_item.offset -= two.item.u4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_I4:
+                result.item.array_item.offset -= two.item.i4
+                return result
+            elif tag2 == CorElementType.ELEMENT_TYPE_PTR:
+                if one.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF or two.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF:
+                    raise net_exceptions.OperationNotSupportedException()
+                if one.item.array_item.array.item.byref.kind != 3 or one.item.array_item.array.item.byref.kind != two.item.array_item.array.item.byref.kind:
+                    raise net_exceptions.OperationNotSupportedException()
+                if one.item.array_item.array.item.byref.owner != two.item.array_item.array.item.byref.owner:
+                    raise net_exceptions.OperationNotSupportedException()
+                result.item.array_item.offset -= two.item.array_item.offset
+                return result
         raise net_exceptions.InvalidArgumentsException()
 
     cdef StackCell cell_shl(self, StackCell one, StackCell two):
@@ -5454,7 +5684,7 @@ cdef class DotNetEmulator:
         cdef CorElementType tag2 = <CorElementType>two.tag
         cdef StackCell result = self.duplicate_cell(one)
         if tag1 == CorElementType.ELEMENT_TYPE_I4 or tag1 == CorElementType.ELEMENT_TYPE_U4:
-            if tag2 == CorElementType.ELEMENT_TYPE_I4:
+            if tag2 == CorElementType.ELEMENT_TYPE_I4 or tag2 == CorElementType.ELEMENT_TYPE_U4:
                 if tag1 == CorElementType.ELEMENT_TYPE_I4:
                     result.item.i4 >>= (two.item.u4 & 31)
                     return result
@@ -5731,6 +5961,14 @@ cdef class DotNetEmulator:
         if one.tag == CorElementType.ELEMENT_TYPE_STRING or one.tag == CorElementType.ELEMENT_TYPE_OBJECT or \
             two.tag == CorElementType.ELEMENT_TYPE_OBJECT or two.tag == CorElementType.ELEMENT_TYPE_STRING:
             raise net_exceptions.FeatureNotImplementedException
+        elif one.tag == CorElementType.ELEMENT_TYPE_PTR:
+            if one.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF or two.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF:
+                raise net_exceptions.OperationNotSupportedException()
+            if one.item.array_item.array.item.byref.kind != 3 or one.item.array_item.array.item.byref.kind != two.item.array_item.array.item.byref.kind:
+                raise net_exceptions.OperationNotSupportedException()
+            if one.item.array_item.array.item.byref.owner != two.item.array_item.array.item.byref.owner:
+                raise net_exceptions.OperationNotSupportedException()
+            return one.item.array_item.offset < two.item.array_item.offset
 
         elif one.tag == CorElementType.ELEMENT_TYPE_BYREF or two.tag == CorElementType.ELEMENT_TYPE_BYREF:
             if one.tag == CorElementType.ELEMENT_TYPE_BYREF:
@@ -6048,6 +6286,10 @@ cdef class DotNetEmulator:
         cdef StackCell unboxed_result
         cdef StackCell casted
         cdef net_row_objects.TypeDefOrRef ref = None
+        if cell.tag == CorElementType.ELEMENT_TYPE_PTR and (sig == net_sigs.get_CorSig_UIntPtr() or sig == net_sigs.get_CorSig_IntPtr()):
+            return self.duplicate_cell(cell)
+        elif cell.tag == CorElementType.ELEMENT_TYPE_PTR and sig == net_sigs.get_CorSig_Int64():
+            return self.pack_i8(<int64_t>cell.item.array_item.offset)
         if isinstance(sig, net_sigs.ValueTypeSig):
             if sig.get_type().get_full_name() in self.get_appdomain().get_known_enums():
                 return self.cast_cell(cell, net_sigs.get_CorSig_Int32())
@@ -6738,10 +6980,36 @@ cdef class DotNetEmulator:
         if not net_utils.is_cortype_number(<CorElementType>cell.tag):
             raise net_exceptions.InvalidArgumentsException()
         cdef StackCell result = self.duplicate_cell(cell)
-        if result.tag == CorElementType.ELEMENT_TYPE_BOOLEAN:
+        cdef CorElementType tag1 = <CorElementType>result.tag
+        if tag1 == CorElementType.ELEMENT_TYPE_BOOLEAN:
             result.item.b = not result.item.b
             return result
-        result.item.u8 = ~result.item.u8
+        elif tag1 == CorElementType.ELEMENT_TYPE_I4:
+            result.item.i4 = ~result.item.i4
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I8:
+            result.item.i8 = ~result.item.i8
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_I:
+            if self.__is_64bit:
+                result.item.i8 = ~result.item.i8
+            else:
+                result.item.i4 = ~result.item.i4
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_U4:
+            result.item.u4 = ~result.item.u4
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_U8:
+            result.item.u8 = ~result.item.u8
+            return result
+        elif tag1 == CorElementType.ELEMENT_TYPE_U:
+            if self.__is_64bit:
+                result.item.u8 = ~result.item.u8
+            else:
+                result.item.u4 = ~result.item.u4
+            return result
+        else:
+            raise net_exceptions.EmulatorExecutionException(self, f'cell_not doesnt support {net_utils.get_cor_type_name(tag1)}')
         return result
 
     cdef bint cell_is_false(self, StackCell cell):
@@ -6756,6 +7024,7 @@ cdef class DotNetEmulator:
         cdef net_emu_types.DotNetObject obj = None
         cdef StackCell ref
         cdef bint result = False
+        cdef StackCell casted
         if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             ref = self.get_ref(cell)
             result = self.cell_is_false(ref)
@@ -6768,7 +7037,10 @@ cdef class DotNetEmulator:
                 return True
             obj = <net_emu_types.DotNetObject>cell.item.ref
             return obj.is_false()
-        return cell.item.u8 == 0
+        casted = self.cast_cell(cell, net_sigs.get_CorSig_Boolean())
+        result = not casted.item.b
+        self.dealloc_cell(casted)
+        return result
 
     cdef void deref_cell(self, StackCell cell):
         """ Handles the dereferencing of cells.  Cells should be derferenced whenever they are taken out of a structure like the stack, list etc.
@@ -6814,7 +7086,8 @@ cdef class DotNetEmulator:
             return owner_emu.get_appdomain().get_static_field(<int>cell.item.byref.idx)
         elif cell.item.byref.kind == 3: #array object
             owner_obj = <net_emu_types.DotNetObject>cell.item.byref.owner
-            return (<net_emu_types.DotNetArray>owner_obj)._get_item(cell.item.byref.idx)
+            cell1 = (<net_emu_types.DotNetArray>owner_obj)._get_item(cell.item.byref.idx)
+            return cell1
         elif cell.item.byref.kind == 4: #field
             slim = <SlimObject*>cell.item.byref.owner
             memset(&cell1, 0x0, sizeof(cell))
@@ -6945,9 +7218,7 @@ cdef class DotNetEmulator:
             self.dealloc_cell(temp2)
             return result
         elif self.cell_is_null(uone) or self.cell_is_null(utwo):
-            if uone.tag != utwo.tag:
-                raise net_exceptions.OperationNotSupportedException()
-            return uone.item.ref == utwo.item.ref 
+            return self.cell_is_null(uone) and self.cell_is_null(utwo)
         elif type_one == CorElementType.ELEMENT_TYPE_STRING or type_two == CorElementType.ELEMENT_TYPE_STRING:
             if type_one != type_two:
                 return False
@@ -7000,6 +7271,7 @@ cdef class DotNetEmulator:
         """
         cdef int x
         cdef SlimObject * slim = NULL
+        cdef StackCell ref_cell
         if cell.tag == CorElementType.ELEMENT_TYPE_END:
             return
         Py_XDECREF(cell.emulator_obj)
@@ -7028,6 +7300,11 @@ cdef class DotNetEmulator:
             else:
                 Py_XDECREF(<PyObject*>cell.item.byref.owner)
             cell.item.byref.owner = NULL
+        elif cell.tag == CorElementType.ELEMENT_TYPE_PTR:
+            memcpy(&ref_cell, cell.item.array_item.array, sizeof(StackCell))
+            self.dealloc_cell(ref_cell)
+            free(cell.item.array_item.array)
+            cell.item.array_item.array = NULL
         #Ints and such dont need to have anything done
 
     cdef size_t hash_cell(self, StackCell cell):
@@ -7203,11 +7480,11 @@ cdef class DotNetEmulator:
                 ptr = ptr.get_superclass()
         return result
 
-    cdef StackCell pack_slimobject(self, net_row_objects.TypeDef ref):
-        """ Creates a stackcell that is used to represent a TypeDef.
+    cdef StackCell pack_slimobject(self, net_row_objects.TypeDefOrRef ref):
+        """ Creates a stackcell that is used to represent a TypeDef or TypeRef.
 
         Args:
-            ref (net_row_objects.TypeDef): the typedef that the slim object is created for.
+            ref (net_row_objects.TypeDefOrRef): the typedef or typeref that the slim object is created for.
 
         Returns:
             net_emu_structs.StackCell: A initialized StackCell ready to be used as a TypeDef object.
@@ -7492,6 +7769,30 @@ cdef class DotNetEmulator:
         cell.item.r8 = i
         return cell
 
+    cdef bint cell_is_array(self, StackCell cell):
+        if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT:
+            return False
+
+        if cell.is_slim_object or self.cell_is_null(cell):
+            return False
+        return isinstance(<net_emu_types.DotNetObject>cell.item.ref, net_emu_types.DotNetArray)
+
+    cdef StackCell pack_arrayptr(self, StackCell array, uint64_t offset):
+        cdef StackCell cell
+        cdef StackCell * ptr = <StackCell*>malloc(sizeof(StackCell))
+        cdef StackCell duplicate = self.duplicate_cell(array)
+        if ptr == NULL:
+            raise net_exceptions.EmulatorExecutionException(self, 'Couldnt allocate array ptr.')
+        memset(&cell, 0, sizeof(cell))
+        cell.emulator_obj = <PyObject*>self
+        Py_INCREF(self)
+        cell.tag = CorElementType.ELEMENT_TYPE_PTR
+        cell.cli_tag = CorElementType.ELEMENT_TYPE_PTR
+        cell.item.array_item.array = ptr
+        memcpy(ptr, &duplicate, sizeof(array))
+        cell.item.array_item.offset = offset
+        return cell
+
     cdef StackCell pack_object(self, net_emu_types.DotNetObject obj):
         """ Creates a cell that holds a memberref or boxed object.
 
@@ -7705,19 +8006,19 @@ cdef class DotNetEmulator:
         cdef StackCell result
         if cell.is_slim_object:
             return self.duplicate_cell(cell)
-        
+
         if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             ref_cell = self.get_ref(cell)
             result = self.unbox_value(ref_cell)
             self.dealloc_cell(ref_cell)
             return result
-        
+
         if cell.tag != CorElementType.ELEMENT_TYPE_OBJECT:
             return self.duplicate_cell(cell)
         if cell.item.ref == NULL:
             return self.pack_null()
         dobj = <net_emu_types.DotNetObject> cell.item.ref
-        if not dobj.is_number():
+        if not isinstance(dobj, net_emu_types.DotNetNumber):
             return self.duplicate_cell(cell)
         nobj = <net_emu_types.DotNetNumber>dobj
         cor_type = nobj.get_num_type()
@@ -8157,6 +8458,7 @@ cdef class DotNetEmulator:
         cdef str result = ''
         cdef StackCell obj
         cdef net_emu_types.DotNetObject dobj = None
+        cdef StackCell str_cell
         if cell.tag == CorElementType.ELEMENT_TYPE_BYREF:
             obj = self.get_ref(cell)
             result = self.cell_to_str(obj)
@@ -8169,6 +8471,9 @@ cdef class DotNetEmulator:
                 return 'null'
             dobj = <net_emu_types.DotNetObject>cell.item.ref
             return '{}: {}'.format(type(dobj), str(dobj))
+        elif cell.tag == CorElementType.ELEMENT_TYPE_PTR:
+            memcpy(&str_cell, cell.item.array_item.array, sizeof(StackCell))
+            return 'ArrayPointer: Array={} Offset={}'.format(self.cell_to_str(str_cell), cell.item.array_item.offset)
         else:
             if cell.tag == CorElementType.ELEMENT_TYPE_END:
                 return 'Blank Cell'
@@ -8340,6 +8645,7 @@ cdef class DotNetEmulator:
         cdef EmulatorAppDomain app_domain = self.get_appdomain()
         cdef bint should_do_normal_handler = False
         cdef tuple instr_handler = None
+        cdef StackCell test_field
         if self.end_method_rid > 0:
             if isinstance(self.method_obj, net_row_objects.MethodDef) and self.method_obj.get_rid() == self.end_method_rid:
                 should_check_offset = True
@@ -8373,9 +8679,16 @@ cdef class DotNetEmulator:
         if isinstance(self.method_obj, net_row_objects.MethodDef):
             if self.method_obj.get_rid() in self.print_debug_methods:
                 self.print_debug = True
+        """if self.caller is not None and self.get_method_obj().get_token() == 0x0600057D:
+            test_field = self.get_slimobj_field(self.__method_params[0], 208)
+            if test_field.tag == CorElementType.ELEMENT_TYPE_I4:
+                if 3448 <= test_field.item.i4 <= 3451:
+                    self.print_debug = True
+            self.dealloc_cell(test_field)"""
         if self.caller is not None:
             if self.print_debug:
                 self.print_current_state()
+
         while self.current_eip < len(self.disasm_obj):
             if PyErr_CheckSignals() == -1:
                 raise net_exceptions.EmulatorExecutionException(self, 'PyErr_CheckSignals() returned -1')
@@ -8385,6 +8698,8 @@ cdef class DotNetEmulator:
             self.instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
             if self.instr is None:
                 raise net_exceptions.InvalidArgumentsException()
+            global _cur_emu
+            _cur_emu = self
             if self.instr.get_opcode() == net_opcodes.Opcodes.Invalid:
                 raise net_exceptions.InstructionNotSupportedException(self.instr.get_name())
             if should_check_offset:
@@ -8451,15 +8766,15 @@ cdef class DotNetEmulator:
             except Exception as e:
                 if not self.print_debug:
                     self.print_debug = True
-                self.print_string('3: Error on method: {}:{} - Offset: {} {}'.format(self.method_obj,
-                                                                               hex(self.method_obj.get_token()),
-                                                                               hex(self.instr.get_instr_offset()), str(e)), 1)
+                if not isinstance(e, net_exceptions.EmulatorEndExecutionException):
+                    self.print_string('3: Error on method: {}:{} - Offset: {} {}'.format(self.method_obj,
+                                                                                hex(self.method_obj.get_token()),
+                                                                                hex(self.instr.get_instr_offset()), str(e)), 1)
                 if not self.already_init:
                     self.get_appdomain().set_calling_dotnetpe(None)
                 raise e
             if (self.print_debug and len(self.print_debug_instrs) == 0) or (self.print_debug and self.instr.get_name() in self.print_debug_instrs):
                 self.print_current_state()
-
             if self.instr.get_opcode() == net_opcodes.Opcodes.Ret or self.should_break:
                 break
 

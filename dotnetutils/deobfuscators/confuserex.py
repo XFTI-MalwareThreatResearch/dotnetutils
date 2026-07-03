@@ -12,6 +12,7 @@ from dotnetutils import net_structs
 from dotnetutils import net_emulator
 from dotnetutils import net_patch
 from dotnetutils import net_deobfuscate_funcs
+from dotnetutils import net_rebuilder
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils.net_opcodes import Opcodes
 
@@ -272,6 +273,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         #A binary can be confuserex obfuscated and simply not have any strings.
         if dotnet.has_string(b'DNU_CEX_WATERMARK'):
             return False
+
         mspec_table = dotnet.get_metadata_table('MethodSpec')
         if mspec_table is None:
             return False
@@ -437,8 +439,9 @@ class ConfuserExDeobfuscator(Deobfuscator):
         self.__identify_code_decryption_method(new_dpe)
         if self.code_decrypt_method is None or len(self.code_decrypt_method.get_xrefs()) == 0:
             new_dpe.set_entry_point(ep_token)
+            rebuilder = net_rebuilder.NetRebuilder(new_dpe)
             self.code_decrypt_method = None
-            return [new_dpe.get_exe_data()]
+            return [rebuilder.rebuild()]
         md5_hash = hashlib.md5()
         md5_hash.update(new_data)
         if not ctx.has_item('Entry'):
@@ -466,7 +469,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 string_defs.append(mspec.get_method())
 
         #first identify which constructor methods need to be executed.
-
         string_data_field = None
         for instr in string_defs[0].disassemble_method():
             if instr.get_opcode() == Opcodes.Ldsfld:
@@ -475,7 +477,6 @@ class ConfuserExDeobfuscator(Deobfuscator):
         if string_data_field is None:
             print('Could not find string data field.')
             return
-                
         string_data_instr = None
         string_data_method = None
         string_compress_method = None
@@ -494,17 +495,15 @@ class ConfuserExDeobfuscator(Deobfuscator):
                     break
 
         if string_data_instr is None or string_data_method is None or string_compress_method is None:
-            print('Could not find where data is set.')
+            print('Could not find where data is set.', string_data_instr, string_data_method, string_compress_method)
             return
                 
         #first deobfuscate the control flow of the string encryption method to make parsing easier.
         #instead of deobfuscating here, maybe just emulate with no op hooks for potential problematic instructions?  Also since we already identified the code decryption func earlier, we can proabably just reuse that for detection.
         fgraph = net_graphing.FunctionGraph(string_data_method)
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
-        fanalyzer.simplify_control_flow()        
-        dotnet.reinit_dpe(False)
+        fanalyzer.simplify_control_flow()
         us_heap = dotnet.get_heap('#US')
-        self.__identify_string_methods(dotnet)
         #we need to rerun so that the end offset is updated for the new control flow.
         string_data_method = dotnet.get_token_value(string_data_method.get_token())
         start_offset = -1
@@ -586,6 +585,12 @@ class ConfuserExDeobfuscator(Deobfuscator):
                 if dis is None:
                     print('error disassembling method {}'.format(hex(xfm.get_token())))
                     continue
+                if xfm == string_data_method:
+                    for instr in dis:
+                        if instr.get_opcode() in (Opcodes.Call, Opcodes.Callvirt):
+                            if instr.get_argument() == mspec:
+                                xref_offset = instr.get_instr_offset()
+                                break
                 instr = dis.get_instr_at_offset(xref_offset)
                 prev_instr = dis[instr.get_instr_index() - 1]
                 if not prev_instr.get_name().startswith('ldc.i4'):

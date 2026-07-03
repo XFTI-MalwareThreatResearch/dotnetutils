@@ -14,3 +14,5 @@ Control Flow Deobfuscation:
     - loop constants are protected by a method.  Babel deobfuscator would likely have to remove this separately
     - Additional changes are needed beyond that to support the scheme that method's control flow obfuscation uses.
 - after control flow deobfuscation is complete, update relevant xrefs.
+- Figure out why this file takes so long
+    reading in file 0320775ebbfdd7d06a1ec787f9c18bb0

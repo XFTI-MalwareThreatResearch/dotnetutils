@@ -17,7 +17,7 @@ ctypedef net_emu_types.DotNetObject (*newobj_func_type)(DotNetEmulator) #Sig for
 ctypedef StackCell (*static_func_type)(EmulatorAppDomain, StackCell * params, int nparams) #Sig for static function calls.
 ctypedef bint (*emu_instr_handler_type)(DotNetEmulator) #sig for emulator instr handlers.
 
-cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDefOrRef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj) except *
+cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_objects.MethodDefOrRef force_method_obj, net_row_objects.TypeDefOrRef force_extern_type, StackCell * force_method_args, int nforce_method_args, net_row_objects.MethodDefOrRef initial_method_obj, bint force_obj_lookup) except *
 
 cdef void __init_handlers()
 
@@ -87,8 +87,6 @@ cdef class EmulatorAppDomain:
 
     cdef int get_field_rid(self, int field_counter, int type_token)
 
-    cdef void __create_field_mappings(self)
-
     cdef newobj_func_type get_ctor_func(self, int token)
 
     cdef bint has_ctor_func(self, int token)
@@ -142,6 +140,8 @@ cdef class EmulatorAppDomain:
     cdef int get_amt_static_fields(self)
 
     cpdef void remove_instr_handler(self, Opcodes opcode)
+
+    cdef void __register_field_for_type(self, int type_token)
 
 cdef class DotNetStack:
     cdef DotNetEmulator __emulator
@@ -213,6 +213,8 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
     cdef bint __init_open_generics_as_object
+
+    cdef net_sigs.TypeSig get_sig_from_type(self, net_row_objects.TypeDefOrRef tdefref)
 
     cdef StackCell convert_from_slimobject(self, StackCell cell)
 
@@ -326,9 +328,13 @@ cdef class DotNetEmulator:
 
     cdef str cell_to_str(self, StackCell cell)
 
-    cdef StackCell pack_slimobject(self, net_row_objects.TypeDef ref)
+    cdef StackCell pack_slimobject(self, net_row_objects.TypeDefOrRef ref)
 
     cdef StackCell pack_blanktag(self)
+
+    cdef bint cell_is_array(self, StackCell cell)
+
+    cdef StackCell pack_arrayptr(self, StackCell array, uint64_t offset)
 
     cdef StackCell pack_i4(self, int i)
 

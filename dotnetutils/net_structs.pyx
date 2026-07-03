@@ -5,6 +5,7 @@
 import io
 import re
 from dotnetutils import net_exceptions
+from dotnetutils.net_utils import compress_integer
 from libc.stdint cimport uint64_t
 import binascii
 
@@ -93,7 +94,9 @@ cdef class DotNetDataReader:
         cdef unsigned int length
         cdef bytes str_data
         length = self.read_encoded_uint32()
-        if length <= 0:
+        if length == 0:
+            return ''
+        if length < 0:
             return None
         str_data = self.read(length)
         return str_data.decode(encoding)
@@ -193,8 +196,12 @@ class DotNetResource:
     Represents a raw DotNetResource.  This is the lowest object in the tree.
     """
     def __init__(self):
+        self.__original_data = None
         self.__data = None
         self.__name = None
+
+    def _set_original_data(self, data):
+        self.__original_data = data
 
     def _set_data(self, data):
         self.__data = data
@@ -211,6 +218,13 @@ class DotNetResource:
         """ Get the resource's data.
         """
         return self.__data
+
+    def get_original_data(self):
+        """
+        This function will likely break resource editing
+        Currently needed for the rebuilder though.
+        """
+        return self.__original_data
 
 
 class DotNetResourceInfo:
@@ -370,7 +384,9 @@ class DotNetResourceSet:
         self.__data_len = len(data)
         self.__resources = list()
         self.__debug = debug
+        self.__is_serialized_resource = False
         if DotNetResourceSet.is_resource(data):
+            self.__is_serialized_resource = True
             self.__parse_header_from_bytes()
             self.__parse_resource_data()
         else:
@@ -378,6 +394,7 @@ class DotNetResourceSet:
             dnr = DotNetResource()
             dnr._set_name(force_name)
             dnr._set_data(self.__reader.read_all())
+            dnr._set_original_data(dnr.get_data())
             self.__resources.append(dnr)
             self.__version = None
             self.__resource_count = 1
@@ -386,6 +403,81 @@ class DotNetResourceSet:
             self.__name_offsets = list()
             self.__base_offset = 0
 
+    @staticmethod
+    def _name_hash(name):
+        h = 5381
+        data = name.encode('utf-16le')
+        for i in range(0, len(data), 2):
+            cu = data[i] | (data[i + 1] << 8)
+            h = (((h << 5) + h) ^ cu) & 0xFFFFFFFF
+        return h
+
+    def get_data(self):
+        if not self.__is_serialized_resource:
+            return self.__resources[0].get_data()
+
+        result = bytearray()
+
+        class_name_section = bytearray()
+        rt = self.__reader_type_name.encode('utf-8')
+        class_name_section.extend(compress_integer(<uint32_t>len(rt)))
+        class_name_section.extend(rt)
+        rst = self.__reader_set_type_name.encode('utf-8')
+        class_name_section.extend(compress_integer(<uint32_t>len(rst)))
+        class_name_section.extend(rst)
+
+        result.extend(int.to_bytes(0xBEEFCACE, 4, 'little'))
+        result.extend(int.to_bytes(self.__header_version, 4, 'little'))
+        result.extend(int.to_bytes(len(class_name_section), 4, 'little'))
+        result.extend(class_name_section)
+        result.extend(int.to_bytes(self.__version, 4, 'little'))
+        result.extend(int.to_bytes(self.__resource_count, 4, 'little'))
+        result.extend(int.to_bytes(len(self.__user_types), 4, 'little'))
+        for user_type in self.__user_types:
+            ut = user_type.encode('utf-8')
+            result.extend(compress_integer(<uint32_t>len(ut)))
+            result.extend(ut)
+        new_offset = (len(result) + 7) & ~7
+        result.extend(b'\x00' * (new_offset - len(result)))
+
+        n = len(self.__resources)
+
+        # prefer edited bytes, fall back to the original blob, never None
+        def _blob(r):
+            return r.get_original_data()
+
+        # data section: blobs in resource order; remember each blob's relative offset
+        data_section = bytearray()
+        rel_data_offset = [0] * n
+        for x in range(n):
+            rel_data_offset[x] = len(data_section)
+            data_section.extend(_blob(self.__resources[x]))
+
+        def _signed32(h):
+            return h - 0x100000000 if h >= 0x80000000 else h
+        hashes = [DotNetResourceSet._name_hash(self.__resource_infos[i].name) for i in range(n)]
+        order = sorted(range(n), key=lambda i: _signed32(hashes[i]))
+
+        for i in order:
+            result.extend(int.to_bytes(_signed32(hashes[i]), 4, 'little', signed=True))
+
+        name_section = bytearray()
+        name_entry_offset = list()
+        for i in order:
+            name_entry_offset.append(len(name_section))
+            bname = self.__resource_infos[i].name.encode('utf-16le')
+            name_section.extend(compress_integer(<uint32_t>len(bname)))
+            name_section.extend(bname)
+            name_section.extend(int.to_bytes(rel_data_offset[i], 4, 'little'))
+
+        for off in name_entry_offset:
+            result.extend(int.to_bytes(off, 4, 'little'))
+
+        data_section_abs = len(result) + 4 + len(name_section)
+        result.extend(int.to_bytes(data_section_abs, 4, 'little'))
+        result.extend(name_section)
+        result.extend(data_section)
+        return bytes(result)
     
     def get_version(self):
         return self.__version
@@ -487,6 +579,9 @@ class DotNetResourceSet:
             else:
                 next_data_offset = self.__resource_infos[x + 1].offset
             size = next_data_offset - info.offset
+            original_data = self.__reader.read(size)
+            self.__reader.seek(info.offset, io.SEEK_SET)
+            element._set_original_data(original_data)
             if self.__version == 1:
                 element._set_data(self.__parse_resource_data_v1(self.__user_types, size))
             else:

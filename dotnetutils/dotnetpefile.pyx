@@ -13,10 +13,11 @@ from logging import getLogger
 from dotnetutils cimport net_tokens, net_metadata
 from dotnetutils cimport net_row_objects, net_table_objects, net_patch
 from dotnetutils cimport net_structs, net_processing, net_cil_disas
-from libc.stdint cimport uintptr_t, uint32_t, uint64_t
+from dotnetutils cimport net_opcodes
+from libc.stdint cimport uintptr_t, uint64_t, uint32_t
 from dotnetutils.net_structs cimport IMAGE_DOS_HEADER, IMAGE_RESOURCE_DATA_ENTRY, IMAGE_RESOURCE_DIRECTORY, IMAGE_RESOURCE_DIRECTORY_ENTRY, VS_VERSIONINFO, IMAGE_DIRECTORY_ENTRY_RESOURCE, IMAGE_DATA_DIRECTORY, IMAGE_NT_HEADERS32, IMAGE_NT_HEADERS64, IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR, IMAGE_SECTION_HEADER, IMAGE_FILE_HEADER, IMAGE_COR20_HEADER, IMAGE_NT_OPTIONAL_HDR64_MAGIC
 from dotnetutils.net_structs cimport IMAGE_SCN_CNT_CODE, IMAGE_SCN_CNT_INITIALIZED_DATA, IMAGE_SCN_CNT_UNINITIALIZED_DATA, COMIMAGE_FLAGS_NATIVE_ENTRYPOINT, IMAGE_OPTIONAL_HEADER32, IMAGE_OPTIONAL_HEADER64, IMAGE_BASE_RELOCATION, IMAGE_DEBUG_DIRECTORY, IMAGE_IMPORT_DESCRIPTOR, IMAGE_THUNK_DATA32, IMAGE_THUNK_DATA64
-from dotnetutils.net_structs cimport IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_DEBUG_DIRECTORY, IMAGE_ORDINAL_FLAG64, IMAGE_NT_OPTIONAL_HDR32_MAGIC
+from dotnetutils.net_structs cimport IMAGE_DIRECTORY_ENTRY_BASERELOC, IMAGE_FILE_DLL, IMAGE_DIRECTORY_ENTRY_DEBUG, IMAGE_DIRECTORY_ENTRY_IMPORT, IMAGE_ORDINAL_FLAG32, IMAGE_DEBUG_DIRECTORY, IMAGE_ORDINAL_FLAG64, IMAGE_NT_OPTIONAL_HDR32_MAGIC
 from cpython.buffer cimport PyObject_GetBuffer, PyBuffer_Release, PyBUF_ANY_CONTIGUOUS, PyBUF_WRITABLE
 from cpython.bytes cimport PyBytes_FromStringAndSize
 from cpython.ref cimport PyObject
@@ -50,6 +51,10 @@ cdef class PeFile:
 
     def __dealloc__(self):
         PyBuffer_Release(&self.__file_view)
+
+    cpdef bint is_dll(self):
+        cdef IMAGE_FILE_HEADER *file_header = <IMAGE_FILE_HEADER*>((<char*>self.get_data_view()) + self.__nt_headers_offset + 4)
+        return file_header.Characteristics & IMAGE_FILE_DLL != 0
 
     cdef void __add_section(self, IMAGE_SECTION_HEADER * sec_hdr):
         """Internal method used to add an IMAGE_SECTION_HEADER to the internal python list of sections.
@@ -113,14 +118,14 @@ cdef class PeFile:
             self.__add_section(sec_hdr)
             sechdr_offset += sizeof(IMAGE_SECTION_HEADER)
 
-    cpdef uint64_t get_offset_from_rva(self, uint64_t rva):
+    cpdef uint32_t get_offset_from_rva(self, uint32_t rva):
         """Obtain a PE file offset from a RVA.
         
         Args:
-            rva (uint64_t): The RVA to obtain the offset for.
+            rva (uint32_t): The RVA to obtain the offset for.
         
         Returns:
-            uint64_t: <uint64_t>-1 if not found, the file offset for the RVA otherwise.
+            uint32_t: <uint32_t>-1 if not found, the file offset for the RVA otherwise.
         """
         cdef IMAGE_SECTION_HEADER sec_hdr
         cdef int sec_size
@@ -131,16 +136,16 @@ cdef class PeFile:
             sec_size = max(sec_hdr.SizeOfRawData, sec_hdr.Misc.VirtualSize)
             if sec_hdr.VirtualAddress <= rva < (sec_hdr.VirtualAddress + sec_size):
                 return sec_hdr.PointerToRawData + (rva - sec_hdr.VirtualAddress)
-        return <uint64_t>-1
+        return <uint32_t>-1
 
-    cpdef uint64_t get_rva_from_offset(self, uint64_t offset):
+    cpdef uint32_t get_rva_from_offset(self, uint32_t offset):
         """Obtain a PE RVA from a file offset.
         
         Args:
-            rva (uint64_t): The file offset to obtain the RVA for.
+            rva (uint32_t): The file offset to obtain the RVA for.
         
         Returns:
-            uint64_t: <uint64_t>-1 if not found, the file RVA for the file offset otherwise.
+            uint32_t: <uint32_t>-1 if not found, the file RVA for the file offset otherwise.
         """
         cdef IMAGE_SECTION_HEADER sec_hdr
         cdef dict sec_hdr_dict
@@ -149,7 +154,7 @@ cdef class PeFile:
             sec_hdr = sec_hdr_dict
             if sec_hdr.PointerToRawData <= offset < (sec_hdr.PointerToRawData + sec_hdr.SizeOfRawData):
                 return sec_hdr.VirtualAddress + (offset - sec_hdr.PointerToRawData)
-        return <uint64_t>-1
+        return <uint32_t>-1
 
     cpdef IMAGE_DATA_DIRECTORY get_directory_by_idx(self, unsigned int idx):
         """Obtain an IMAGE_DATA_DIRECTORY by its index within the PE file's optional header.
@@ -215,22 +220,22 @@ cdef class PeFile:
         """
         return bytes(self.__file_data)
 
-    cpdef uint64_t get_physical_by_rva(self, uint64_t rva):
+    cpdef uint32_t get_physical_by_rva(self, uint32_t rva):
         """See PeFile.get_offset_from_rva()
 
         Args:
-            rva (uint64_t): See PeFile.get_offset_from_rva()
+            rva (uint32_t): See PeFile.get_offset_from_rva()
     
         Returns:
-            uint64_t: See PeFile.get_offset_from_rva()
+            uint32_t: See PeFile.get_offset_from_rva()
         """
         return self.get_offset_from_rva(rva)
 
-    cdef int get_sec_index_va(self, uint64_t va_addr):
+    cdef int get_sec_index_va(self, uint32_t va_addr):
         """OObtain the section header index that corresponds to a RVA.
 
         Args:
-            va_addr (uint64_t): The VA to obtain the section header index for.
+            va_addr (uint32_t): The VA to obtain the section header index for.
 
         Returns:
             int: -1 if not found, the index of the section header corresponding to va_addr otherwise.
@@ -243,11 +248,11 @@ cdef class PeFile:
             x += 1
         return -1
 
-    cdef int get_sec_index_phys(self, uint64_t offset):
+    cdef int get_sec_index_phys(self, uint32_t offset):
         """OObtain the section header index that corresponds to a offset.
 
         Args:
-            offset (uint64_t): The VA to obtain the section header index for.
+            offset (uint32_t): The VA to obtain the section header index for.
 
         Returns:
             int: -1 if not found, the index of the section header corresponding to offset otherwise.
@@ -267,7 +272,7 @@ cdef class PeFile:
             IMAGE_COR20_HEADER: the IMAGE_COR20_HEADER associated with the executable.
         """
         cdef IMAGE_DATA_DIRECTORY datadir = self.get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR)
-        cdef uint64_t offset = 0
+        cdef uint32_t offset = 0
         cdef IMAGE_COR20_HEADER * ptr = NULL
         if datadir.VirtualAddress == 0 or datadir.Size == 0:
             raise net_exceptions.NotADotNetFile
@@ -329,23 +334,7 @@ cdef class DotNetPeFile:
         """
         return self.raise_exc_on_invalid_method
 
-    cpdef void patch_dpe(self, uint64_t va, int diff, bytes stream_name, uint64_t target_va, bytes new_data, uint64_t target_end, bint dont_update_methods):
-        """  Patches data into or out of the dotnet file.
-        Args:
-            va (uint64_t): The virtual address of the location where the patch should occur.
-            diff (int): The difference in bytes between the data that was previously there and the data that is being inserted.
-            stream_name (bytes): The name of the .NET metadata stream that is being patched, or None if the data is outside .NET metadata.
-            target_va (uint64_t): An address that is within the section and metadata heap which you are trying to patch.   This helps deal with cases like adding data to the end of a section.
-            new_data (bytes): the data to patch in.
-            target_end (uint64_t): The END OFFSET where the original data should resume.  So for example, if you are trying to patch the data b'abcdefghijk' with b'bbbb' at offset 2, but you want to keep all of the other data, your target_end should be 2.
-            dont_update_methods (bint): whether or not method RVAs and alignment should be updated.  If True, it will not be updated.  Leave this False for the most part.
-        """
-        if self.get_pe().is_64bit():
-            self.__patch_dpe64(va, diff, stream_name, target_va, dont_update_methods, new_data, target_end)
-        else:
-            self.__patch_dpe32(va, diff, stream_name, target_va, dont_update_methods, new_data, target_end)
-
-    cdef uint64_t __get_offset_from_memview(self, Py_buffer view_obj, uint64_t rva):
+    cdef uint32_t __get_offset_from_memview(self, Py_buffer view_obj, uint32_t rva):
         cdef IMAGE_DOS_HEADER * dos = <IMAGE_DOS_HEADER*>view_obj.buf
         cdef IMAGE_NT_HEADERS32 * nt = <IMAGE_NT_HEADERS32*>(<char*>view_obj.buf + dos.e_lfanew)
         cdef IMAGE_SECTION_HEADER * array = <IMAGE_SECTION_HEADER*>(<char*>view_obj.buf + dos.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt.FileHeader.SizeOfOptionalHeader)
@@ -357,7 +346,7 @@ cdef class DotNetPeFile:
                 return hdr.PointerToRawData + (rva - hdr.VirtualAddress)
         return 0
 
-    cdef uint64_t __get_rva_from_memview(self, Py_buffer view_obj, uint64_t offset):
+    cdef uint32_t __get_rva_from_memview(self, Py_buffer view_obj, uint32_t offset):
         cdef IMAGE_DOS_HEADER * dos = <IMAGE_DOS_HEADER*>view_obj.buf
         cdef IMAGE_NT_HEADERS32 * nt = <IMAGE_NT_HEADERS32*>(<char*>view_obj.buf + dos.e_lfanew)
         cdef IMAGE_SECTION_HEADER * array = <IMAGE_SECTION_HEADER*>(<char*>view_obj.buf + dos.e_lfanew + 4 + sizeof(IMAGE_FILE_HEADER) + nt.FileHeader.SizeOfOptionalHeader)
@@ -368,840 +357,6 @@ cdef class DotNetPeFile:
             if hdr.PointerToRawData <= offset < (hdr.PointerToRawData + hdr.SizeOfRawData):
                 return hdr.VirtualAddress + (offset - hdr.PointerToRawData)
         return 0
-
-    cdef void __update_net_vas(self, uint64_t va_addr, int difference, bytes stream_name, uint64_t target_addr, bint in_streams, bint before_streams, bytearray new_exe_data, bytes old_exe_data, Py_buffer new_exe_view, int padding_offset, int amt_padding, int target_rawsize_difference, bint dont_update_methods, bytes new_data, uint64_t target_end):
-        """ Handles the .NET Portions of patching.  Checks over the metadata tables, rvas etc.
-
-        Args:
-            va_addr (uint64_t):  The va_addr where the changes occur.
-            difference (int): The difference in the binary once the changes are complete.
-            dpe (DotNetPeFile): The dotnetpe instance to modify
-            stream_name (bytes): stream name that youre editing, if applicable.  can be None
-            target_addr (uint64_t): An address within the block of data that you are attempting to modify.
-            in_streams (bint): Whether or not the target is within the metadata directory.
-            before_streams (bint): Whether or not the target is before the metadata directory.
-            new_exe_data (bytearray): The current exe data with all the prior updates.
-            old_exe_data (bytearray): The old exe data.
-            new_exe_view (Py_buffer): A writable view to new_exe_data.  Will be released by this function.
-            padding_offset (int): offset of section padding.
-            amt_padding (int): Amt to pad.
-        """
-        cdef PeFile pe = self.get_pe()
-        cdef uint64_t metadata_offset = 0
-        cdef uint64_t streams_offset = 0
-        cdef int number_of_streams = 0
-        cdef bytes number_of_streams_bytes = None
-        cdef int length_of_str = 0
-        cdef bint passed_userstrings = False
-        cdef uint64_t orig_streams_offset = 0
-        cdef net_processing.HeapObject heap_obj = None
-        cdef int x = 0
-        cdef uint64_t orig_offset = 0
-        cdef int offset = 0
-        cdef bytearray name = None
-        cdef int size = 0
-        cdef uint64_t stream_offset = 0
-        cdef int * patch_ptr = NULL
-        cdef int last_difference = 0
-        cdef net_table_objects.TableObject tobj = None
-        cdef uint32_t resource_rva = 0
-        cdef bint in_table = False
-        cdef int old_size = 0
-        cdef bytes new_stream_data = None
-        cdef bytes result = None
-        cdef dict heaps_by_offset = dict()
-        cdef bytes padding = None
-        cdef uint64_t target_offset = pe.get_offset_from_rva(target_addr)
-        cdef int hdr_size = 0
-        cdef bint in_same_section = pe.get_sec_index_va(pe.get_net_header().MetaData.VirtualAddress) == pe.get_sec_index_va(target_addr)
-        cdef uint64_t patch_start = pe.get_offset_from_rva(va_addr)
-        cdef dict method_padding = dict()
-        cdef list methods = list()
-        cdef uint32_t padding_counter = 0
-        cdef uint64_t new_method_rva = 0
-        cdef uint32_t amt_method_padding = 0
-        cdef uint64_t method_offset = 0
-        cdef uint64_t min_method_rva = 0
-        cdef net_row_objects.MethodDef mdef2 = None
-        cdef net_processing.MetadataTableHeapObject mheap = self.get_heap('#~')
-        cdef bint in_method_table = False
-        metadata_offset = pe.get_offset_from_rva(pe.get_net_header().MetaData.VirtualAddress)
-        streams_offset = metadata_offset + 12
-        number_of_streams = <int>(metadata_offset + 12)
-        number_of_streams_bytes = old_exe_data[number_of_streams:number_of_streams + 4]
-        length_of_str = int.from_bytes(number_of_streams_bytes, 'little')
-        streams_offset += length_of_str + 6
-        number_of_streams = int.from_bytes(old_exe_data[streams_offset:streams_offset + 2], 'little')
-        streams_offset += 2
-        passed_userstrings = False
-        orig_streams_offset = streams_offset
-        for heap_obj in self.get_heaps().values():
-            heaps_by_offset[heap_obj.get_offset()] = heap_obj
-        if in_streams and before_streams:
-            raise net_exceptions.InvalidArgumentsException()
-        if in_streams and difference != 0:
-            for x in range(number_of_streams):
-                orig_offset = streams_offset
-                offset = int.from_bytes(old_exe_data[streams_offset:streams_offset + 4], 'little')
-                streams_offset += 4
-                size = int.from_bytes(old_exe_data[streams_offset: streams_offset + 4], 'little')
-                streams_offset += 4
-                name = bytearray()
-                while old_exe_data[streams_offset] != 0:
-                    name += bytes([old_exe_data[streams_offset]])
-                    streams_offset += 1
-                streams_offset += 1
-                hdr_size = <int>(streams_offset - orig_offset)
-                while hdr_size % 4 != 0:
-                    hdr_size += 1
-                streams_offset = orig_offset + hdr_size
-                stream_offset = metadata_offset + offset
-                if name == stream_name and not passed_userstrings:
-                    passed_userstrings = True
-                    # fix the size of user strings stream
-                    # append the stream data
-                    patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset + 4]
-                    patch_ptr[0] = <int>(size + difference)
-                if (stream_name is None and target_offset < stream_offset) or (passed_userstrings and stream_name != name):
-                    # fix the offset of the rest of the streams
-                    patch_ptr = <int*>&(<char*>new_exe_view.buf)[orig_offset]
-                    patch_ptr[0] = <int>(offset + difference)
-                    if stream_offset in heaps_by_offset:
-                        #If its not in here it could be a phantom heap, ignore.
-                        heap_obj = heaps_by_offset[stream_offset]
-                        heap_obj.update_offset(<int>(stream_offset + difference))
-
-            if orig_streams_offset <= target_offset < streams_offset:
-                last_difference += difference
-
-        #Let reconstruct executable handle updating heap offsets and sizes internally.
-        tobj = self.get_metadata_table('MethodDef')
-        if tobj is not None and difference != 0:
-            methods = list(tobj)
-            methods.sort(key=method_rva_sort)
-            for mdef_obj in methods:
-                cobj = mdef_obj.get_column('RVA')
-                resource_offset = cobj.get_raw_value()
-                if resource_offset == 0:
-                    continue
-                if resource_offset == va_addr:
-                    in_table = True
-                    in_method_table = True
-                    continue
-                resource_rva = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, resource_offset, va_addr, difference, target_addr)
-                if resource_rva != resource_offset:
-                    in_table = True
-                    cobj.set_raw_value(<unsigned int>resource_rva)
-        
-        tobj = self.get_metadata_table('FieldRVA')
-        if tobj is not None and difference != 0:
-            for x in range(1, len(tobj) + 1):
-                rva_obj = tobj.get(<int>x)
-                cobj = rva_obj.get_column('RVA')
-                resource_offset = cobj.get_raw_value()
-                if resource_offset == 0:
-                    continue
-                if resource_offset == va_addr:
-                    in_table = True
-                    continue
-                resource_rva = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, resource_offset, va_addr, difference, target_addr)
-                if resource_offset != resource_rva:
-                    in_table = True
-                    cobj.set_raw_value(<unsigned int>resource_rva)
-        PyBuffer_Release(&new_exe_view)
-        if amt_padding != 0 and padding_offset != 0 and difference != 0:
-            padding = b'\x00' * amt_padding
-            new_exe_data = new_exe_data[:padding_offset] + padding + new_exe_data[padding_offset:]
-            if before_streams and not in_same_section:
-                last_difference += amt_padding
-        if before_streams and in_same_section and difference != 0:
-            #if its before streams, we dont want to update the data itself, just our held offsets.
-            for heap_obj in heaps_by_offset.values():
-                heap_obj.update_offset(heap_obj.get_offset() + difference)
-        elif before_streams and difference != 0:
-            for heap_obj in heaps_by_offset.values():
-                heap_obj.update_offset(heap_obj.get_offset() + target_rawsize_difference)
-        if (in_streams and stream_name is not None) or in_table:
-            #Headers and such should match.  Just start patching in the heaps.  Method code also should be equivalent.
-            #One thing thats sort of assumed here is that we are not updating the offset of the metadata heap (otherwise wed have to re initialize metadata header offsets).  I cant really think of a reason to do that though.
-            for offset in heaps_by_offset.keys():
-                heap_obj = heaps_by_offset[offset]
-                old_size = heap_obj.get_size()
-                new_stream_data = heap_obj.to_bytes()
-                new_exe_data = new_exe_data[:offset + last_difference] + new_stream_data + new_exe_data[offset + old_size + last_difference:]
-                heap_obj.update_size(<int>len(new_stream_data))
-                last_difference += <int>len(new_stream_data) - old_size
-        result = bytes(new_exe_data)
-        if new_data is not None:
-            result = result[:patch_start] + new_data + result[target_end:]
-            self.set_exe_data(result)
-        else:
-            if stream_name is None:
-                raise net_exceptions.InvalidArgumentsException()
-            self.set_exe_data(result)
-        tobj = self.get_metadata_table('MethodDef')
-        if tobj is not None and not dont_update_methods and not in_method_table:
-            padding_counter = 0
-            methods = list(tobj)
-            methods.sort(key=method_rva_sort)
-            while True:
-                amt_method_padding = 0
-                x = 0
-                for mdef_obj in methods:
-                    resource_offset = mdef_obj.get_column('RVA').get_raw_value()
-                    if resource_offset == 0:
-                        continue
-                    if resource_offset % 4 != 0:
-                        if resource_offset == va_addr:
-                            raise Exception()
-                        new_rva = resource_offset
-                        while new_rva % 4 != 0:
-                            new_rva += 1
-                        amt_method_padding = <uint32_t>(new_rva - resource_offset)
-                        padding = b'\x00' * amt_method_padding
-                        method_offset = self.get_pe().get_offset_from_rva(resource_offset)
-                        if pe.is_64bit():
-                            self.__patch_dpe64(resource_offset, <int>amt_method_padding, None, resource_offset, True, padding, method_offset)
-                        else:
-                            self.__patch_dpe32(resource_offset, <int>amt_method_padding, None, resource_offset, True, padding, method_offset)
-                        mdef_obj = self.get_token_value(mdef_obj.get_token())
-                        for mdef2 in methods:
-                            if mdef2.get_column('RVA').get_value() == resource_offset:
-                                mdef2.get_column('RVA').set_raw_value(<unsigned int>new_rva)
-                        method_offset = self.get_pe().get_offset_from_rva(new_rva)
-                        padding_counter += 1
-                        method_offset = mheap.get_offset()
-                        new_rva = mheap.get_size()
-                        new_stream_data = mheap.to_bytes()
-                        if len(new_stream_data) != new_rva:
-                            raise net_exceptions.InvalidArgumentsException()
-                        result = self.get_exe_data()
-                        result = result[:method_offset] + new_stream_data + result[method_offset + new_rva:]
-                        self.set_exe_data(result)
-                        break
-                    x += 1
-                if amt_method_padding == 0:
-                    break
-        #if not dont_update_methods:
-        #    self.verify_dpe(dont_update_methods)
-    
-    cdef void verify_resources(self, uint64_t rs_offset, uint64_t orig_rs_offset, Py_buffer new_exe_view) except *:
-        """ These methods are basically used for debugging, to check over an executables RVAs after patching.
-        """
-        cdef IMAGE_RESOURCE_DIRECTORY * rsrc_dir = NULL
-        cdef uint64_t usable_rs_offset = rs_offset + sizeof(IMAGE_RESOURCE_DIRECTORY)
-        cdef int x
-        cdef IMAGE_RESOURCE_DIRECTORY_ENTRY * sub_entry = NULL
-        cdef uint64_t r_offset
-        cdef uint64_t rva
-        cdef uint64_t fixed_rva
-        cdef IMAGE_RESOURCE_DATA_ENTRY * data_struct = NULL
-        cdef uint64_t bad_value = <uint64_t>-1
-        rsrc_dir = <IMAGE_RESOURCE_DIRECTORY*>(<uintptr_t>new_exe_view.buf + <uintptr_t>rs_offset)
-        for x in range(rsrc_dir.NumberOfNamedEntries + rsrc_dir.NumberOfIdEntries):
-            sub_entry = <IMAGE_RESOURCE_DIRECTORY_ENTRY*> (<uintptr_t>new_exe_view.buf + <uintptr_t>usable_rs_offset)
-            if sub_entry.OffsetToData.OffsetToDirectory.DataIsDirectory:
-                r_offset = orig_rs_offset + sub_entry.OffsetToData.OffsetToDirectory.OffsetToDirectory
-                self.verify_resources(r_offset, orig_rs_offset, new_exe_view)
-            else:
-                r_offset = orig_rs_offset + sub_entry.OffsetToData.OffsetToData
-                data_struct = <IMAGE_RESOURCE_DATA_ENTRY*>(<uintptr_t>new_exe_view.buf + <uintptr_t>r_offset)
-                rva = data_struct.OffsetToData
-                fixed_rva = self.get_pe().get_offset_from_rva(rva)
-                if fixed_rva == bad_value:
-                    raise Exception('error with resources RVA {}'.format(hex(rva)))
-            usable_rs_offset += sizeof(IMAGE_RESOURCE_DIRECTORY_ENTRY)
-
-    cpdef void verify_dpe(self, bint dont_check_method_align) except *:
-        """ These methods are basically used for debugging, to check over an executables RVAs after patching.
-        """
-        cdef bytes exe_data = self.get_exe_data()
-        cdef IMAGE_DOS_HEADER * dos = NULL
-        cdef Py_buffer exe_view
-        cdef IMAGE_NT_HEADERS32 * nthdr32 = NULL
-        cdef IMAGE_NT_HEADERS64 * nthdr64 = NULL
-        cdef uint64_t bad_value = <uint64_t>-1
-        cdef uint64_t offset = 0
-        cdef uint64_t rva = 0
-        cdef PeFile pe = self.get_pe()
-        cdef unsigned int x = 0
-        cdef IMAGE_DATA_DIRECTORY datadir
-        cdef unsigned int net_offset = 0
-        cdef IMAGE_COR20_HEADER * corhdr = NULL
-        cdef unsigned short val = 0
-        cdef net_row_objects.RowObject robj = None
-        cdef net_table_objects.TableObject tobj = None
-        cdef unsigned char first_byte = 0
-        cdef IMAGE_DATA_DIRECTORY resources
-        PyObject_GetBuffer(exe_data, &exe_view, PyBUF_ANY_CONTIGUOUS)
-        dos = <IMAGE_DOS_HEADER*>(<char*>exe_view.buf)
-        if dos.e_magic != 0x5A4D:
-            raise Exception('dos header magic is invalid')
-        nthdr32 = <IMAGE_NT_HEADERS32*>(<char*>exe_view.buf + dos.e_lfanew)
-        if nthdr32.Signature != 0x4550:
-            raise Exception('NT Header signature invalid')
-
-        if nthdr32.FileHeader.Machine == 0:
-            raise Exception('File header machine invalid.')\
-        
-        if self.get_pe().is_64bit():
-            nthdr64 = <IMAGE_NT_HEADERS64*>nthdr32
-            if nthdr64.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC:
-                raise Exception('invalid optional header magic')
-
-            if nthdr64.OptionalHeader.SizeOfCode > nthdr64.OptionalHeader.SizeOfImage:
-                raise Exception('invalid size of code')
-
-            if nthdr64.OptionalHeader.SizeOfInitializedData > nthdr64.OptionalHeader.SizeOfImage:
-                raise Exception('Invalid size of initialized data')
-
-            if nthdr64.OptionalHeader.SizeOfUninitializedData > nthdr64.OptionalHeader.SizeOfImage:
-                raise Exception('invalid size of uninitialized data')
-
-            if nthdr64.OptionalHeader.AddressOfEntryPoint != 0:
-                offset = pe.get_offset_from_rva(nthdr64.OptionalHeader.AddressOfEntryPoint)
-                if offset == bad_value:
-                    raise Exception('Bad entry point value.')
-            if nthdr64.OptionalHeader.Win32VersionValue != 0:
-                raise Exception('Invalid Win32VersionValue')
-            
-            for x in range(nthdr64.OptionalHeader.NumberOfRvaAndSizes):
-                datadir = nthdr64.OptionalHeader.DataDirectory[x]
-                if datadir.VirtualAddress == 0:
-                    continue
-                offset = pe.get_offset_from_rva(datadir.VirtualAddress)
-                if offset == bad_value:
-                    raise Exception('Error with data directory {}'.format(x))
-                if x == IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR:
-                    net_offset = <unsigned int>offset
-
-        else:
-            if nthdr32.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC:
-                raise Exception('invalid optional header magic')
-
-            if nthdr32.OptionalHeader.SizeOfCode > nthdr32.OptionalHeader.SizeOfImage:
-                raise Exception('invalid size of code')
-
-            if nthdr32.OptionalHeader.SizeOfInitializedData > nthdr32.OptionalHeader.SizeOfImage:
-                raise Exception('Invalid size of initialized data')
-
-            if nthdr32.OptionalHeader.SizeOfUninitializedData > nthdr32.OptionalHeader.SizeOfImage:
-                raise Exception('invalid size of uninitialized data')
-
-            if nthdr32.OptionalHeader.AddressOfEntryPoint != 0:
-                offset = pe.get_offset_from_rva(nthdr32.OptionalHeader.AddressOfEntryPoint)
-                if offset == bad_value:
-                    raise Exception('Bad entry point value.')
-            if nthdr32.OptionalHeader.Win32VersionValue != 0:
-                raise Exception('Invalid Win32VersionValue')
-            
-            for x in range(nthdr32.OptionalHeader.NumberOfRvaAndSizes):
-                datadir = nthdr32.OptionalHeader.DataDirectory[x]
-                if datadir.VirtualAddress == 0:
-                    continue
-                offset = pe.get_offset_from_rva(datadir.VirtualAddress)
-                if offset == bad_value:
-                    raise Exception('Error with data directory {}'.format(x))
-                if x == IMAGE_DIRECTORY_ENTRY_COM_DESCRIPTOR:
-                    net_offset = <unsigned int>offset
-
-        if net_offset == 0:
-            raise Exception('not a dotnet?')
-        
-        corhdr = <IMAGE_COR20_HEADER*>(<char*>exe_view.buf + net_offset)
-        if corhdr.cb != sizeof(IMAGE_COR20_HEADER):
-            raise Exception('invalid cor20 hdr cb.')
-        
-        if corhdr.MetaData.VirtualAddress == 0 or corhdr.MetaData.Size == 0:
-            raise Exception('Invalid metadata data directory.')
-
-        offset = pe.get_offset_from_rva(corhdr.MetaData.VirtualAddress)
-        if offset == bad_value:
-            raise Exception('Invalid metadata data directory - bad va.')
-
-        net_offset = (<unsigned int*>(<char*>exe_view.buf + offset))[0]
-        if net_offset != 0x424A5342:
-            raise Exception('Invalid metadata directory signature')
-        
-        val = (<unsigned short*>(<char*>exe_view.buf + offset + 4))[0]
-        if val != 1:
-            raise Exception('Invalid metadata directory MajorVersion')
-        val = (<unsigned short*>(<char*>exe_view.buf + offset + 6))[0]
-        if val != 1:
-            raise Exception('Invalid metadata directory MinorVersion')
-        
-        net_offset = (<unsigned int *>(<char*>exe_view.buf + offset + 8))[0]
-        if net_offset != 0:
-            raise Exception('Invalid metadata directory reserved.')
-
-        if self.has_metadata_table('MethodDef'):
-            for robj in self.get_metadata_table('MethodDef'):
-                offset = <uint64_t>robj.get_column('RVA').get_value()
-                if offset == 0:
-                    continue
-                rva = offset
-                if rva % 4 != 0 and not dont_check_method_align:
-                    raise Exception('Method RVA {} is not aligned'.format(hex(robj.get_token())))
-                                
-                offset = pe.get_offset_from_rva(offset)
-                if offset == bad_value:
-                    raise Exception('Method token {} has bad rva'.format(hex(robj.get_token())))
-                first_byte = (<unsigned char*>exe_view.buf)[offset]
-                if not dont_check_method_align:
-                    if (first_byte & 0x3 == 2):
-                        pass
-                    elif (first_byte & 0x3 == 3):
-                        val = (<unsigned short*>(<char*>exe_view.buf + offset))[0]
-                        if (val >> 12) != 3:
-                            raise Exception('Invalid method header at method: {}'.format(hex(robj.get_token())))
-                    else:
-                        raise Exception('Error invalid header start byte for method {}'.format(hex(robj.get_token())))
-                    if robj.disassemble_method() is None:
-                        raise Exception('For whatever reason, disassemble method failed on method {}'.format(hex(robj.get_token())))
-        
-        resources = self.get_pe().get_directory_by_idx(IMAGE_DIRECTORY_ENTRY_RESOURCE)
-        if resources.VirtualAddress != 0:
-            offset = self.get_pe().get_offset_from_rva(resources.VirtualAddress)
-            self.verify_resources(offset, offset, exe_view)
-        PyBuffer_Release(&exe_view)
-
-    cpdef void __patch_dpe32(self, uint64_t va, int diff, bytes stream_name, uint64_t target_addr, bint dont_update_methods, bytes new_data, uint64_t target_end):
-        cdef PeFile pe = self.get_pe()
-        cdef bytearray new_exe_data = bytearray(self.get_exe_data())
-        cdef Py_buffer new_exe_view
-        cdef IMAGE_DOS_HEADER * dos_header = NULL
-        cdef IMAGE_NT_HEADERS32 * nt_headers = NULL
-        cdef IMAGE_SECTION_HEADER * sec_header = NULL
-        cdef IMAGE_SECTION_HEADER * prev_section_header = NULL
-        cdef int section_offset = 0
-        cdef Py_ssize_t x = 0
-        cdef unsigned int old_rawsize = 0
-        cdef unsigned int new_rawsize = 0
-        cdef int target_rawsize_difference = 0
-        cdef unsigned int required_val = 0
-        cdef unsigned int new_va_val = 0
-        cdef unsigned int size_of_code = 0
-        cdef unsigned int size_of_uninitialized_data = 0
-        cdef unsigned int size_of_initialized_data = 0
-        cdef IMAGE_OPTIONAL_HEADER32 * opt_header = NULL
-        cdef IMAGE_OPTIONAL_HEADER32 original_optional_header
-        cdef unsigned long size_of_image = 0
-        cdef IMAGE_DATA_DIRECTORY * data_dir = NULL
-        cdef IMAGE_COR20_HEADER * cor_header = NULL
-        cdef uint64_t net_header_offset = 0
-        cdef bytes old_exe_data = bytes(new_exe_data)
-        cdef uint64_t reloc_va = 0
-        cdef unsigned int reloc_size = 0
-        cdef uint64_t offset = 0
-        cdef uint64_t debug_va = 0
-        cdef IMAGE_BASE_RELOCATION * base_reloc = NULL
-        cdef uint64_t reloc_offset = 0
-        cdef IMAGE_DEBUG_DIRECTORY * debug_struct = NULL
-        cdef uint64_t current_va = 0
-        cdef uint64_t new_va = 0
-        cdef uint64_t imports_offset = 0
-        cdef IMAGE_IMPORT_DESCRIPTOR * import_descriptor = NULL
-        cdef unsigned int orig_name = 0
-        cdef uint64_t thunk_offset = 0
-        cdef IMAGE_THUNK_DATA32 * thunk_data = NULL
-        cdef uint64_t resource_offset = 0
-        cdef uint64_t resource_rva = 0
-        cdef uint64_t debug_offset = 0
-        cdef int amt_padding = 0
-        cdef int padding_offset = 0
-        cdef bint in_streams = False
-        cdef bint before_streams = False
-        cdef uint64_t patch_start = pe.get_offset_from_rva(va)
-
-        PyObject_GetBuffer(new_exe_data, &new_exe_view, PyBUF_WRITABLE)
-        dos_header = <IMAGE_DOS_HEADER*>new_exe_view.buf
-        nt_headers = <IMAGE_NT_HEADERS32*>(<uintptr_t>new_exe_view.buf + dos_header.e_lfanew)
-        section_offset = pe.get_elfanew() + sizeof(IMAGE_FILE_HEADER) + 4 + nt_headers.FileHeader.SizeOfOptionalHeader
-        if diff != 0:
-            for x in range(nt_headers.FileHeader.NumberOfSections):
-                section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
-                if section_header.VirtualAddress <= target_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
-                    old_rawsize = section_header.SizeOfRawData
-                    new_rawsize = old_rawsize + diff
-                    if new_rawsize % nt_headers.OptionalHeader.FileAlignment != 0:
-                        new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
-                    amt_padding = new_rawsize - old_rawsize - diff
-                    padding_offset = section_header.PointerToRawData + old_rawsize
-                    section_header.SizeOfRawData = new_rawsize
-                    section_header.Misc.VirtualSize = section_header.Misc.VirtualSize + amt_padding + diff
-                    target_rawsize_difference = new_rawsize - old_rawsize
-                elif section_header.VirtualAddress > target_addr:
-                    section_header.PointerToRawData += target_rawsize_difference
-                    required_val = prev_section_header.VirtualAddress + prev_section_header.Misc.VirtualSize
-                    if section_header.VirtualAddress <= required_val:
-                        new_va_val = section_header.VirtualAddress + nt_headers.OptionalHeader.SectionAlignment
-                        while new_va_val < required_val:
-                            new_va_val += nt_headers.OptionalHeader.SectionAlignment
-                        section_header.VirtualAddress = new_va_val
-
-                if section_header.Characteristics & IMAGE_SCN_CNT_CODE:
-                    size_of_code += section_header.SizeOfRawData
-
-                if section_header.Characteristics & IMAGE_SCN_CNT_INITIALIZED_DATA:
-                    size_of_initialized_data += section_header.SizeOfRawData
-                
-                if section_header.Characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA:
-                    size_of_uninitialized_data += section_header.SizeOfRawData
-
-                prev_section_header = section_header
-                section_offset += sizeof(IMAGE_SECTION_HEADER)
-
-            optional_header = &nt_headers.OptionalHeader
-            original_optional_header = optional_header[0]
-            size_of_image = section_header.VirtualAddress + section_header.Misc.VirtualSize
-            size_of_image += (optional_header.SectionAlignment - (
-                        size_of_image % nt_headers.OptionalHeader.SectionAlignment))
-            nt_headers.OptionalHeader.AddressOfEntryPoint = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, nt_headers.OptionalHeader.AddressOfEntryPoint, va, diff, target_addr)
-            for x in range(optional_header.NumberOfRvaAndSizes):
-                data_dir = &optional_header.DataDirectory[x]
-                if data_dir.VirtualAddress != 0:
-                    if data_dir.VirtualAddress <= target_addr < (data_dir.VirtualAddress + data_dir.Size):
-                        data_dir.Size += diff
-                    data_dir.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, data_dir.VirtualAddress, va, diff, target_addr)
-            
-            optional_header.SizeOfCode = size_of_code
-            optional_header.SizeOfInitializedData = size_of_initialized_data
-            optional_header.SizeOfUninitializedData = size_of_uninitialized_data
-            optional_header.SizeOfImage = size_of_image
-
-            optional_header.BaseOfCode = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, optional_header.BaseOfCode, va, diff, target_addr)
-            optional_header.BaseOfData = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, optional_header.BaseOfData, va, diff, target_addr)
-
-            net_header_offset = self.get_cor_header_offset()
-            cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>new_exe_view.buf + net_header_offset)
-
-            if target_addr < cor_header.MetaData.VirtualAddress:
-                before_streams = True
-            if cor_header.MetaData.VirtualAddress <= target_addr < (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
-                in_streams = True
-                cor_header.MetaData.Size += diff
-            if cor_header.Resources.VirtualAddress <= target_addr < (cor_header.Resources.VirtualAddress + cor_header.Resources.Size):
-                cor_header.Resources.Size += diff
-
-            cor_header.MetaData.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, cor_header.MetaData.VirtualAddress, va, diff, target_addr)
-
-            cor_header.Resources.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, cor_header.Resources.VirtualAddress,
-                                                                va, diff, target_addr)
-            cor_header.StrongNameSignature.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                        cor_header.StrongNameSignature.VirtualAddress,
-                                                                        va, diff, target_addr)
-            cor_header.CodeManagerTable.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                    cor_header.CodeManagerTable.VirtualAddress, va,
-                                                                    diff, target_addr)
-            cor_header.VTableFixups.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, cor_header.VTableFixups.VirtualAddress,
-                                                                va, diff, target_addr)
-            cor_header.ExportAddressTableJumps.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                            cor_header.ExportAddressTableJumps.VirtualAddress,
-                                                                            va, diff, target_addr)
-            cor_header.ManagedNativeHeader.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                        cor_header.ManagedNativeHeader.VirtualAddress,
-                                                                        va, diff, target_addr)
-            if cor_header.Flags & COMIMAGE_FLAGS_NATIVE_ENTRYPOINT != 0:
-                cor_header.EntryPoint.EntryPointRVA = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, cor_header.EntryPoint.EntryPointRVA,
-                                                                    va, diff, target_addr)
-
-            # now process the reloc dir
-            if IMAGE_DIRECTORY_ENTRY_BASERELOC < optional_header.NumberOfRvaAndSizes:
-                reloc_va = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress
-                reloc_size = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size
-                if reloc_va != 0:
-                    reloc_offset = pe.get_offset_from_rva(reloc_va)
-                    offset = 0
-                    while offset < reloc_size:
-                        base_reloc = <IMAGE_BASE_RELOCATION*> (<uintptr_t>new_exe_view.buf + reloc_offset + offset)
-                        base_reloc.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, base_reloc.VirtualAddress, va,
-                                                                diff, target_addr) 
-                        offset += base_reloc.BlockSize
-
-            if IMAGE_DIRECTORY_ENTRY_DEBUG < optional_header.NumberOfRvaAndSizes:
-                #process debug dir
-                debug_va = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress
-                if debug_va != 0:
-                    debug_offset = pe.get_offset_from_rva(debug_va)
-                    debug_struct = <IMAGE_DEBUG_DIRECTORY*>(<uintptr_t>new_exe_view.buf + debug_offset)
-                    current_va = debug_struct.AddressOfRawData
-                    new_va = net_patch.get_fixed_rva(pe, new_exe_view, current_va, va, diff, target_addr)
-                    if current_va != new_va:
-                        debug_struct.AddressOfRawData = <uint32_t>new_va
-                        debug_struct.PointerToRawData += diff
-                
-            # now process imports dir
-            if IMAGE_DIRECTORY_ENTRY_IMPORT < optional_header.NumberOfRvaAndSizes:
-                imports_offset = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress
-                if imports_offset != 0:
-                    imports_offset = pe.get_offset_from_rva(imports_offset)
-                    while True:
-                        import_descriptor = <IMAGE_IMPORT_DESCRIPTOR*>(<uintptr_t>new_exe_view.buf + <uintptr_t>imports_offset)
-                        if import_descriptor.Name == 0:
-                            break
-                        orig_name = import_descriptor.Name
-                        import_descriptor.Name = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, import_descriptor.Name, va, diff, target_addr)
-                        thunk_offset = pe.get_offset_from_rva(import_descriptor.FirstThunk)
-                        while True:
-                            thunk_data = <IMAGE_THUNK_DATA32*>(<uintptr_t>new_exe_view.buf + thunk_offset)
-                            if thunk_data.u1.AddressOfData == 0:
-                                break
-                            if (thunk_data.u1.AddressOfData & IMAGE_ORDINAL_FLAG32) == 0:
-                                # name import, fix.
-                                thunk_data.u1.AddressOfData = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, thunk_data.u1.AddressOfData, va,
-                                                                            diff, target_addr)
-                            thunk_offset += sizeof(IMAGE_THUNK_DATA32)
-                        import_descriptor.FirstThunk = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, import_descriptor.FirstThunk, va,
-                                                                        diff, target_addr)
-
-                        thunk_offset = pe.get_offset_from_rva(import_descriptor.DUMMYUNIONNAME1.OriginalFirstThunk)
-                        while True:
-                            thunk_data = <IMAGE_THUNK_DATA32*>(<uintptr_t>new_exe_view.buf + thunk_offset)
-                            if thunk_data.u1.AddressOfData == 0:
-                                break
-                            if (thunk_data.u1.AddressOfData & IMAGE_ORDINAL_FLAG32) == 0:
-                                # name import, fix.
-                                thunk_data.u1.AddressOfData = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, thunk_data.u1.AddressOfData, va,
-                                                                            diff, target_addr)
-                            thunk_offset += sizeof(IMAGE_THUNK_DATA32)
-                        import_descriptor.DUMMYUNIONNAME1.OriginalFirstThunk = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                                            import_descriptor.DUMMYUNIONNAME1.OriginalFirstThunk,
-                                                                                            va, diff, target_addr)
-                        imports_offset += sizeof(IMAGE_IMPORT_DESCRIPTOR)
-            if IMAGE_DIRECTORY_ENTRY_RESOURCE < optional_header.NumberOfRvaAndSizes:
-                resource_offset = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].VirtualAddress
-                if resource_offset != 0:
-                    resource_rva = resource_offset
-                    resource_offset = pe.get_offset_from_rva(resource_offset)
-                    net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, pe, new_exe_view, va, diff, target_addr)
-        else:
-            if (stream_name is not None) and new_data is None:
-                #New data can be None if dont_update_methods is true.
-                pass
-            elif new_data is not None:
-                old_exe_data = old_exe_data[:patch_start] + new_data + old_exe_data[target_end:]
-                self.set_exe_data(old_exe_data)
-                return
-            else:
-                raise net_exceptions.InvalidArgumentsException()
-        self.__update_net_vas(va, diff, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference, dont_update_methods, new_data, target_end)
-
-    cpdef void __patch_dpe64(self, uint64_t va, int diff, bytes stream_name, uint64_t target_addr, bint dont_update_methods, bytes new_data, uint64_t patch_end):
-        cdef PeFile pe = self.get_pe()
-        cdef bytearray new_exe_data = bytearray(self.get_exe_data())
-        cdef Py_buffer new_exe_view
-        cdef IMAGE_DOS_HEADER * dos_header = NULL
-        cdef IMAGE_NT_HEADERS64 * nt_headers = NULL
-        cdef IMAGE_SECTION_HEADER * sec_header = NULL
-        cdef IMAGE_SECTION_HEADER * prev_section_header = NULL
-        cdef int section_offset = 0
-        cdef Py_ssize_t x = 0
-        cdef unsigned int old_rawsize = 0
-        cdef unsigned int new_rawsize = 0
-        cdef int target_rawsize_difference = 0
-        cdef unsigned int required_val = 0
-        cdef unsigned int new_va_val = 0
-        cdef unsigned int size_of_code = 0
-        cdef unsigned int size_of_uninitialized_data = 0
-        cdef unsigned int size_of_initialized_data = 0
-        cdef IMAGE_OPTIONAL_HEADER64 * opt_header = NULL
-        cdef IMAGE_OPTIONAL_HEADER64 original_optional_header
-        cdef unsigned long size_of_image = 0
-        cdef IMAGE_DATA_DIRECTORY * data_dir = NULL
-        cdef IMAGE_COR20_HEADER * cor_header = NULL
-        cdef uint64_t net_header_offset = 0
-        cdef bytes old_exe_data = bytes(new_exe_data)
-        cdef uint64_t reloc_va = 0
-        cdef unsigned int reloc_size = 0
-        cdef uint64_t offset = 0
-        cdef uint64_t debug_va = 0
-        cdef IMAGE_BASE_RELOCATION * base_reloc = NULL
-        cdef uint64_t reloc_offset = 0
-        cdef IMAGE_DEBUG_DIRECTORY * debug_struct = NULL
-        cdef uint64_t current_va = 0
-        cdef uint64_t new_va = 0
-        cdef uint64_t imports_offset = 0
-        cdef IMAGE_IMPORT_DESCRIPTOR * import_descriptor = NULL
-        cdef unsigned int orig_name = 0
-        cdef uint64_t thunk_offset = 0
-        cdef IMAGE_THUNK_DATA64 * thunk_data = NULL
-        cdef uint64_t resource_offset = 0
-        cdef uint64_t resource_rva = 0
-        cdef uint64_t debug_offset = 0
-        cdef int amt_padding = 0
-        cdef int padding_offset = 0
-        cdef bint in_streams = False
-        cdef bint before_streams = False
-        cdef uint64_t patch_start = pe.get_offset_from_rva(va)
-
-        PyObject_GetBuffer(new_exe_data, &new_exe_view, PyBUF_WRITABLE)
-        dos_header = <IMAGE_DOS_HEADER*>new_exe_view.buf
-        nt_headers = <IMAGE_NT_HEADERS64*>(<uintptr_t>new_exe_view.buf + dos_header.e_lfanew)
-        section_offset = pe.get_elfanew() + sizeof(IMAGE_FILE_HEADER) + 4 + nt_headers.FileHeader.SizeOfOptionalHeader
-        if diff != 0:
-            for x in range(nt_headers.FileHeader.NumberOfSections):
-                section_header = <IMAGE_SECTION_HEADER*>(<uintptr_t>new_exe_view.buf + section_offset)
-                if section_header.VirtualAddress <= target_addr < (section_header.VirtualAddress + section_header.Misc.VirtualSize):
-                    old_rawsize = section_header.SizeOfRawData
-                    new_rawsize = old_rawsize + diff
-                    if new_rawsize % nt_headers.OptionalHeader.FileAlignment != 0:
-                        new_rawsize = new_rawsize + (nt_headers.OptionalHeader.FileAlignment - (new_rawsize % nt_headers.OptionalHeader.FileAlignment))
-                    amt_padding = new_rawsize - old_rawsize - diff
-                    padding_offset = section_header.PointerToRawData + old_rawsize
-                    section_header.SizeOfRawData = new_rawsize
-                    section_header.Misc.VirtualSize = section_header.Misc.VirtualSize + amt_padding + diff
-                    target_rawsize_difference = new_rawsize - old_rawsize
-                elif section_header.VirtualAddress > target_addr:
-                    section_header.PointerToRawData += target_rawsize_difference
-                    required_val = prev_section_header.VirtualAddress + prev_section_header.Misc.VirtualSize
-                    if section_header.VirtualAddress <= required_val:
-                        new_va_val = section_header.VirtualAddress + nt_headers.OptionalHeader.SectionAlignment
-                        while new_va_val < required_val:
-                            new_va_val += nt_headers.OptionalHeader.SectionAlignment
-                        section_header.VirtualAddress = new_va_val
-
-                if section_header.Characteristics & IMAGE_SCN_CNT_CODE:
-                    size_of_code += section_header.SizeOfRawData
-
-                if section_header.Characteristics & IMAGE_SCN_CNT_INITIALIZED_DATA:
-                    size_of_initialized_data += section_header.SizeOfRawData
-                
-                if section_header.Characteristics & IMAGE_SCN_CNT_UNINITIALIZED_DATA:
-                    size_of_uninitialized_data += section_header.SizeOfRawData
-
-                prev_section_header = section_header
-                section_offset += sizeof(IMAGE_SECTION_HEADER)
-
-            optional_header = &nt_headers.OptionalHeader
-            original_optional_header = optional_header[0]
-            size_of_image = section_header.VirtualAddress + section_header.Misc.VirtualSize
-            size_of_image += (optional_header.SectionAlignment - (
-                        size_of_image % nt_headers.OptionalHeader.SectionAlignment))
-            nt_headers.OptionalHeader.AddressOfEntryPoint = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, nt_headers.OptionalHeader.AddressOfEntryPoint, va, diff, target_addr)
-            for x in range(optional_header.NumberOfRvaAndSizes):
-                data_dir = &optional_header.DataDirectory[x]
-                if data_dir.VirtualAddress != 0:
-                    if data_dir.VirtualAddress <= target_addr < (data_dir.VirtualAddress + data_dir.Size):
-                        data_dir.Size += diff
-                    data_dir.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, data_dir.VirtualAddress, va, diff, target_addr)
-            optional_header.SizeOfCode = size_of_code
-            optional_header.SizeOfInitializedData = size_of_initialized_data
-            optional_header.SizeOfUninitializedData = size_of_uninitialized_data
-            optional_header.SizeOfImage = size_of_image
-
-            optional_header.BaseOfCode = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, optional_header.BaseOfCode, va, diff, target_addr)
-
-            net_header_offset = self.get_cor_header_offset()
-            cor_header = <IMAGE_COR20_HEADER*>(<uintptr_t>new_exe_view.buf + net_header_offset)
-            if target_addr < cor_header.MetaData.VirtualAddress:
-                before_streams = True
-            
-            if cor_header.MetaData.VirtualAddress <= target_addr < (cor_header.MetaData.VirtualAddress + cor_header.MetaData.Size):
-                cor_header.MetaData.Size += diff
-                in_streams = True
-            if cor_header.Resources.VirtualAddress <= target_addr < (cor_header.Resources.VirtualAddress + cor_header.Resources.Size):
-                cor_header.Resources.Size += diff
-            cor_header.MetaData.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, cor_header.MetaData.VirtualAddress, va, diff, target_addr)
-            cor_header.Resources.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, cor_header.Resources.VirtualAddress,
-                                                                va, diff, target_addr)
-            cor_header.StrongNameSignature.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                        cor_header.StrongNameSignature.VirtualAddress,
-                                                                        va, diff, target_addr)
-            cor_header.CodeManagerTable.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                    cor_header.CodeManagerTable.VirtualAddress, va,
-                                                                    diff, target_addr)
-            cor_header.VTableFixups.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, cor_header.VTableFixups.VirtualAddress,
-                                                                va, diff, target_addr)
-            cor_header.ExportAddressTableJumps.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                            cor_header.ExportAddressTableJumps.VirtualAddress,
-                                                                            va, diff, target_addr)
-            cor_header.ManagedNativeHeader.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                        cor_header.ManagedNativeHeader.VirtualAddress,
-                                                                        va, diff, target_addr)
-            if cor_header.Flags & COMIMAGE_FLAGS_NATIVE_ENTRYPOINT != 0:
-                cor_header.EntryPoint.EntryPointRVA = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, cor_header.EntryPoint.EntryPointRVA,
-                                                                    va, diff, target_addr)
-
-            # now process the reloc dir
-            if IMAGE_DIRECTORY_ENTRY_BASERELOC < optional_header.NumberOfRvaAndSizes:
-                reloc_va = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].VirtualAddress
-                reloc_size = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_BASERELOC].Size
-                if reloc_va != 0:
-                    reloc_offset = pe.get_offset_from_rva(reloc_va)
-                    offset = 0
-                    while offset < reloc_size:
-                        base_reloc = <IMAGE_BASE_RELOCATION*> (<uintptr_t>new_exe_view.buf + reloc_offset + offset)
-                        base_reloc.VirtualAddress = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, base_reloc.VirtualAddress, va,
-                                                                diff, target_addr)                                
-                        offset += base_reloc.BlockSize
-
-            if IMAGE_DIRECTORY_ENTRY_DEBUG < optional_header.NumberOfRvaAndSizes:
-                #process debug dir
-                debug_va = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG].VirtualAddress
-                if debug_va != 0:
-                    debug_offset = pe.get_offset_from_rva(debug_va)
-                    debug_struct = <IMAGE_DEBUG_DIRECTORY*>(<uintptr_t>new_exe_view.buf + debug_offset)
-                    current_va = debug_struct.AddressOfRawData
-                    new_va = net_patch.get_fixed_rva(pe, new_exe_view, current_va, va, diff, target_addr)
-                    if current_va != new_va:
-                        debug_struct.AddressOfRawData = <uint32_t>new_va
-                        debug_struct.PointerToRawData += diff
-                
-            # now process imports dir
-            if IMAGE_DIRECTORY_ENTRY_IMPORT < optional_header.NumberOfRvaAndSizes:
-                imports_offset = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress
-                if imports_offset != 0:
-                    imports_offset = pe.get_offset_from_rva(imports_offset)
-                    while True:
-                        import_descriptor = <IMAGE_IMPORT_DESCRIPTOR*>(<uintptr_t>new_exe_view.buf + <uintptr_t>imports_offset)
-                        if import_descriptor.Name == 0:
-                            break
-                        orig_name = import_descriptor.Name
-                        import_descriptor.Name = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, import_descriptor.Name, va, diff, target_addr)
-                        thunk_offset = pe.get_offset_from_rva(import_descriptor.FirstThunk)
-                        while True:
-                            thunk_data = <IMAGE_THUNK_DATA64*>(<uintptr_t>new_exe_view.buf + thunk_offset)
-                            if thunk_data.u1.AddressOfData == 0:
-                                break
-                            if (thunk_data.u1.AddressOfData & IMAGE_ORDINAL_FLAG64) == 0:
-                                # name import, fix.
-                                thunk_data.u1.AddressOfData = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, thunk_data.u1.AddressOfData, va,
-                                                                            diff, target_addr)
-                            thunk_offset += sizeof(IMAGE_THUNK_DATA64)
-                        import_descriptor.FirstThunk = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, import_descriptor.FirstThunk, va,
-                                                                        diff, target_addr)
-
-                        thunk_offset = pe.get_offset_from_rva(import_descriptor.DUMMYUNIONNAME1.OriginalFirstThunk)
-                        while True:
-                            thunk_data = <IMAGE_THUNK_DATA64*>(<uintptr_t>new_exe_view.buf + thunk_offset)
-                            if thunk_data.u1.AddressOfData == 0:
-                                break
-                            if (thunk_data.u1.AddressOfData & IMAGE_ORDINAL_FLAG64) == 0:
-                                # name import, fix.
-                                thunk_data.u1.AddressOfData = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view, thunk_data.u1.AddressOfData, va,
-                                                                            diff, target_addr)
-                            thunk_offset += sizeof(IMAGE_THUNK_DATA64)
-                        import_descriptor.DUMMYUNIONNAME1.OriginalFirstThunk = <uint32_t>net_patch.get_fixed_rva(pe, new_exe_view,
-                                                                                            import_descriptor.DUMMYUNIONNAME1.OriginalFirstThunk,
-                                                                                            va, diff, target_addr)
-                        imports_offset += sizeof(IMAGE_IMPORT_DESCRIPTOR)
-            if IMAGE_DIRECTORY_ENTRY_RESOURCE < optional_header.NumberOfRvaAndSizes:
-                resource_offset = original_optional_header.DataDirectory[IMAGE_DIRECTORY_ENTRY_RESOURCE].VirtualAddress
-                if resource_offset != 0:
-                    resource_rva = resource_offset
-                    resource_offset = pe.get_offset_from_rva(resource_offset)
-                    net_patch.fixup_resource_directory(resource_offset, resource_rva, resource_offset, pe, new_exe_view, va, diff, target_addr)
-        else:
-            if (stream_name is not None) and new_data is None:
-                #New data can be None if dont_update_methods is true.
-                pass
-            elif new_data is not None:
-                old_exe_data = old_exe_data[:patch_start] + new_data + old_exe_data[patch_end:]
-                self.set_exe_data(old_exe_data)
-            else:
-                raise net_exceptions.InvalidArgumentsException()
-        self.__update_net_vas(va, diff, stream_name, target_addr, in_streams, before_streams, new_exe_data, old_exe_data, new_exe_view, padding_offset, amt_padding, target_rawsize_difference, dont_update_methods, new_data, patch_end)
-
 
     cpdef void update_streams(self):
         """Used for updating the data in the .NET metadata heaps for get_exe_data() 
@@ -1215,18 +370,39 @@ cdef class DotNetPeFile:
     cpdef void reinit_dpe(self, bint no_processing):
         """ Reparse the dotnet file.  Eventually likely to remove this in favor of removing state variables that cause issues requiring this.
         """
+        cdef int token
         self.original_exe_data = bytes(self.exe_data)
         self.metadata_dir = net_metadata.MetaDataDirectory(self)
         self.__versioninfo_str = None
         if not self.metadata_dir.is_valid_directory:
             return
-        self.metadata_dir.process_metadata_heap(no_processing)
+        self.process_metadata_heap(no_processing)
+        token = self.get_pe().get_net_header().EntryPoint.EntryPointToken
+        if token == 0:
+            return
+        self.ep_method = self.get_token_value(token)
 
-    cpdef uint64_t get_cor_header_offset(self):
+    cdef void process_metadata_heap(self, bint dont_process):
+        """ Process the metadata heaps
+        """
+        cdef net_processing.MetadataTableHeapObject mheap = None
+        cdef net_processing.UserStringsHeapObject usheap = None
+        self.metadata_dir.metadata_table_header = net_table_objects.MetadataTableHeader(self, self.metadata_dir.metadata_file_offset)
+        mheap = net_processing.MetadataTableHeapObject(self.metadata_dir.metadata_file_offset, self.metadata_dir.metadata_file_size, b'#~', self)
+        self.metadata_dir.heaps['#~'] = mheap
+        self.metadata_dir.heaps = dict(sorted(self.metadata_dir.heaps.items(), key=lambda item: item[1].get_offset()))
+        self.metadata_dir.metadata_heap_size = self.metadata_dir.metadata_file_size
+        if not dont_process:
+            mheap.process_tables()
+            if '#US' in self.metadata_dir.heaps:
+                usheap = self.metadata_dir.heaps['#US']
+                usheap._fill_methods() #Fill methods after processing for #US updates.  Patching wont work if processing isnt done.
+
+    cpdef uint32_t get_cor_header_offset(self):
         """ Obtain the file offset of the IMAGE_COR20_HEADER structure.
 
         Returns:
-            uint64_t: The offset of the IMAGE_COR20_HEADER structure.
+            uint32_t: The offset of the IMAGE_COR20_HEADER structure.
         """
         cdef IMAGE_DATA_DIRECTORY com_table_directory
         try:
@@ -1313,6 +489,43 @@ cdef class DotNetPeFile:
         elif c == 3:
             return 32
         return 0
+
+    cpdef void redo_xrefs(self):
+        cdef net_table_objects.TableObject tobj = None
+        cdef net_row_objects.MethodDefOrRef mobj = None
+        cdef net_row_objects.Field fobj = None
+        cdef net_row_objects.MethodDef mdef = None
+        cdef net_cil_disas.MethodDisassembler mdis = None
+        cdef net_cil_disas.Instruction instr = None
+        cdef net_opcodes.Opcodes op = net_opcodes.Opcodes.Invalid
+        cdef net_row_objects.RowObject robj = None
+
+        tobj = self.get_metadata_table('MemberRef')
+        if tobj is not None:
+            for mobj in tobj:
+                mobj.clear_xrefs()
+        tobj = self.get_metadata_table('MethodSpec')
+        if tobj is not None:
+            for mobj in tobj:
+                mobj.clear_xrefs()
+        tobj = self.get_metadata_table('Field')
+        if tobj is not None:
+            for fobj in tobj:
+                fobj.clear_xrefs()
+        tobj = self.get_metadata_table('MethodDef')
+        if tobj is not None:
+            for mobj in tobj:
+                mobj.clear_xrefs()
+            for mobj in tobj:
+                mdis = mobj.disassemble_method()
+                if mdis is None:
+                    continue
+                for instr in mdis:
+                    op = instr.get_opcode()
+                    if op in (net_opcodes.Opcodes.Call, net_opcodes.Opcodes.Callvirt, net_opcodes.Opcodes.Stfld, net_opcodes.Opcodes.Stsfld, net_opcodes.Opcodes.Ldfld, net_opcodes.Opcodes.Ldsfld): #TODO: should ldftn be considered
+                        robj = instr.get_argument()
+                        if robj is not None:
+                            robj._add_xref(mobj.get_rid(), instr.get_instr_offset())
 
     cpdef list get_methods_by_name(self, bytes name):
         """ Obtains a list of MethodDef objects matching a provided name.
@@ -1505,8 +718,8 @@ cdef class DotNetPeFile:
         cdef list results
         cdef net_table_objects.TableObject resources
         cdef net_row_objects.RowObject item
-        cdef uint64_t com_offset
-        cdef uint64_t resources_offset
+        cdef uint32_t com_offset
+        cdef uint32_t resources_offset
         cdef unsigned long resources_size
         cdef unsigned int resource_offset = 0
         cdef bytes rsrc_name
@@ -1673,20 +886,18 @@ cdef class DotNetPeFile:
             orig_size (unsigned long): The original code's size.
         """
         cdef net_cil_disas.MethodDisassembler disas = None
-        cdef uint64_t rva = 0
-        cdef uint64_t offset = 0
-        cdef uint64_t patch_offset = 0
+        cdef uint32_t rva = 0
+        cdef uint32_t offset = 0
+        cdef uint32_t patch_offset = 0
         cdef bytes exe_data = None
-
-        if method_obj['RVA'].get_raw_value() != 0:
+        if method_obj is None:
+            raise Exception('Cant patch a NoneType method object')
+        if method_obj.get_column('RVA').get_raw_value() != 0:
             disas = method_obj.disassemble_method()
-            if disas is None:
-                raise net_exceptions.InvalidArgumentsException()
-            rva = <uint64_t>method_obj['RVA'].get_raw_value()
-            offset = self.get_pe().get_offset_from_rva(rva)
-            patch_offset = offset + disas.get_header_size() + instr_offset  # needs to be zero based not 1 based.
-            exe_data = self.get_exe_data()
-            self.set_exe_data(exe_data[:patch_offset] + patch_bytes + exe_data[patch_offset + orig_size:])
+            patch_offset = disas.get_header_size() + instr_offset  # needs to be zero based not 1 based.
+            exe_data = method_obj.get_method_data()
+            exe_data = exe_data[:patch_offset] + patch_bytes + exe_data[patch_offset + orig_size:]
+            method_obj.set_method_data(exe_data)
 
     cpdef net_row_objects.MethodDef get_entry_point(self):
         """ Obtains a MethodDef representing the managed entrypoint of the executable.
@@ -1694,10 +905,7 @@ cdef class DotNetPeFile:
         Returns:
             net_row_objects.MethodDef: A MethodDef object representing the executable's entry point, or None if it doesnt exist.
         """
-        try:
-            return self.get_token_value(self.get_pe().get_net_header().EntryPoint.EntryPointToken)
-        except net_exceptions.InvalidTokenException:
-            return None
+        return self.ep_method
 
     cpdef void set_entry_point(self, unsigned int ep_token):
         """ Patches the executable to change the entry point to ep_token
@@ -1705,15 +913,7 @@ cdef class DotNetPeFile:
         Args:
             ep_token (unsigned int): The new entrypoint's metadata token.
         """
-        cdef IMAGE_COR20_HEADER new_net_header = self.get_pe().get_net_header()
-        cdef bytes new_cor_bytes
-        cdef bytes current_exe_data
-        cdef bytes new_exe_data
-        new_net_header.EntryPoint.EntryPointToken = ep_token
-        current_exe_data = self.get_exe_data()
-        new_cor_bytes = PyBytes_FromStringAndSize(<char*>&new_net_header, sizeof(IMAGE_COR20_HEADER))
-        new_exe_data = current_exe_data[:self.get_cor_header_offset()] + new_cor_bytes + current_exe_data[self.get_cor_header_offset() + new_net_header.cb:]
-        self.set_exe_data(new_exe_data)
+        self.ep_method = self.get_token_value(ep_token)
 
     cpdef object get_token_value(self, unsigned long token):
         """ Obtains a python representation of a metadata token.

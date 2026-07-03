@@ -1,6 +1,6 @@
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils import net_row_objects, net_sigs, net_emulator, net_exceptions, net_emu_types, net_opcodes, net_graph_analyzer
-from dotnetutils import net_structs, dotnetpefile, net_patch, net_deobfuscate_funcs
+from dotnetutils import net_structs, dotnetpefile, net_patch, net_deobfuscate_funcs, net_rebuilder
 
 def dnr_skip_obf_methods(emulator, argument):
     method_obj = emulator.get_method_obj()
@@ -11,6 +11,7 @@ def dnr_skip_obf_methods(emulator, argument):
             msig = instr.get_argument().get_method_signature()
             if msig.get_return_type() == net_sigs.get_CorSig_Void():
                 if len(msig.get_parameters()) == 0:
+                    print('blocking execution of call instr with method {}'.format(instr.get_argument()))
                     return False 
     return True
 
@@ -28,12 +29,14 @@ def dnr_skip_obf_invoke_methods(emulator, argument):
         has_16 = False
         has_32 = False
         if len(array_obj) == 32:
+            print('array setvalue called on 32 length array {} {} {}'.format(index_obj, array_obj, value_obj))
             if value_obj.as_python_obj() != 0:
                 if 32 not in argument:
                     argument[32] = array_obj
             if index_obj.as_python_obj() == 31 and 32 in argument:
                 has_32 = True
         if len(array_obj) == 16:
+            print('array setvalue called on 32 length array {} {} {}'.format(index_obj, array_obj, value_obj))
             if value_obj.as_python_obj() != 0:
                 if 16 not in argument:
                     argument[16] = array_obj
@@ -48,6 +51,8 @@ def dnr_skip_obf_invoke_methods(emulator, argument):
         stack_len = len(stack)
         methodinfo = stack[stack_len - 3]
         internal = methodinfo.get_internal_method()
+        if internal.get_token() == 0x06000119:
+            raise Exception('executing no no method')
         if internal.has_return_value() or internal.method_has_this():
             return True
         if len(internal.get_param_types()) > 0:
@@ -59,6 +64,7 @@ def dnr_skip_obf_invoke_methods(emulator, argument):
         stack.remove_obj()
         stack.remove_obj()
         stack.append_obj(None)
+        print('skipping execution of invoke method {}'.format(internal))
         return False
     return True
 
@@ -229,7 +235,6 @@ class NETReactor(Deobfuscator):
     def identify_string_method(self, dotnet):
         toint32 = dotnet.get_methods_by_full_name(b'System.BitConverter.ToInt32')
         if len(toint32) != 1:
-            print('error len toint32 isnt 1')
             return None
         toint32 = toint32[0]
         for xref_rid, xref_offset in toint32.get_xrefs():
@@ -405,7 +410,10 @@ class NETReactor(Deobfuscator):
                 xfm = dotnet.get_method_by_rid(xref_rid)
                 dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)
             print(f'Decrypted {amt_decrypted} methods using RVA patching mode.')
+            rebuild = net_rebuilder.NetRebuilder(dotnet)
+            dotnet.set_exe_data(rebuild.rebuild())
             dotnet.reinit_dpe(False)
+            #We need to get the exe data to match with the context for this to work properly
             return True
 
         amt_entries = reader.read_int32()
@@ -469,10 +477,11 @@ class NETReactor(Deobfuscator):
             old_sig = old_table.get(x)
             old_sig.get_column('Signature').set_raw_value(new_sig.get_column('Signature').get_raw_value())
         rva = dotnet.get_pe().get_rva_from_offset(dotnet.get_metadata_table('Module').get(1).get_file_offset())
-        dotnet.patch_dpe(rva, 0, b'#~', rva + 1, None, 0, False)
         for xref_rid, xref_offset in encryption_method.get_xrefs():
             xfm = dotnet.get_method_by_rid(xref_rid)
             dotnet.patch_instruction(xfm, b'\x00' * 5, xref_offset, 5)
+        rebuild = net_rebuilder.NetRebuilder(dotnet)
+        dotnet.set_exe_data(rebuild.rebuild())
         dotnet.reinit_dpe(False)
         print('Done decrypting {} methods'.format(amt_entries))
         return True
@@ -595,7 +604,7 @@ class NETReactor(Deobfuscator):
                     if not method.has_return_value():
                         if len(method.get_param_types()) == 0 and method.has_body():
                             dis = method.disassemble_method()
-                            if len(dis.get_local_types()) > 1:
+                            if len(dis.get_local_types()) >= 1:
                                 static_field_method = method
                                 break
 
@@ -707,7 +716,7 @@ class NETReactor(Deobfuscator):
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, emu_output)
         emu.setup_method_params([])
-        print('Emulating string cctor.')
+        print('Emulating string cctor.', cctor_method)
         emu.run_function()
         string_field = None
         string_dis = strm.disassemble_method()
@@ -744,33 +753,10 @@ class NETReactor(Deobfuscator):
         if rsrc is None:
             print('Couldnt find resource')
             return
-        first_str_emu = emu.spawn_new_emulator(strm, end_offset=first_call.get_instr_offset() + len(first_call))
-        dnint = net_emu_types.DotNetInt32(first_str_emu, None)
-        dnint.from_int(0)
-        first_str_emu.setup_method_params([dnint])
-        worked = False
-        try:
-            first_str_emu.run_function()
-        except net_exceptions.EmulatorEndExecutionException:
-            worked = True
-
-        if not worked:
-            print('probably didnt get keys')
-            return
-        #Do a fake run of the string method just to get the key, then follow up with a run of the string decode method to get the correct data.
-        #Theres a bug in the emulator that causes .NET Reactor to attempt to DES decrypt the data even when its not enabled.
-        #That does mean that this deobfuscator may not currently support whatever option causes that, need to look into it.
-        str_emu = emu.spawn_new_emulator(string_decode_method, dont_execute_first_cctor=True)
-        dnarray = net_emu_types.DotNetArray(str_emu, len(rsrc), dotnet.get_typeref_by_full_name(b'System.Byte'))
-        dnarray.from_python_obj(list(rsrc))
-        dnobj = net_emu_types.DotNetObject(str_emu)
-        args = [dnobj, emu_output[32], emu_output[16], dnarray]
-        str_emu.setup_method_params(args)
-        print('running main string decode method')
-        str_emu.run_function()
         print('starting to replace strings.')
         us_heap = dotnet.get_heap('#US')
         us_heap.begin_append_tx()
+        print('string method', strm)
         string_methods = [strm]
         emu.get_appdomain().remove_instr_handler(net_opcodes.Opcodes.Callvirt)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, None)
@@ -800,6 +786,7 @@ class NETReactor(Deobfuscator):
             string_method = string_methods.pop()
             for xref_rid, xref_offset in string_method.get_xrefs():
                 xfm = dotnet.get_method_by_rid(xref_rid)
+                print('checking xref for method {} {}'.format(xfm, hex(xref_offset)))
                 dis = xfm.disassemble_method()
                 call_instr = dis.get_instr_at_offset(xref_offset)
                 instrs = dis.get_list_of_instrs()
@@ -821,8 +808,10 @@ class NETReactor(Deobfuscator):
                         print('adding additional string method {}'.format(hex(xfm.get_token())))
                         string_methods.append(xfm)
                         continue
+                    print('emulating method {} {}'.format(xfm, hex(patch_start)))
                     new_emu = emu.spawn_new_emulator(xfm, start_offset=patch_start, end_offset=call_instr.get_instr_offset() + len(call_instr), dont_execute_first_cctor=True)
                     new_emu.setup_method_params([])
+                    #new_emu.set_print_debugging(False, True, print_debug_methods=[1447])
                     worked = False
                     try:
                         new_emu.run_function()
@@ -841,6 +830,7 @@ class NETReactor(Deobfuscator):
                             if data not in string_indexes:
                                 string_indexes[data] = us_heap.append_tx(data)
                             index = string_indexes[data]
+                            print('found string {}'.format(data))
                             new_instr = b'\x72' + int.to_bytes(index, 3, 'little') + b'\x70'
                             new_instr += (b'\x00' * (patch_size - 5))
                             dotnet.patch_instruction(xfm, new_instr, patch_start, patch_size)
@@ -861,9 +851,13 @@ class NETReactor(Deobfuscator):
                     if strarg in identifier_strings or this_assembly in strarg:
                         methods_to_remove.append(mdef)
                         break
+        
         for mdef in methods_to_remove:
+            print('removing antitamper method', mdef)
             for xref_rid, xref_offset in mdef.get_xrefs():
                 xfm = dotnet.get_method_by_rid(xref_rid)
+                print('removing call at {} {}'.format(hex(xfm.get_token()), hex(xref_offset)))
+
                 dis = xfm.disassemble_method()
                 instr = dis.get_instr_at_offset(xref_offset)
                 dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
@@ -883,11 +877,17 @@ class NETReactor(Deobfuscator):
             self.remove_delegates(dotnet, delegate_method, emu)
         print('Removing junk static fields')
         self.remove_junk_static_fields(dotnet, emu)
-        print('removing antitamper method calls.')
-        self.remove_antitamper_antidebug_method(dotnet)
+        rebuilder = net_rebuilder.NetRebuilder(dotnet)
+        data = rebuilder.rebuild()
+        dotnet.set_exe_data(data)
+        dotnet.reinit_dpe(False)
+
         string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
         self.remove_string_obfuscation(emu, dotnet, string_method)
+        print('removing antitamper method calls.')
+        self.remove_antitamper_antidebug_method(dotnet)
+
         print('Cleaning up names')
         #net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')

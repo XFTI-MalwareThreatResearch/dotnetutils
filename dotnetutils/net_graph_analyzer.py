@@ -1044,7 +1044,6 @@ class GraphAnalyzer:
                     out = graph.duplicate()
                     is_obfuscated = True
                     is_obfuscated_at_all = True
-                    print('removing switch number {} {} {}'.format(x, block, block.get_last_instr()))
                     out.validate_blocks()
                     self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
                     out.validate_blocks()
