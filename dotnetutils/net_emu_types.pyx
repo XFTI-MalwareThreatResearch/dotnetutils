@@ -5874,6 +5874,9 @@ cdef class DotNetDictionary(DotNetObject):
         cdef int count = <int>len(self.__internal_dict)
         return self.get_emulator_obj().pack_i4(count)
 
+    def __len__(self):
+        return len(self.__internal_dict)
+
     def __dealloc__(self):
         cdef net_emulator.StackCellWrapper key_wrapped
         cdef net_emulator.StackCellWrapper value_wrapped

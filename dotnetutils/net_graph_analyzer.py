@@ -350,7 +350,6 @@ class GraphAnalyzer:
             if debug:
                 print('Not enough previous blocks for a loop.')
             return False
-        #make sure theres at least one branch thats a fall through or a 1-1 ration
         already_checked = list()
         stloc_instr = None
         for x in range(len(instrs) - 1, -1, -1):
@@ -830,51 +829,6 @@ class GraphAnalyzer:
                 if instr.get_instr_offset() in bad_instrs and ((not instr.is_branch() and not instr.is_absolute_jmp()) or instr.get_opcode() == Opcodes.Switch):
                     blk.remove_instrs(x - amt_deleted, x - amt_deleted + 1)
                     amt_deleted += 1
-        """for end_block, start_blocks in start_mappings.items():
-            if debug:
-                print('Checking start blocks', start_blocks)
-            while len(start_blocks) > 0:
-                start_block = start_blocks.pop()
-                if debug:
-                    print('Checking start block', start_block)
-                if new_switch_block not in start_block.get_prev():
-                    if debug:
-                        print('Not in get_prev()')
-                    continue
-                last_instr = start_block.get_last_instr()
-                if debug:
-                    print('last instr is ', last_instr)
-                if last_instr.get_opcode() in (Opcodes.Ret, Opcodes.Endfinally, Opcodes.Throw, Opcodes.Leave, Opcodes.Leave_S, Opcodes.Rethrow):
-                    if debug:
-                        print('has instrs {} {}'.format(new_switch_block, start_block))
-                    new_switch_block.remove_next(start_block)
-                usable_block = start_block
-                already_checked = set()
-                if debug:
-                    print('Starting to check next blocks')
-                    #TODO: this logic is no good it needs to be rewritten.
-
-                while len(usable_block.get_next()) == 1:
-                    usable_block = usable_block.get_next()[0]
-                    if debug:
-                        print('Checking usable block', usable_block)
-                    if usable_block in already_checked:
-                        break
-
-                    already_checked.add(usable_block)
-                    last_instr = usable_block.get_last_instr()
-                    if last_instr.get_opcode() in (Opcodes.Ret, Opcodes.Endfinally, Opcodes.Rethrow, Opcodes.Throw, Opcodes.Leave, Opcodes.Leave_S):
-                        is_in_output = False
-                        for new_end_block, block_to_change, old_next, new_next in nexts_added:
-                            if block_to_change == new_switch_block and new_next == start_block:
-                                is_in_output = True
-                                break
-                        if is_in_output:
-                            break 
-                        
-                        if debug:
-                            print('removing next for switch block {} {}'.format(new_switch_block, start_block))
-                        new_switch_block.remove_next(start_block)"""
         switch_nexts = list()
         for new_end_block, block_to_change, old_next, new_next in nexts_added:
             if block_to_change == new_switch_block:
@@ -1032,11 +986,12 @@ class GraphAnalyzer:
     def simplify_control_flow(self, max_attempts=-1):
         graph = self.__graph
         is_obfuscated_at_all = False
-        x = 0
+        attempts = 0
         while True:
-            blocks = graph.blocks()
+            graph = self.__graph
             is_obfuscated = False
-            for block in blocks:
+            out = None
+            for block in list(graph.blocks()):
                 start_offsets = list()
                 bad_instrs = set()
                 if self.__is_target_switch(block, start_offsets, bad_instrs):
@@ -1047,9 +1002,30 @@ class GraphAnalyzer:
                     out.validate_blocks()
                     self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
                     out.validate_blocks()
-                    x += 1
                     break
+
+            if out is None:
+                #No switch to deobfuscate this pass.  Fold every constant-outcome branch on a
+                #duplicate in a single pass: the method is recompiled once instead of once per
+                #branch, and if a fold trips a repair_blocks limitation the attempt is discarded
+                #safely instead of emitting invalid IL or crashing the caller.
+                candidate = graph.duplicate()
+                if self.__fold_constant_branches(candidate) > 0:
+                    try:
+                        candidate.validate_blocks()
+                        GraphAnalyzer(self.__method, candidate).repair_blocks()
+                        candidate.update_offsets()
+                        candidate.sort_blocks()
+                        candidate.validate_blocks()
+                    except net_exceptions.InvalidBlockException:
+                        candidate = None
+                    if candidate is not None:
+                        out = candidate
+                        is_obfuscated = True
+                        is_obfuscated_at_all = True
+
             if is_obfuscated:
+                attempts += 1
                 instrs = out.emit_instructions_as_list()
                 localsigtok = self.__disasm.get_local_var_sig_token()
                 exc = out.get_raw_exception_clauses()
@@ -1065,13 +1041,91 @@ class GraphAnalyzer:
                 else:
                     self.__disasm = self.__method.disassemble_method()
                 graph = out
-                if max_attempts > 0 and x == max_attempts:
+                if max_attempts > 0 and attempts >= max_attempts:
                     break
             elif not is_obfuscated_at_all:
                 return None
             else:
                 break
         return graph
+
+    def __fold_constant_branches(self, graph):
+        """ Fold every conditional branch in the graph whose outcome is a compile-time constant.
+
+        Args:
+            graph (net_graphing.FunctionGraph): The graph to fold branches in (mutated in place).
+
+        Returns:
+            int: The number of branches that were folded.
+        """
+        count = 0
+        for block in list(graph.blocks()):
+            if self.__fold_constant_branch(block):
+                count += 1
+        return count
+
+    def __fold_constant_branch(self, block):
+        """ Replace a brtrue/brfalse fed by a single constant with an unconditional Br.
+
+        The taken target is always get_next()[0] and the fallthrough get_next()[1]
+        (see FunctionGraph.__parse_block).  The surviving edge and a Br pointing at it are
+        kept; repair_blocks normalizes offsets/short forms afterwards.
+
+        Args:
+            block (net_graphing.FunctionBlock): The block whose terminating branch to examine.
+
+        Returns:
+            bool: True if the branch was folded.
+        """
+        last_instr = block.get_last_instr()
+        if last_instr is None or not last_instr.is_branch() or last_instr.is_absolute_jmp():
+            return False
+        last_op = last_instr.get_opcode()
+        if last_op not in (Opcodes.Brtrue, Opcodes.Brtrue_S, Opcodes.Brfalse, Opcodes.Brfalse_S):
+            return False
+        block_instrs = block.get_instrs()
+        if len(block_instrs) <= 1:
+            return False
+
+        target_instrs = list()
+        needed = last_instr.get_pstack()
+        for i in range(len(block_instrs) - 2, -1, -1):
+            if needed == 0:
+                break
+            instr = block_instrs[i]
+            needed = needed - instr.get_astack() + instr.get_pstack()
+            if instr.get_opcode() != Opcodes.Nop:
+                target_instrs.append(instr)
+        target_instrs.reverse()
+
+        if needed != 0 or len(target_instrs) != 1:
+            return False
+        const_instr = target_instrs[0]
+        if const_instr.is_branch():
+            return False
+        if not const_instr.get_name().startswith('ldc.') and const_instr.get_opcode() != Opcodes.Ldnull:
+            return False
+
+        const_val = const_instr.get_argument()
+        is_zero = const_val == 0 or const_val is None
+        if last_op in (Opcodes.Brfalse, Opcodes.Brfalse_S):
+            taken = is_zero
+        else:
+            taken = not is_zero
+
+        to_keep = block.get_next()[0 if taken else 1]
+        to_remove = block.get_next()[1 if taken else 0]
+        if to_remove is to_keep:
+            return False
+        block.remove_next(to_remove)
+        operand_index = block.get_instr_index(const_instr)
+        block.remove_instrs(operand_index, operand_index + 1)
+        new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+        new_instr.setup_instr_size(5)
+        new_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
+        new_instr.setup_arguments_from_int32(to_keep.get_start_offset() - last_instr.get_instr_offset() - 5)
+        block.replace_instr(len(block.get_instrs()) - 1, new_instr)
+        return True
     
     def __emit_small_instr_for_big(self, instr):
         if not instr.is_branch() and not instr.is_absolute_jmp():
@@ -1288,8 +1342,14 @@ class GraphAnalyzer:
             if len(block.get_exception_handlers()) != 0 and block not in blocks_order and not block.is_block_start():
                 raise Exception(str(block))
             self.__block_walker(block, blocks_order, deferred_blocks)
-                
-        
+
+        for _dead in list(self.__graph.blocks()):
+            if _dead not in blocks_order and not _dead.is_block_start():
+                for _nxt in list(_dead.get_next()):
+                    _dead.remove_next(_nxt)
+                for _prv in list(_dead.get_prev()):
+                    _dead.remove_prev(_prv)
+                self.__graph.unregister_block(_dead.get_start_offset())
         #check over the blocks, make sure theres a jmp if its needed.
         total_compiled = len(blocks_order)
         #Do an initial offset update to ensure the next loop works.
@@ -1322,10 +1382,13 @@ class GraphAnalyzer:
                 blocks_order.remove(block)
         remove_from_ordered.clear()
         self.__graph.sort_blocks()
-        #do a check to make sure all blocks have a fallthrough if needed.
-        new_blocks_offset = list(self.__graph.blocks())[-1]
-        new_blocks_index = new_blocks_offset.get_start_index() + len(new_blocks_offset.get_instrs())
-        new_blocks_offset = new_blocks_offset.get_start_offset() + new_blocks_offset.get_original_length()
+        new_blocks_offset = 0
+        new_blocks_index = 0
+        for _blk in self.__graph.blocks():
+            _end = _blk.get_start_offset() + _blk.get_current_size()
+            if _end >= new_blocks_offset:
+                new_blocks_offset = _end
+                new_blocks_index = _blk.get_start_index() + len(_blk.get_instrs())
         total_compiled = len(blocks_order)
         new_blocks = list()
         for x in range(total_compiled):
@@ -1585,7 +1648,6 @@ class GraphAnalyzer:
 
 
 class MethodRecompiler:
-
 
     def __init__(self, instrs: list, exception_blocks: list=list(), local_var_sig_tok: int=0):
         self.__localvarsigtok = local_var_sig_tok

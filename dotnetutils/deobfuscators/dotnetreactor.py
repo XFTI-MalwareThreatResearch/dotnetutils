@@ -459,6 +459,7 @@ class NETReactor(Deobfuscator):
     def remove_delegates(self, dotnet, del_method, passed_emu):
         start_offset = -1
         end_offset = -1
+        field_obj = None
         for instr in del_method.disassemble_method():
             if instr.get_name() == 'call':
                 arg = instr.get_argument()
@@ -467,7 +468,8 @@ class NETReactor(Deobfuscator):
                         start_offset = instr.get_instr_offset() + len(instr)
 
             if instr.get_name() == 'stsfld':
-                end_offset = instr.get_instr_offset()
+                end_offset = instr.get_instr_offset() + len(instr)
+                field_obj = instr.get_argument()
 
             if start_offset > 0 and end_offset > 0:
                 break
@@ -476,24 +478,28 @@ class NETReactor(Deobfuscator):
             print('error 1')
             return
         
-        emu_obj = passed_emu.spawn_new_emulator(del_method, start_offset=start_offset, end_offset=end_offset)
-        emu_obj.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_obf_methods, None)
-        emu_obj.setup_method_params([])
-        worked = False
-        try:
-            emu_obj.run_function()
-        except net_exceptions.EmulatorEndExecutionException:
-            worked = True
-        emu_obj.get_appdomain().remove_instr_handler(net_opcodes.Opcodes.Call)
-        if not worked:
-            print('error 2')
-            return
-        
-        tokens_dict = emu_obj.get_stack().pop_obj()
-        if not isinstance(tokens_dict, net_emu_types.DotNetDictionary):
-            print('error 3')
-            return
-        tokens_dict = tokens_dict.as_python_obj()
+        tokens_dict = passed_emu.get_static_field_obj(field_obj.get_rid())
+        if not isinstance(tokens_dict, net_emu_types.DotNetDictionary) or len(tokens_dict) == 0:         
+            emu_obj = passed_emu.spawn_new_emulator(del_method, start_offset=start_offset, end_offset=end_offset)
+            emu_obj.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_obf_methods, None)
+            emu_obj.setup_method_params([])
+            worked = False
+            try:
+                emu_obj.run_function()
+            except net_exceptions.EmulatorEndExecutionException:
+                worked = True
+            emu_obj.get_appdomain().remove_instr_handler(net_opcodes.Opcodes.Call)
+            if not worked:
+                print('error 2')
+                return
+            
+            tokens_dict = emu_obj.get_static_field_obj(field_obj.get_rid())
+            if not isinstance(tokens_dict, net_emu_types.DotNetDictionary):
+                print('error 3')
+                return
+            tokens_dict = tokens_dict.as_python_obj()
+        else:
+            tokens_dict = tokens_dict.as_python_obj()
         
         for field_token, method_token in tokens_dict.items():
             is_virt = method_token & 0x40000000 > 0
@@ -819,14 +825,14 @@ class NETReactor(Deobfuscator):
                         break
         
         for mdef in methods_to_remove:
-            print('removing antitamper method', mdef)
             for xref_rid, xref_offset in mdef.get_xrefs():
                 xfm = dotnet.get_method_by_rid(xref_rid)
-                print('removing call at {} {}'.format(hex(xfm.get_token()), hex(xref_offset)))
-
                 dis = xfm.disassemble_method()
                 instr = dis.get_instr_at_offset(xref_offset)
                 dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
+
+    def clean_code(self, dotnet):
+        net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
 
     def deobfuscate(self, dotnet, ctx):
         delegate_method = self.identify_delegate_method(dotnet)
@@ -853,7 +859,8 @@ class NETReactor(Deobfuscator):
         self.remove_string_obfuscation(emu, dotnet, string_method)
         print('removing antitamper method calls.')
         self.remove_antitamper_antidebug_method(dotnet)
-
+        print('Cleaning Code')
+        self.clean_code(dotnet)
         print('Cleaning up names')
         #net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
