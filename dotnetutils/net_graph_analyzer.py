@@ -712,10 +712,22 @@ class GraphAnalyzer:
             if first_start_offset == -1:
                 #This case happens if the switch doesnt have a reference back to the start math block.
                 #See if we can pull it from here.
+                if len(math_block.get_next()) == 1:
+                    #Handle cases where theres a br.s that just goes to the next offset.
+                    last_instr = math_block.get_last_instr()
+                    if last_instr is not None and last_instr.is_absolute_jmp():
+                        total_offset = last_instr.get_instr_offset() + len(last_instr) + last_instr.get_argument()
+                        if total_offset == math_block.get_next()[0].get_start_offset() and math_block.get_next()[0] == start_block:
+                            math_block = math_block.get_next()[0]
+
+                needed = 1
                 for x in range(len(math_block.get_instrs()) - 1, - 1, - 1):
                     instr = math_block.get_instrs()[x]
-                    if instr.get_opcode() not in self.MATH_OPS:
-                        first_start_offset = instr.get_instr_offset() + len(instr)
+                    added = instr.get_astack()
+                    pulled = instr.get_pstack()
+                    needed = needed - added + pulled
+                    if needed == 0:
+                        first_start_offset = instr.get_instr_offset()
                         break
                 #at this point its kinda a guess - some refinement could probably be used here.
 
@@ -1001,6 +1013,7 @@ class GraphAnalyzer:
                     is_obfuscated_at_all = True
                     out.validate_blocks()
                     self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
+                    out.update_offsets()
                     out.validate_blocks()
                     break
 
