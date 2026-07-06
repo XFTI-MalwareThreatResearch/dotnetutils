@@ -5078,7 +5078,9 @@ cdef class DotNetEmulator:
         if net_utils.is_cortype_unsigned(<CorElementType>cell.tag):
             return new_cell
         else:
-            if cell.tag == CorElementType.ELEMENT_TYPE_I:
+            if cell.tag == CorElementType.ELEMENT_TYPE_R4 or cell.tag == CorElementType.ELEMENT_TYPE_R8:
+                return new_cell
+            elif cell.tag == CorElementType.ELEMENT_TYPE_I:
                 new_cell.tag = CorElementType.ELEMENT_TYPE_U
                 new_cell.cli_tag = CorElementType.ELEMENT_TYPE_U
             elif cell.tag == CorElementType.ELEMENT_TYPE_I1:
@@ -5116,7 +5118,9 @@ cdef class DotNetEmulator:
         if net_utils.is_cortype_signed(<CorElementType>cell.tag):
             return new_cell
         else:
-            if cell.tag == CorElementType.ELEMENT_TYPE_U:
+            if cell.tag == CorElementType.ELEMENT_TYPE_R4 or cell.tag == CorElementType.ELEMENT_TYPE_R8:
+                return new_cell
+            elif cell.tag == CorElementType.ELEMENT_TYPE_U:
                 new_cell.tag = CorElementType.ELEMENT_TYPE_I
                 new_cell.cli_tag = CorElementType.ELEMENT_TYPE_I
             elif cell.tag == CorElementType.ELEMENT_TYPE_U1:
