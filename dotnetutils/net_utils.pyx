@@ -163,3 +163,12 @@ cpdef net_sigs.CorLibTypeSig get_cor_type_from_name(bytes type_name):
     elif type_name == b'System.Object':
         return net_sigs.get_CorSig_Object()
     return None
+
+cpdef bytes sevenbit_encode_integer(uint32_t number):
+    cdef bytearray out = bytearray()
+    cdef uint32_t v = number & 0xFFFFFFFF
+    while v >= 0x80:
+        out.append((v & 0x7F) | 0x80)
+        v >>= 7
+    out.append(v & 0x7F)
+    return bytes(out)
