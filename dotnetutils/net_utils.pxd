@@ -22,3 +22,5 @@ cdef bint is_cortype_unsigned(CorElementType etype)
 cdef uint32_t align_32(uint32_t val, uint32_t align)
 
 cpdef bytes compress_integer(uint32_t number)
+
+cpdef bytes sevenbit_encode_integer(uint32_t number)

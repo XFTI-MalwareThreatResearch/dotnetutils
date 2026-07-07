@@ -5,7 +5,7 @@
 import io
 import re
 from dotnetutils import net_exceptions
-from dotnetutils.net_utils import compress_integer
+from dotnetutils.net_utils import sevenbit_encode_integer
 from libc.stdint cimport uint64_t
 import binascii
 
@@ -420,10 +420,10 @@ class DotNetResourceSet:
 
         class_name_section = bytearray()
         rt = self.__reader_type_name.encode('utf-8')
-        class_name_section.extend(compress_integer(<uint32_t>len(rt)))
+        class_name_section.extend(sevenbit_encode_integer(<uint32_t>len(rt)))
         class_name_section.extend(rt)
         rst = self.__reader_set_type_name.encode('utf-8')
-        class_name_section.extend(compress_integer(<uint32_t>len(rst)))
+        class_name_section.extend(sevenbit_encode_integer(<uint32_t>len(rst)))
         class_name_section.extend(rst)
 
         result.extend(int.to_bytes(0xBEEFCACE, 4, 'little'))
@@ -435,7 +435,7 @@ class DotNetResourceSet:
         result.extend(int.to_bytes(len(self.__user_types), 4, 'little'))
         for user_type in self.__user_types:
             ut = user_type.encode('utf-8')
-            result.extend(compress_integer(<uint32_t>len(ut)))
+            result.extend(sevenbit_encode_integer(<uint32_t>len(ut)))
             result.extend(ut)
         new_offset = (len(result) + 7) & ~7
         result.extend(b'\x00' * (new_offset - len(result)))
@@ -466,7 +466,7 @@ class DotNetResourceSet:
         for i in order:
             name_entry_offset.append(len(name_section))
             bname = self.__resource_infos[i].name.encode('utf-16le')
-            name_section.extend(compress_integer(<uint32_t>len(bname)))
+            name_section.extend(sevenbit_encode_integer(<uint32_t>len(bname)))
             name_section.extend(bname)
             name_section.extend(int.to_bytes(rel_data_offset[i], 4, 'little'))
 
