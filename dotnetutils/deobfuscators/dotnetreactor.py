@@ -819,11 +819,8 @@ class NETReactor(Deobfuscator):
                         break
         
         for mdef in methods_to_remove:
-            print('removing antitamper method', mdef)
             for xref_rid, xref_offset in mdef.get_xrefs():
                 xfm = dotnet.get_method_by_rid(xref_rid)
-                print('removing call at {} {}'.format(hex(xfm.get_token()), hex(xref_offset)))
-
                 dis = xfm.disassemble_method()
                 instr = dis.get_instr_at_offset(xref_offset)
                 dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))

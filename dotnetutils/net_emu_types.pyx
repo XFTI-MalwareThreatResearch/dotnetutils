@@ -11224,6 +11224,69 @@ cdef class DotNetRijandaelDecryptor(DotNetICryptoTransform):
 
         return self.get_emulator_obj().pack_object(array)
 
+cdef class DotNetOSPlatform(DotNetObject):
+    def __init__(self, net_emulator.DotNetEmulator emu, OSPlatformType plattype):
+        DotNetObject.__init__(self, emu)
+        self.__platform_type = plattype
+
+    @staticmethod
+    cdef StackCell get_Linux(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_current_emulator().pack_object(DotNetOSPlatform(app_domain.get_current_emulator(), OSPlatformType.LINUX))
+
+    @staticmethod
+    cdef StackCell get_Windows(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_current_emulator().pack_object(DotNetOSPlatform(app_domain.get_current_emulator(), OSPlatformType.WINDOWS))
+
+    @staticmethod
+    cdef StackCell get_OSX(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_current_emulator().pack_object(DotNetOSPlatform(app_domain.get_current_emulator(), OSPlatformType.OSX))
+
+    @staticmethod
+    cdef StackCell get_Android(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_current_emulator().pack_object(DotNetOSPlatform(app_domain.get_current_emulator(), OSPlatformType.ANDROID))
+
+    @staticmethod
+    cdef StackCell get_FreeBSD(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        return app_domain.get_current_emulator().pack_object(DotNetOSPlatform(app_domain.get_current_emulator(), OSPlatformType.FREEBSD))
+
+    @staticmethod
+    cdef StackCell Create(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        if nparams != 1 or params[0].tag != CorElementType.ELEMENT_TYPE_STRING or params[0].item.ref == NULL:
+            raise net_exceptions.InvalidArgumentsException()
+
+        cdef DotNetString dnstring = <DotNetString>params[0].item.ref
+        cdef str strdata = dnstring.get_str_data_as_str()
+
+        if strdata == 'LINUX':
+            return DotNetOSPlatform.get_Linux(app_domain.get_current_emulator(), NULL, 0)
+        elif strdata == 'WINDOWS':
+            return DotNetOSPlatform.get_Windows(app_domain.get_current_emulator(), NULL, 0)
+        elif strdata == 'OSX':
+            return DotNetOSPlatform.get_OSX(app_domain.get_current_emulator(), NULL, 0)
+        elif strdata == 'ANDROID':
+            return DotNetOSPlatform.get_Android(app_domain.get_current_emulator(), NULL, 0)
+        elif strdata == 'FREEBSD':
+            return DotNetOSPlatform.get_FreeBSD(app_domain.get_current_emulator(), NULL, 0)
+        raise net_exceptions.InvalidArgumentsException()
+
+
+    cdef OSPlatformType get_platform_type(self):
+        return self.__platform_type
+
+cdef class DotNetRuntimeInformation(DotNetObject):
+
+    @staticmethod
+    cdef StackCell IsOSPlatform(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        if nparams != 1 or check_object(params[0]) or params[0].item.ref == NULL:
+            raise net_exceptions.InvalidArgumentsException()
+        cdef DotNetObject obj = <DotNetObject>params[0].item.ref
+        cdef DotNetOSPlatform plat = None
+        if isinstance(obj, DotNetOSPlatform):
+            plat = <DotNetOSPlatform>obj
+        else:
+            raise net_exceptions.InvalidArgumentsException()
+        return app_domain.get_current_emulator().pack_bool(plat.get_platform_type() == OSPlatformType.WINDOWS)
+
 cdef DotNetObject New_RijandaelManaged(net_emulator.DotNetEmulator emulator_obj):
     return DotNetRijandaelManaged(emulator_obj)
 
@@ -11478,4 +11541,18 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[58].name = 'System.Reflection.Module.op_Eq
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[58].func_ptr = <static_func_type>&DotNetModule.op_Equality
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[59].name = 'System.String.op_Equality'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[59].func_ptr = <static_func_type>&DotNetString.op_Equality
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[60].name = 'System.Runtime.InteropServices.OSPlatform.get_Linux'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[60].func_ptr = <static_func_type>&DotNetOSPlatform.get_Linux
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[61].name = 'System.Runtime.InteropServices.OSPlatform.get_Windows'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[61].func_ptr = <static_func_type>&DotNetOSPlatform.get_Windows
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[62].name = 'System.Runtime.InteropServices.OSPlatform.get_FreeBSD'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[62].func_ptr = <static_func_type>&DotNetOSPlatform.get_FreeBSD
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[63].name = 'System.Runtime.InteropServices.OSPlatform.get_Android'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[63].func_ptr = <static_func_type>&DotNetOSPlatform.get_Android
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[64].name = 'System.Runtime.InteropServices.OSPlatform.get_OSX'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[64].func_ptr = <static_func_type>&DotNetOSPlatform.get_OSX
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[65].name = 'System.Runtime.InteropServices.OSPlatform.Create'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[65].func_ptr = <static_func_type>&DotNetOSPlatform.Create
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[66].name = 'System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[66].func_ptr = <static_func_type>&DotNetRuntimeInformation.IsOSPlatform
 
