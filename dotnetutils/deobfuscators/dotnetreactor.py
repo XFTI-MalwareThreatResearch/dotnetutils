@@ -456,7 +456,7 @@ class NETReactor(Deobfuscator):
         print('Done decrypting {} methods'.format(amt_entries))
         return True
     
-    def remove_delegates(self, dotnet, del_method, passed_emu):
+    def remove_delegates(self, dotnet, del_method, passed_emu, tokens_dict=None):
         start_offset = -1
         end_offset = -1
         field_obj = None
@@ -476,10 +476,12 @@ class NETReactor(Deobfuscator):
 
         if start_offset == -1 or end_offset == -1:
             print('error 1')
-            return
+            return None
         
-        tokens_dict = passed_emu.get_static_field_obj(field_obj.get_rid())
-        if not isinstance(tokens_dict, net_emu_types.DotNetDictionary) or len(tokens_dict) == 0:         
+        
+        if tokens_dict is None:
+            tokens_dict = passed_emu.get_static_field_obj(field_obj.get_rid())
+            print('emulating new tokens_dict')  
             emu_obj = passed_emu.spawn_new_emulator(del_method, start_offset=start_offset, end_offset=end_offset)
             emu_obj.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_obf_methods, None)
             emu_obj.setup_method_params([])
@@ -499,7 +501,7 @@ class NETReactor(Deobfuscator):
                 return
             tokens_dict = tokens_dict.as_python_obj()
         else:
-            tokens_dict = tokens_dict.as_python_obj()
+            print('reusing old tokens_dict')
         
         for field_token, method_token in tokens_dict.items():
             is_virt = method_token & 0x40000000 > 0
@@ -562,7 +564,7 @@ class NETReactor(Deobfuscator):
                 #patch and replace instrs
                 dotnet.patch_instruction(xfm, b'\x00' * len(xfm_instr), xfm_instr.get_instr_offset(), len(xfm_instr))
                 dotnet.patch_instruction(xfm, patch_bytes, invoke_func.get_instr_offset(), len(invoke_func))
-
+        return tokens_dict
     def remove_junk_static_fields(self, dotnet, passed_emu):
         #TODO: Need to account for static fields that are used in other functions (specifically the non integer ones.)
         static_field_types = list()
@@ -838,7 +840,7 @@ class NETReactor(Deobfuscator):
         delegate_method = self.identify_delegate_method(dotnet)
         print('delegate method identified as {}'.format(delegate_method))
         emu = net_emulator.DotNetEmulator(delegate_method)
-        self.remove_delegates(dotnet, delegate_method, emu)
+        tokens_dict = self.remove_delegates(dotnet, delegate_method, emu)
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
         is_encrypted = self.fix_encrypted_methods(dotnet, emu)
@@ -846,7 +848,7 @@ class NETReactor(Deobfuscator):
         if is_encrypted:
             #remove delegatges again for decrypted methods.
             print('doing a second remove delegates pass')
-            self.remove_delegates(dotnet, delegate_method, emu)
+            self.remove_delegates(dotnet, delegate_method, emu, tokens_dict)
         print('Removing junk static fields')
         self.remove_junk_static_fields(dotnet, emu)
         rebuilder = net_rebuilder.NetRebuilder(dotnet)

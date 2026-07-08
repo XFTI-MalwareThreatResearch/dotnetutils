@@ -8714,8 +8714,10 @@ cdef class DotNetEmulator:
                 should_do_normal_handler = False
                 instr_handler = app_domain.get_instr_handler(self.instr.get_opcode())
                 if instr_handler is None:
-                    should_do_normal_handler = True
-                else:
+                    instr_handler = app_domain.get_instr_handler(Opcodes.Invalid)
+                    if instr_handler is None:
+                        should_do_normal_handler = True
+                if not should_do_normal_handler and instr_handler is not None:
                     should_do_normal_handler = instr_handler[0](self, instr_handler[1])
                     do_normal_offsets = True
                 
