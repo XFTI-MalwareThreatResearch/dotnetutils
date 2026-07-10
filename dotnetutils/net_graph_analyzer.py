@@ -1,5 +1,6 @@
 from dotnetutils import net_row_objects, net_graphing, net_exceptions, net_emu_types, net_emulator, net_structs
 from dotnetutils.net_opcodes import Opcodes
+from dotnetutils.net_graphing import FunctionBlock
 
 class GraphAnalyzer:
 
@@ -12,7 +13,11 @@ class GraphAnalyzer:
     ALLOWED_STACK_OPS = LDLOC + [Opcodes.Br, Opcodes.Pop, Opcodes.Br_S, Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldloc, Opcodes.Ldloc_S, Opcodes.Dup, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
     ALLOWED_SWITCH_LOOP_INSTRS = LDLOC + STLOC + BRANCHES + MATH_OPS + ALLOWED_STACK_OPS
     LDC_INSTRS = [Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
-    
+    ALLOWED_MODIFIERS = LDC_INSTRS + STLOC + LDLOC
+    ALLOWED_MODIFIER_INSTRS = ALLOWED_MODIFIERS + MATH_OPS + [Opcodes.Dup, Opcodes.Nop]
+
+
+
     def __init__(self, method_obj: net_row_objects.MethodDefOrRef, func_graph: net_graphing.FunctionGraph):
         self.__graph = func_graph
         self.__disasm = self.__graph.get_disassembler()
@@ -159,6 +164,107 @@ class GraphAnalyzer:
         for x in range(len(instrs_result)):
             block.insert_instr(start_index + x + amt_deleted, instrs_result[x])
         return len(instrs_result) - amt_instrs
+    
+    def __get_all_paths_to_block(self, current_block: FunctionBlock, on_path: set):
+        if len(current_block.get_prev()) == 0:
+            return [[current_block]]
+        results = list()
+        on_path = on_path | {current_block}
+        for prev in current_block.get_prev():
+            if prev in on_path:
+                continue
+            for sub in self.__get_all_paths_to_block(prev, on_path):
+                results.append(sub + [current_block])
+        if not results:
+            return [[current_block]]
+        return results
+
+    def get_all_paths_to_block(self, to_block: FunctionBlock):
+        return self.__get_all_paths_to_block(to_block, set())
+    
+    def __find_var_sets(self, path: list, var_no: int):
+        for x in range(len(path)):
+            blk = path[x]
+            instrs = blk.get_instrs()
+            for y in range(len(instrs)):
+                instr = instrs[y]
+                if instr.get_opcode() in self.STLOC:
+                    if instr.get_argument() == var_no:
+                        return instr, blk, x
+        return None, None, None
+
+    
+    def new_switch_detection(self, switch_block: FunctionBlock):
+        if switch_block.get_last_instr() is None or switch_block.get_last_instr().get_opcode() != Opcodes.Switch:
+            return False, [], [], []
+        switch_paths = self.get_all_paths_to_block(switch_block)
+        all_modifiers = list()
+        all_src_instrs = list()
+        for switch_path in switch_paths:
+            switch_path.reverse()
+            print('Checking switch path {}'.format(switch_path))
+            first_blk = switch_path[0]
+            if first_blk.get_last_instr() is None:
+                return False, [], [], []
+            last_instr = first_blk.get_last_instr()
+            if last_instr.get_opcode() != Opcodes.Switch:
+                return False, [], [], []
+            modifier_instrs = list()
+            src_instr, src_blk, src_blk_index = self.__find_value_source(switch_path, last_instr, modifier_instrs)
+            if src_instr is None:
+                return False, [], [], []
+            src_op = src_instr.get_opcode()
+
+            while src_op in self.LDLOC:
+                var_no = src_instr.get_argument()
+                var_set_instr, var_set_blk, var_blk_index = self.__find_var_sets(switch_path[src_blk_index:], var_no)
+                if var_set_instr is None:
+                    return False, [], [], []
+                child_modifiers = list()
+                src_instr, src_blk, src_blk_index = self.__find_value_source(switch_path[var_blk_index:], var_set_instr, child_modifiers)
+                if src_instr is None:
+                    return False, [], [], []
+                src_op = src_instr.get_opcode()
+                modifier_instrs = child_modifiers + modifier_instrs
+            if src_op not in self.LDC_INSTRS:
+                return False, [], [], []
+            all_modifiers.append(modifier_instrs)
+            all_src_instrs.append(src_instr)
+        return True, switch_paths, all_modifiers, all_src_instrs
+
+    def __find_value_source(self, path: list, start_instr, modifier_instrs: list):
+        started = False
+        needed = 1
+        for x in range(0, len(path)):
+            blk = path[x]                
+            instrs = blk.get_instrs()
+            for y in range(len(instrs) - 1, -1, -1):
+                instr = instrs[y]
+                ins_op = instr.get_opcode()
+                if instr == start_instr:
+                    started = True
+                elif started:
+                    added = instr.get_astack()
+                    pulled = instr.get_pstack()
+                    if needed <= added:
+                        modifier_instrs.append(instr)
+                        if ins_op not in self.ALLOWED_MODIFIER_INSTRS:
+                            return None, None, None
+                    needed = needed - added + pulled
+                    if needed == 0:
+                        if ins_op in self.ALLOWED_MODIFIERS:
+                            return instr, blk, x
+                        return None, None, None
+        return None, None, None
+
+
+
+
+        
+    
+
+    def testing_switch_detection(self, block: FunctionBlock):
+        pass
 
     """
     An attempt at control flow deobfuscation.
