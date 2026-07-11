@@ -202,7 +202,6 @@ class GraphAnalyzer:
         all_src_instrs = list()
         for switch_path in switch_paths:
             switch_path.reverse()
-            print('Checking switch path {}'.format(switch_path))
             first_blk = switch_path[0]
             if first_blk.get_last_instr() is None:
                 return False, [], [], []
@@ -214,6 +213,7 @@ class GraphAnalyzer:
             if src_instr is None:
                 return False, [], [], []
             src_op = src_instr.get_opcode()
+            modifier_instrs.reverse()
 
             while src_op in self.LDLOC:
                 var_no = src_instr.get_argument()
@@ -225,42 +225,173 @@ class GraphAnalyzer:
                 if src_instr is None:
                     return False, [], [], []
                 src_op = src_instr.get_opcode()
-                modifier_instrs = child_modifiers + modifier_instrs
+                child_modifiers.reverse()
+                modifier_instrs = child_modifiers + [var_set_instr] + modifier_instrs
             if src_op not in self.LDC_INSTRS:
                 return False, [], [], []
             all_modifiers.append(modifier_instrs)
             all_src_instrs.append(src_instr)
         return True, switch_paths, all_modifiers, all_src_instrs
 
+    def new_switch_deob(self, switch_block: FunctionBlock):
+        if switch_block is None:
+            raise Exception()
+        is_obf, switch_paths, all_modifiers, all_src_instrs = self.new_switch_detection(switch_block)
+        if not is_obf:
+            return None
+
+        if not (len(switch_paths) == len(all_modifiers) == len(all_src_instrs)):
+            raise Exception()
+        
+        path_values = list()
+        
+        switch_paths_by_value = dict()
+        for switch_path, modifiers, src_instrs in zip(switch_paths, all_modifiers, all_src_instrs):
+            emu = net_emulator.DotNetEmulator(self.__method, force_instrs=modifiers, dont_execute_cctor=True)
+            emu.run_function()
+            num = emu.get_stack().pop_obj()
+            if not isinstance(num, net_emu_types.DotNetNumber):
+                raise Exception()
+            num = num.as_python_obj()
+            path_values.append(num)
+            if num not in switch_paths_by_value:
+                switch_paths_by_value[num] = list()
+            switch_paths_by_value[num].append((switch_path, modifiers, src_instrs))
+
+        largest_path = 0
+        all_paths = list(zip(switch_paths, path_values, all_modifiers))
+        for num, switch_infos in switch_paths_by_value.items():
+            for switch_info in switch_infos:
+                switch_path, modifiers, src_instrs = switch_info
+                largest_path = max(len(switch_path), largest_path)
+        #now extend the paths to be the same size
+        for path, n, m in all_paths:
+            path.extend([None] * (len(path) - largest_path))
+        path_diverges = dict()
+        skip_paths = set()
+        for x in range(largest_path):
+            for y in range(len(all_paths)):
+                curr_path, curr_num, modifiers = all_paths[y]
+                if len(curr_path) <= x:
+                    continue
+
+                is_unique = True
+                options = switch_paths_by_value[curr_num]
+                curr_blk = curr_path[x]
+                for switch_path, other_num, src_instrs in all_paths:
+                    if other_num != curr_num and curr_blk in switch_path[x:]:
+                        is_unique = False
+                        break
+
+                if is_unique and y not in path_diverges:
+                    path_diverges[y] = x
+        if len(path_diverges) != len(all_paths):
+            raise Exception()
+        new_graph = self.__graph.duplicate()
+        new_switch_block = new_graph.get_block_by_offset(switch_block.get_start_offset())
+        for path_no, block_index in path_diverges.items():
+            curr_path, curr_num, modifier_instrs = all_paths[path_no]
+            target = path_values[path_no]
+            target_block = curr_path[block_index]
+            new_target = new_graph.get_block_by_offset(target_block.get_start_offset())
+
+            if len(new_target.get_next()) == 2 and new_target == new_switch_block:
+                nxts = new_target.get_next()
+                if nxts[0] == nxts[1]:
+                    last_instr_idx = len(new_target.get_instrs()) - 1
+                    last_instr = new_target.get_last_instr()
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                    new_instr.setup_instr_size(5)
+                    new_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
+                    new_instr.setup_arguments_from_int32(nxts[0].get_start_offset() - last_instr.get_instr_offset() - 5)
+                    new_target.replace_instr(last_instr_idx, new_instr)
+                    next_block = nxts[0]
+                    new_target.clear_next()
+                    new_target.add_next(next_block)
+                    break
+
+            if len(new_target.get_next()) != 1:
+                raise Exception()
+
+            next_block = new_graph.get_block_by_offset(switch_block.get_next()[target].get_start_offset())
+
+            target_prev = new_graph.get_block_by_offset(curr_path[block_index - 1].get_start_offset())
+            if new_target.has_next(target_prev):
+                new_target.replace_next(target_prev, next_block)
+            else:
+                if new_switch_block.has_next(next_block):
+                    new_switch_block.remove_next(next_block)
+        
+        
+        changed = True
+        while changed:
+            changed = False
+            to_remove = list()
+            for block in new_graph.blocks():
+                last_instr = block.get_last_instr()
+                if last_instr is None:
+                    nxts = list(block.get_next())
+                    prvs = list(block.get_prev())
+                    if len(prvs) == len(nxts) <= 0:
+                        if len(nxts) == 1:
+                            prev = prvs[0]
+                            nxt = nxts[0]
+                            prev.replace_next(block, nxt)
+                            block.remove_next(nxt)
+                        to_remove.append(block)
+                    else:
+                        raise Exception()
+                else:
+                    if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow):
+                        nxts = list(block.get_next())
+                        if len(nxts) == 0:
+                            to_remove.append(block)
+                            for prv in block.get_prev():
+                                prv.remove_next(block)
+                    if not block.is_block_start():
+                        if len(block.get_prev()) == 0:
+                            for nxt in list(block.get_next()):
+                                block.remove_next(nxt)
+                            to_remove.append(block)
+            for block in to_remove:
+                changed = True
+                print('unregistering ', block, block.get_last_instr(), block.get_next())
+                new_graph.unregister_block(block.get_start_offset())
+        new_graph.validate_blocks()
+        new_analyzer = GraphAnalyzer(self.__method, new_graph)
+        new_analyzer.repair_blocks()
+        return new_graph
+
     def __find_value_source(self, path: list, start_instr, modifier_instrs: list):
         started = False
-        needed = 1
-        for x in range(0, len(path)):
-            blk = path[x]                
+        live = []
+        for x in range(len(path)):
+            blk = path[x]
             instrs = blk.get_instrs()
             for y in range(len(instrs) - 1, -1, -1):
                 instr = instrs[y]
                 ins_op = instr.get_opcode()
                 if instr == start_instr:
                     started = True
-                elif started:
-                    added = instr.get_astack()
-                    pulled = instr.get_pstack()
-                    if needed <= added:
-                        modifier_instrs.append(instr)
-                        if ins_op not in self.ALLOWED_MODIFIER_INSTRS:
-                            return None, None, None
-                    needed = needed - added + pulled
-                    if needed == 0:
-                        if ins_op in self.ALLOWED_MODIFIERS:
-                            return instr, blk, x
+                    live.append(True)          
+                    continue
+                if not started:
+                    continue
+                added = instr.get_astack()
+                pulled = instr.get_pstack()
+                outputs = live[len(live) - added:] if added else []
+                del live[len(live) - added:]
+                in_slice = any(outputs)            
+                if in_slice:
+                    modifier_instrs.append(instr)
+                    if ins_op not in self.ALLOWED_MODIFIER_INSTRS:
                         return None, None, None
+                live.extend([in_slice] * pulled)  
+                if not any(live):
+                    if in_slice and ins_op in self.ALLOWED_MODIFIERS:
+                        return instr, blk, x
+                    return None, None, None
         return None, None, None
-
-
-
-
-        
     
 
     def testing_switch_detection(self, block: FunctionBlock):
@@ -1534,8 +1665,6 @@ class GraphAnalyzer:
         return None, None
 
     def simplify_control_flow(self, max_attempts=-1):
-        if self.__method.get_token() != 0x60000ee:
-            return None
         graph = self.__graph
         is_obfuscated_at_all = False
         attempts = 0
@@ -1563,15 +1692,13 @@ class GraphAnalyzer:
                     start_offsets = list()
                     bad_instrs = set()
                     print('Checking if Block {} {} is target switch'.format(block, block.get_last_instr()))
-                    is_target, is_dnr = self.__is_target_switch(block, start_offsets, bad_instrs)
-                    if is_target:
-                        print('block is target')
-                        graph.validate_blocks()
-                        out = graph.duplicate()
+                    new_graph = self.new_switch_deob(block)
+                    if new_graph is not None:
+                        print('block is switch')
+                        new_graph.validate_blocks()
+                        out = new_graph
                         is_obfuscated = True
                         is_obfuscated_at_all = True
-                        out.validate_blocks()
-                        self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs, is_dnr)
                         out.validate_blocks()
                         break
 
@@ -2007,7 +2134,7 @@ class GraphAnalyzer:
             last_instr = blk.get_last_instr()
             #I think this should work for try clauses as well but not sure yet.
             if not last_instr.is_absolute_jmp() and not last_instr.is_branch():
-                if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Endfinally, Opcodes.Rethrow):
+                if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow):
                     is_valid_last = False
             if not is_valid_last:
                 if len(blk.get_next()) != 1:

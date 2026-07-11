@@ -4924,7 +4924,7 @@ cdef class DotNetEmulator:
         is_destroyed (bint): has the emulator already been deallocated?
     """
 
-    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False, bint init_open_generics_as_object=False):
+    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False, bint init_open_generics_as_object=False, list force_instrs=None):
         """ Constructor for Emulator objects.
 
         Params:
@@ -4955,6 +4955,16 @@ cdef class DotNetEmulator:
         """
         if method_obj is None:
             raise net_exceptions.InvalidArgumentsException()
+
+        if force_instrs is not None:
+            for instr in force_instrs:
+                if instr.get_opcode() in (Opcodes.Call, Opcodes.Callvirt, Opcodes.Ldarg, Opcodes.Ldarg_0, Opcodes.Ldarg_1, Opcodes.Ldarg_2, Opcodes.Ldarg_3, Opcodes.Ldarg_S, Opcodes.Ldarga_S):
+                    raise Exception('Banned instr in force_instrs')
+                if instr.is_branch():
+                    raise Exception('Banned instr in force_instrs')
+                Py_INCREF(instr)
+                self.force_instrs.push_back(<PyObject*>instr)
+
         self.spec_obj = None
         self.is_destroyed = False
         self.__init_open_generics_as_object = init_open_generics_as_object
@@ -8646,6 +8656,12 @@ cdef class DotNetEmulator:
         cdef bint should_do_normal_handler = False
         cdef tuple instr_handler = None
         cdef StackCell test_field
+        cdef bint use_force_instrs = self.force_instrs.size() > 0
+        cdef unsigned int method_size = 0
+        if use_force_instrs:
+            method_size = <unsigned int> self.force_instrs.size()
+        else:
+            method_size = <unsigned int>len(self.disasm_obj)
         if self.end_method_rid > 0:
             if isinstance(self.method_obj, net_row_objects.MethodDef) and self.method_obj.get_rid() == self.end_method_rid:
                 should_check_offset = True
@@ -8689,13 +8705,18 @@ cdef class DotNetEmulator:
             if self.print_debug:
                 self.print_current_state()
 
-        while self.current_eip < len(self.disasm_obj):
+        while self.current_eip < method_size:
             if PyErr_CheckSignals() == -1:
                 raise net_exceptions.EmulatorExecutionException(self, 'PyErr_CheckSignals() returned -1')
 
 
             self.should_break = False
-            self.instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
+            if not use_force_instrs:
+                self.instr = self.disasm_obj.get_instr_at_offset(self.current_offset)
+            else:
+                if self.current_eip >= self.force_instrs.size():
+                    raise Exception('Error current_eip >= force_instr.size()')
+                self.instr = <net_cil_disas.Instruction>self.force_instrs[self.current_eip]
             if self.instr is None:
                 raise net_exceptions.InvalidArgumentsException()
             global _cur_emu
@@ -8791,6 +8812,7 @@ cdef class DotNetEmulator:
         """
         cdef StackCell obj
         cdef unsigned int key = 0
+        cdef net_cil_disas.Instruction instr
         for key in range(self.localvars.size()):
             obj = self.localvars[key]
             self.deref_cell(obj) #Remove local var ref
@@ -8806,3 +8828,7 @@ cdef class DotNetEmulator:
                 self.dealloc_cell(self.__method_params[key])
             free(self.__method_params)
             self.__method_params = NULL
+        if self.force_instrs.size() > 0:
+            for key in range(self.force_instrs.size()):
+                Py_XDECREF(<PyObject*>self.force_instrs[key])
+            self.force_instrs.clear()

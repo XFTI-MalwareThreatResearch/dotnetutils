@@ -171,7 +171,7 @@ cdef class DotNetEmulator:
     """
     This class is capable of emulating most .NET CIL instructions.
     """
-
+    cdef vector[PyObject*] force_instrs
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.MethodSpec spec_obj
     cdef net_cil_disas.MethodDisassembler disasm_obj
