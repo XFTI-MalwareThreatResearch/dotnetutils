@@ -321,12 +321,28 @@ class GraphAnalyzer:
             else:
                 if new_switch_block.has_next(next_block):
                     new_switch_block.remove_next(next_block)
-        
-        
+
+        #for now make the assumption that all modifier instructions can be removed, however that isnt guaranteed to be the case.
+        to_remove_instrs = dict()
+        if new_switch_block.get_last_instr() is not None and new_switch_block.get_last_instr().get_opcode() == Opcodes.Switch:
+            to_remove_instrs[new_switch_block.get_last_instr().get_instr_offset()] = new_switch_block.get_last_instr()
+        for modifiers in all_modifiers:
+            for modifier in modifiers:
+                to_remove_instrs[modifier.get_instr_offset()] = modifier
+
+        for block in new_graph.blocks():
+            instrs = list(block.get_instrs())
+            actual_index = 0
+            for x in range(len(instrs)):
+                instr = instrs[x]
+                if instr.get_instr_offset() in to_remove_instrs:
+                    block.remove_instrs(actual_index,actual_index+1)
+                    continue
+                actual_index += 1
         changed = True
         while changed:
             changed = False
-            to_remove = list()
+            to_remove = set()
             for block in new_graph.blocks():
                 last_instr = block.get_last_instr()
                 if last_instr is None:
@@ -338,25 +354,44 @@ class GraphAnalyzer:
                             nxt = nxts[0]
                             prev.replace_next(block, nxt)
                             block.remove_next(nxt)
-                        to_remove.append(block)
+                        to_remove.add(block)
                     else:
-                        raise Exception()
+                        if len(nxts) == 1:
+                            if block.is_block_start():
+                                nxt = nxts[0]
+                                block.merge_block(nxt)
+                                for nxtblk in list(nxt.get_next()):
+                                    block.add_next(nxtblk)
+                                nxt.clear_next()
+                                to_remove.add(nxt)
+                            else:
+                                nxt = nxts[0]
+                                for prev in prvs:
+                                    prev.replace_next(block, nxt)
+                                to_remove.add(block)
+                        elif len(prvs) == 0 and not block.is_block_start():
+                            block.clear_next()
+                            to_remove.add(block)
+                        else:   
+                            print(block, nxts, prvs)
+                            raise Exception()
                 else:
                     if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow):
                         nxts = list(block.get_next())
                         if len(nxts) == 0:
-                            to_remove.append(block)
+                            to_remove.add(block)
                             for prv in block.get_prev():
                                 prv.remove_next(block)
                     if not block.is_block_start():
                         if len(block.get_prev()) == 0:
                             for nxt in list(block.get_next()):
                                 block.remove_next(nxt)
-                            to_remove.append(block)
+                            to_remove.add(block)
             for block in to_remove:
                 changed = True
                 print('unregistering ', block, block.get_last_instr(), block.get_next())
                 new_graph.unregister_block(block.get_start_offset())
+        new_graph.repopulate_prevs()
         new_graph.validate_blocks()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
         new_analyzer.repair_blocks()
@@ -2345,6 +2380,7 @@ class GraphAnalyzer:
 
 
 class MethodRecompiler:
+
 
     def __init__(self, instrs: list, exception_blocks: list=list(), local_var_sig_tok: int=0):
         self.__localvarsigtok = local_var_sig_tok
