@@ -239,6 +239,10 @@ class GraphAnalyzer:
         is_obf, switch_paths, all_modifiers, all_src_instrs = self.new_switch_detection(switch_block)
         if not is_obf:
             return None
+        print('Dumping graph relations pre deob')
+        self.__graph.dump_block_relations()
+        print('dumping graph root pre deob')
+        self.__graph.print_root()
 
         if not (len(switch_paths) == len(all_modifiers) == len(all_src_instrs)):
             raise Exception()
@@ -309,17 +313,16 @@ class GraphAnalyzer:
                     new_target.clear_next()
                     new_target.add_next(next_block)
                     break
-
             if len(new_target.get_next()) != 1:
                 raise Exception()
-
             next_block = new_graph.get_block_by_offset(switch_block.get_next()[target].get_start_offset())
+
 
             target_prev = new_graph.get_block_by_offset(curr_path[block_index - 1].get_start_offset())
             if new_target.has_next(target_prev):
                 new_target.replace_next(target_prev, next_block)
             else:
-                if new_switch_block.has_next(next_block):
+                if next_block != new_switch_block and new_switch_block.has_next(next_block):
                     new_switch_block.remove_next(next_block)
 
         #for now make the assumption that all modifier instructions can be removed, however that isnt guaranteed to be the case.
@@ -372,11 +375,16 @@ class GraphAnalyzer:
                         elif len(prvs) == 0 and not block.is_block_start():
                             block.clear_next()
                             to_remove.add(block)
+                        elif len(prvs) == 1 and not block.is_block_start():
+                            for nxt in nxts:
+                                block.remove_next(nxt)
+                                prvs[0].add_next(nxt)
+                            to_remove.add(block)
                         else:   
                             print(block, nxts, prvs)
                             raise Exception()
                 else:
-                    if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow):
+                    if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow, Opcodes.Endfinally):
                         nxts = list(block.get_next())
                         if len(nxts) == 0:
                             to_remove.add(block)
@@ -392,9 +400,21 @@ class GraphAnalyzer:
                 print('unregistering ', block, block.get_last_instr(), block.get_next())
                 new_graph.unregister_block(block.get_start_offset())
         new_graph.repopulate_prevs()
+        print('Dumping graph relations pre validation')
+        new_graph.dump_block_relations()
+        print('dumping graph pre validate')
+        new_graph.print_root()
         new_graph.validate_blocks()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
+        print('Dumping graph relations pre repair')
+        new_graph.dump_block_relations()
+        print('Dumping graph pre repair')
+        new_graph.print_root()
         new_analyzer.repair_blocks()
+        print('Dumping relations post repair')
+        new_graph.dump_block_relations()
+        print('dumping post repair graph')
+        new_graph.print_root()
         return new_graph
 
     def __find_value_source(self, path: list, start_instr, modifier_instrs: list):
@@ -1700,6 +1720,9 @@ class GraphAnalyzer:
         return None, None
 
     def simplify_control_flow(self, max_attempts=-1):
+        if self.__method.get_token() !=  0x0600003A:
+            return None
+        print('Attempting to deobfuscate method {}'.format(self.__method))
         graph = self.__graph
         is_obfuscated_at_all = False
         attempts = 0
@@ -1726,7 +1749,6 @@ class GraphAnalyzer:
                 for block in list(graph.blocks()):
                     start_offsets = list()
                     bad_instrs = set()
-                    print('Checking if Block {} {} is target switch'.format(block, block.get_last_instr()))
                     new_graph = self.new_switch_deob(block)
                     if new_graph is not None:
                         print('block is switch')
@@ -2019,7 +2041,6 @@ class GraphAnalyzer:
         #Goal of this method is to fixup block relationships and make it look pretty.
         #TODO: When stiching together blocks try blocks need to be together, filter clause needs to follow the rules etc.
         #TODO: need to test this with filter clause I think block ordering is off.
-        print('repairing blocks for method {}'.format(self.__method))
         self.__graph.validate_blocks()
         #self.__graph.dump_block_relations()
         was_unregistered = list()
@@ -2169,7 +2190,7 @@ class GraphAnalyzer:
             last_instr = blk.get_last_instr()
             #I think this should work for try clauses as well but not sure yet.
             if not last_instr.is_absolute_jmp() and not last_instr.is_branch():
-                if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow):
+                if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow, Opcodes.Endfinally):
                     is_valid_last = False
             if not is_valid_last:
                 if len(blk.get_next()) != 1:

@@ -858,7 +858,7 @@ class NETReactor(Deobfuscator):
 
         string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
-        self.remove_string_obfuscation(emu, dotnet, string_method)
+        #self.remove_string_obfuscation(emu, dotnet, string_method)
         print('removing antitamper method calls.')
         self.remove_antitamper_antidebug_method(dotnet)
         print('Cleaning Code')
