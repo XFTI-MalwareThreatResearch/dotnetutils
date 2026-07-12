@@ -559,7 +559,6 @@ class GraphAnalyzer:
                 new_graph.unregister_block(block.get_start_offset())
         new_graph.repopulate_prevs()
         new_graph.validate_blocks()
-        new_graph.dump_block_relations()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
         new_analyzer.repair_blocks()
         return new_graph
@@ -569,8 +568,6 @@ class GraphAnalyzer:
         pass
 
     def simplify_control_flow(self, max_attempts=-1):
-        if self.__method.get_token() != 0x60000f8:
-            return None
         print('Attempting to deobfuscate method {}'.format(self.__method))
         graph = self.__graph
         is_obfuscated_at_all = False
@@ -906,7 +903,6 @@ class GraphAnalyzer:
         #TODO: When stiching together blocks try blocks need to be together, filter clause needs to follow the rules etc.
         #TODO: need to test this with filter clause I think block ordering is off.
         self.__graph.validate_blocks()
-        #self.__graph.dump_block_relations()
         was_unregistered = list()
         self.__graph.repopulate_prevs()
         for block in list(self.__graph.blocks()):

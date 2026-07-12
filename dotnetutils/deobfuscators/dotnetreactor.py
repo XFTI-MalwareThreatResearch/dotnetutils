@@ -877,7 +877,7 @@ class NETReactor(Deobfuscator):
                 can_proceed = True
                 for instr in disasm:
                     op = instr.get_opcode()
-                    if op not in (net_opcodes.Opcodes.Nop, net_opcodes.Opcodes.Ldnull, net_opcodes.Opcodes.Ret, net_opcodes.Opcodes.Ceq):
+                    if op not in (net_opcodes.Opcodes.Nop, net_opcodes.Opcodes.Ldc_I4_1, net_opcodes.Opcodes.Ldnull, net_opcodes.Opcodes.Ret, net_opcodes.Opcodes.Ceq):
                         can_proceed = False
                         break
 
