@@ -202,11 +202,11 @@ class GraphAnalyzer:
                 in_slice = any(outputs)          
                 if in_slice:
                     if ins_op not in self.ALLOWED_MODIFIER_INSTRS:
-                        return []
+                        raise net_exceptions.ControlFlowDeobfuscationMisidentify('Not obfuscated')
                 usable_stack.extend([in_slice] * pulled)  
                 if not any(usable_stack):
                     if not in_slice or ins_op not in self.ALLOWED_MODIFIERS:
-                        return [] #Dont bother returning the full path since its not going to be used anyway.
+                        raise net_exceptions.ControlFlowDeobfuscationMisidentify('Not obfuscated.')
                     else:
                         if ins_op in self.LDLOC:
                             current_var_no = instr.get_argument()
@@ -277,7 +277,10 @@ class GraphAnalyzer:
     def new_switch_detection(self, switch_block: FunctionBlock):
         if switch_block.get_last_instr() is None or switch_block.get_last_instr().get_opcode() != Opcodes.Switch:
             return False, [], [], []
-        switch_paths = self.get_all_paths_to_block(switch_block, switch_block.get_last_instr())
+        try:
+            switch_paths = self.get_all_paths_to_block(switch_block, switch_block.get_last_instr())
+        except net_exceptions.ControlFlowDeobfuscationMisidentify:
+            return False, [], [], []
         all_modifiers = list()
         all_src_instrs = list()
         for switch_path in switch_paths:
@@ -354,7 +357,9 @@ class GraphAnalyzer:
         if not is_obf:
             return None
         if not (len(switch_paths) == len(all_modifiers) == len(all_src_instrs)):
-            raise Exception()        
+            raise Exception()
+        print('block is switch', switch_block, switch_block.get_instrs())
+        self.__graph.print_root()
         path_values = list()
         
         switch_paths_by_value = dict()
@@ -597,7 +602,7 @@ class GraphAnalyzer:
                     bad_instrs = set()
                     new_graph = self.new_switch_deob(block)
                     if new_graph is not None:
-                        print('block is switch')
+                        print('block is switch', block, block.get_instrs())
                         new_graph.validate_blocks()
                         out = new_graph
                         is_obfuscated = True
