@@ -834,6 +834,89 @@ class NETReactor(Deobfuscator):
                 dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
 
     def clean_code(self, dotnet):
+        #Detect and remove some common patterns from dotnetreactor that can later be picked up by control flow deob
+        return_true_methods = list()
+        return_null_methods = list()
+        for mdef in dotnet.get_metadata_table('MethodDef'):
+            if not mdef.has_body():
+                continue
+            if not mdef.is_static_method():
+                continue
+            msig = mdef.get_method_signature()
+            if len(msig.get_parameters()) != 0:
+                continue
+            ret_type = msig.get_return_type()
+            if not isinstance(ret_type, net_sigs.CorLibTypeSig):
+                continue
+            if ret_type.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+                disasm = mdef.disassemble_method()
+                if len(disasm) > 5:
+                    continue
+
+                amt_ldnull = 0
+                is_constant_return = True
+                for instr in disasm:
+                    op = instr.get_opcode()
+                    if op == net_opcodes.Opcodes.Nop:
+                        continue
+                    if op == net_opcodes.Opcodes.Ldnull:
+                        amt_ldnull += 1
+                        continue
+                    if op == net_opcodes.Opcodes.Ret:
+                        continue
+                    is_constant_return = False
+                    break
+                is_constant_return = is_constant_return and amt_ldnull == 1
+                if is_constant_return:
+                    return_null_methods.append(mdef)
+
+            elif ret_type.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
+                disasm = mdef.disassemble_method()
+                if len(disasm) > 6:
+                    continue
+                can_proceed = True
+                for instr in disasm:
+                    op = instr.get_opcode()
+                    if op not in (net_opcodes.Opcodes.Nop, net_opcodes.Opcodes.Ldnull, net_opcodes.Opcodes.Ret, net_opcodes.Opcodes.Ceq):
+                        can_proceed = False
+                        break
+
+                if not can_proceed:
+                    continue
+
+                try:
+                    emu = net_emulator.DotNetEmulator(mdef, dont_execute_cctor=False)
+                    emu.setup_method_params([])
+                    emu.run_function()
+                    obj = emu.get_stack().pop_obj()
+                except:
+                    continue
+                if not isinstance(obj, net_emu_types.DotNetNumber):
+                    continue
+                obj = obj.as_python_obj()
+                if obj:
+                    return_true_methods.append(mdef)
+
+        for mdef in return_true_methods:
+            for xref_rid, xref_offset in mdef.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                dis = xfm.disassemble_method()
+                instr = dis.get_instr_at_offset(xref_offset)
+                op = instr.get_opcode()
+                if op == net_opcodes.Opcodes.Call:
+                    patch_bytes = (b'\x00' * (len(instr) - 1)) + b'\x17'
+                    dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(instr))
+
+        for mdef in return_null_methods:
+            for xref_rid, xref_offset in mdef.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                dis = xfm.disassemble_method()
+                instr = dis.get_instr_at_offset(xref_offset)
+                op = instr.get_opcode()
+                if op == net_opcodes.Opcodes.Call:
+                    patch_bytes = (b'\x00' * (len(instr) - 1)) + b'\x14'
+                    dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(instr))
+
         net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
 
     def deobfuscate(self, dotnet, ctx):
