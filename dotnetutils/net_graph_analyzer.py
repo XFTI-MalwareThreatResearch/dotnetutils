@@ -1,6 +1,7 @@
 from dotnetutils import net_row_objects, net_graphing, net_exceptions, net_emu_types, net_emulator, net_structs
 from dotnetutils.net_opcodes import Opcodes
 from dotnetutils.net_graphing import FunctionBlock
+from dotnetutils import net_cil_disas
 
 class GraphAnalyzer:
 
@@ -165,22 +166,71 @@ class GraphAnalyzer:
             block.insert_instr(start_index + x + amt_deleted, instrs_result[x])
         return len(instrs_result) - amt_instrs
     
-    def __get_all_paths_to_block(self, current_block: FunctionBlock, on_path: set):
+    def __get_all_paths_to_block(self, current_block: FunctionBlock, start_instr: net_cil_disas.Instruction, on_path: set, has_started=False, current_stack=list(), current_var_no=-1):
         if len(current_block.get_prev()) == 0:
-            return [[current_block]]
+            if has_started:
+                return [[current_block]]
+            else:
+                if current_block.has_offset(start_instr.get_instr_offset()):
+                    return [[current_block]]
+                return []
+        usable_stack = list(current_stack)
         results = list()
-        on_path = on_path | {current_block}
+        if has_started or (not has_started and current_block.has_offset(start_instr.get_instr_offset())):
+                
+            for instr in reversed(list(current_block.get_instrs())):
+                if not has_started and instr.get_instr_offset() == start_instr.get_instr_offset():
+                    usable_stack.append(True)
+                    has_started = True
+                    continue
+                if not has_started:
+                    continue
+                ins_op = instr.get_opcode()                
+
+                if current_var_no != -1:
+                    if ins_op in self.STLOC and current_var_no == instr.get_argument():
+                        usable_stack.clear()
+                        usable_stack.append(True)
+                        current_var_no = -1
+                        continue
+                    continue
+
+                added = instr.get_astack()
+                pulled = instr.get_pstack()
+                outputs = usable_stack[len(usable_stack) - added:] if added else []
+                del usable_stack[len(usable_stack) - added:]
+                in_slice = any(outputs)          
+                if in_slice:
+                    if ins_op not in self.ALLOWED_MODIFIER_INSTRS:
+                        return []
+                usable_stack.extend([in_slice] * pulled)  
+                if not any(usable_stack):
+                    if not in_slice or ins_op not in self.ALLOWED_MODIFIERS:
+                        return [] #Dont bother returning the full path since its not going to be used anyway.
+                    else:
+                        if ins_op in self.LDLOC:
+                            current_var_no = instr.get_argument()
+                            continue
+                        return [[current_block]]
+                
+        if has_started:
+            on_path = on_path | {current_block}
+        cut_by_cycle = False
         for prev in current_block.get_prev():
             if prev in on_path:
+                cut_by_cycle = True
                 continue
-            for sub in self.__get_all_paths_to_block(prev, on_path):
+            res = self.__get_all_paths_to_block(prev, start_instr, on_path, has_started, usable_stack, current_var_no)
+            for sub in res:    
                 results.append(sub + [current_block])
         if not results:
-            return [[current_block]]
+            if has_started and cut_by_cycle:
+                return [[current_block]]
+            return []
         return results
 
-    def get_all_paths_to_block(self, to_block: FunctionBlock):
-        return self.__get_all_paths_to_block(to_block, set())
+    def get_all_paths_to_block(self, to_block: FunctionBlock, start_instr: net_cil_disas.Instruction):
+        return self.__get_all_paths_to_block(to_block, start_instr, set(), False, list())
     
     def __find_var_sets(self, path: list, var_no: int):
         for x in range(len(path)):
@@ -192,46 +242,111 @@ class GraphAnalyzer:
                     if instr.get_argument() == var_no:
                         return instr, blk, x
         return None, None, None
-
     
+    def __find_value_source(self, path: list, start_instr, modifier_instrs: list):
+        started = False
+        live = []
+        for x in range(len(path)):
+            blk = path[x]
+            instrs = blk.get_instrs()
+            for y in range(len(instrs) - 1, -1, -1):
+                instr = instrs[y]
+                ins_op = instr.get_opcode()
+                if instr == start_instr:
+                    started = True
+                    live.append(True)          
+                    continue
+                if not started:
+                    continue
+                added = instr.get_astack()
+                pulled = instr.get_pstack()
+                outputs = live[len(live) - added:] if added else []
+                del live[len(live) - added:]
+                in_slice = any(outputs)            
+                if in_slice:
+                    modifier_instrs.append(instr)
+                    if ins_op not in self.ALLOWED_MODIFIER_INSTRS:
+                        return None, None, None
+                live.extend([in_slice] * pulled)  
+                if not any(live):
+                    if in_slice and ins_op in self.ALLOWED_MODIFIERS:
+                        return instr, blk, x
+                    return None, None, None
+        return None, None, None
+
     def new_switch_detection(self, switch_block: FunctionBlock):
         if switch_block.get_last_instr() is None or switch_block.get_last_instr().get_opcode() != Opcodes.Switch:
             return False, [], [], []
-        switch_paths = self.get_all_paths_to_block(switch_block)
+        print('checking block', switch_block)
+        switch_paths = self.get_all_paths_to_block(switch_block, switch_block.get_last_instr())
         all_modifiers = list()
         all_src_instrs = list()
         for switch_path in switch_paths:
             switch_path.reverse()
             first_blk = switch_path[0]
             if first_blk.get_last_instr() is None:
+                print(1)
                 return False, [], [], []
             last_instr = first_blk.get_last_instr()
             if last_instr.get_opcode() != Opcodes.Switch:
+                print(2)
                 return False, [], [], []
             modifier_instrs = list()
             src_instr, src_blk, src_blk_index = self.__find_value_source(switch_path, last_instr, modifier_instrs)
             if src_instr is None:
+                print(3)
                 return False, [], [], []
             src_op = src_instr.get_opcode()
             modifier_instrs.reverse()
-
+            amt = 0
             while src_op in self.LDLOC:
+                if amt > 10:
+                    print(4)
+                    return False, [], [], []
+                amt += 1
                 var_no = src_instr.get_argument()
                 var_set_instr, var_set_blk, var_blk_index = self.__find_var_sets(switch_path[src_blk_index:], var_no)
                 if var_set_instr is None:
+                    print(5)
                     return False, [], [], []
                 child_modifiers = list()
                 src_instr, src_blk, src_blk_index = self.__find_value_source(switch_path[var_blk_index:], var_set_instr, child_modifiers)
                 if src_instr is None:
+                    print(6)
                     return False, [], [], []
                 src_op = src_instr.get_opcode()
                 child_modifiers.reverse()
                 modifier_instrs = child_modifiers + [var_set_instr] + modifier_instrs
             if src_op not in self.LDC_INSTRS:
+                print(7)
                 return False, [], [], []
             all_modifiers.append(modifier_instrs)
             all_src_instrs.append(src_instr)
         return True, switch_paths, all_modifiers, all_src_instrs
+
+    def __collapse_switch_to_case(self, new_graph, switch_block, orig_switch_block, value):
+        """ Rewrite a single-valued switch block's terminator into an unconditional branch to the one
+        case it always takes, keeping the block (it may be a try-start or hold real code) and its
+        predecessors.  The index-producing instructions are dropped by the modifier sweep, which keeps
+        the stack balanced (they pushed the value the switch popped). """
+        case = new_graph.get_block_by_offset(orig_switch_block.get_next()[value].get_start_offset())
+        last_instr = switch_block.get_last_instr()
+        br = self.__disasm.emit_instruction(Opcodes.Br)
+        br.setup_instr_size(5)
+        br.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
+        br.setup_arguments_from_int32(case.get_start_offset() - last_instr.get_instr_offset() - 5)
+        switch_block.replace_instr(len(switch_block.get_instrs()) - 1, br)
+        for nxt in list(switch_block.get_next()):
+            switch_block.remove_next(nxt)
+        switch_block.add_next(case)
+
+    def __is_pure_dispatch(self, block):
+        """ True if every instruction before the terminator is DNR state-management junk (loads,
+        stores, constants, arithmetic, dup/pop/nop/br) with no real, side-effecting code.  Rerouting
+        predecessors past such a block is safe; doing it to a block with real code would drop it. """
+        allowed = set(self.LDLOC) | set(self.STLOC) | set(self.LDC_INSTRS) | set(self.MATH_OPS) | \
+                  {Opcodes.Nop, Opcodes.Pop, Opcodes.Dup, Opcodes.Br, Opcodes.Br_S}
+        return all(instr.get_opcode() in allowed for instr in block.get_instrs()[:-1])
 
     def new_switch_deob(self, switch_block: FunctionBlock):
         if switch_block is None:
@@ -239,13 +354,10 @@ class GraphAnalyzer:
         is_obf, switch_paths, all_modifiers, all_src_instrs = self.new_switch_detection(switch_block)
         if not is_obf:
             return None
-        print('Dumping graph relations pre deob')
-        self.__graph.dump_block_relations()
-        print('dumping graph root pre deob')
-        self.__graph.print_root()
-
         if not (len(switch_paths) == len(all_modifiers) == len(all_src_instrs)):
             raise Exception()
+        print('deobfing block', switch_block)
+        self.__graph.print_root()
         
         path_values = list()
         
@@ -290,58 +402,90 @@ class GraphAnalyzer:
                 if is_unique and y not in path_diverges:
                     path_diverges[y] = x
         if len(path_diverges) != len(all_paths):
-            raise Exception()
-        new_graph = self.__graph.duplicate()
-        new_switch_block = new_graph.get_block_by_offset(switch_block.get_start_offset())
-        for path_no, block_index in path_diverges.items():
-            curr_path, curr_num, modifier_instrs = all_paths[path_no]
-            target = path_values[path_no]
-            target_block = curr_path[block_index]
-            new_target = new_graph.get_block_by_offset(target_block.get_start_offset())
-
-            if len(new_target.get_next()) == 2 and new_target == new_switch_block:
-                nxts = new_target.get_next()
-                if nxts[0] == nxts[1]:
-                    last_instr_idx = len(new_target.get_instrs()) - 1
-                    last_instr = new_target.get_last_instr()
-                    new_instr = self.__disasm.emit_instruction(Opcodes.Br)
-                    new_instr.setup_instr_size(5)
-                    new_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
-                    new_instr.setup_arguments_from_int32(nxts[0].get_start_offset() - last_instr.get_instr_offset() - 5)
-                    new_target.replace_instr(last_instr_idx, new_instr)
-                    next_block = nxts[0]
-                    new_target.clear_next()
-                    new_target.add_next(next_block)
-                    break
-            if len(new_target.get_next()) != 1:
-                raise Exception()
-            next_block = new_graph.get_block_by_offset(switch_block.get_next()[target].get_start_offset())
-
-
-            target_prev = new_graph.get_block_by_offset(curr_path[block_index - 1].get_start_offset())
-            if new_target.has_next(target_prev):
-                new_target.replace_next(target_prev, next_block)
-            else:
-                if next_block != new_switch_block and new_switch_block.has_next(next_block):
-                    new_switch_block.remove_next(next_block)
-
-        #for now make the assumption that all modifier instructions can be removed, however that isnt guaranteed to be the case.
+            print(6)
+            return None
         to_remove_instrs = dict()
-        if new_switch_block.get_last_instr() is not None and new_switch_block.get_last_instr().get_opcode() == Opcodes.Switch:
-            to_remove_instrs[new_switch_block.get_last_instr().get_instr_offset()] = new_switch_block.get_last_instr()
         for modifiers in all_modifiers:
             for modifier in modifiers:
                 to_remove_instrs[modifier.get_instr_offset()] = modifier
+        new_graph = self.__graph.duplicate()
+        new_switch_block = new_graph.get_block_by_offset(switch_block.get_start_offset())
+        if len(set(path_values)) == 1:
+            #Single-valued: the switch always takes one case (the value is committed within the switch
+            #block itself).  Collapse it in place - keep the block (it may be a try-start / hold real
+            #code) and its predecessors, rewriting the terminator to a branch to that case.  Every
+            #block_index would be 0 here, which the reroute below can't handle (curr_path[-1] wraps).
+            self.__collapse_switch_to_case(new_graph, new_switch_block, switch_block, path_values[0])
+        else:
+            #Multi-valued dispatcher.  Rerouting predecessors past the switch block is only safe if the
+            #block is pure dispatch; if it holds real code, bypassing it drops that code.  In this
+            #branch block_index >= 1 for every path (the switch block is never value-unique when there
+            #are multiple values), so curr_path[block_index - 1] is always a real predecessor.
+            if not self.__is_pure_dispatch(new_switch_block):
+                print(7)
+                return None
+            for path_no, block_index in path_diverges.items():
+                curr_path, curr_num, modifier_instrs = all_paths[path_no]
+                target = path_values[path_no]
+                new_target = new_graph.get_block_by_offset(curr_path[block_index].get_start_offset())
+
+                if not (0 < len(new_target.get_next()) < 3):
+                    print(8, new_target)
+                    return None
+                if len(new_target.get_next()) == 2:
+                    target_prev = new_target.get_next()[0]
+                    last_index = len(new_target.get_instrs()) - 2
+                    check_instr = new_target.get_instrs()[last_index]
+                    #TODO: Figure out how to fix this contdition, check_instr has to skip the call instr.
+                    nstack_original = 0
+                    nstack_modified = 0
+                    for instr in new_target.get_instrs():
+                        nstack_original += instr.get_nstack()
+                        if instr.get_instr_offset() not in to_remove_instrs:
+                            nstack_modified += instr.get_nstack()
+
+                    if nstack_original - nstack_modified >= 2:
+                        raise Exception() #Bail, weird amount of adds
+
+                    print(nstack_original, nstack_modified, new_target)
+                    if (nstack_original - nstack_modified) == 1:
+                        check = new_target.get_next()[1]
+                        should_remove = len(check.get_instrs()) > 0 and check.get_instrs()[0].get_opcode() == Opcodes.Pop
+                        if should_remove:
+                            check.remove_instrs(0, 1)
+                else:
+                    target_prev = new_graph.get_block_by_offset(curr_path[block_index - 1].get_start_offset())
+
+                next_block = new_graph.get_block_by_offset(switch_block.get_next()[target].get_start_offset())
+                
+                if new_target.has_next(target_prev):
+                    new_target.replace_next(target_prev, next_block)
+                else:
+                    if next_block != new_switch_block and new_switch_block.has_next(next_block):
+                        new_switch_block.remove_next(next_block)
+
+        #for now make the assumption that all modifier instructions can be removed, however that isnt guaranteed to be the case.
+        if new_switch_block.get_last_instr() is not None and new_switch_block.get_last_instr().get_opcode() == Opcodes.Switch:
+            to_remove_instrs[new_switch_block.get_last_instr().get_instr_offset()] = new_switch_block.get_last_instr()
 
         for block in new_graph.blocks():
             instrs = list(block.get_instrs())
             actual_index = 0
+            original_nstack = 0
+            modified_nstack = 0
             for x in range(len(instrs)):
                 instr = instrs[x]
+                original_nstack += instr.get_nstack()
                 if instr.get_instr_offset() in to_remove_instrs:
                     block.remove_instrs(actual_index,actual_index+1)
                     continue
+                modified_nstack += instr.get_nstack()
                 actual_index += 1
+            if (original_nstack - modified_nstack) == 1 and len(block.get_next()) == 2:
+                check = block.get_next()[1]
+                if len(check.get_instrs()) > 0 and check.get_instrs()[0].get_opcode() == Opcodes.Pop:
+                    check.remove_instrs(0, 1)
+
         changed = True
         while changed:
             changed = False
@@ -395,58 +539,36 @@ class GraphAnalyzer:
                             for nxt in list(block.get_next()):
                                 block.remove_next(nxt)
                             to_remove.add(block)
+                    if len(block.get_next()) == 2:
+                        nxts = block.get_next()
+                        if nxts[0] == nxts[1]:
+                            last_instr = block.get_last_instr()
+                            if not last_instr.is_branch():
+                                raise Exception()
+                            nxt = nxts[0]
+                            block.remove_next(nxt)
+                            #Need to replace with pop, br
+                            new_instr = self.__disasm.emit_instruction(Opcodes.Pop)
+                            new_instr.setup_instr_size(1)
+                            new_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index()) 
+                            block.replace_instr(len(block.get_instrs()) - 1, new_instr)
+                            new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                            new_instr.setup_instr_size(5)
+                            new_instr.setup_instr_offset(last_instr.get_instr_offset() + 1, last_instr.get_instr_index() + 1)
+                            new_instr.setup_arguments_from_int32(nxt.get_start_offset() - (last_instr.get_instr_offset() + 1) - 5)
+                            block.add_instr(new_instr)
+
             for block in to_remove:
                 changed = True
-                print('unregistering ', block, block.get_last_instr(), block.get_next())
                 new_graph.unregister_block(block.get_start_offset())
         new_graph.repopulate_prevs()
-        print('Dumping graph relations pre validation')
-        new_graph.dump_block_relations()
-        print('dumping graph pre validate')
+        print('before validation')
         new_graph.print_root()
         new_graph.validate_blocks()
+        new_graph.dump_block_relations()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
-        print('Dumping graph relations pre repair')
-        new_graph.dump_block_relations()
-        print('Dumping graph pre repair')
-        new_graph.print_root()
         new_analyzer.repair_blocks()
-        print('Dumping relations post repair')
-        new_graph.dump_block_relations()
-        print('dumping post repair graph')
-        new_graph.print_root()
         return new_graph
-
-    def __find_value_source(self, path: list, start_instr, modifier_instrs: list):
-        started = False
-        live = []
-        for x in range(len(path)):
-            blk = path[x]
-            instrs = blk.get_instrs()
-            for y in range(len(instrs) - 1, -1, -1):
-                instr = instrs[y]
-                ins_op = instr.get_opcode()
-                if instr == start_instr:
-                    started = True
-                    live.append(True)          
-                    continue
-                if not started:
-                    continue
-                added = instr.get_astack()
-                pulled = instr.get_pstack()
-                outputs = live[len(live) - added:] if added else []
-                del live[len(live) - added:]
-                in_slice = any(outputs)            
-                if in_slice:
-                    modifier_instrs.append(instr)
-                    if ins_op not in self.ALLOWED_MODIFIER_INSTRS:
-                        return None, None, None
-                live.extend([in_slice] * pulled)  
-                if not any(live):
-                    if in_slice and ins_op in self.ALLOWED_MODIFIERS:
-                        return instr, blk, x
-                    return None, None, None
-        return None, None, None
     
 
     def testing_switch_detection(self, block: FunctionBlock):
@@ -1720,7 +1842,7 @@ class GraphAnalyzer:
         return None, None
 
     def simplify_control_flow(self, max_attempts=-1):
-        if self.__method.get_token() !=  0x0600003A:
+        if self.__method.get_token() != 0x60000f8:
             return None
         print('Attempting to deobfuscate method {}'.format(self.__method))
         graph = self.__graph
@@ -1975,6 +2097,19 @@ class GraphAnalyzer:
                 result.add(item)
         return result
 
+    def __drain_deferred_for_region(self, region_blocks, handled, deferred_blocks):
+        #A handler region can contain blocks reachable only via `leave` (e.g. a leave-target shared
+        #with a nested region), which get deferred instead of walked from the handler entry.  Unlike a
+        #try-start, a handler entry has no deferred-pickup, so place them here - within the handler's
+        #contiguous range - so they don't fall through to the deferred guard in repair_blocks.
+        changed = True
+        while changed:
+            changed = False
+            for dblock in list(deferred_blocks):
+                if dblock in region_blocks and dblock not in handled:
+                    self.__block_walker(dblock, handled, deferred_blocks, region_blocks)
+                    changed = True
+
     def __block_walker(self, block, handled, deferred_blocks, must_finish_first=None):
         if block not in handled:
             current_offset = 0
@@ -2033,9 +2168,11 @@ class GraphAnalyzer:
                         for full_handler in full_handlers:
                             catch_blocks = self.get_all_handler_blocks(full_handler[2])
                             self.__block_walker(full_handler[2], handled, deferred_blocks, catch_blocks)
+                            self.__drain_deferred_for_region(catch_blocks, handled, deferred_blocks)
                             if isinstance(full_handler[3], net_graphing.FunctionBlock):
                                 catch_blocks = self.get_all_handler_blocks(full_handler[3])
                                 self.__block_walker(full_handler[3], handled, deferred_blocks, catch_blocks)
+                                self.__drain_deferred_for_region(catch_blocks, handled, deferred_blocks)
 
     def repair_blocks(self):
         #Goal of this method is to fixup block relationships and make it look pretty.
@@ -2401,7 +2538,6 @@ class GraphAnalyzer:
 
 
 class MethodRecompiler:
-
 
     def __init__(self, instrs: list, exception_blocks: list=list(), local_var_sig_tok: int=0):
         self.__localvarsigtok = local_var_sig_tok
