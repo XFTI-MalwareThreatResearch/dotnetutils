@@ -2018,7 +2018,10 @@ cdef bint handle_ldelem_u1_instruction(DotNetEmulator emu):
     cdef net_emu_types.DotNetArray array_obj = None
     cdef StackCell result
     emu.dealloc_cell(casted)
-    if not net_utils.is_cortype_number(<CorElementType>index.tag) or arr.tag != CorElementType.ELEMENT_TYPE_OBJECT or arr.item.ref == NULL:
+    if not net_utils.is_cortype_number(<CorElementType>index.tag):
+        raise net_exceptions.OperationNotSupportedException()
+    
+    if arr.tag != CorElementType.ELEMENT_TYPE_OBJECT or arr.item.ref == NULL:
         raise net_exceptions.OperationNotSupportedException()
     
     result_obj = <net_emu_types.DotNetObject> arr.item.ref

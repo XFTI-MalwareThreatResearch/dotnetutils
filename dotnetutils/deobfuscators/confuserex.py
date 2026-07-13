@@ -503,6 +503,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
         fgraph = net_graphing.FunctionGraph(string_data_method)
         fanalyzer = net_graph_analyzer.GraphAnalyzer(string_data_method, fgraph)
         fanalyzer.simplify_control_flow()
+        return
         us_heap = dotnet.get_heap('#US')
         #we need to rerun so that the end offset is updated for the new control flow.
         string_data_method = dotnet.get_token_value(string_data_method.get_token())
@@ -575,6 +576,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             return
         new_arr = net_emu_types.DotNetArray(emu, len(decomp_buffer), dotnet.get_typeref_by_full_name(b'System.Byte'))
         new_arr.from_python_obj(list(decomp_buffer))
+        print('setting array to {}'.format(new_arr))
         emu.set_static_field_obj(string_data_field.get_rid(), new_arr)
         appended_strings = dict()
         us_heap.begin_append_tx()
