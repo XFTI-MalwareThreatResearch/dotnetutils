@@ -589,7 +589,10 @@ class NETReactor(Deobfuscator):
         if static_field_method is None:
             print('Could not find static field method')
             return
-        emu = passed_emu.spawn_new_emulator(static_field_method)
+        if passed_emu is not None:
+            emu = passed_emu.spawn_new_emulator(static_field_method)
+        else:
+            emu = net_emulator.DotNetEmulator(static_field_method)
         emu.setup_method_params([])
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, None)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
@@ -922,16 +925,19 @@ class NETReactor(Deobfuscator):
     def deobfuscate(self, dotnet, ctx):
         delegate_method = self.identify_delegate_method(dotnet)
         print('delegate method identified as {}'.format(delegate_method))
-        emu = net_emulator.DotNetEmulator(delegate_method)
-        tokens_dict = self.remove_delegates(dotnet, delegate_method, emu)
+        emu = None
+        if delegate_method is not None:
+            emu = net_emulator.DotNetEmulator(delegate_method)
+            tokens_dict = self.remove_delegates(dotnet, delegate_method, emu)
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
-        is_encrypted = self.fix_encrypted_methods(dotnet, emu)
-        emu = net_emulator.DotNetEmulator(delegate_method)
+        #is_encrypted = self.fix_encrypted_methods(dotnet, emu)
+        is_encrypted = False
         if is_encrypted:
             #remove delegatges again for decrypted methods.
             print('doing a second remove delegates pass')
-            self.remove_delegates(dotnet, delegate_method, emu, tokens_dict)
+            if delegate_method is not None:
+                self.remove_delegates(dotnet, delegate_method, emu, tokens_dict)
         print('Removing junk static fields')
         self.remove_junk_static_fields(dotnet, emu)
         rebuilder = net_rebuilder.NetRebuilder(dotnet)
@@ -939,12 +945,12 @@ class NETReactor(Deobfuscator):
         dotnet.set_exe_data(data)
         dotnet.reinit_dpe(False)
 
-        string_method = self.identify_string_method(dotnet)
+        """string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
         self.remove_string_obfuscation(emu, dotnet, string_method)
         emu = None
         print('removing antitamper method calls.')
-        self.remove_antitamper_antidebug_method(dotnet)
+        self.remove_antitamper_antidebug_method(dotnet)"""
         print('Cleaning Code')
         self.clean_code(dotnet)
         print('Cleaning up names')

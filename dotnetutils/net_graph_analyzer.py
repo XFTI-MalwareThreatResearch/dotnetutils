@@ -64,7 +64,7 @@ class GraphAnalyzer:
     def emit_ldc_num(self, number):
         instrs = list()
         use_ldc_i4 = False
-        if not isinstance(number, net_emu_types.DotNetNumber):
+        if not isinstance(number, net_emu_types.DotNetNumber) or isinstance(number, int):
             raise net_exceptions.InvalidArgumentsException()
         pobj = number.as_python_obj()
         if isinstance(number, net_emu_types.DotNetSingle):
@@ -325,19 +325,18 @@ class GraphAnalyzer:
             amt = 0
             while src_op in self.LDLOC:
                 if amt > 10:
-                    print(2, switch_path)
                     return False, [], [], [], []
                 amt += 1
                 var_no = src_instr.get_argument()
                 var_set_instr, var_set_blk, var_blk_index = self.__find_var_sets(switch_path[src_blk_index:], var_no)
                 if var_set_instr is None:
                     all_var_sets = self.__find_all_var_sets(var_no)
+                        
                     is_failure = False
                     for var_block, var_instr in all_var_sets:
                         try:
                             var_paths = self.get_all_paths_to_block(var_block, var_instr)
                         except net_exceptions.ControlFlowDeobfuscationMisidentify:
-                            print(3)
                             return False, [], [], [], []
                         
                         for var_path in var_paths:
@@ -347,6 +346,7 @@ class GraphAnalyzer:
                             if var_set_instr is None or var_set_instr.get_opcode() not in self.LDC_INSTRS:
                                 is_failure = True
                                 break
+
 
                         if is_failure:
                             return False, [], [], [], []
@@ -396,12 +396,10 @@ class GraphAnalyzer:
     def new_switch_deob(self, switch_block: FunctionBlock):
         if switch_block is None:
             raise Exception()
-        print('Checking block', switch_block, switch_block.get_last_instr())
         is_obf, switch_paths, all_modifiers, all_src_instrs, needs_more_work = self.new_switch_detection(switch_block)
         if not is_obf:
             print('not obf')
             return None
-        print('in deob')
         if not (len(switch_paths) == len(all_modifiers) == len(all_src_instrs)):
             raise Exception()
         path_values = list()
@@ -476,7 +474,6 @@ class GraphAnalyzer:
             #branch block_index >= 1 for every path (the switch block is never value-unique when there
             #are multiple values), so curr_path[block_index - 1] is always a real predecessor.
             if not self.__is_pure_dispatch(new_switch_block):
-                print('isnt pure dispatch')
                 return None
             for path_no, block_index in path_diverges.items():
                 if path_no in needs_more_work:
@@ -486,7 +483,6 @@ class GraphAnalyzer:
                 new_target = new_graph.get_block_by_offset(curr_path[block_index].get_start_offset())
 
                 if not (0 < len(new_target.get_next()) < 3):
-                    print('exiting early')
                     return None
                 if len(new_target.get_next()) == 2:
                     target_prev = new_target.get_next()[0]
@@ -519,36 +515,95 @@ class GraphAnalyzer:
                 else:
                     if next_block != new_switch_block and new_switch_block.has_next(next_block):
                         new_switch_block.remove_next(next_block)
-        new_graph.print_root()
         if len(needs_more_work) > 0:
+            fake_emu_obj = net_emulator.DotNetEmulator(self.__method)
             for index in needs_more_work:
                 curr_path, curr_num, modifier_instrs = all_paths[index]
-                print(curr_path)
-                print(curr_num)
-                print(modifier_instrs)
                 instr = modifier_instrs[0]
                 if instr.get_opcode() not in self.LDLOC:
                     raise Exception()
+                orig_instr = instr
+                should_break = False
+                orig_instr_block = self.__graph.get_block_by_offset(orig_instr.get_instr_offset())
+                if not orig_instr_block.get_last_instr().is_branch() or orig_instr_block.get_last_instr().get_pstack() != 2:
+                    for block in curr_path:
+                        if block is None:
+                            continue
+                        for instr2 in reversed(block.get_instrs()):
+                            if instr2.get_opcode() in self.LDLOC:
+                                if instr.get_argument() == instr2.get_argument():
+                                    instr = instr2
+                                    break
+                        if orig_instr != instr:
+                            break
+                    
                 last_num = -1 
                 if curr_path[last_num] is None:
                     last_num -= 1
                 new_target = new_graph.get_block_by_offset(curr_path[last_num].get_start_offset())
+                    
                 from_block = new_graph.get_block_by_offset(instr.get_instr_offset())
                 all_reachable_sets = self.__find_all_var_sets_reachable_from(instr.get_argument(), from_block, set())
-                for set_block, set_instr in all_reachable_sets:
-                    try:
-                        print('checking {} {} for reachable paths {}'.format(set_block, set_instr, set_block.get_instrs()))
-                        all_paths = self.get_all_paths_to_block(set_block, set_instr)
-                    except net_exceptions.ControlFlowDeobfuscationMisidentify:
-                        return None
-                    for set_path in all_paths:
-                        set_path.reverse()
-                        for block in set_path:
+                if len(all_reachable_sets) == 0:
+                    dnint = net_emu_types.DotNetInt32(fake_emu_obj, None)
+                    dnint.from_int(0)
+                    new_instr = self.emit_ldc_num(dnint)
+                    if len(new_instr) != 1:
+                        raise Exception()
+                    new_instr = new_instr[0]
+                    new_instr.setup_instr_offset(instr.get_instr_offset(), instr.get_instr_index())
+                    print('curr path {}'.format(curr_path))
+                    print('placing instr 1 {} at instr {} {}'.format(new_instr, instr, orig_instr))
+                    instr_block = new_graph.get_block_by_offset(instr.get_instr_offset())
+                    instr_block.replace_instr(instr_block.get_instr_index(instr), new_instr)
+                    if instr.get_instr_offset() in to_remove_instrs:
+                        del to_remove_instrs[instr.get_instr_offset()]
+                else:
+                    if len(all_reachable_sets) != 1:
+                        raise Exception()
+                    for set_block, set_instr in all_reachable_sets:
+                        try:
+                            all_paths = self.get_all_paths_to_block(set_block, set_instr)
+                        except net_exceptions.ControlFlowDeobfuscationMisidentify:
+                            return None
+                        if len(all_paths) != 1:
+                            raise Exception()
+                        for set_path in all_paths:
+                            set_path.reverse()
                             child_modifiers = list()
                             var_set_instr, var_set_blk, var_blk_index = self.__find_value_source(set_path, set_instr, child_modifiers)
-                            if not var_set_instr is None:
+                            if var_set_instr is None:
+                                var_value = 0
+                            else:
+                                if var_set_instr.get_opcode() in self.LDC_INSTRS:
+                                    var_value = var_set_instr.get_opcode()
+                                else:
+                                    child_modifiers = list()
+                                    print('var set', var_set_instr)
+                                    src_instr, src_blk, src_blk_index = self.__find_value_source(set_path[var_blk_index:], var_set_instr, child_modifiers)
+                                    print('Child modifiers', child_modifiers)
+                                    raise Exception()
+                            dnint = net_emu_types.DotNetInt32(fake_emu_obj, None)
+                            dnint.from_int(var_value)
+                            new_instr = self.emit_ldc_num(dnint)
+                            if len(new_instr) != 1:
                                 raise Exception()
-                    new_switch_block.remove_next(new_target)
+                            new_instr = new_instr[0]
+                            new_instr.setup_instr_offset(instr.get_instr_offset(), instr.get_instr_index())
+                            print('curr path {}'.format(curr_path))
+                            print('Placing instr {} 2 at instr {} {}'.format(new_instr, instr, orig_instr))
+                            instr_block = new_graph.get_block_by_offset(instr.get_instr_offset())
+                            instr_block.replace_instr(instr_block.get_instr_index(instr), new_instr)
+                            if instr.get_instr_offset() in to_remove_instrs:
+                                del to_remove_instrs[instr.get_instr_offset()]
+                if orig_instr != instr:
+                    #Loop does not have edge from value, its reused
+                    orig_instr_block = new_graph.get_block_by_offset(orig_instr.get_instr_offset())
+                    new_target = new_graph.get_block_by_offset(switch_block.get_next()[0].get_start_offset())
+                    instr_block.replace_next(orig_instr_block, new_target)
+
+                
+                new_switch_block.remove_next(new_target)
                                 
         #for now make the assumption that all modifier instructions can be removed, however that isnt guaranteed to be the case.
         if new_switch_block.get_last_instr() is not None and new_switch_block.get_last_instr().get_opcode() == Opcodes.Switch:
@@ -611,6 +666,9 @@ class GraphAnalyzer:
                                 prvs[0].add_next(nxt)
                             to_remove.add(block)
                         else:
+                            if len(nxts) == 2:
+                                if nxts[0] == nxts[1]:
+                                    block.remove_next(nxts[0])
                             continue
                 else:
                     if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow, Opcodes.Endfinally):
@@ -633,10 +691,15 @@ class GraphAnalyzer:
                             nxt = nxts[0]
                             block.remove_next(nxt)
                             #Need to replace with pop, br
-                            new_instr = self.__disasm.emit_instruction(Opcodes.Pop)
-                            new_instr.setup_instr_size(1)
-                            new_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index()) 
-                            block.replace_instr(len(block.get_instrs()) - 1, new_instr)
+                            for x in range(last_instr.get_pstack()):
+                                new_instr = self.__disasm.emit_instruction(Opcodes.Pop)
+                                new_instr.setup_instr_size(1)
+                                new_instr.setup_instr_offset(last_instr.get_instr_offset() + x, last_instr.get_instr_index() + x) 
+                                if x == 0:
+                                    block.replace_instr(len(block.get_instrs()) - 1, new_instr)
+                                else:
+                                    block.add_instr(new_instr)
+
                             new_instr = self.__disasm.emit_instruction(Opcodes.Br)
                             new_instr.setup_instr_size(5)
                             new_instr.setup_instr_offset(last_instr.get_instr_offset() + 1, last_instr.get_instr_index() + 1)
@@ -645,8 +708,11 @@ class GraphAnalyzer:
 
             for block in to_remove:
                 changed = True
+                block.clear_next()
+                block.clear_prev()
                 new_graph.unregister_block(block.get_start_offset())
         new_graph.repopulate_prevs()
+        #new_graph.print_root()
         new_graph.validate_blocks()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
         new_analyzer.repair_blocks()
@@ -660,11 +726,15 @@ class GraphAnalyzer:
         graph = self.__graph
         is_obfuscated_at_all = False
         attempts = 0
+        if self.__method.get_token() != 0x06002F20:
+            return None
+        print('attempting to deobfuscate {}'.format(hex(self.__method.get_token())))
         while True:
             graph = self.__graph
             is_obfuscated = False
             out = None
             candidate = graph.duplicate()
+            graph.print_root()
             if self.__fold_constant_branches(candidate) > 0:
                 #deal with branch folds first since it makes DNR deobfuscation much easier.
                 try:
@@ -683,7 +753,7 @@ class GraphAnalyzer:
                 for block in list(graph.blocks()):
                     start_offsets = list()
                     bad_instrs = set()
-                    print('Trying to deob', block)
+                    print('Trying to deob', block, block.get_last_instr())
                     new_graph = self.new_switch_deob(block)
                     if new_graph is not None:
                         print('deobed function')
@@ -704,6 +774,7 @@ class GraphAnalyzer:
                 if isinstance(self.__method, net_row_objects.MethodSpec):
                     self.__method.get_method().set_method_data(data)
                 else:
+                    print('replacing method {} with data'.format(hex(self.__method.get_token())))
                     self.__method.set_method_data(data)
                 self.__graph = out
                 if isinstance(self.__method, net_row_objects.MethodSpec):
@@ -733,6 +804,70 @@ class GraphAnalyzer:
             if self.__fold_constant_branch(block):
                 count += 1
         return count
+    
+    def __fold_constant_branch_num(self, block):
+        """ Replace a brtrue/brfalse fed by a single constant with an unconditional Br.
+
+        The taken target is always get_next()[0] and the fallthrough get_next()[1]
+        (see FunctionGraph.__parse_block).  The surviving edge and a Br pointing at it are
+        kept; repair_blocks normalizes offsets/short forms afterwards.
+
+        Args:
+            block (net_graphing.FunctionBlock): The block whose terminating branch to examine.
+
+        Returns:
+            bool: True if the branch was folded.
+        """
+        last_instr = block.get_last_instr()
+        if last_instr is None or not last_instr.is_branch() or last_instr.is_absolute_jmp():
+            return False
+        last_op = last_instr.get_opcode()
+        if last_op not in (Opcodes.Beq, Opcodes.Beq_S):
+            return False
+        block_instrs = block.get_instrs()
+        if len(block_instrs) <= 2:
+            return False
+
+        target_instrs = list()
+        needed = last_instr.get_pstack()
+        for i in range(len(block_instrs) - 2, -1, -1):
+            if needed == 0:
+                break
+            instr = block_instrs[i]
+            needed = needed - instr.get_astack() + instr.get_pstack()
+            if instr.get_opcode() != Opcodes.Nop:
+                target_instrs.append(instr)
+        target_instrs.reverse()
+
+        if needed != 0 or len(target_instrs) != 2:
+            return False
+        first_instr = target_instrs[0]
+        if first_instr.is_branch():
+            return False
+        if not first_instr.get_name().startswith('ldc.') and first_instr.get_opcode() != Opcodes.Ldnull:
+            return False
+        
+        second_instr = target_instrs[0]
+        if second_instr.is_branch():
+            return False
+        if not second_instr.get_name().startswith('ldc.') and second_instr.get_opcode() != Opcodes.Ldnull:
+            return False
+        
+        should_jmp = first_instr.get_argument() == second_instr.get_argument()
+
+        to_keep = block.get_next()[0 if should_jmp else 1]
+        to_remove = block.get_next()[1 if should_jmp else 0]
+        if to_remove is to_keep:
+            return False
+        block.remove_next(to_remove)
+        operand_index = block.get_instr_index(first_instr)
+        block.remove_instrs(operand_index, block.get_instr_index(second_instr) + 1)
+        new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+        new_instr.setup_instr_size(5)
+        new_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
+        new_instr.setup_arguments_from_int32(to_keep.get_start_offset() - last_instr.get_instr_offset() - 5)
+        block.replace_instr(len(block.get_instrs()) - 1, new_instr)
+        return True
 
     def __fold_constant_branch(self, block):
         """ Replace a brtrue/brfalse fed by a single constant with an unconditional Br.
@@ -751,6 +886,8 @@ class GraphAnalyzer:
         if last_instr is None or not last_instr.is_branch() or last_instr.is_absolute_jmp():
             return False
         last_op = last_instr.get_opcode()
+        if last_op in (Opcodes.Beq, Opcodes.Beq_S):
+            return self.__fold_constant_branch_num(block)
         if last_op not in (Opcodes.Brtrue, Opcodes.Brtrue_S, Opcodes.Brfalse, Opcodes.Brfalse_S):
             return False
         block_instrs = block.get_instrs()

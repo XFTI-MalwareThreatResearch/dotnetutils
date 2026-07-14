@@ -542,8 +542,8 @@ cdef class FunctionBlock:
                     if len(self.__next) != 2:
                         raise net_exceptions.InvalidBlockException(self)
                     
-                    if self.__next[0] == self.__next[1]:
-                        raise net_exceptions.InvalidBlockException(self)
+                    """if self.__next[0] == self.__next[1]:
+                        raise net_exceptions.InvalidBlockException(self)"""
                 
         for nxt in self.__next:
             if self not in nxt.get_prev():
