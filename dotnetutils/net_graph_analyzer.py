@@ -847,7 +847,7 @@ class GraphAnalyzer:
         if not first_instr.get_name().startswith('ldc.') and first_instr.get_opcode() != Opcodes.Ldnull:
             return False
         
-        second_instr = target_instrs[0]
+        second_instr = target_instrs[1]
         if second_instr.is_branch():
             return False
         if not second_instr.get_name().startswith('ldc.') and second_instr.get_opcode() != Opcodes.Ldnull:
