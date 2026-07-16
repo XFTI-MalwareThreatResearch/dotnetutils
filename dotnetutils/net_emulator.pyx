@@ -460,8 +460,33 @@ cdef bint handle_stind_i8_instruction(DotNetEmulator emu):
     cdef StackCell num = emu.stack.pop()
     cdef StackCell addr = emu.stack.pop()
     cdef StackCell casted
+    cdef uint64_t base_offset = 0
+    cdef Py_ssize_t x = 0
+    cdef StackCell result
+    cdef StackCell ref_ptr
+    cdef char buffer[8]
     if not net_utils.is_cortype_number(<CorElementType>num.tag) or addr.tag != CorElementType.ELEMENT_TYPE_BYREF:
         raise net_exceptions.InvalidArgumentsException()
+    if addr.tag == CorElementType.ELEMENT_TYPE_PTR:
+        if addr.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        memcpy(&ref_ptr, addr.item.array_item.array, sizeof(StackCell))
+        if ref_ptr.item.byref.kind != 3:
+            raise net_exceptions.OperationNotSupportedException()
+        array = <net_emu_types.DotNetArray>ref_ptr.item.byref.owner
+        base_offset = addr.item.array_item.offset
+        if base_offset + 8 >= <uint64_t>len(array):
+            raise net_exceptions.InvalidArgumentsException()
+        casted = emu.cast_cell(num, net_sigs.get_CorSig_Int64())
+        (<int64_t*>buffer)[0] = casted.item.i8
+        for x in range(8):
+            result = emu.pack_u1(buffer[x])
+            array._set_item(base_offset + x, result)
+            emu.dealloc_cell(result)
+        emu.dealloc_cell(addr)
+        emu.dealloc_cell(casted)
+        emu.dealloc_cell(num)
+        return False
     casted = emu.cast_cell(num, net_sigs.get_CorSig_Int64())
     emu.set_ref(addr, casted)
     emu.dealloc_cell(num)
@@ -632,8 +657,36 @@ cdef bint handle_ldind_i8_instruction(DotNetEmulator emu):
     cdef StackCell addr_obj = emu.stack.pop()
     cdef StackCell ref_obj
     cdef StackCell casted
-    if addr_obj.tag != CorElementType.ELEMENT_TYPE_BYREF:
+    cdef StackCell ref_ptr
+    cdef net_emu_types.DotNetArray array = None
+    cdef uint64_t base_offset = 0
+    cdef char buffer[8]
+    cdef StackCell result
+    if addr_obj.tag != CorElementType.ELEMENT_TYPE_BYREF and addr_obj.tag != CorElementType.ELEMENT_TYPE_PTR:
         raise net_exceptions.OperationNotSupportedException()
+
+    if addr_obj.tag == CorElementType.ELEMENT_TYPE_PTR:
+        if addr_obj.item.array_item.array.tag != CorElementType.ELEMENT_TYPE_BYREF:
+            raise net_exceptions.OperationNotSupportedException()
+        memcpy(&ref_ptr, addr_obj.item.array_item.array, sizeof(StackCell))
+        if ref_ptr.item.byref.kind != 3:
+            raise net_exceptions.OperationNotSupportedException()
+        array = <net_emu_types.DotNetArray>ref_ptr.item.byref.owner
+        base_offset = addr_obj.item.array_item.offset
+        if base_offset + 8 >= <uint64_t>len(array):
+            raise net_exceptions.InvalidArgumentsException()
+        for x in range(8):
+            result = array._get_item(base_offset + x)
+            if result.tag != CorElementType.ELEMENT_TYPE_U1:
+                raise net_exceptions.OperationNotSupportedException()
+            buffer[x] = result.item.u1
+            emu.dealloc_cell(result)
+
+        casted = emu.pack_i8((<int64_t*>buffer)[0])
+        emu.stack.append(casted)
+        emu.dealloc_cell(addr_obj)
+        emu.dealloc_cell(casted)
+        return False
     ref_obj = emu.get_ref(addr_obj)
     if not net_utils.is_cortype_number(<CorElementType>ref_obj.tag):
         raise net_exceptions.InvalidArgumentsException()
@@ -1037,6 +1090,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
                 memset(method_args, 0, amt_args * sizeof(StackCell))
             if len(emu.stack) < amt_args:
                 raise net_exceptions.EmulatorExecutionException(emu, 'There are not enough items on the stack to execute the instruction')
+            if method_signature is None:
+                method_signature = method_obj.get_method_signature()
+            if method_signature is None:
+                raise net_exceptions.EmulatorExecutionException(emu, 'No method signature found.')
             for x in range(amt_args - 1, -1, -1):
                 cell = emu.stack.pop()
                 psig = method_signature.get_parameters()[x]

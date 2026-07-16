@@ -301,7 +301,6 @@ class GraphAnalyzer:
         try:
             switch_paths = self.get_all_paths_to_block(switch_block, switch_block.get_last_instr())
         except net_exceptions.ControlFlowDeobfuscationMisidentify:
-            print('misidentify exception')
             return False, [], [], [], []
         all_modifiers = list()
         all_src_instrs = list()
@@ -398,7 +397,6 @@ class GraphAnalyzer:
             raise Exception()
         is_obf, switch_paths, all_modifiers, all_src_instrs, needs_more_work = self.new_switch_detection(switch_block)
         if not is_obf:
-            print('not obf')
             return None
         if not (len(switch_paths) == len(all_modifiers) == len(all_src_instrs)):
             raise Exception()
@@ -433,7 +431,6 @@ class GraphAnalyzer:
         for path, n, m in all_paths:
             path.extend([None] * (len(path) - largest_path))
         path_diverges = dict()
-        skip_paths = set()
         for x in range(largest_path):
             for y in range(len(all_paths)):
                 curr_path, curr_num, modifiers = all_paths[y]
@@ -486,9 +483,6 @@ class GraphAnalyzer:
                     return None
                 if len(new_target.get_next()) == 2:
                     target_prev = new_target.get_next()[0]
-                    last_index = len(new_target.get_instrs()) - 2
-                    check_instr = new_target.get_instrs()[last_index]
-                    #TODO: Figure out how to fix this contdition, check_instr has to skip the call instr.
                     nstack_original = 0
                     nstack_modified = 0
                     for instr in new_target.get_instrs():
@@ -523,7 +517,6 @@ class GraphAnalyzer:
                 if instr.get_opcode() not in self.LDLOC:
                     raise Exception()
                 orig_instr = instr
-                should_break = False
                 orig_instr_block = self.__graph.get_block_by_offset(orig_instr.get_instr_offset())
                 if not orig_instr_block.get_last_instr().is_branch() or orig_instr_block.get_last_instr().get_pstack() != 2:
                     for block in curr_path:
@@ -552,8 +545,6 @@ class GraphAnalyzer:
                         raise Exception()
                     new_instr = new_instr[0]
                     new_instr.setup_instr_offset(instr.get_instr_offset(), instr.get_instr_index())
-                    print('curr path {}'.format(curr_path))
-                    print('placing instr 1 {} at instr {} {}'.format(new_instr, instr, orig_instr))
                     instr_block = new_graph.get_block_by_offset(instr.get_instr_offset())
                     instr_block.replace_instr(instr_block.get_instr_index(instr), new_instr)
                     if instr.get_instr_offset() in to_remove_instrs:
@@ -579,9 +570,7 @@ class GraphAnalyzer:
                                     var_value = var_set_instr.get_opcode()
                                 else:
                                     child_modifiers = list()
-                                    print('var set', var_set_instr)
                                     src_instr, src_blk, src_blk_index = self.__find_value_source(set_path[var_blk_index:], var_set_instr, child_modifiers)
-                                    print('Child modifiers', child_modifiers)
                                     raise Exception()
                             dnint = net_emu_types.DotNetInt32(fake_emu_obj, None)
                             dnint.from_int(var_value)
@@ -590,8 +579,6 @@ class GraphAnalyzer:
                                 raise Exception()
                             new_instr = new_instr[0]
                             new_instr.setup_instr_offset(instr.get_instr_offset(), instr.get_instr_index())
-                            print('curr path {}'.format(curr_path))
-                            print('Placing instr {} 2 at instr {} {}'.format(new_instr, instr, orig_instr))
                             instr_block = new_graph.get_block_by_offset(instr.get_instr_offset())
                             instr_block.replace_instr(instr_block.get_instr_index(instr), new_instr)
                             if instr.get_instr_offset() in to_remove_instrs:
@@ -601,8 +588,6 @@ class GraphAnalyzer:
                     orig_instr_block = new_graph.get_block_by_offset(orig_instr.get_instr_offset())
                     new_target = new_graph.get_block_by_offset(switch_block.get_next()[0].get_start_offset())
                     instr_block.replace_next(orig_instr_block, new_target)
-
-                
                 new_switch_block.remove_next(new_target)
                                 
         #for now make the assumption that all modifier instructions can be removed, however that isnt guaranteed to be the case.
@@ -712,29 +697,20 @@ class GraphAnalyzer:
                 block.clear_prev()
                 new_graph.unregister_block(block.get_start_offset())
         new_graph.repopulate_prevs()
-        #new_graph.print_root()
         new_graph.validate_blocks()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
         new_analyzer.repair_blocks()
         return new_graph
-    
-
-    def testing_switch_detection(self, block: FunctionBlock):
-        pass
 
     def simplify_control_flow(self, max_attempts=-1):
         graph = self.__graph
         is_obfuscated_at_all = False
         attempts = 0
-        if self.__method.get_token() != 0x06002F20:
-            return None
-        print('attempting to deobfuscate {}'.format(hex(self.__method.get_token())))
         while True:
             graph = self.__graph
             is_obfuscated = False
             out = None
             candidate = graph.duplicate()
-            graph.print_root()
             if self.__fold_constant_branches(candidate) > 0:
                 #deal with branch folds first since it makes DNR deobfuscation much easier.
                 try:
@@ -751,12 +727,8 @@ class GraphAnalyzer:
                     is_obfuscated_at_all = True
             if out is None:
                 for block in list(graph.blocks()):
-                    start_offsets = list()
-                    bad_instrs = set()
-                    print('Trying to deob', block, block.get_last_instr())
                     new_graph = self.new_switch_deob(block)
                     if new_graph is not None:
-                        print('deobed function')
                         new_graph.validate_blocks()
                         out = new_graph
                         is_obfuscated = True
@@ -774,7 +746,6 @@ class GraphAnalyzer:
                 if isinstance(self.__method, net_row_objects.MethodSpec):
                     self.__method.get_method().set_method_data(data)
                 else:
-                    print('replacing method {} with data'.format(hex(self.__method.get_token())))
                     self.__method.set_method_data(data)
                 self.__graph = out
                 if isinstance(self.__method, net_row_objects.MethodSpec):
@@ -1320,8 +1291,6 @@ class GraphAnalyzer:
         current_offset = 0
         current_index = 0
         self.__graph.validate_blocks()
-        #lay out the offsets
-        #self.__graph.print_root()
         for x in range(total_compiled):
             block = blocks_order[x]
             orig_offset = block.get_start_offset()

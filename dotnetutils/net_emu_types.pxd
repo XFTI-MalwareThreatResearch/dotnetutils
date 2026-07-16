@@ -2493,6 +2493,41 @@ cdef class DotNetRijandaelDecryptor(DotNetICryptoTransform):
     cdef StackCell TransformBlock(self, StackCell * params, int nparams)
     cdef StackCell TransformFinalBlock(self, StackCell * params, int nparams)
 
+cdef enum OSPlatformType:
+    WINDOWS,
+    OSX,
+    ANDROID,
+    FREEBSD,
+    LINUX
+
+cdef class DotNetOSPlatform(DotNetObject):
+    cdef OSPlatformType __ptype
+
+    cdef OSPlatformType get_platform_type(self)
+   
+    @staticmethod
+    cdef StackCell get_Windows(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell get_Linux(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell get_OSX(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell get_FreeBSD(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell get_Android(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
+    cdef StackCell Create(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+cdef class DotNetRuntimeInformation(DotNetObject):
+
+    @staticmethod
+    cdef StackCell IsOSPlatform(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
 include "net_emu_types.pxi"
 
 cdef NewobjFuncMapping NET_EMULATE_TYPE_REGISTRATIONS[AMT_OF_TYPES]

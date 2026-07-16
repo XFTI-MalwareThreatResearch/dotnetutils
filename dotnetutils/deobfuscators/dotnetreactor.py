@@ -59,6 +59,7 @@ def dnr_encrypt_skip_intptr_newobjs(emulator, argument):
             new_obj.init_zero()
             emulator.get_stack().append_obj(new_obj)
             return False
+    
     return True
 
 def dnr_encrypt_skip_marshal_calls(emulator, argument):
@@ -95,6 +96,8 @@ def dnr_encrypt_skip_marshal_calls(emulator, argument):
                 stack.remove_obj()
                 stack.append_obj(None) #Append a null to fool check.
                 return False
+            elif full_name.endswith(b'get_Windows'):
+                argument[0] = True
     return True
 
 def dnr_encrypt_stop_ldelema(emulator, argument):
@@ -296,11 +299,15 @@ class NETReactor(Deobfuscator):
             print('Code encryption not detected.')
             return False
         print('Encryption method identified as {}'.format(encryption_method))
-        emu_obj = passed_emu.spawn_new_emulator(encryption_method)
+        if passed_emu is not None:
+            emu_obj = passed_emu.spawn_new_emulator(encryption_method)
+        else:
+            emu_obj = net_emulator.DotNetEmulator(encryption_method)
         emu_obj.setup_method_params([])
         appdomain = emu_obj.get_appdomain()
+        is_new_version = [False]
         appdomain.register_instr_handler(net_opcodes.Opcodes.Ldelema, dnr_encrypt_stop_ldelema, None)
-        appdomain.register_instr_handler(net_opcodes.Opcodes.Call, dnr_encrypt_skip_marshal_calls, None)
+        appdomain.register_instr_handler(net_opcodes.Opcodes.Call, dnr_encrypt_skip_marshal_calls, is_new_version)
         appdomain.register_instr_handler(net_opcodes.Opcodes.Conv_U, dnr_encrypt_skip_conv_u, None)
         appdomain.register_instr_handler(net_opcodes.Opcodes.Newobj, dnr_encrypt_skip_intptr_newobjs, None)
         worked = False
@@ -338,19 +345,33 @@ class NETReactor(Deobfuscator):
         decrypted_data = bytearray()
         index = 0
         for _ in range(amt):
-            new_val = int.from_bytes(encrypted_data[index:index+8], 'little') ^ xor_val
+            new_val = int.from_bytes(encrypted_data[index:index+8], 'little', signed=True) ^ xor_val
             index += 8
-            decrypted_data.extend(int.to_bytes(new_val, 8, 'little'))
+            decrypted_data.extend(int.to_bytes(new_val, 8, 'little', signed=True))
         decrypted_data = decrypted_data + encrypted_data[index:]
         reader = net_structs.DotNetDataReader(bytes(decrypted_data))
         int32_method = self.find_int32_method(encryption_method)
         amt = self.count_int32_pops(encryption_method, int32_method)
         if amt == 0:
             raise Exception('invalid amt pops')
-        for x in range(amt):
+        is_new_version = is_new_version[0]
+
+        if is_new_version:
+            import binascii
+            print(binascii.hexlify(decrypted_data[:50]))
             reader.read_int32()
-        num1 = reader.read_int32()
-        num2 = reader.read_int32()
+            reader.read_int32()
+            reader.read_int32()
+            reader.read_int32()
+            num1 = reader.read_int32()
+            num2 = reader.read_int32()
+            
+        else:
+            for x in range(amt):
+                reader.read_int32()
+            num1 = reader.read_int32()
+            num2 = reader.read_int32()
+        print('ENCRYPTION TYPE', num1, num2)
         if num2 == 4:
             print('not supported yet')
             return False
@@ -693,7 +714,10 @@ class NETReactor(Deobfuscator):
             net_patch.insert_blank_userstrings(dotnet)
         cctor_method = strm.get_parent_type().get_static_constructor()
         emu_output = dict()
-        emu = emu.spawn_new_emulator(cctor_method)
+        if emu is not None:
+            emu = emu.spawn_new_emulator(cctor_method)
+        else:
+            emu = net_emulator.DotNetEmulator(cctor_method)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, emu_output)
         emu.setup_method_params([])
@@ -931,8 +955,7 @@ class NETReactor(Deobfuscator):
             tokens_dict = self.remove_delegates(dotnet, delegate_method, emu)
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
-        #is_encrypted = self.fix_encrypted_methods(dotnet, emu)
-        is_encrypted = False
+        is_encrypted = self.fix_encrypted_methods(dotnet, emu)
         if is_encrypted:
             #remove delegatges again for decrypted methods.
             print('doing a second remove delegates pass')
@@ -945,14 +968,14 @@ class NETReactor(Deobfuscator):
         dotnet.set_exe_data(data)
         dotnet.reinit_dpe(False)
 
-        """string_method = self.identify_string_method(dotnet)
+        string_method = self.identify_string_method(dotnet)
         print('Removing string obfuscation') #NOTE: not ready yet.
         self.remove_string_obfuscation(emu, dotnet, string_method)
         emu = None
         print('removing antitamper method calls.')
-        self.remove_antitamper_antidebug_method(dotnet)"""
+        self.remove_antitamper_antidebug_method(dotnet)
         print('Cleaning Code')
-        self.clean_code(dotnet)
+        #self.clean_code(dotnet)
         print('Cleaning up names')
         #net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
