@@ -735,6 +735,8 @@ cdef class DotNetType(DotNetMemberInfo):
 
     cdef StackCell GetGenericArguments(self, StackCell * params, int nparams)
 
+    cdef StackCell GetTypeInfo(self, StackCell * params, int nparams)
+
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
@@ -2527,6 +2529,18 @@ cdef class DotNetRuntimeInformation(DotNetObject):
 
     @staticmethod
     cdef StackCell IsOSPlatform(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+cdef class DotNetTypeInfo(DotNetObject):
+    cdef DotNetType __type
+
+    cdef DotNetType get_type(self)
+
+    cdef StackCell get_Assembly(self, StackCell * params, int nparams)
+
+cdef class DotNetIntrospectionExtensions(DotNetObject):
+
+    @staticmethod
+    cdef StackCell GetTypeInfo(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
 include "net_emu_types.pxi"
 

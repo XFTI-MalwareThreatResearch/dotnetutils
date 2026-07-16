@@ -5556,6 +5556,10 @@ cdef class DotNetType(DotNetMemberInfo):
         self.add_function(b'get_TypeHandle', <emu_func_type>self.get_TypeHandle)
         self.add_function(b'GetElementType', <emu_func_type>self.GetElementType)
         self.add_function(b'GetMethod', <emu_func_type>self.GetMethod)
+        self.add_function(b'GetTypeInfo', <emu_func_type>self.GetTypeInfo)
+
+    cdef StackCell GetTypeInfo(self, StackCell * params, int nparams):
+        return self.get_emulator_obj().pack_object(DotNetTypeInfo(self.get_emulator_obj(), self))
 
     cdef StackCell GetMethod(self, StackCell * params, int nparams):
         """ Currently this does an extremely basic check
@@ -11292,6 +11296,31 @@ cdef class DotNetRijandaelDecryptor(DotNetICryptoTransform):
 
         return self.get_emulator_obj().pack_object(array)
 
+cdef class DotNetTypeInfo(DotNetObject):
+    def __init__(self, net_emulator.DotNetEmulator emu, DotNetType t):
+        DotNetObject.__init__(self, emu)
+        self.__type = t
+        self.add_function(b'get_Assembly', <emu_func_type>self.get_Assembly)
+
+    cdef DotNetType get_type(self):
+        return self.__type
+
+    cdef StackCell get_Assembly(self, StackCell * params, int nparams):
+        return self.__type.get_Assembly(params, nparams)
+
+cdef class DotNetIntrospectionExtensions(DotNetObject):
+
+    def __init__(self, net_emulator.DotNetEmulator emu):
+        DotNetObject.__init__(self, emu)
+
+    @staticmethod
+    cdef StackCell GetTypeInfo(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams):
+        if nparams != 1 or check_object(params[0]):
+            raise net_exceptions.InvalidArgumentsException()
+
+        cdef DotNetType tobj = <DotNetType>params[0].item.ref
+        return tobj.GetTypeInfo(NULL, 0)
+
 cdef DotNetObject New_RijandaelManaged(net_emulator.DotNetEmulator emulator_obj):
     return DotNetRijandaelManaged(emulator_obj)
 
@@ -11560,3 +11589,5 @@ NET_EMULATE_STATIC_FUNC_REGISTRATIONS[65].name = 'System.Runtime.InteropServices
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[65].func_ptr = <static_func_type>&DotNetOSPlatform.get_Android
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[66].name = 'System.Runtime.InteropServices.OSPlatform.Create'
 NET_EMULATE_STATIC_FUNC_REGISTRATIONS[66].func_ptr = <static_func_type>&DotNetOSPlatform.Create
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[67].name = 'System.Reflection.IntrospectionExtensions.GetTypeInfo'
+NET_EMULATE_STATIC_FUNC_REGISTRATIONS[67].func_ptr = <static_func_type>&DotNetIntrospectionExtensions.GetTypeInfo

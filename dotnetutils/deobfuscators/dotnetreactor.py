@@ -739,18 +739,6 @@ class NETReactor(Deobfuscator):
             print('Could not get string field.')
             return
         rsrc_name = rsrc_name.decode('utf-16le').encode('utf-8')
-        string_decode_method = None
-        for xref_rid, xref_offset in string_field.get_xrefs():
-            xfm = dotnet.get_method_by_rid(xref_rid)
-            dis = xfm.disassemble_method()
-            instr = dis.get_instr_at_offset(xref_offset)
-            if instr.get_opcode() == net_opcodes.Opcodes.Stsfld:
-                if len(xfm.get_param_types()) > 1:
-                    string_decode_method = xfm
-                    break
-        if string_decode_method is None:
-            print('Couldnt find string resource decode method.')
-            return
         rsrc = dotnet.get_resource_by_name(rsrc_name)
         if rsrc is None:
             print('Couldnt find resource')
@@ -808,7 +796,7 @@ class NETReactor(Deobfuscator):
                     if is_string_method(xfm):
                         string_methods.append(xfm)
                         continue
-                    new_emu = emu.spawn_new_emulator(xfm, start_offset=patch_start, end_offset=call_instr.get_instr_offset() + len(call_instr), dont_execute_first_cctor=True)
+                    new_emu = emu.spawn_new_emulator(xfm, start_offset=patch_start, end_offset=call_instr.get_instr_offset() + len(call_instr), dont_execute_first_cctor=True, init_open_generics_as_object=True)
                     new_emu.setup_method_params([])
                     #new_emu.set_print_debugging(False, True, print_debug_methods=[1447])
                     worked = False
@@ -966,7 +954,7 @@ class NETReactor(Deobfuscator):
         dotnet.reinit_dpe(False)
 
         string_method = self.identify_string_method(dotnet)
-        print('Removing string obfuscation') #NOTE: not ready yet.
+        print('Removing string obfuscation')
         self.remove_string_obfuscation(emu, dotnet, string_method)
         emu = None
         print('removing antitamper method calls.')

@@ -690,6 +690,7 @@ class GraphAnalyzer:
                             new_instr.setup_instr_offset(last_instr.get_instr_offset() + 1, last_instr.get_instr_index() + 1)
                             new_instr.setup_arguments_from_int32(nxt.get_start_offset() - (last_instr.get_instr_offset() + 1) - 5)
                             block.add_instr(new_instr)
+                    last_instr = block.get_last_instr()
                     if len(block.get_next()) == 1 and last_instr.is_branch() and not last_instr.is_absolute_jmp() and last_instr.get_opcode() != Opcodes.Switch:
                         nxt = block.get_next()[0]
                         block.add_next(nxt)

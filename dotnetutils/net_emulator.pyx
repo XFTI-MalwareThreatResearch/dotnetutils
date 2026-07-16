@@ -8331,6 +8331,8 @@ cdef class DotNetEmulator:
                 if self.__init_open_generics_as_object:
                     return self.pack_null()
             return self._get_default_value(rsig, tref)
+        elif isinstance(type_sig, net_sigs.ByRefSig):
+            return self.pack_blanktag()
         else:
             raise net_exceptions.EmulatorExecutionException(self, 'weird sig {}'.format(type(type_sig)))
 
@@ -8361,7 +8363,7 @@ cdef class DotNetEmulator:
         self.running_thread = thread_obj
 
     cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=0, int end_offset=-1, DotNetEmulator caller=None,
-                           int end_method_rid=-1, int end_eip=-1, net_row_objects.MethodSpec spec_obj=None, int timeout_seconds=-1, bint strict_typing=False, bint dont_execute_first_cctor=False):
+                           int end_method_rid=-1, int end_eip=-1, net_row_objects.MethodSpec spec_obj=None, int timeout_seconds=-1, bint strict_typing=False, bint dont_execute_first_cctor=False, bint init_open_generics_as_object=False):
         """ Use this method to create a new emulator off an existing one.
             For instance, if you are trying to deobfuscate strings, the usual way to do it would be to emulate some cctor method
             and then use spawn_new_emulator() to create emulator objects each time the string decryption method is emulated.
@@ -8382,7 +8384,7 @@ cdef class DotNetEmulator:
         Returns:
             net_emulator.DotNetEmulator: The newly allocated emulator object for the method.
         """
-        cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset, end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj, strict_typing=strict_typing, init_open_generics_as_object=self.__init_open_generics_as_object)
+        cdef DotNetEmulator new_emu = DotNetEmulator(method_obj, start_offset=start_offset, end_offset=end_offset, caller=caller, app_domain=self.app_domain, spec_obj=spec_obj, strict_typing=strict_typing, init_open_generics_as_object=init_open_generics_as_object)
         cdef net_row_objects.MethodDef cctor_method = None
         cdef EmulatorAppDomain app_domain = None
         if end_method_rid == -1:
