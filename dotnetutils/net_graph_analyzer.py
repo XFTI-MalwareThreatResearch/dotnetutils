@@ -529,12 +529,11 @@ class GraphAnalyzer:
                                     break
                         if orig_instr != instr:
                             break
-                    
                 last_num = -1 
                 if curr_path[last_num] is None:
                     last_num -= 1
                 new_target = new_graph.get_block_by_offset(curr_path[last_num].get_start_offset())
-                    
+                
                 from_block = new_graph.get_block_by_offset(instr.get_instr_offset())
                 all_reachable_sets = self.__find_all_var_sets_reachable_from(instr.get_argument(), from_block, set())
                 if len(all_reachable_sets) == 0:
@@ -578,6 +577,7 @@ class GraphAnalyzer:
                             if len(new_instr) != 1:
                                 raise Exception()
                             new_instr = new_instr[0]
+
                             new_instr.setup_instr_offset(instr.get_instr_offset(), instr.get_instr_index())
                             instr_block = new_graph.get_block_by_offset(instr.get_instr_offset())
                             instr_block.replace_instr(instr_block.get_instr_index(instr), new_instr)
@@ -690,6 +690,11 @@ class GraphAnalyzer:
                             new_instr.setup_instr_offset(last_instr.get_instr_offset() + 1, last_instr.get_instr_index() + 1)
                             new_instr.setup_arguments_from_int32(nxt.get_start_offset() - (last_instr.get_instr_offset() + 1) - 5)
                             block.add_instr(new_instr)
+                    if len(block.get_next()) == 1 and last_instr.is_branch() and not last_instr.is_absolute_jmp() and last_instr.get_opcode() != Opcodes.Switch:
+                        nxt = block.get_next()[0]
+                        block.add_next(nxt)
+                        changed = True
+                        continue
 
             for block in to_remove:
                 changed = True

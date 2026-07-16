@@ -357,8 +357,6 @@ class NETReactor(Deobfuscator):
         is_new_version = is_new_version[0]
 
         if is_new_version:
-            import binascii
-            print(binascii.hexlify(decrypted_data[:50]))
             reader.read_int32()
             reader.read_int32()
             reader.read_int32()
@@ -371,7 +369,6 @@ class NETReactor(Deobfuscator):
                 reader.read_int32()
             num1 = reader.read_int32()
             num2 = reader.read_int32()
-        print('ENCRYPTION TYPE', num1, num2)
         if num2 == 4:
             print('not supported yet')
             return False
@@ -975,7 +972,7 @@ class NETReactor(Deobfuscator):
         print('removing antitamper method calls.')
         self.remove_antitamper_antidebug_method(dotnet)
         print('Cleaning Code')
-        #self.clean_code(dotnet)
+        self.clean_code(dotnet)
         print('Cleaning up names')
         #net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')
