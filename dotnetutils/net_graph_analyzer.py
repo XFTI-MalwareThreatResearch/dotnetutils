@@ -429,18 +429,15 @@ class GraphAnalyzer:
                 largest_path = max(len(switch_path), largest_path)
         #now extend the paths to be the same size
         for path, n, m in all_paths:
-            path.extend([None] * (len(path) - largest_path))
+            path.extend([None] * (largest_path - len(path)))
         path_diverges = dict()
         for x in range(largest_path):
             for y in range(len(all_paths)):
                 curr_path, curr_num, modifiers = all_paths[y]
-                if len(curr_path) <= x or y in needs_more_work:
-                    if y in needs_more_work:
-                        path_diverges[y] = None
+                if len(curr_path) <= x or curr_path[x] is None:
                     continue
 
                 is_unique = True
-                options = switch_paths_by_value[curr_num]
                 curr_blk = curr_path[x]
                 for switch_path, other_num, src_instrs in all_paths:
                     if other_num != curr_num and curr_blk in switch_path[x:]:
@@ -510,7 +507,6 @@ class GraphAnalyzer:
                     if next_block != new_switch_block and new_switch_block.has_next(next_block):
                         new_switch_block.remove_next(next_block)
         if len(needs_more_work) > 0:
-            fake_emu_obj = net_emulator.DotNetEmulator(self.__method)
             for index in needs_more_work:
                 curr_path, curr_num, modifier_instrs = all_paths[index]
                 instr = modifier_instrs[0]
@@ -529,66 +525,58 @@ class GraphAnalyzer:
                                     break
                         if orig_instr != instr:
                             break
-                last_num = -1 
-                if curr_path[last_num] is None:
-                    last_num -= 1
-                new_target = new_graph.get_block_by_offset(curr_path[last_num].get_start_offset())
-                
                 from_block = new_graph.get_block_by_offset(instr.get_instr_offset())
                 all_reachable_sets = self.__find_all_var_sets_reachable_from(instr.get_argument(), from_block, set())
+                values = set()
                 if len(all_reachable_sets) == 0:
-                    dnint = net_emu_types.DotNetInt32(fake_emu_obj, None)
-                    dnint.from_int(0)
-                    new_instr = self.emit_ldc_num(dnint)
-                    if len(new_instr) != 1:
-                        raise Exception()
-                    new_instr = new_instr[0]
-                    new_instr.setup_instr_offset(instr.get_instr_offset(), instr.get_instr_index())
-                    instr_block = new_graph.get_block_by_offset(instr.get_instr_offset())
-                    instr_block.replace_instr(instr_block.get_instr_index(instr), new_instr)
-                    if instr.get_instr_offset() in to_remove_instrs:
-                        del to_remove_instrs[instr.get_instr_offset()]
+                    values.add(0)
                 else:
                     if len(all_reachable_sets) != 1:
-                        raise Exception()
+                        return None
                     for set_block, set_instr in all_reachable_sets:
                         try:
-                            all_paths = self.get_all_paths_to_block(set_block, set_instr)
+                            set_paths = self.get_all_paths_to_block(set_block, set_instr)
                         except net_exceptions.ControlFlowDeobfuscationMisidentify:
                             return None
-                        if len(all_paths) != 1:
-                            raise Exception()
-                        for set_path in all_paths:
+                        if len(set_paths) > 2:
+                            return None
+                        for set_path in set_paths:
                             set_path.reverse()
-                            child_modifiers = list()
-                            var_set_instr, var_set_blk, var_blk_index = self.__find_value_source(set_path, set_instr, child_modifiers)
+                            var_set_instr, var_set_blk, var_blk_index = self.__find_value_source(set_path, set_instr, list())
                             if var_set_instr is None:
-                                var_value = 0
+                                values.add(0)
+                            elif var_set_instr.get_opcode() in self.LDC_INSTRS:
+                                values.add(var_set_instr.get_argument())
                             else:
-                                if var_set_instr.get_opcode() in self.LDC_INSTRS:
-                                    var_value = var_set_instr.get_opcode()
-                                else:
-                                    child_modifiers = list()
-                                    src_instr, src_blk, src_blk_index = self.__find_value_source(set_path[var_blk_index:], var_set_instr, child_modifiers)
-                                    raise Exception()
-                            dnint = net_emu_types.DotNetInt32(fake_emu_obj, None)
-                            dnint.from_int(var_value)
-                            new_instr = self.emit_ldc_num(dnint)
-                            if len(new_instr) != 1:
-                                raise Exception()
-                            new_instr = new_instr[0]
+                                return None
+                if len(values) != 1:
+                    #TODO: multiple distinct definitions  split, routing each source to its own case.
+                    return None
+                var_value = values.pop()
+                if var_value >= len(switch_nexts):
+                    var_value = len(switch_nexts) - 1
+                case_block = new_graph.get_block_by_offset(switch_nexts[var_value].get_start_offset())
 
-                            new_instr.setup_instr_offset(instr.get_instr_offset(), instr.get_instr_index())
-                            instr_block = new_graph.get_block_by_offset(instr.get_instr_offset())
-                            instr_block.replace_instr(instr_block.get_instr_index(instr), new_instr)
-                            if instr.get_instr_offset() in to_remove_instrs:
-                                del to_remove_instrs[instr.get_instr_offset()]
-                if orig_instr != instr:
-                    #Loop does not have edge from value, its reused
-                    orig_instr_block = new_graph.get_block_by_offset(orig_instr.get_instr_offset())
-                    new_target = new_graph.get_block_by_offset(switch_block.get_next()[0].get_start_offset())
-                    instr_block.replace_next(orig_instr_block, new_target)
-                new_switch_block.remove_next(new_target)
+                fidx = path_diverges[index]
+                if fidx <= 0:
+                    return None
+                detach = new_graph.get_block_by_offset(curr_path[fidx].get_start_offset())
+                feed = new_graph.get_block_by_offset(curr_path[fidx - 1].get_start_offset())
+                detach_last = detach.get_last_instr()
+                if detach_last is None or not detach.has_next(feed):
+                    return None
+                if detach_last.is_branch() and detach_last.get_pstack() == 2:
+                    detach.replace_next(feed, case_block)
+                elif detach_last.get_opcode() in (Opcodes.Br, Opcodes.Br_S):
+                    detach_instrs = detach.get_instrs()
+                    if len(detach_instrs) >= 2 and detach_instrs[-2].get_astack() == 1 and detach_instrs[-2].get_pstack() == 0:
+                        to_remove_instrs[detach_instrs[-2].get_instr_offset()] = detach_instrs[-2]
+                    detach.replace_next(feed, case_block)
+                else:
+                    return None
+                if new_switch_block.has_next(case_block):
+                    new_switch_block.remove_next(case_block)
+
                                 
         #for now make the assumption that all modifier instructions can be removed, however that isnt guaranteed to be the case.
         if new_switch_block.get_last_instr() is not None and new_switch_block.get_last_instr().get_opcode() == Opcodes.Switch:
@@ -611,7 +599,6 @@ class GraphAnalyzer:
                 check = block.get_next()[1]
                 if len(check.get_instrs()) > 0 and check.get_instrs()[0].get_opcode() == Opcodes.Pop:
                     check.remove_instrs(0, 1)
-
         changed = True
         while changed:
             changed = False
@@ -709,9 +696,12 @@ class GraphAnalyzer:
         return new_graph
 
     def simplify_control_flow(self, max_attempts=-1):
+        if self.__method.get_token() != 0x6000329:
+            return None
         graph = self.__graph
         is_obfuscated_at_all = False
         attempts = 0
+        print('deobfuscating method {}'.format(hex(self.__method.get_token())))
         while True:
             graph = self.__graph
             is_obfuscated = False
@@ -732,6 +722,8 @@ class GraphAnalyzer:
                     is_obfuscated = True
                     is_obfuscated_at_all = True
             if out is None:
+                
+                graph.print_root()
                 for block in list(graph.blocks()):
                     new_graph = self.new_switch_deob(block)
                     if new_graph is not None:
