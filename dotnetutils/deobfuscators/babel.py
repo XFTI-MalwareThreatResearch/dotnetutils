@@ -64,12 +64,13 @@ class Babel(Deobfuscator):
         emu = net_emulator.DotNetEmulator(actual_string_method)
         us_heap = dotnet.get_heap('#US')
         us_heap.begin_append_tx()
+        print('string method {}, actual string method {}'.format(string_method, actual_string_method))
         for xref_rid, xref_offset in actual_string_method.get_xrefs():
             xfm = dotnet.get_method_by_rid(xref_rid)
             dis = xfm.disassemble_method()
             instr = dis.get_instr_at_offset(xref_offset)
             instrs = list()
-            for x in range(instr.get_instr_index() - 1, 0, -1):
+            for x in range(instr.get_instr_index() - 1, -1, -1):
                 if dis[x].get_opcode() != Opcodes.Nop:
                     instrs.append(dis[x])
                     if len(instrs) == 2:
