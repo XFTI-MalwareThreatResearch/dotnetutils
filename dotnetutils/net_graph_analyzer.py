@@ -3,6 +3,11 @@ from dotnetutils.net_opcodes import Opcodes
 from dotnetutils.net_graphing import FunctionBlock, FunctionGraph
 from dotnetutils import net_cil_disas
 
+#Set to True to enable verbose control-flow-deobfuscation diagnostics.
+DEBUG = False
+
+DEBUG_METHOD = 0x0600000D
+
 class GraphAnalyzer:
 
     MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
@@ -167,6 +172,8 @@ class GraphAnalyzer:
         return len(instrs_result) - amt_instrs
     
     def __get_all_paths_to_block(self, current_block: FunctionBlock, start_instr: net_cil_disas.Instruction, on_path: set, has_started=False, current_stack=list(), current_var_no=-1):
+        DEBUG and print(f'__get_all_paths_to_block({current_block}, {start_instr}, {on_path})')
+        DEBUG and print('current prevs {}'.format(current_block.get_prev()))
         if len(current_block.get_prev()) == 0:
             if has_started:
                 return [[current_block]]
@@ -283,9 +290,10 @@ class GraphAnalyzer:
                         result.append((block, instr))
         return result
     
-    def __find_all_var_sets_reachable_from(self, var_no: int, from_block: FunctionBlock, crawled={}):
+    def __find_all_var_sets_reachable_from(self, var_no: int, from_block: FunctionBlock, crawled=set()):
         if from_block.get_start_offset() in crawled:
             return []
+        DEBUG and print(f'__find_all_var_sets_reachable_from({var_no}, {from_block}, {from_block.get_prev()})')
         crawled.add(from_block.get_start_offset())
         results = list()
         for instr in from_block.get_instrs():
@@ -293,6 +301,43 @@ class GraphAnalyzer:
                 results.append((from_block, instr))
         for prev in from_block.get_prev():
             results.extend(self.__find_all_var_sets_reachable_from(var_no, prev, crawled))
+        return results
+    
+    def __is_reachable_from(self, instr: net_cil_disas.Instruction, from_block: FunctionBlock, crawled=set()):
+        if from_block.get_start_offset() in crawled:
+            return False
+        DEBUG and print(f'__is_reachable_from({instr}, {from_block}, {from_block.get_prev()}) {from_block.get_instrs()}')
+        crawled.add(from_block.get_start_offset())
+        if from_block.has_offset(instr.get_instr_offset()):
+            return True
+        for prev in from_block.get_prev():
+            if self.__is_reachable_from(instr, prev, crawled):
+                return True
+        return False
+    
+    def __find_value_sources_reachable_from(self, target: net_cil_disas.Instruction, from_block: FunctionBlock, is_start=True, needed=None, crawled=set()):
+        if from_block.get_start_offset() in crawled:
+            return []
+        if needed is None:
+            needed = target.get_pstack()
+        started = not is_start
+        DEBUG and print(f'__find_value_sources_reachable_from({target}, {from_block}, {from_block.get_prev()})')
+        crawled.add(from_block.get_start_offset())
+        results = list()
+        for instr in reversed(from_block.get_instrs()):
+            if is_start and target.get_instr_offset() == instr.get_instr_offset():
+                started = True
+                continue
+            if not started:
+                continue
+            added = instr.get_astack()
+            pulled = instr.get_pstack()
+            DEBUG and print('checking instr {} {}'.format(needed, instr))
+            needed = needed - added + pulled
+            if needed == 0:
+                return [instr]
+        for prev in from_block.get_prev():
+            results.extend(self.__find_value_sources_reachable_from(target, prev, False, needed, crawled))
         return results
 
     def new_switch_detection(self, switch_block: FunctionBlock):
@@ -502,13 +547,19 @@ class GraphAnalyzer:
                 next_block = new_graph.get_block_by_offset(switch_nexts[target].get_start_offset())
                 
                 if new_target.has_next(target_prev):
+                    DEBUG and print('MAIN-REROUTE: new_target=%s (term=%s) target_prev=%s next=%s' % (
+                        hex(new_target.get_start_offset()),
+                        new_target.get_last_instr().get_name() if new_target.get_last_instr() else None,
+                        hex(target_prev.get_start_offset()), hex(next_block.get_start_offset())))
                     new_target.replace_next(target_prev, next_block)
                 else:
                     if next_block != new_switch_block and new_switch_block.has_next(next_block):
                         new_switch_block.remove_next(next_block)
         if len(needs_more_work) > 0:
+            DEBUG and print('needs more work {}'.format(needs_more_work))
             for index in needs_more_work:
                 curr_path, curr_num, modifier_instrs = all_paths[index]
+                DEBUG and print('curr path {} {} {}'.format(curr_path, curr_num, modifier_instrs))
                 instr = modifier_instrs[0]
                 if instr.get_opcode() not in self.LDLOC:
                     raise Exception()
@@ -526,7 +577,9 @@ class GraphAnalyzer:
                         if orig_instr != instr:
                             break
                 from_block = new_graph.get_block_by_offset(instr.get_instr_offset())
+                DEBUG and print('Finding all reachable sets from {} block {}'.format(instr, from_block))
                 all_reachable_sets = self.__find_all_var_sets_reachable_from(instr.get_argument(), from_block, set())
+                DEBUG and print(f'all reachable sets {all_reachable_sets}')
                 values = set()
                 if len(all_reachable_sets) == 0:
                     values.add(0)
@@ -534,25 +587,42 @@ class GraphAnalyzer:
                     if len(all_reachable_sets) != 1:
                         return None
                     for set_block, set_instr in all_reachable_sets:
+                        DEBUG and print('for index {}, set block {} {}'.format(index, set_block, set_instr))
                         try:
-                            set_paths = self.get_all_paths_to_block(set_block, set_instr)
+                            source_instrs = self.__find_value_sources_reachable_from(set_instr, self.__graph.get_block_by_offset(set_block.get_start_offset()), True, None, set())
                         except net_exceptions.ControlFlowDeobfuscationMisidentify:
                             return None
-                        if len(set_paths) > 2:
-                            return None
-                        for set_path in set_paths:
-                            set_path.reverse()
-                            var_set_instr, var_set_blk, var_blk_index = self.__find_value_source(set_path, set_instr, list())
-                            if var_set_instr is None:
-                                values.add(0)
-                            elif var_set_instr.get_opcode() in self.LDC_INSTRS:
-                                values.add(var_set_instr.get_argument())
+                        
+                        DEBUG and print('Set paths {}'.format(source_instrs))
+                        if len(source_instrs) == 0:
+                            values.add(0)
+                        for src in source_instrs:
+                            DEBUG and print('var set instr {}'.format(src))
+                            if src.get_opcode() not in self.LDC_INSTRS:
+                                DEBUG and print('not ldlc instr')
+                                continue
+                            if not self.__is_reachable_from(src, from_block, set()):
+                                DEBUG and print('not in path')
+                                continue
+                            if src.get_opcode() in self.LDC_INSTRS:
+                                values.add(src.get_argument())
                             else:
                                 return None
+                if len(values) > 1:
+                    ncases = len(switch_block.get_last_instr().get_argument())
+                    path_offsets = {b.get_start_offset() for b in curr_path if b is not None}
+                    entry_idx = next((i for i, nb in enumerate(switch_nexts)
+                                      if nb.get_start_offset() in path_offsets), None)
+                    if entry_idx is not None and entry_idx >= ncases:
+                        ranged = {v for v in values if v >= ncases}
+                        if ranged:
+                            values = ranged
+                DEBUG and print('reachable values {}'.format(values))
                 if len(values) != 1:
                     #TODO: multiple distinct definitions  split, routing each source to its own case.
                     return None
                 var_value = values.pop()
+                orig_var_value = var_value
                 if var_value >= len(switch_nexts):
                     var_value = len(switch_nexts) - 1
                 case_block = new_graph.get_block_by_offset(switch_nexts[var_value].get_start_offset())
@@ -565,11 +635,40 @@ class GraphAnalyzer:
                 detach_last = detach.get_last_instr()
                 if detach_last is None or not detach.has_next(feed):
                     return None
+                DEBUG and print('NMW-DETACH: detach=%s (term=%s) feed=%s case=%s var_value=%s' % (
+                    hex(detach.get_start_offset()), detach_last.get_name(),
+                    hex(feed.get_start_offset()), hex(case_block.get_start_offset()), var_value))
+                
                 if detach_last.is_branch() and detach_last.get_pstack() == 2:
+                    replaced = False
+                    for pblk in reversed(curr_path):
+                        if pblk is None:
+                            continue
+                        blk = new_graph.get_block_by_offset(pblk.get_start_offset())
+                        last = blk.get_last_instr()
+                        if last is None or last.get_opcode() not in (Opcodes.Beq, Opcodes.Beq_S):
+                            continue
+                        for idx, bi in enumerate(blk.get_instrs()):
+                            if bi.get_opcode() in self.LDLOC and bi.get_argument() == instr.get_argument():
+                                ldc = self.__disasm.emit_instruction(Opcodes.Ldc_I4)
+                                ldc.setup_instr_size(5)
+                                ldc.setup_instr_offset(bi.get_instr_offset(), bi.get_instr_index())
+                                ldc.setup_arguments_from_int32(orig_var_value)
+                                DEBUG and print('Replacing instr {} with {} '.format(blk.get_instrs()[idx], ldc))
+                                blk.replace_instr(idx, ldc)
+                                replaced = True
+                                break
+                        if replaced:
+                            break
+                    if not replaced:
+                        return None
+
+
                     detach.replace_next(feed, case_block)
                 elif detach_last.get_opcode() in (Opcodes.Br, Opcodes.Br_S):
                     detach_instrs = detach.get_instrs()
                     if len(detach_instrs) >= 2 and detach_instrs[-2].get_astack() == 1 and detach_instrs[-2].get_pstack() == 0:
+                        DEBUG and print('detatching instrs ', detach_instrs[-2])
                         to_remove_instrs[detach_instrs[-2].get_instr_offset()] = detach_instrs[-2]
                     detach.replace_next(feed, case_block)
                 else:
@@ -577,7 +676,6 @@ class GraphAnalyzer:
                 if new_switch_block.has_next(case_block):
                     new_switch_block.remove_next(case_block)
 
-                                
         #for now make the assumption that all modifier instructions can be removed, however that isnt guaranteed to be the case.
         if new_switch_block.get_last_instr() is not None and new_switch_block.get_last_instr().get_opcode() == Opcodes.Switch:
             to_remove_instrs[new_switch_block.get_last_instr().get_instr_offset()] = new_switch_block.get_last_instr()
@@ -619,6 +717,16 @@ class GraphAnalyzer:
                         if len(nxts) == 1:
                             if block.is_block_start():
                                 nxt = nxts[0]
+                                DEBUG and print('CLEANUP-STARTMERGE: block %s (nexts %s) merges nxt %s (nexts %s)' % (
+                                    hex(block.get_start_offset()), [hex(n.get_start_offset()) for n in block.get_next()],
+                                    hex(nxt.get_start_offset()), [hex(n.get_start_offset()) for n in nxt.get_next()]))
+                                if len(nxt.get_prev()) != 1:
+                                    new_br = self.__disasm.emit_instruction(Opcodes.Br)
+                                    new_br.setup_instr_size(5)
+                                    new_br.setup_instr_offset(block.get_start_offset(), block.get_start_index())
+                                    new_br.setup_arguments_from_int32(nxt.get_start_offset() - block.get_start_offset() - 5)
+                                    block.add_instr(new_br)
+                                    continue
                                 block.merge_block(nxt)
                                 for nxtblk in list(nxt.get_next()):
                                     block.add_next(nxtblk)
@@ -626,6 +734,9 @@ class GraphAnalyzer:
                                 to_remove.add(nxt)
                             else:
                                 nxt = nxts[0]
+                                DEBUG and print('CLEANUP-MERGE: empty block %s -> nxt %s, repointing prevs %s' % (
+                                    hex(block.get_start_offset()), hex(nxt.get_start_offset()),
+                                    [hex(p.get_start_offset()) for p in prvs]))
                                 for prev in prvs:
                                     prev.replace_next(block, nxt)
                                 to_remove.add(block)
@@ -633,6 +744,9 @@ class GraphAnalyzer:
                             block.clear_next()
                             to_remove.add(block)
                         elif len(prvs) == 1 and not block.is_block_start():
+                            DEBUG and print('CLEANUP-CASCADE: empty block %s prev %s <- nexts %s' % (
+                                hex(block.get_start_offset()), hex(prvs[0].get_start_offset()),
+                                [hex(n.get_start_offset()) for n in nxts]))
                             for nxt in nxts:
                                 block.remove_next(nxt)
                                 prvs[0].add_next(nxt)
@@ -643,14 +757,25 @@ class GraphAnalyzer:
                                     block.remove_next(nxts[0])
                             continue
                 else:
-                    if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow, Opcodes.Endfinally):
+                    if len(block.get_next()) == len(block.get_prev()) == 0 and not block.is_block_start():
+                        to_remove.append(block)
+                        continue
+                    if last_instr.get_opcode() not in (Opcodes.Throw, Opcodes.Ret, Opcodes.Rethrow, Opcodes.Endfinally, Opcodes.Leave, Opcodes.Leave_S):
                         nxts = list(block.get_next())
                         if len(nxts) == 0:
+                            if block.get_start_offset() in (0x281, 0xbe, 0x27c, 0x93e):
+                                DEBUG and print('DEAD-0NEXTS: removing %s (term=%s) prevs=%s' % (
+                                    hex(block.get_start_offset()), last_instr.get_name(),
+                                    [hex(p.get_start_offset()) for p in block.get_prev()]))
                             to_remove.add(block)
                             for prv in block.get_prev():
                                 prv.remove_next(block)
                     if not block.is_block_start():
                         if len(block.get_prev()) == 0:
+                            if block.get_start_offset() in (0x281, 0xbe, 0x27c, 0x93e):
+                                DEBUG and print('DEAD-0PREV: removing %s (term=%s) nexts=%s' % (
+                                    hex(block.get_start_offset()), last_instr.get_name(),
+                                    [hex(n.get_start_offset()) for n in block.get_next()]))
                             for nxt in list(block.get_next()):
                                 block.remove_next(nxt)
                             to_remove.add(block)
@@ -658,6 +783,10 @@ class GraphAnalyzer:
                         nxts = block.get_next()
                         if nxts[0] == nxts[1]:
                             last_instr = block.get_last_instr()
+                            DEBUG and print('BOTH-NEXTS-SAME collapse: block %s term=%s pstack=%d converged-next=%s instrs=%s' % (
+                                hex(block.get_start_offset()), last_instr.get_name(), last_instr.get_pstack(),
+                                hex(nxts[0].get_start_offset()),
+                                [i.get_name() for i in block.get_instrs()]))
                             if not last_instr.is_branch():
                                 raise Exception()
                             nxt = nxts[0]
@@ -678,14 +807,37 @@ class GraphAnalyzer:
                             new_instr.setup_arguments_from_int32(nxt.get_start_offset() - (last_instr.get_instr_offset() + 1) - 5)
                             block.add_instr(new_instr)
                     last_instr = block.get_last_instr()
-                    if len(block.get_next()) == 1 and last_instr.is_branch() and not last_instr.is_absolute_jmp() and last_instr.get_opcode() != Opcodes.Switch:
-                        nxt = block.get_next()[0]
-                        block.add_next(nxt)
-                        changed = True
-                        continue
+                    if last_instr.get_opcode() == Opcodes.Switch:
+                        if len(block.get_next()) == 1:
+                            nxt = block.get_next()[0]
+                            DEBUG and print('SWITCH-COLLAPSE: switch-block %s -> nxt %s (nxt nexts %s, same-list=%s)' % (
+                                hex(block.get_start_offset()), hex(nxt.get_start_offset()),
+                                [hex(n.get_start_offset()) for n in nxt.get_next()],
+                                block.get_next() is nxt.get_next()))
+                            new_pop = self.__disasm.emit_instruction(Opcodes.Pop)
+                            new_pop.setup_instr_size(1)
+                            new_pop.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
+                            block.replace_instr(len(block.get_instrs()) - 1, new_pop)
+                            new_br = self.__disasm.emit_instruction(Opcodes.Br)
+                            new_br.setup_instr_size(5)
+                            new_br.setup_instr_offset(last_instr.get_instr_offset() + 1, last_instr.get_instr_index() + 1)
+                            new_br.setup_arguments_from_int32(nxt.get_start_offset() - (last_instr.get_instr_offset() + 1) - 5)
+                            block.add_instr(new_br)
+                            DEBUG and print('  after collapse: switch-block %s nexts %s ; nxt %s nexts %s' % (
+                                hex(block.get_start_offset()), [hex(n.get_start_offset()) for n in block.get_next()],
+                                hex(nxt.get_start_offset()), [hex(n.get_start_offset()) for n in nxt.get_next()]))
+                            changed = True
+                            continue
 
+            if to_remove:
+                DEBUG and print('TO-REMOVE this pass: %s' % [hex(b.get_start_offset()) for b in to_remove])
             for block in to_remove:
                 changed = True
+                if any(p.get_start_offset() == 0x26e for p in block.get_prev()):
+                    DEBUG and print('  removing %s which is a next of 0x26e (its prevs=%s, nexts=%s)' % (
+                        hex(block.get_start_offset()),
+                        [hex(p.get_start_offset()) for p in block.get_prev()],
+                        [hex(n.get_start_offset()) for n in block.get_next()]))
                 block.clear_next()
                 block.clear_prev()
                 new_graph.unregister_block(block.get_start_offset())
@@ -693,15 +845,17 @@ class GraphAnalyzer:
         new_graph.validate_blocks()
         new_analyzer = GraphAnalyzer(self.__method, new_graph)
         new_analyzer.repair_blocks()
+        DEBUG and print('post deob')
+        DEBUG and new_graph.print_root()
         return new_graph
 
     def simplify_control_flow(self, max_attempts=-1):
-        if self.__method.get_token() != 0x6000329:
-            return None
         graph = self.__graph
         is_obfuscated_at_all = False
         attempts = 0
-        print('deobfuscating method {}'.format(hex(self.__method.get_token())))
+        if DEBUG and DEBUG_METHOD != self.__method.get_token():
+            return None
+        (DEBUG or DEBUG_METHOD == 0) and print('deobfuscating method {}'.format(hex(self.__method.get_token())))
         while True:
             graph = self.__graph
             is_obfuscated = False
@@ -722,8 +876,7 @@ class GraphAnalyzer:
                     is_obfuscated = True
                     is_obfuscated_at_all = True
             if out is None:
-                
-                graph.print_root()
+                DEBUG and self.__graph.print_root()
                 for block in list(graph.blocks()):
                     new_graph = self.new_switch_deob(block)
                     if new_graph is not None:
@@ -813,24 +966,41 @@ class GraphAnalyzer:
         first_instr = target_instrs[0]
         if first_instr.is_branch():
             return False
-        if not first_instr.get_name().startswith('ldc.') and first_instr.get_opcode() != Opcodes.Ldnull:
+        if first_instr.get_opcode() in self.LDLOC and False:
+            arg = first_instr.get_argument()
+            set_instrs = self.__find_all_var_sets(arg)
+            if len(set_instrs) == 0:
+                ldc_instr = self.__disasm.emit_instruction(Opcodes.Ldc_I4_0)
+                ldc_instr.setup_instr_size(1)
+                first_instr = ldc_instr
+        if first_instr.get_opcode() not in self.LDC_INSTRS and first_instr.get_opcode() != Opcodes.Ldnull:
             return False
         
         second_instr = target_instrs[1]
         if second_instr.is_branch():
             return False
-        if not second_instr.get_name().startswith('ldc.') and second_instr.get_opcode() != Opcodes.Ldnull:
+        if second_instr.get_opcode() in self.LDLOC and False:
+            arg = second_instr.get_argument()
+            set_instrs = self.__find_all_var_sets(arg)
+            if len(set_instrs) == 0:
+                ldc_instr = self.__disasm.emit_instruction(Opcodes.Ldc_I4_0)
+                ldc_instr.setup_instr_size(1)
+                second_instr = ldc_instr
+        if second_instr.get_opcode() not in self.LDC_INSTRS and second_instr.get_opcode() != Opcodes.Ldnull:
             return False
         
         should_jmp = first_instr.get_argument() == second_instr.get_argument()
 
         to_keep = block.get_next()[0 if should_jmp else 1]
         to_remove = block.get_next()[1 if should_jmp else 0]
+        DEBUG and print('BEQ-FOLD: block %s cmp %s==%s -> jmp=%s keep=%s remove=%s' % (
+            hex(block.get_start_offset()), first_instr.get_argument(), second_instr.get_argument(),
+            should_jmp, hex(to_keep.get_start_offset()), hex(to_remove.get_start_offset())))
         if to_remove is to_keep:
             return False
         block.remove_next(to_remove)
-        operand_index = block.get_instr_index(first_instr)
-        block.remove_instrs(operand_index, block.get_instr_index(second_instr) + 1)
+        operand_index = block.get_instr_index(target_instrs[0])
+        block.remove_instrs(operand_index, block.get_instr_index(target_instrs[1]) + 1)
         new_instr = self.__disasm.emit_instruction(Opcodes.Br)
         new_instr.setup_instr_size(5)
         new_instr.setup_instr_offset(last_instr.get_instr_offset(), last_instr.get_instr_index())
