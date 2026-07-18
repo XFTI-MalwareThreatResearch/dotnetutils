@@ -6,7 +6,7 @@ from dotnetutils import net_cil_disas
 #Set to True to enable verbose control-flow-deobfuscation diagnostics.
 DEBUG = False
 
-DEBUG_METHOD = 0x0600000D
+DEBUG_METHOD = 1
 
 class GraphAnalyzer:
 
@@ -209,10 +209,12 @@ class GraphAnalyzer:
                 in_slice = any(outputs)          
                 if in_slice:
                     if ins_op not in self.ALLOWED_MODIFIER_INSTRS:
+                        DEBUG and print('misidentify due to invaid ins_op', instr)
                         raise net_exceptions.ControlFlowDeobfuscationMisidentify('Not obfuscated')
                 usable_stack.extend([in_slice] * pulled)  
                 if not any(usable_stack):
                     if not in_slice or ins_op not in self.ALLOWED_MODIFIERS:
+                        DEBUG and print('misidenitfy 2 due to invalid ins_op', instr)
                         raise net_exceptions.ControlFlowDeobfuscationMisidentify('Not obfuscated.')
                     else:
                         if ins_op in self.LDLOC:
@@ -346,33 +348,46 @@ class GraphAnalyzer:
         try:
             switch_paths = self.get_all_paths_to_block(switch_block, switch_block.get_last_instr())
         except net_exceptions.ControlFlowDeobfuscationMisidentify:
+            DEBUG and print('bailing due to misidentify exception')
             return False, [], [], [], []
         all_modifiers = list()
         all_src_instrs = list()
         requires_additional_work = list()
         x = 0
         for switch_path in switch_paths:
+            DEBUG and print('handling switch path', switch_path)
             switch_path.reverse()
             first_blk = switch_path[0]
             if first_blk.get_last_instr() is None:
+                DEBUG and print('bailing 1')
                 return False, [], [], [], []
             last_instr = first_blk.get_last_instr()
             if last_instr.get_opcode() != Opcodes.Switch:
+                DEBUG and print('bailing 2')
+
                 return False, [], [], [], []
             modifier_instrs = list()
 
             src_instr, src_blk, src_blk_index = self.__find_value_source(switch_path, last_instr, modifier_instrs)
             if src_instr is None:
+                DEBUG and print('bailing 3')
+
                 return False, [], [], [], []
             src_op = src_instr.get_opcode()
             modifier_instrs.reverse()
             amt = 0
+
+            search_base = src_blk_index
             while src_op in self.LDLOC:
                 if amt > 10:
+                    DEBUG and print('bailing 4')
+
                     return False, [], [], [], []
                 amt += 1
                 var_no = src_instr.get_argument()
-                var_set_instr, var_set_blk, var_blk_index = self.__find_var_sets(switch_path[src_blk_index:], var_no)
+
+                DEBUG and print('trying to find var sets {} {}'.format(src_instr, search_base))
+                var_set_instr, var_set_blk, rel_set_idx = self.__find_var_sets(switch_path[search_base:], var_no)
                 if var_set_instr is None:
                     all_var_sets = self.__find_all_var_sets(var_no)
                         
@@ -381,43 +396,75 @@ class GraphAnalyzer:
                         try:
                             var_paths = self.get_all_paths_to_block(var_block, var_instr)
                         except net_exceptions.ControlFlowDeobfuscationMisidentify:
+                            DEBUG and print('bailing 5')
+
                             return False, [], [], [], []
                         
                         for var_path in var_paths:
                             var_path.reverse()
                             child_modifiers = list()
                             var_set_instr, var_set_blk, var_blk_index = self.__find_value_source(var_path, var_instr, child_modifiers)
-                            if var_set_instr is None or var_set_instr.get_opcode() not in self.LDC_INSTRS:
+                            if var_set_instr is None:
+                                DEBUG and print('is failure var_set_instr', var_set_instr)
+                                is_failure = True
+                                break
+                            seen_vars = set()
+                            while var_set_instr.get_opcode() in self.LDLOC:
+                                chained_var = var_set_instr.get_argument()
+                                if chained_var in seen_vars:
+                                    break
+                                seen_vars.add(chained_var)
+                                chained_set, _, chained_idx = self.__find_var_sets(var_path[var_blk_index + 1:], chained_var)
+                                if chained_set is None:
+                                    break
+                                chained_modifiers = list()
+                                resolved, _, resolved_idx = self.__find_value_source(var_path[var_blk_index + 1 + chained_idx:], chained_set, chained_modifiers)
+                                if resolved is None:
+                                    break
+                                var_set_instr = resolved
+                                var_blk_index = var_blk_index + 1 + chained_idx + resolved_idx
+
+                            if var_set_instr.get_opcode() not in self.LDC_INSTRS and var_set_instr.get_opcode() not in self.LDLOC:
                                 is_failure = True
                                 break
 
-
                         if is_failure:
+                            DEBUG and print('bailing 6')
+
                             return False, [], [], [], []
                         
                     if not is_failure:
                         requires_additional_work.append(x)
                         break
+                    DEBUG and print('bailing 7')
+
                     return False, [], [], [], []
+                var_blk_index = search_base + rel_set_idx
                 child_modifiers = list()
-                src_instr, src_blk, src_blk_index = self.__find_value_source(switch_path[var_blk_index:], var_set_instr, child_modifiers)
+                src_instr, src_blk, rel_src_idx = self.__find_value_source(switch_path[var_blk_index:], var_set_instr, child_modifiers)
                 if src_instr is None:
+                    DEBUG and print('bailing 8')
+
                     return False, [], [], [], []
+                src_blk_index = var_blk_index + rel_src_idx
                 src_op = src_instr.get_opcode()
                 child_modifiers.reverse()
                 modifier_instrs = child_modifiers + [var_set_instr] + modifier_instrs
+                search_base = var_blk_index + 1
             if src_op not in self.LDC_INSTRS and (x not in requires_additional_work and src_op not in self.LDLOC):
+                DEBUG and print('bailing 9')
+
                 return False, [], [], [], []
             all_modifiers.append(modifier_instrs)
             all_src_instrs.append(src_instr)
             x += 1
+        DEBUG and print('Detected as initial switch')
         return True, switch_paths, all_modifiers, all_src_instrs, requires_additional_work
 
     def __collapse_switch_to_case(self, new_graph, switch_block, orig_switch_block, value):
-        """ Rewrite a single-valued switch block's terminator into an unconditional branch to the one
+        """ Rewrite a single-valued switch blocks terminator into an unconditional branch to the one
         case it always takes, keeping the block (it may be a try-start or hold real code) and its
-        predecessors.  The index-producing instructions are dropped by the modifier sweep, which keeps
-        the stack balanced (they pushed the value the switch popped). """
+        predecessors. """
         case = new_graph.get_block_by_offset(orig_switch_block.get_next()[value].get_start_offset())
         last_instr = switch_block.get_last_instr()
         br = self.__disasm.emit_instruction(Opcodes.Br)
@@ -430,9 +477,9 @@ class GraphAnalyzer:
         switch_block.add_next(case)
 
     def __is_pure_dispatch(self, block):
-        """ True if every instruction before the terminator is DNR state-management junk (loads,
+        """ True if every instruction before the terminator is state-management junk (loads,
         stores, constants, arithmetic, dup/pop/nop/br) with no real, side-effecting code.  Rerouting
-        predecessors past such a block is safe; doing it to a block with real code would drop it. """
+        predecessors past such a block is safe."""
         allowed = set(self.LDLOC) | set(self.STLOC) | set(self.LDC_INSTRS) | set(self.MATH_OPS) | \
                   {Opcodes.Nop, Opcodes.Pop, Opcodes.Dup, Opcodes.Br, Opcodes.Br_S}
         return all(instr.get_opcode() in allowed for instr in block.get_instrs()[:-1])
@@ -502,16 +549,9 @@ class GraphAnalyzer:
         new_switch_block = new_graph.get_block_by_offset(switch_block.get_start_offset())
         switch_nexts = switch_block.get_next()
         if len(set(path_values)) == 1:
-            #Single-valued: the switch always takes one case (the value is committed within the switch
-            #block itself).  Collapse it in place - keep the block (it may be a try-start / hold real
-            #code) and its predecessors, rewriting the terminator to a branch to that case.  Every
-            #block_index would be 0 here, which the reroute below can't handle (curr_path[-1] wraps).
             self.__collapse_switch_to_case(new_graph, new_switch_block, switch_block, path_values[0])
         else:
-            #Multi-valued dispatcher.  Rerouting predecessors past the switch block is only safe if the
-            #block is pure dispatch; if it holds real code, bypassing it drops that code.  In this
-            #branch block_index >= 1 for every path (the switch block is never value-unique when there
-            #are multiple values), so curr_path[block_index - 1] is always a real predecessor.
+
             if not self.__is_pure_dispatch(new_switch_block):
                 return None
             for path_no, block_index in path_diverges.items():
@@ -544,6 +584,7 @@ class GraphAnalyzer:
                     target_prev = new_graph.get_block_by_offset(curr_path[block_index - 1].get_start_offset())
                 if target >= len(switch_nexts):
                     target = len(switch_nexts) - 1
+                print(len(switch_nexts), target)
                 next_block = new_graph.get_block_by_offset(switch_nexts[target].get_start_offset())
                 
                 if new_target.has_next(target_prev):
@@ -1279,6 +1320,8 @@ class GraphAnalyzer:
             block_next = list(block.get_next())
             if len(block_prev) == 1:
                 prev = block_prev[0]
+                if prev is block:
+                    continue
                 prev_last = prev.get_last_instr()
                 if prev_last is None or prev_last.get_opcode() in (Opcodes.Br, Opcodes.Br_S):
                     #Remove the jmp on the prev
