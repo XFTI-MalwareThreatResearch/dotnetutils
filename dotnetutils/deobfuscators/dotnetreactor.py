@@ -864,21 +864,35 @@ class NETReactor(Deobfuscator):
                 disasm = mdef.disassemble_method()
                 if len(disasm) > 5:
                     continue
-
+                needed = 1
                 amt_ldnull = 0
                 is_constant_return = True
+                amt_rets = 0
+                ret_instr = None
+                
                 for instr in disasm:
                     op = instr.get_opcode()
-                    if op == net_opcodes.Opcodes.Nop:
-                        continue
-                    if op == net_opcodes.Opcodes.Ldnull:
-                        amt_ldnull += 1
-                        continue
                     if op == net_opcodes.Opcodes.Ret:
+                        amt_rets += 1
+                        ret_instr = instr
+                if amt_rets != 1:
+                    continue
+
+                if ret_instr.get_instr_index() != (len(disasm) - 1):
+                    continue
+                target_instrs = list()
+                for x in range(len(disasm) - 2, -1, -1):
+                    instr = disasm[x]
+                    if instr.get_opcode() == net_opcodes.Opcodes.Nop:
                         continue
-                    is_constant_return = False
-                    break
-                is_constant_return = is_constant_return and amt_ldnull == 1
+                    added = instr.get_astack()
+                    pulled = instr.get_pstack()
+                    needed = needed - added + pulled
+                    target_instrs.append(instr)
+                    if needed == 0:
+                        break
+
+                is_constant_return = len(target_instrs) == 1 and target_instrs[0].get_opcode() == net_opcodes.Opcodes.Ldnull
                 if is_constant_return:
                     return_null_methods.append(mdef)
 
@@ -886,8 +900,20 @@ class NETReactor(Deobfuscator):
                 disasm = mdef.disassemble_method()
                 if len(disasm) > 6:
                     continue
+                skip_instrs = list()
+                if disasm[0].get_opcode() in (net_opcodes.Opcodes.Br, net_opcodes.Opcodes.Br_S):
+                    skip_offset = disasm[0].get_argument() + len(disasm[0])
+                    current_offset = 0
+                    for x in range(len(disasm)):
+                        if current_offset == skip_offset:
+                            break
+                        instr = disasm[x]
+                        skip_instrs.append(instr)
+                        current_offset += len(instr)
                 can_proceed = True
                 for instr in disasm:
+                    if instr in skip_instrs:
+                        continue
                     op = instr.get_opcode()
                     if op not in (net_opcodes.Opcodes.Nop, net_opcodes.Opcodes.Ldc_I4_1, net_opcodes.Opcodes.Ldnull, net_opcodes.Opcodes.Ret, net_opcodes.Opcodes.Ceq):
                         can_proceed = False

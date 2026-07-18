@@ -1,6 +1,8 @@
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils import net_exceptions, net_sigs, net_emulator, net_emu_types
+from dotnetutils import net_deobfuscate_funcs
 from dotnetutils.net_opcodes import Opcodes
+
 
 class Babel(Deobfuscator):
 
@@ -49,6 +51,105 @@ class Babel(Deobfuscator):
 
     def remove_delegates(self, dotnet):
         pass
+
+    def remove_constant_method_calls(self, dotnet):
+        LDARG_INSTRS = [Opcodes.Ldarg, Opcodes.Ldarg_S, Opcodes.Ldarg_0, Opcodes.Ldarg_1, Opcodes.Ldarg_2, Opcodes.Ldarg_3]
+        LDC_INSTRS = [Opcodes.Ldc_I4, Opcodes.Ldc_I4_S, Opcodes.Ldc_I4_M1, Opcodes.Ldc_I4_0, Opcodes.Ldc_I4_1, Opcodes.Ldc_I4_2, Opcodes.Ldc_I4_3, Opcodes.Ldc_I4_4, Opcodes.Ldc_I4_5, Opcodes.Ldc_I4_6, Opcodes.Ldc_I4_7, Opcodes.Ldc_I4_8]
+        MATH_OPS = [Opcodes.Not, Opcodes.Sub, Opcodes.Add, Opcodes.Neg, Opcodes.Xor, Opcodes.Shr, Opcodes.Shl, Opcodes.Or, Opcodes.Shr_Un, Opcodes.And, Opcodes.Mul, Opcodes.Div, Opcodes.Div_Un, Opcodes.Rem, Opcodes.Rem_Un]
+        OTHER_ALLOWED = [Opcodes.Pop, Opcodes.Nop, Opcodes.Switch, Opcodes.Ret]
+        STLOC = [Opcodes.Stloc_S, Opcodes.Stloc, Opcodes.Stloc_0, Opcodes.Stloc_1, Opcodes.Stloc_2, Opcodes.Stloc_3]
+        LDLOC = [Opcodes.Ldloc_S, Opcodes.Ldloc, Opcodes.Ldloc_0, Opcodes.Ldloc_1, Opcodes.Ldloc_2, Opcodes.Ldloc_3]
+        MUST_BE_IN = [LDARG_INSTRS, LDC_INSTRS, MATH_OPS, OTHER_ALLOWED, STLOC, LDLOC]
+        for method in dotnet.get_metadata_table('MethodDef'):
+            debug = method.get_token() ==  0x06000088
+            if not method.is_static_method():
+                debug and print('is static')
+                continue
+            if not method.has_body():
+                debug and print('no body')
+                continue
+            msig = method.get_method_signature()
+            if msig is None:
+                debug and print('no msig')
+                continue
+
+            if len(msig.get_parameters()) != 1:
+                debug and print('no parmams')
+                continue
+
+            if msig.get_parameters()[0] != msig.get_return_type():
+                debug and print('sigs not eq')
+                continue
+
+            if msig.get_return_type() != net_sigs.get_CorSig_Int32():
+                debug and print('return types')
+                continue
+            disasm = method.disassemble_method()
+            if len(disasm) > 200:
+                debug and print('disasm len')
+                continue
+            misidentified = False
+
+            for instr in disasm:
+                op = instr.get_opcode()
+                is_in = any(op in item for item in MUST_BE_IN)
+                if not is_in:
+                    misidentified = True
+                    break
+
+            if misidentified:
+                debug and print('msiidentified')
+                continue
+            debug and print('removing xrefs')
+            try:
+                for xref_rid, xref_offset in method.get_xrefs():
+                    xfm = dotnet.get_method_by_rid(xref_rid)
+                    disasm = xfm.disassemble_method()
+                    xref_instr = disasm.get_instr_at_offset(xref_offset)
+                    if xref_instr.get_opcode() != Opcodes.Call:
+                        continue
+                    idx = xref_instr.get_instr_index()
+                    needed = 1
+                    target_instrs = list()
+                    for x in range(idx - 1, -1, -1):
+
+                        instr = disasm[x]
+                        if instr.get_opcode() == Opcodes.Nop:
+                            continue
+
+                        added = instr.get_astack()
+                        pulled = instr.get_pstack()
+                        needed = needed - added + pulled
+                        target_instrs.append(instr)
+                        if needed == 0:
+                            break
+                    if len(target_instrs) != 1:
+                        continue
+
+                    if target_instrs[0].get_opcode() not in LDC_INSTRS:
+                        continue
+
+                    emu = net_emulator.DotNetEmulator(method, dont_execute_cctor=True)
+                    num = net_emu_types.DotNetInt32(emu, None)
+                    num.from_int(target_instrs[0].get_argument())
+                    emu.setup_method_params([num])
+                    emu.run_function()
+
+                    obj = emu.get_stack().pop_obj()
+                    if not isinstance(obj, net_emu_types.DotNetNumber):
+                        continue
+                    obj = obj.as_python_obj()
+                    patch_bytes = b'\x20' + int.to_bytes(obj, 4, 'little', signed=True)
+                    print('Replacing junk method call in method {} at offset {}'.format(xfm, hex(xref_offset)))
+                    dotnet.patch_instruction(xfm, patch_bytes, xref_instr.get_instr_offset(), len(xref_instr))
+                    patch_bytes = b'\x00' * len(target_instrs[0])
+                    dotnet.patch_instruction(xfm, patch_bytes, target_instrs[0].get_instr_offset(), len(patch_bytes))
+            except Exception as e:
+                debug and print('error {}'.format(str(e)))
+                if debug:
+                    raise e
+                continue
+
 
     def remove_string_obfuscation(self, dotnet):
         string_method = self.identify_babel_string_method(dotnet)
@@ -102,10 +203,19 @@ class Babel(Deobfuscator):
             dotnet.patch_instruction(xfm, patch_buf, start_offset, patch_size)
         us_heap.end_append_tx()
         return True
+    
+    def clean_code(self, dotnet):
+        print('removing constant method calls')
+        self.remove_constant_method_calls(dotnet)
+        print('Deobfuscating control flow')
+        net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
+        print('Code cleaned')
         
     def deobfuscate(self, dotnet, ctx):
         print('Removing Babel String obfuscation')
         if not self.remove_string_obfuscation(dotnet):
             return True
+        
+        self.clean_code(dotnet)
         dotnet.add_string('DNU_BABEL_DEOB')
         return True
