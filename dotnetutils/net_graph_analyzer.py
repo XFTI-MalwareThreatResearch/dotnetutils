@@ -4,9 +4,9 @@ from dotnetutils.net_graphing import FunctionBlock, FunctionGraph
 from dotnetutils import net_cil_disas
 
 #Set to True to enable verbose control-flow-deobfuscation diagnostics.
-DEBUG = False
+DEBUG = True
 
-DEBUG_METHOD = 1
+DEBUG_METHOD = 0x6000014
 
 class GraphAnalyzer:
 
@@ -401,6 +401,7 @@ class GraphAnalyzer:
                             return False, [], [], [], []
                         
                         for var_path in var_paths:
+                            DEBUG and print('checking var path', var_path)
                             var_path.reverse()
                             child_modifiers = list()
                             var_set_instr, var_set_blk, var_blk_index = self.__find_value_source(var_path, var_instr, child_modifiers)
@@ -408,12 +409,14 @@ class GraphAnalyzer:
                                 DEBUG and print('is failure var_set_instr', var_set_instr)
                                 is_failure = True
                                 break
+                            DEBUG and print('Child modifiers', child_modifiers, modifier_instrs)
                             seen_vars = set()
                             while var_set_instr.get_opcode() in self.LDLOC:
                                 chained_var = var_set_instr.get_argument()
                                 if chained_var in seen_vars:
                                     break
                                 seen_vars.add(chained_var)
+                                DEBUG and print('Checking chained var', var_set_instr)
                                 chained_set, _, chained_idx = self.__find_var_sets(var_path[var_blk_index + 1:], chained_var)
                                 if chained_set is None:
                                     break
@@ -421,6 +424,7 @@ class GraphAnalyzer:
                                 resolved, _, resolved_idx = self.__find_value_source(var_path[var_blk_index + 1 + chained_idx:], chained_set, chained_modifiers)
                                 if resolved is None:
                                     break
+                                DEBUG and print('Chained modifier instrs', chained_modifiers, modifier_instrs)
                                 var_set_instr = resolved
                                 var_blk_index = var_blk_index + 1 + chained_idx + resolved_idx
 
@@ -446,6 +450,7 @@ class GraphAnalyzer:
                     DEBUG and print('bailing 8')
 
                     return False, [], [], [], []
+                
                 src_blk_index = var_blk_index + rel_src_idx
                 src_op = src_instr.get_opcode()
                 child_modifiers.reverse()
@@ -501,11 +506,13 @@ class GraphAnalyzer:
                 path_values.append(None)
                 x += 1
                 continue
+            DEBUG and print('emulating instructions {} {}'.format(modifiers, switch_path))
             emu = net_emulator.DotNetEmulator(self.__method, force_instrs=modifiers, dont_execute_cctor=True)
             emu.run_function()
             num = emu.get_stack().pop_obj()
             if not isinstance(num, net_emu_types.DotNetNumber):
                 raise Exception()
+            DEBUG and print('emulation returned {}'.format(num))
             num = num.as_python_obj()
             path_values.append(num)
             if num not in switch_paths_by_value:
@@ -584,7 +591,7 @@ class GraphAnalyzer:
                     target_prev = new_graph.get_block_by_offset(curr_path[block_index - 1].get_start_offset())
                 if target >= len(switch_nexts):
                     target = len(switch_nexts) - 1
-                print(len(switch_nexts), target)
+                DEBUG and print('target', len(switch_nexts), target, curr_path)
                 next_block = new_graph.get_block_by_offset(switch_nexts[target].get_start_offset())
                 
                 if new_target.has_next(target_prev):
