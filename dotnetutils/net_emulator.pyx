@@ -1009,12 +1009,12 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         method_obj = force_method_obj
     else:
         method_obj = <net_row_objects.MethodDefOrRef>emu.instr.get_argument()
-        if method_obj.get_table_name() == 'MethodDef' and not method_obj.has_body() and force_extern_type is None:
+        if isinstance(method_obj, net_row_objects.MethodDef) and not method_obj.has_body() and force_extern_type is None:
             if method_obj.get_parent_type():
                 parent_type = <net_row_objects.TypeDefOrRef>method_obj.get_parent_type().get_superclass()
                 if parent_type:
                     return do_call(emu, is_virt, is_newobj, force_method_obj, parent_type, NULL, 0, initial_method_obj, False)
-    if method_obj.get_table_name() == 'MethodDef' and not force_extern_type and not force_obj_lookup:
+    if isinstance(method_obj, net_row_objects.MethodDef) and not force_extern_type and not force_obj_lookup:
         method_name = method_obj.get_name()
         amt_args = <int>len(method_obj.get_param_types())
         if not isinstance(initial_method_obj, net_row_objects.MethodSpec):
@@ -1059,7 +1059,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             emu.dealloc_cell(cell)
         new_emu.run_function()
         # the handler for ret instruction handles cleaning up the stack after this.
-    elif method_obj.get_table_name() == 'MemberRef' or force_extern_type or force_obj_lookup:
+    elif isinstance(method_obj, net_row_objects.MemberRef) or force_extern_type or force_obj_lookup:
         if force_extern_type is None and isinstance(method_obj.get_parent_type(), net_row_objects.TypeSpec): #generics etc.
             if isinstance(method_obj.get_parent_type().get_type(), net_row_objects.TypeDef): #TODO: Look over this logic in terms of DotNetDelegate.Invoke() calls.
                 return do_virtcall(emu, force_virtcall=True, force_virt_type=method_obj.get_parent_type().get_type())
@@ -1081,6 +1081,10 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
         push_obj_reference = False
         if not is_newobj and method_obj.method_has_this():
             push_obj_reference = True
+        if method_signature is None:
+            method_signature = method_obj.get_method_signature()
+            if method_signature is None:
+                raise net_exceptions.EmulatorExecutionException(emu, 'Could not obtain method signature, somethings wrong.')
         if force_method_args == NULL:
             if amt_args != 0:
                 method_args = <StackCell*>malloc(sizeof(StackCell) * (amt_args))
@@ -1251,7 +1255,7 @@ cdef bint do_call(DotNetEmulator emu, bint is_virt, bint is_newobj, net_row_obje
             if this_was_slimobj:
                 obj_ref.copy_fields_to_slimobject(boxed_this.item.slim_object)
             emu.dealloc_cell(boxed_this)
-    elif method_obj.get_table_name() == 'MethodSpec':
+    elif isinstance(method_obj, net_row_objects.MethodSpec):
         return do_call(emu, is_virt, is_newobj, method_obj.get_column('Method').get_value(), None, NULL, 0, method_obj, False)
     else:
         raise net_exceptions.EmulatorMethodNotFoundException(
@@ -5160,7 +5164,9 @@ cdef class DotNetEmulator:
         if net_utils.is_cortype_unsigned(<CorElementType>cell.tag):
             return new_cell
         else:
-            if cell.tag == CorElementType.ELEMENT_TYPE_I:
+            if cell.tag == CorElementType.ELEMENT_TYPE_R4 or cell.tag == CorElementType.ELEMENT_TYPE_R8:
+                return new_cell
+            elif cell.tag == CorElementType.ELEMENT_TYPE_I:
                 new_cell.tag = CorElementType.ELEMENT_TYPE_U
                 new_cell.cli_tag = CorElementType.ELEMENT_TYPE_U
             elif cell.tag == CorElementType.ELEMENT_TYPE_I1:
@@ -5198,7 +5204,9 @@ cdef class DotNetEmulator:
         if net_utils.is_cortype_signed(<CorElementType>cell.tag):
             return new_cell
         else:
-            if cell.tag == CorElementType.ELEMENT_TYPE_U:
+            if cell.tag == CorElementType.ELEMENT_TYPE_R4 or cell.tag == CorElementType.ELEMENT_TYPE_R8:
+                return new_cell
+            elif cell.tag == CorElementType.ELEMENT_TYPE_U:
                 new_cell.tag = CorElementType.ELEMENT_TYPE_I
                 new_cell.cli_tag = CorElementType.ELEMENT_TYPE_I
             elif cell.tag == CorElementType.ELEMENT_TYPE_U1:
