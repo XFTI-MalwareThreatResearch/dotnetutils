@@ -171,7 +171,7 @@ cdef class DotNetEmulator:
     """
     This class is capable of emulating most .NET CIL instructions.
     """
-
+    cdef vector[PyObject*] force_instrs
     cdef net_row_objects.MethodDefOrRef method_obj
     cdef net_row_objects.MethodSpec spec_obj
     cdef net_cil_disas.MethodDisassembler disasm_obj
@@ -213,6 +213,7 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
     cdef bint __init_open_generics_as_object
+    cdef bint do_cleanup
 
     cdef net_sigs.TypeSig get_sig_from_type(self, net_row_objects.TypeDefOrRef tdefref)
 
@@ -394,7 +395,7 @@ cdef class DotNetEmulator:
 
     cpdef void print_current_state(self)
 
-    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*, int timeout_seconds=*, bint strict_typing=*, bint dont_execute_first_cctor=*)
+    cpdef DotNetEmulator spawn_new_emulator(self, net_row_objects.MethodDefOrRef method_obj, int start_offset=*, int end_offset=*, DotNetEmulator caller=*, int end_method_rid=*, int end_eip=*, net_row_objects.MethodSpec spec_obj=*, int timeout_seconds=*, bint strict_typing=*, bint dont_execute_first_cctor=*, bint init_open_generics_as_object=*)
 
     cdef StackCell _get_default_value(self, net_sigs.TypeSig type_sig, net_row_objects.TypeDefOrRef tref)
 
@@ -403,3 +404,5 @@ cdef class DotNetEmulator:
     cpdef void run_function(self) except *
 
     cdef void cleanup(self)
+
+    cpdef void set_force_instrs(self, list force_instrs)

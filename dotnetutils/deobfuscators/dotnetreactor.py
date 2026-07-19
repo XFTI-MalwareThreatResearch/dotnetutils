@@ -59,6 +59,7 @@ def dnr_encrypt_skip_intptr_newobjs(emulator, argument):
             new_obj.init_zero()
             emulator.get_stack().append_obj(new_obj)
             return False
+    
     return True
 
 def dnr_encrypt_skip_marshal_calls(emulator, argument):
@@ -95,6 +96,8 @@ def dnr_encrypt_skip_marshal_calls(emulator, argument):
                 stack.remove_obj()
                 stack.append_obj(None) #Append a null to fool check.
                 return False
+            elif full_name.endswith(b'get_Windows'):
+                argument[0] = True
     return True
 
 def dnr_encrypt_stop_ldelema(emulator, argument):
@@ -296,11 +299,15 @@ class NETReactor(Deobfuscator):
             print('Code encryption not detected.')
             return False
         print('Encryption method identified as {}'.format(encryption_method))
-        emu_obj = passed_emu.spawn_new_emulator(encryption_method)
+        if passed_emu is not None:
+            emu_obj = passed_emu.spawn_new_emulator(encryption_method)
+        else:
+            emu_obj = net_emulator.DotNetEmulator(encryption_method)
         emu_obj.setup_method_params([])
         appdomain = emu_obj.get_appdomain()
+        is_new_version = [False]
         appdomain.register_instr_handler(net_opcodes.Opcodes.Ldelema, dnr_encrypt_stop_ldelema, None)
-        appdomain.register_instr_handler(net_opcodes.Opcodes.Call, dnr_encrypt_skip_marshal_calls, None)
+        appdomain.register_instr_handler(net_opcodes.Opcodes.Call, dnr_encrypt_skip_marshal_calls, is_new_version)
         appdomain.register_instr_handler(net_opcodes.Opcodes.Conv_U, dnr_encrypt_skip_conv_u, None)
         appdomain.register_instr_handler(net_opcodes.Opcodes.Newobj, dnr_encrypt_skip_intptr_newobjs, None)
         worked = False
@@ -338,19 +345,30 @@ class NETReactor(Deobfuscator):
         decrypted_data = bytearray()
         index = 0
         for _ in range(amt):
-            new_val = int.from_bytes(encrypted_data[index:index+8], 'little') ^ xor_val
+            new_val = int.from_bytes(encrypted_data[index:index+8], 'little', signed=True) ^ xor_val
             index += 8
-            decrypted_data.extend(int.to_bytes(new_val, 8, 'little'))
+            decrypted_data.extend(int.to_bytes(new_val, 8, 'little', signed=True))
         decrypted_data = decrypted_data + encrypted_data[index:]
         reader = net_structs.DotNetDataReader(bytes(decrypted_data))
         int32_method = self.find_int32_method(encryption_method)
         amt = self.count_int32_pops(encryption_method, int32_method)
         if amt == 0:
             raise Exception('invalid amt pops')
-        for x in range(amt):
+        is_new_version = is_new_version[0]
+
+        if is_new_version:
             reader.read_int32()
-        num1 = reader.read_int32()
-        num2 = reader.read_int32()
+            reader.read_int32()
+            reader.read_int32()
+            reader.read_int32()
+            num1 = reader.read_int32()
+            num2 = reader.read_int32()
+            
+        else:
+            for x in range(amt):
+                reader.read_int32()
+            num1 = reader.read_int32()
+            num2 = reader.read_int32()
         if num2 == 4:
             print('not supported yet')
             return False
@@ -456,9 +474,10 @@ class NETReactor(Deobfuscator):
         print('Done decrypting {} methods'.format(amt_entries))
         return True
     
-    def remove_delegates(self, dotnet, del_method, passed_emu):
+    def remove_delegates(self, dotnet, del_method, passed_emu, tokens_dict=None):
         start_offset = -1
         end_offset = -1
+        field_obj = None
         for instr in del_method.disassemble_method():
             if instr.get_name() == 'call':
                 arg = instr.get_argument()
@@ -467,33 +486,40 @@ class NETReactor(Deobfuscator):
                         start_offset = instr.get_instr_offset() + len(instr)
 
             if instr.get_name() == 'stsfld':
-                end_offset = instr.get_instr_offset()
+                end_offset = instr.get_instr_offset() + len(instr)
+                field_obj = instr.get_argument()
 
             if start_offset > 0 and end_offset > 0:
                 break
 
         if start_offset == -1 or end_offset == -1:
             print('error 1')
-            return
+            return None
         
-        emu_obj = passed_emu.spawn_new_emulator(del_method, start_offset=start_offset, end_offset=end_offset)
-        emu_obj.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_obf_methods, None)
-        emu_obj.setup_method_params([])
-        worked = False
-        try:
-            emu_obj.run_function()
-        except net_exceptions.EmulatorEndExecutionException:
-            worked = True
-        emu_obj.get_appdomain().remove_instr_handler(net_opcodes.Opcodes.Call)
-        if not worked:
-            print('error 2')
-            return
         
-        tokens_dict = emu_obj.get_stack().pop_obj()
-        if not isinstance(tokens_dict, net_emu_types.DotNetDictionary):
-            print('error 3')
-            return
-        tokens_dict = tokens_dict.as_python_obj()
+        if tokens_dict is None:
+            tokens_dict = passed_emu.get_static_field_obj(field_obj.get_rid())
+            print('emulating new tokens_dict')  
+            emu_obj = passed_emu.spawn_new_emulator(del_method, start_offset=start_offset, end_offset=end_offset)
+            emu_obj.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_obf_methods, None)
+            emu_obj.setup_method_params([])
+            worked = False
+            try:
+                emu_obj.run_function()
+            except net_exceptions.EmulatorEndExecutionException:
+                worked = True
+            emu_obj.get_appdomain().remove_instr_handler(net_opcodes.Opcodes.Call)
+            if not worked:
+                print('error 2')
+                return
+            
+            tokens_dict = emu_obj.get_static_field_obj(field_obj.get_rid())
+            if not isinstance(tokens_dict, net_emu_types.DotNetDictionary):
+                print('error 3')
+                return
+            tokens_dict = tokens_dict.as_python_obj()
+        else:
+            print('reusing old tokens_dict')
         
         for field_token, method_token in tokens_dict.items():
             is_virt = method_token & 0x40000000 > 0
@@ -556,7 +582,7 @@ class NETReactor(Deobfuscator):
                 #patch and replace instrs
                 dotnet.patch_instruction(xfm, b'\x00' * len(xfm_instr), xfm_instr.get_instr_offset(), len(xfm_instr))
                 dotnet.patch_instruction(xfm, patch_bytes, invoke_func.get_instr_offset(), len(invoke_func))
-
+        return tokens_dict
     def remove_junk_static_fields(self, dotnet, passed_emu):
         #TODO: Need to account for static fields that are used in other functions (specifically the non integer ones.)
         static_field_types = list()
@@ -581,7 +607,10 @@ class NETReactor(Deobfuscator):
         if static_field_method is None:
             print('Could not find static field method')
             return
-        emu = passed_emu.spawn_new_emulator(static_field_method)
+        if passed_emu is not None:
+            emu = passed_emu.spawn_new_emulator(static_field_method)
+        else:
+            emu = net_emulator.DotNetEmulator(static_field_method)
         emu.setup_method_params([])
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, None)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
@@ -682,7 +711,10 @@ class NETReactor(Deobfuscator):
             net_patch.insert_blank_userstrings(dotnet)
         cctor_method = strm.get_parent_type().get_static_constructor()
         emu_output = dict()
-        emu = emu.spawn_new_emulator(cctor_method)
+        if emu is not None:
+            emu = emu.spawn_new_emulator(cctor_method)
+        else:
+            emu = net_emulator.DotNetEmulator(cctor_method)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Call, dnr_skip_time_check, None)
         emu.get_appdomain().register_instr_handler(net_opcodes.Opcodes.Callvirt, dnr_skip_obf_invoke_methods, emu_output)
         emu.setup_method_params([])
@@ -707,18 +739,6 @@ class NETReactor(Deobfuscator):
             print('Could not get string field.')
             return
         rsrc_name = rsrc_name.decode('utf-16le').encode('utf-8')
-        string_decode_method = None
-        for xref_rid, xref_offset in string_field.get_xrefs():
-            xfm = dotnet.get_method_by_rid(xref_rid)
-            dis = xfm.disassemble_method()
-            instr = dis.get_instr_at_offset(xref_offset)
-            if instr.get_opcode() == net_opcodes.Opcodes.Stsfld:
-                if len(xfm.get_param_types()) > 1:
-                    string_decode_method = xfm
-                    break
-        if string_decode_method is None:
-            print('Couldnt find string resource decode method.')
-            return
         rsrc = dotnet.get_resource_by_name(rsrc_name)
         if rsrc is None:
             print('Couldnt find resource')
@@ -776,7 +796,7 @@ class NETReactor(Deobfuscator):
                     if is_string_method(xfm):
                         string_methods.append(xfm)
                         continue
-                    new_emu = emu.spawn_new_emulator(xfm, start_offset=patch_start, end_offset=call_instr.get_instr_offset() + len(call_instr), dont_execute_first_cctor=True)
+                    new_emu = emu.spawn_new_emulator(xfm, start_offset=patch_start, end_offset=call_instr.get_instr_offset() + len(call_instr), dont_execute_first_cctor=True, init_open_generics_as_object=True)
                     new_emu.setup_method_params([])
                     #new_emu.set_print_debugging(False, True, print_debug_methods=[1447])
                     worked = False
@@ -825,19 +845,149 @@ class NETReactor(Deobfuscator):
                 instr = dis.get_instr_at_offset(xref_offset)
                 dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
 
+    def remove_junk_prolog(self, dotnet):
+        for method in dotnet.get_metadata_table('MethodDef'):
+            if method.has_body():
+                disasm = method.disassemble_method()
+                if disasm[0].get_opcode() in (net_opcodes.Opcodes.Br, net_opcodes.Opcodes.Br_S):
+                    target_offset = disasm[0].get_argument() + len(disasm[0])
+                    if disasm[1].get_opcode() == net_opcodes.Opcodes.Call:
+                        if disasm[1].get_argument() is None:
+                            target_instr = disasm.get_instr_at_offset(target_offset)
+                            if target_instr.get_instr_index() == 2:
+                                patch_buffer = b'\x00' * target_instr.get_instr_offset()
+                                dotnet.patch_instruction(method, patch_buffer, 0, len(patch_buffer))
+
+    def clean_code(self, dotnet):
+        #Detect and remove some common patterns from dotnetreactor that can later be picked up by control flow deob
+        print('Removing junk prologs')
+        self.remove_junk_prolog(dotnet)
+        print('Done removing junk prologs')
+        return_true_methods = list()
+        return_null_methods = list()
+        for mdef in dotnet.get_metadata_table('MethodDef'):
+            if not mdef.has_body():
+                continue
+            if not mdef.is_static_method():
+                continue
+            msig = mdef.get_method_signature()
+            if len(msig.get_parameters()) != 0:
+                continue
+            ret_type = msig.get_return_type()
+            if not isinstance(ret_type, net_sigs.CorLibTypeSig):
+                continue
+            if ret_type.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_OBJECT:
+                disasm = mdef.disassemble_method()
+                if len(disasm) > 5:
+                    continue
+                needed = 1
+                amt_ldnull = 0
+                is_constant_return = True
+                amt_rets = 0
+                ret_instr = None
+                
+                for instr in disasm:
+                    op = instr.get_opcode()
+                    if op == net_opcodes.Opcodes.Ret:
+                        amt_rets += 1
+                        ret_instr = instr
+                if amt_rets != 1:
+                    continue
+
+                if ret_instr.get_instr_index() != (len(disasm) - 1):
+                    continue
+                target_instrs = list()
+                for x in range(len(disasm) - 2, -1, -1):
+                    instr = disasm[x]
+                    if instr.get_opcode() == net_opcodes.Opcodes.Nop:
+                        continue
+                    added = instr.get_astack()
+                    pulled = instr.get_pstack()
+                    needed = needed - added + pulled
+                    target_instrs.append(instr)
+                    if needed == 0:
+                        break
+
+                is_constant_return = len(target_instrs) == 1 and target_instrs[0].get_opcode() == net_opcodes.Opcodes.Ldnull
+                if is_constant_return:
+                    return_null_methods.append(mdef)
+
+            elif ret_type.get_element_type() == net_structs.CorElementType.ELEMENT_TYPE_BOOLEAN:
+                disasm = mdef.disassemble_method()
+                if len(disasm) > 6:
+                    continue
+                skip_instrs = list()
+                if disasm[0].get_opcode() in (net_opcodes.Opcodes.Br, net_opcodes.Opcodes.Br_S):
+                    skip_offset = disasm[0].get_argument() + len(disasm[0])
+                    current_offset = 0
+                    for x in range(len(disasm)):
+                        if current_offset == skip_offset:
+                            break
+                        instr = disasm[x]
+                        skip_instrs.append(instr)
+                        current_offset += len(instr)
+                can_proceed = True
+                for instr in disasm:
+                    if instr in skip_instrs:
+                        continue
+                    op = instr.get_opcode()
+                    if op not in (net_opcodes.Opcodes.Nop, net_opcodes.Opcodes.Ldc_I4_1, net_opcodes.Opcodes.Ldnull, net_opcodes.Opcodes.Ret, net_opcodes.Opcodes.Ceq):
+                        can_proceed = False
+                        break
+
+                if not can_proceed:
+                    continue
+
+                try:
+                    emu = net_emulator.DotNetEmulator(mdef, dont_execute_cctor=False)
+                    emu.setup_method_params([])
+                    emu.run_function()
+                    obj = emu.get_stack().pop_obj()
+                except:
+                    continue
+                if not isinstance(obj, net_emu_types.DotNetNumber):
+                    continue
+                obj = obj.as_python_obj()
+                if obj:
+                    return_true_methods.append(mdef)
+
+        for mdef in return_true_methods:
+            for xref_rid, xref_offset in mdef.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                dis = xfm.disassemble_method()
+                instr = dis.get_instr_at_offset(xref_offset)
+                op = instr.get_opcode()
+                if op == net_opcodes.Opcodes.Call:
+                    patch_bytes = (b'\x00' * (len(instr) - 1)) + b'\x17'
+                    dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(instr))
+
+        for mdef in return_null_methods:
+            for xref_rid, xref_offset in mdef.get_xrefs():
+                xfm = dotnet.get_method_by_rid(xref_rid)
+                dis = xfm.disassemble_method()
+                instr = dis.get_instr_at_offset(xref_offset)
+                op = instr.get_opcode()
+                if op == net_opcodes.Opcodes.Call:
+                    patch_bytes = (b'\x00' * (len(instr) - 1)) + b'\x14'
+                    dotnet.patch_instruction(xfm, patch_bytes, xref_offset, len(instr))
+
+        net_deobfuscate_funcs.deobfuscate_control_flow(dotnet)
+
     def deobfuscate(self, dotnet, ctx):
         delegate_method = self.identify_delegate_method(dotnet)
         print('delegate method identified as {}'.format(delegate_method))
-        emu = net_emulator.DotNetEmulator(delegate_method)
-        self.remove_delegates(dotnet, delegate_method, emu)
+        emu = None
+        if delegate_method is not None:
+            emu = net_emulator.DotNetEmulator(delegate_method)
+            tokens_dict = self.remove_delegates(dotnet, delegate_method, emu)
         print('handling code encryption.')
         #encrypted methods doesnt work yet, its close.
         is_encrypted = self.fix_encrypted_methods(dotnet, emu)
-        emu = net_emulator.DotNetEmulator(delegate_method)
         if is_encrypted:
             #remove delegatges again for decrypted methods.
             print('doing a second remove delegates pass')
-            self.remove_delegates(dotnet, delegate_method, emu)
+            if delegate_method is not None:
+                self.remove_delegates(dotnet, delegate_method, emu, tokens_dict)
         print('Removing junk static fields')
         self.remove_junk_static_fields(dotnet, emu)
         rebuilder = net_rebuilder.NetRebuilder(dotnet)
@@ -846,11 +996,13 @@ class NETReactor(Deobfuscator):
         dotnet.reinit_dpe(False)
 
         string_method = self.identify_string_method(dotnet)
-        print('Removing string obfuscation') #NOTE: not ready yet.
+        print('Removing string obfuscation')
         self.remove_string_obfuscation(emu, dotnet, string_method)
+        emu = None
         print('removing antitamper method calls.')
         self.remove_antitamper_antidebug_method(dotnet)
-
+        print('Cleaning Code')
+        self.clean_code(dotnet)
         print('Cleaning up names')
         #net_deobfuscate_funcs.cleanup_names(dotnet)
         dotnet.add_string('DNU_NETREACTOR_WATERMARK')

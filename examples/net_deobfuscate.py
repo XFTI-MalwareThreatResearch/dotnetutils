@@ -82,7 +82,7 @@ def main():
                     print('function is not obfuscated.')
                     continue
             except net_exceptions.EmulatorExecutionException as e:
-                print('emulation failed due to error')
+                print('emulation failed due to error', str(e))
                 continue
             except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
                 print('Possible control flow misidentification:', str(e))
@@ -238,7 +238,8 @@ def main():
     else:
         print('invalid mode')
         exit()
-    new_data = dotnet.get_exe_data()
+    new_rebuilder = net_rebuilder.NetRebuilder(dotnet)
+    new_data = new_rebuilder.rebuild()
     if new_data is not None:
         with open(output_exe, 'wb') as outfile:
             outfile.write(new_data)

@@ -1118,6 +1118,29 @@ cdef class TypeRef(TypeDefOrRef):
                 return None
         return self.__full_name
 
+    def __eq__(self, other):
+        if not isinstance(other, TypeRef):
+            return False
+
+        cdef TypeRef otherRef = <TypeRef>other
+        cdef RowObject res1 = None
+        cdef RowObject res2 = None
+        if self.get_full_name() != otherRef.get_full_name():
+            return False
+
+        res1 = self.get_column('ResolutionScope').get_value()
+        res2 = otherRef.get_column('ResolutionScope').get_value()
+        if res1 is None or res2 is None:
+            return False
+        if not res1.has_value('Name') or not res2.has_value('Name'):
+            return False
+        if res1.get_column('Name').get_value() != res2.get_column('Name').get_value():
+            return False
+        return True
+
+    def __hash__(self):
+        return hash(f'{self.get_full_name()}_{self.get_token()}')
+
     def __str__(self):
         return 'TypeRef: {} {} - '.format(self.get_rid(), hex(self.get_token())) + self.get_full_name().decode('utf-8')
 

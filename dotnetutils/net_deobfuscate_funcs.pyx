@@ -1938,7 +1938,7 @@ cpdef void deobfuscate_control_flow(dotnetpefile.DotNetPeFile dotnet, list targe
             if new_graph is None:
                 continue
         except net_exceptions.EmulatorExecutionException as e:
-            print('emulation failed due to error')
+            print('emulation failed due to error', str(e))
             continue
         except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
             print('Possible control flow misidentification:', str(e))

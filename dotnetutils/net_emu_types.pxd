@@ -735,6 +735,8 @@ cdef class DotNetType(DotNetMemberInfo):
 
     cdef StackCell GetGenericArguments(self, StackCell * params, int nparams)
 
+    cdef StackCell GetTypeInfo(self, StackCell * params, int nparams)
+
     cdef DotNetObject duplicate(self)
 
     cdef void duplicate_into(self, DotNetObject result)
@@ -2496,40 +2498,49 @@ cdef class DotNetRijandaelDecryptor(DotNetICryptoTransform):
 cdef enum OSPlatformType:
     WINDOWS,
     OSX,
-    FREEBSD,
     ANDROID,
+    FREEBSD,
     LINUX
 
 cdef class DotNetOSPlatform(DotNetObject):
-    cdef OSPlatformType __platform_type
+    cdef OSPlatformType __ptype
+
+    cdef OSPlatformType get_platform_type(self)
+   
+    @staticmethod
+    cdef StackCell get_Windows(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
     @staticmethod
     cdef StackCell get_Linux(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
     @staticmethod
-    cdef StackCell get_Windows(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
-
-    @staticmethod
     cdef StackCell get_OSX(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
-
-    @staticmethod
-    cdef StackCell get_Android(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
     @staticmethod
     cdef StackCell get_FreeBSD(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
     @staticmethod
+    cdef StackCell get_Android(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
+
+    @staticmethod
     cdef StackCell Create(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
-
-
-    cdef OSPlatformType get_platform_type(self)
 
 cdef class DotNetRuntimeInformation(DotNetObject):
 
     @staticmethod
     cdef StackCell IsOSPlatform(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
+cdef class DotNetTypeInfo(DotNetObject):
+    cdef DotNetType __type
 
+    cdef DotNetType get_type(self)
+
+    cdef StackCell get_Assembly(self, StackCell * params, int nparams)
+
+cdef class DotNetIntrospectionExtensions(DotNetObject):
+
+    @staticmethod
+    cdef StackCell GetTypeInfo(net_emulator.EmulatorAppDomain app_domain, StackCell * params, int nparams)
 
 include "net_emu_types.pxi"
 

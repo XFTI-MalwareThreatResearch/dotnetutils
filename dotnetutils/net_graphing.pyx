@@ -1,5 +1,9 @@
-from dotnetutils import net_cil_disas, net_emulator, net_cil_disas, net_structs, net_opcodes, net_row_objects, net_exceptions, net_emu_types
-from dotnetutils.net_opcodes import Opcodes
+#cython: language_level=3
+#distutils: language=c++
+from dotnetutils cimport net_cil_disas, net_emulator, net_cil_disas, net_structs, net_opcodes, net_row_objects, net_emu_types
+from dotnetutils.net_opcodes cimport Opcodes
+
+from dotnetutils import net_exceptions
 
 """
 This file is meant to eventually be a grapher and maybe a recompiler + analyzer for method code.
@@ -11,8 +15,8 @@ This file will be cythonized once complete.  Its also possible that I may split 
 Methods and such may change within this file as I continue working on it.
 """
 
-class FunctionBlock:
-    def __init__(self, method_object, disasm_object, graph):
+cdef class FunctionBlock:
+    def __init__(self, net_row_objects.MethodDef method_object, net_cil_disas.MethodDisassembler disasm_object, FunctionGraph graph):
         """ Setup a new FunctionBlock
         
         Args:
@@ -47,7 +51,9 @@ class FunctionBlock:
         self.__new_offset = -1
         self.__new_index = -1
 
-    def is_block_start(self):
+    cpdef bint is_block_start(self):
+        cdef int cl_flag = 0
+        cdef FunctionBlock blk = None
         if self.__start_offset == 0:
             return True
         for cl_flag, blk in self.__exception_handlers:
@@ -55,7 +61,11 @@ class FunctionBlock:
                 return True
         return False
 
-    def duplicate(self, new_graph, existing_blocks):
+    cpdef FunctionBlock duplicate(self, FunctionGraph new_graph, dict existing_blocks):
+        cdef FunctionBlock new_block = None
+        cdef net_cil_disas.Instruction instr = None
+        cdef FunctionBlock nxt = None
+        cdef tuple exc_block = None
         #Create a deep duplicate of a block.
         if self.get_start_offset() in existing_blocks:
             return existing_blocks[self.get_start_offset()]
@@ -87,7 +97,7 @@ class FunctionBlock:
         new_block.__new_index = self.__new_index
         return new_block
 
-    def get_start_index(self):
+    cpdef int get_start_index(self):
         """ Obtain the index of the first instruction within the block relative to index 0 of the method.
 
         Returns:
@@ -95,7 +105,7 @@ class FunctionBlock:
         """
         return self.__start_index
     
-    def update_start_offset(self, start_offset, start_index):
+    cpdef void update_start_offset(self, int start_offset, int start_index):
         """ Updates the stored offset and index for the block.
 
         Args:
@@ -105,7 +115,7 @@ class FunctionBlock:
         self.__start_offset = start_offset
         self.__start_index = start_index
 
-    def setup_new_block_location(self, new_offset, new_index):
+    cpdef void setup_new_block_location(self, int new_offset, int new_index):
         """ Updates the stored new offset and index for the block.
         
             Likely to be removed.
@@ -117,7 +127,7 @@ class FunctionBlock:
         self.__new_offset = new_offset
         self.__new_index = new_index
 
-    def update_size(self, new_size):
+    cpdef void update_size(self, int new_size):
         """ Update the stored byte size of the block.
 
         Args:
@@ -125,7 +135,7 @@ class FunctionBlock:
         """
         self.__original_length = new_size 
 
-    def get_new_offset(self):
+    cpdef int get_new_offset(self):
         """ Obtains the stored value for the new offset after changes.
             Likely to be removed.
         
@@ -134,7 +144,7 @@ class FunctionBlock:
         """
         return self.__new_offset
     
-    def get_new_index(self):
+    cpdef int get_new_index(self):
         """ Obtains the stored value for the new index after changes.
             Likely to be removed.
         
@@ -143,7 +153,7 @@ class FunctionBlock:
         """
         return self.__new_index
 
-    def get_exception_handlers(self):
+    cpdef set get_exception_handlers(self):
         """ Obtains a single exception handler associated with a block.
             see net_cil_disas for result format.
         
@@ -152,7 +162,7 @@ class FunctionBlock:
         """
         return self.__exception_handlers
     
-    def add_exception_handler(self, exception_handler):
+    cpdef void add_exception_handler(self, tuple exception_handler):
         """ Sets the block's exception handler.
 
         Args:
@@ -162,7 +172,7 @@ class FunctionBlock:
             raise Exception() #Update the docs later etc etc
         self.__exception_handlers.add(exception_handler)
 
-    def set_filter_block_offset(self, offset):
+    cpdef void set_filter_block_offset(self, int offset):
         """ Sets the offset of the filter handler associated with the block.
 
         Args:
@@ -170,7 +180,7 @@ class FunctionBlock:
         """
         self.__filter_block_offset = offset
 
-    def set_try_block_offset(self, offset):
+    cpdef void set_try_block_offset(self, int offset):
         """ Sets the offset of the try handler associated with the block.
 
         Args:
@@ -178,7 +188,7 @@ class FunctionBlock:
         """
         self.__try_block_offset = offset
 
-    def set_catch_block_offset(self, offset):
+    cpdef void set_catch_block_offset(self, int offset):
         """ Sets the offset of the catch handler associated with the block.
 
         Args:
@@ -186,7 +196,7 @@ class FunctionBlock:
         """
         self.__catch_block_offset = offset
 
-    def set_finally_block_offset(self, offset):
+    cpdef void set_finally_block_offset(self, int offset):
         """ Sets the offset of the finally handler associated with the block.
 
         Args:
@@ -194,101 +204,105 @@ class FunctionBlock:
         """
         self.__finally_block_offset = offset
 
-    def get_try_block_offset(self):
+    cpdef int get_try_block_offset(self):
         return self.__try_block_offset
     
-    def get_catch_block_offset(self):
+    cpdef int get_catch_block_offset(self):
         return self.__catch_block_offset
     
-    def get_finally_block_offset(self):
+    cpdef int get_finally_block_offset(self):
         return self.__finally_block_offset
     
-    def get_filter_block_offset(self):
+    cpdef int get_filter_block_offset(self):
         return self.__filter_block_offset
 
-    def mark_block_try(self):
+    cpdef void mark_block_try(self):
         self.__is_block_try = True
 
-    def mark_block_catch(self):
+    cpdef void mark_block_catch(self):
         self.__is_block_catch = True
 
-    def mark_block_finally(self):
+    cpdef void mark_block_finally(self):
         self.__is_block_finally = True
 
-    def mark_block_filter(self):
+    cpdef void mark_block_filter(self):
         self.__is_block_filter = True
 
-    def is_block_try(self):
+    cpdef bint is_block_try(self):
         return self.__is_block_try
     
-    def is_block_catch(self):
+    cpdef bint is_block_catch(self):
         return self.__is_block_catch
     
-    def is_block_finally(self):
+    cpdef bint is_block_finally(self):
         return self.__is_block_finally
     
-    def is_block_filter(self):
+    cpdef bint is_block_filter(self):
         return self.__is_block_filter
 
-    def mark_block_finished(self):
+    cpdef void mark_block_finished(self):
         self.__is_block_finished = True
 
-    def mark_switch_block(self):
+    cpdef void mark_switch_block(self):
         self.__was_switch_block = True
 
-    def was_switch_block(self):
+    cpdef bint was_switch_block(self):
         return self.__was_switch_block
 
-    def is_block_return(self):
+    cpdef bint is_block_return(self):
         return self.get_last_instr().get_opcode() == Opcodes.Ret
 
     def __hash__(self):
         return hash(self.__start_offset)
 
-    def get_current_size(self):
-        result = 0
+    cpdef int get_current_size(self):
+        cdef int result = 0
+        cdef net_cil_disas.Instruction instr = None
         for instr in self.get_instrs():
-            result += len(instr)
+            result += <int>len(instr)
         return result
 
-    def mark_switch_case(self):
+    cpdef void mark_switch_case(self):
         self.__is_switch_case = True
 
-    def is_switch_case(self):
+    cpdef bint is_switch_case(self):
         return self.__is_switch_case
     
-    def get_instr_index(self, instr):
+    cpdef int get_instr_index(self, net_cil_disas.Instruction instr):
+        cdef Py_ssize_t x = 0
+        cdef net_cil_disas.Instruction pt_instr = None
         for x in range(len(self.get_instrs())):
             pt_instr = self.get_instrs()[x]
             if pt_instr.get_instr_offset() == instr.get_instr_offset():
-                return x
+                return <int>x
         return -1
     
-    def mark_junk(self):
+    cpdef void mark_junk(self):
         self.__is_junk_block = True
 
-    def is_junk_block(self):
+    cpdef bint is_junk_block(self):
         return self.__is_junk_block
     
-    def reverse_next(self):
+    cpdef void reverse_next(self):
         self.__next.reverse()
 
-    def is_start(self):
+    cpdef bint is_start(self):
         return self.__start_offset == 0
 
-    def get_original_length(self):
+    cpdef int get_original_length(self):
         return self.__original_length
 
-    def has_absolute_path_to_zero(self):
+    cpdef bint has_absolute_path_to_zero(self):
+        cdef FunctionBlock prev = None
         if self.__start_offset == 0:
-            return prev
+            return True
         for prev in self.get_prev():
             if prev.has_absolute_path_to_zero():
                 return True
-
         return False
     
-    def block_leads_switch(self):
+    cpdef bint block_leads_switch(self):
+        cdef FunctionBlock usable = None
         if self.is_block_switch():
             return True
         if self.is_block_absolutejmp():
@@ -299,132 +313,133 @@ class FunctionBlock:
                     return True
         return False
 
-    def get_instr_at_index(self, index):
+    cpdef net_cil_disas.Instruction get_instr_at_index(self, int index):
         return self.__instrs[index]
 
-    def replace_instr(self, index, new_instr):
-        self.__instrs[index] = new_instr
-
-    def insert_instr(self, index, instr):
+    cpdef void insert_instr(self, int index, net_cil_disas.Instruction instr):
         self.__instrs.insert(index, instr)
 
-    def is_block_conditional(self):
-        instr = self.get_last_instr()
+    cpdef bint is_block_conditional(self):
+        cdef net_cil_disas.Instruction instr = self.get_last_instr()
         if not self.is_block_absolutejmp():
             if instr.get_opcode() != Opcodes.Switch:
                 return instr.is_branch()
         return False
 
-    def contains_instr(self, name):
+    cpdef bint contains_instr(self, str name):
+        cdef net_cil_disas.Instruction instr = None
         for instr in self.__instrs:
             if instr.get_name() == name:
                 return True
         return False
 
-    def clear_next(self):
-        nxt = list(self.get_next())
+    cpdef void clear_next(self):
+        cdef list nxt = list(self.get_next())
+        cdef FunctionBlock n = None
         for n in nxt:
             self.remove_next(n)
 
-    def clear_prev(self):
-        prv = list(self.get_prev())
+    cpdef void clear_prev(self):
+        cdef list prv = list(self.get_prev())
+        cdef FunctionBlock p = None
         for p in prv:
             self.remove_prev(p)
 
-    def clear_next_raw(self):
+    cpdef void clear_next_raw(self):
         self.__next.clear()
 
-    def clear_prev_raw(self):
+    cpdef void clear_prev_raw(self):
         self.__previous.clear()
 
-    def add_next_raw(self, nxt):
+    cpdef void add_next_raw(self, FunctionBlock nxt):
         self.__next.append(nxt)
 
-    def add_prev_raw(self, nxt):
+    cpdef void add_prev_raw(self, FunctionBlock nxt):
         self.__previous.append(nxt)
 
-    def clear_prev_raw(self):
-        self.__previous.clear()
-
-    def clear_next_once(self):
+    cpdef void clear_next_once(self):
         if not self.__was_cleared:
             self.__was_cleared = True
             self.clear_next()
 
-    def is_block_switch(self):
+    cpdef bint is_block_switch(self):
+        if self.get_last_instr() is None:
+            return False
         return self.get_last_instr().get_opcode() == Opcodes.Switch
 
-    def is_block_absolutejmp(self):
-        instr = self.get_last_instr()
-        opcode = instr.get_opcode()
+    cpdef bint is_block_absolutejmp(self):
+        cdef net_cil_disas.Instruction instr = self.get_last_instr()
+        cdef Opcodes opcode = instr.get_opcode()
         return opcode == Opcodes.Br or opcode == Opcodes.Br_S or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S
     
-    def is_block_direct(self):
+    cpdef bint is_block_direct(self):
         return not self.is_block_absolutejmp() and not self.is_block_conditional() and not self.get_last_instr().is_branch() and len(self.get_next()) == 1
     
-    def add_instr(self, instr):
+    cpdef void add_instr(self, net_cil_disas.Instruction instr):
         self.__instrs.append(instr)
         if self.__start_offset == -1:
             self.__start_offset = instr.get_instr_offset()
             self.__start_index = instr.get_instr_index()
 
-        self.__original_length += len(instr)
+        self.__original_length += <int>len(instr)
 
-    def remove_instrs_after_index(self, index):
+    cpdef void remove_instrs_after_index(self, int index):
         self.__instrs = self.__instrs[:index + 1]
 
-    def replace_instr(self, index, instr):
+    cpdef void replace_instr(self, int index, net_cil_disas.Instruction instr):
         self.__instrs[index] = instr
     
-    def remove_instrs(self, start, end):
-        if not 0 <= start < len(self.__instrs) or not 0 <= end <= len(self.__instrs) or start > end:
+    cpdef void remove_instrs(self, int start, int end):
+        if not 0 <= start < len(self.__instrs) or not 0 <= end <= <int>len(self.__instrs) or start > end:
             raise net_exceptions.InvalidArgumentsException()
         del self.__instrs[start:end]
 
-    def insert_instr(self, index, instr):
-        self.__instrs.insert(index, instr)
-
-    def get_instrs(self):
+    cpdef list get_instrs(self):
         return self.__instrs
 
-    def get_start_offset(self):
+    cpdef int get_start_offset(self):
         return self.__start_offset
 
-    def get_last_instruction(self):
+    cpdef net_cil_disas.Instruction get_last_instruction(self):
+        if len(self.get_instrs()) == 0:
+            return None
         return self.get_instrs()[-1]
 
-    def has_prev(self, block):
+    cpdef bint has_prev(self, FunctionBlock block):
         return block in self.__previous
 
-    def add_next(self, block):
+    cpdef void add_next(self, FunctionBlock block):
         if block is None:
             raise Exception()
         self.__next.append(block)
         block.add_prev(self)
 
-    def add_prev(self, block):
+    cpdef void add_prev(self, FunctionBlock block):
+        if block is None:
+            raise Exception()
         if not self.has_prev(block):
             self.__previous.append(block)
 
-    def has_next(self, block):
+    cpdef bint has_next(self, FunctionBlock block):
         return block in self.__next
 
-    def get_next(self):
+    cpdef list get_next(self):
         return self.__next
 
-    def get_prev(self):
+    cpdef list get_prev(self):
         return self.__previous
     
-    def remove_prev(self, prev):
+    cpdef void remove_prev(self, FunctionBlock prev):
         prev.__next.remove(self)
         self.__previous.remove(prev)
 
-    def get_last_instr(self):
+    cpdef net_cil_disas.Instruction get_last_instr(self):
         if len(self.__instrs) == 0:
             return None
         return self.get_instrs()[-1]
 
-    def has_offset(self, offset):
+    cpdef bint has_offset(self, int offset):
+        cdef net_cil_disas.Instruction instr = None
         if self.__is_block_finished:
             if self.__start_offset <= offset < (self.__start_offset + self.__original_length):
                 return True
@@ -433,8 +448,24 @@ class FunctionBlock:
                 return True
         return False
     
-    def merge_block(self, block):
+    cpdef void merge_block(self, FunctionBlock block):
         #merge a block with another.
+        cdef bint shouldnt_remove = False
+        cdef int cl_flags = 0
+        cdef FunctionBlock cl_blk = None
+        cdef net_cil_disas.Instruction last_instr = None
+        cdef int last_instr_index = 0
+        cdef int last_instr_size = 0
+        cdef int last_instr_offset = 0
+        cdef int new_offset = 0
+        cdef int new_length = 0
+        cdef int new_index = 0
+        cdef net_cil_disas.Instruction instr = None
+        cdef int target = 0
+        cdef list args = None
+        cdef int new_argument = 0
+
+
         if block.is_block_try() or block.is_block_catch() or block.is_block_finally() or block.is_block_filter():
             shouldnt_remove = False
             for cl_flags, cl_blk in block.get_exception_handlers():
@@ -450,7 +481,7 @@ class FunctionBlock:
             last_instr_index = 0
         else:
             last_instr_offset = last_instr.get_instr_offset()
-            last_instr_size = len(last_instr)
+            last_instr_size = <int>len(last_instr)
             last_instr_index = last_instr.get_instr_index()
             
         new_offset = last_instr_offset + last_instr_size
@@ -458,30 +489,32 @@ class FunctionBlock:
         new_length = self.get_original_length()
         for instr in block.get_instrs():
             if instr.is_absolute_jmp():
-                target = instr.get_argument() + len(instr) + instr.get_instr_offset()
-                new_argument = target - new_offset - len(instr)
+                target = instr.get_argument() + <int>len(instr) + instr.get_instr_offset()
+                new_argument = target - new_offset - <int>len(instr)
                 instr.setup_arguments_from_int32(new_argument)
             elif instr.is_branch():
                 if instr.get_opcode() == Opcodes.Switch:
                     args = list()
                     for target in instr.get_argument():
-                        new_argument = target - new_offset - len(instr)
+                        new_argument = target - new_offset - <int>len(instr)
                         args.append(new_argument)
                     instr.setup_arguments_from_argslist(args)
                 else:
-                    target = instr.get_argument() + len(instr) + instr.get_instr_offset()
-                    new_argument = target - new_offset - len(instr)
+                    target = instr.get_argument() + <int>len(instr) + instr.get_instr_offset()
+                    new_argument = target - new_offset - <int>len(instr)
                     instr.setup_arguments_from_int32(new_argument)
 
             instr.setup_instr_offset(new_offset, new_index)
-            new_offset += len(instr)
+            new_offset += <int>len(instr)
             new_index += 1
-            new_length += len(instr)
+            new_length += <int>len(instr)
             self.add_instr(instr)
         self.__original_length = new_length
 
-    def validate_block(self):
-        last_instr = self.get_last_instr()
+    cpdef void validate_block(self) except *:
+        cdef net_cil_disas.Instruction last_instr = self.get_last_instr()
+        cdef Opcodes opcode = Opcodes.Nop
+        cdef FunctionBlock nxt = None
         if last_instr is None:
             if len(self.__next) != 1 and len(self.__next) != 0:
                 raise net_exceptions.InvalidBlockException(self)
@@ -509,23 +542,28 @@ class FunctionBlock:
                     if len(self.__next) != 2:
                         raise net_exceptions.InvalidBlockException(self)
                     
-                    if self.__next[0] == self.__next[1]:
-                        raise net_exceptions.InvalidBlockException(self)
+                    """if self.__next[0] == self.__next[1]:
+                        raise net_exceptions.InvalidBlockException(self)"""
                 
         for nxt in self.__next:
             if self not in nxt.get_prev():
                 raise net_exceptions.InvalidBlockException(self)
 
-    def split_block(self, split_offset):
-        new_instrs = list()
-        split_instrs = list()
-        start_splitting = False
-        new_size = 0
+    cpdef FunctionBlock split_block(self, int split_offset):
+        cdef list new_instrs = list()
+        cdef list split_instrs = list()
+        cdef bint start_splitting = False
+        cdef int new_size = 0
+        cdef FunctionBlock new_block = None
+        cdef list exc_handler = None
+        cdef net_cil_disas.Instruction instr = None
+        cdef list new_next = None
+        cdef FunctionBlock nxt = None
         for instr in self.__instrs:
             if instr.get_instr_offset() == split_offset:
                 start_splitting = True
             if not start_splitting:
-                new_size += len(instr)
+                new_size += <int>len(instr)
                 new_instrs.append(instr)
             else:
                 split_instrs.append(instr)
@@ -562,15 +600,17 @@ class FunctionBlock:
         self.add_next(new_block)
         return new_block
 
-    def remove_next(self, block):
+    cpdef void remove_next(self, FunctionBlock block):
         if self.has_next(block):
             self.__next.remove(block)
             if self in block.__previous and block not in self.__next:
                 block.__previous.remove(self)
     
-    def replace_next(self, block, new_block):
-        found = False
-        nxts = list(self.__next)
+    cpdef void replace_next(self, FunctionBlock block, FunctionBlock new_block):
+        
+        cdef bint found = False
+        cdef list nxts = list(self.__next)
+        cdef Py_ssize_t x = 0
         for x in range(len(nxts)):
             if self.__next[x] == block:
                 if block.has_prev(self):
@@ -582,8 +622,8 @@ class FunctionBlock:
         if not found:
             raise Exception()
         
-    def replace_next_index(self, index, new_block):
-        old_next = self.__next[index]
+    cpdef void replace_next_index(self, int index, FunctionBlock new_block):
+        cdef FunctionBlock old_next = self.__next[index]
         self.__next[index] = new_block
         if old_next not in self.__next:
             if old_next.has_prev(self):
@@ -591,8 +631,9 @@ class FunctionBlock:
         if not new_block.has_prev(self):
             new_block.__previous.append(self)
 
-    def get_nstack(self):
-        result = 0
+    cpdef int get_nstack(self):
+        cdef int result = 0
+        cdef net_cil_disas.Instruction instr = None
         for instr in self.get_instrs():
             result += instr.get_nstack()
         return result
@@ -611,8 +652,10 @@ For exception blocks:
 - __parse_block() needs to use the raw exception handlers to ensure blocks separate when a new try etc is found.
 - NEed to make sure compiler happens in a way that nests all the nested blocks together.
 """
-class FunctionGraph:
-    def __init__(self, method_object, force_instrs=None, force_exc_blocks=None, init_blocks=True, debug_print=False):
+cdef class FunctionGraph:
+    def __init__(self, net_row_objects.MethodDef method_object, list force_instrs=None, list force_exc_blocks=None, bint init_blocks=True, bint debug_print=False):
+        cdef FunctionBlock block = None
+        cdef net_cil_disas.Instruction instr = None
         self.__method_object = method_object
         self.__debug_print = debug_print
         self.__disasm_object = None
@@ -664,7 +707,15 @@ class FunctionGraph:
         self.sort_blocks()
         self.register_exception_handlers()
 
-    def register_exception_handlers(self):
+    cpdef void register_exception_handlers(self):
+        cdef int cl_flag = 0
+        cdef int try_offset = 0
+        cdef int try_length = 0
+        cdef int catch_offset = 0
+        cdef int catch_length = 0
+        cdef object token = 0
+        cdef FunctionBlock try_block = None
+        cdef FunctionBlock catch_block = None
         for cl_flag, try_offset, try_length, catch_offset, catch_length, token in self.__raw_exception_blocks:
             if cl_flag == net_structs.CorILExceptionClause.Filter:
                 token = self.get_block_by_start_offset(token)
@@ -673,21 +724,28 @@ class FunctionGraph:
             self.__exception_blocks.append((cl_flag, try_block, catch_block, token))
 
 
-    def update_exc_handlers(self):
+    cpdef void update_exc_handlers(self):
         self.__raw_exception_blocks = self.update_raw_exception_clauses()
 
-    def get_raw_exception_clauses(self):
+    cpdef list get_raw_exception_clauses(self):
         return self.__raw_exception_blocks
 
-    def duplicate(self):
-        new_graph = FunctionGraph(self.__method_object, init_blocks=False)
+    cpdef FunctionGraph duplicate(self):
+        cdef FunctionGraph new_graph = FunctionGraph(self.__method_object, init_blocks=False)
+        cdef dict already_duplicated = dict()
+        cdef dict usable_dict = None
+        cdef int offset = 0
+        cdef FunctionBlock blk = None
+        cdef int clause_flags = 0
+        cdef FunctionBlock try_block = None
+        cdef FunctionBlock catch_block = None
+        cdef object filter_block = None
         new_graph.__blocks_start = dict(self.__blocks_start)
         new_graph.__instr_offsets = dict(self.__instr_offsets)
         new_graph.__instrs = list(self.__instrs)
         new_graph.__disasm_object = self.__disasm_object
         new_graph.__debug_print = self.__debug_print
         new_graph.__exception_blocks = list()
-        already_duplicated = dict()
         usable_dict = dict(new_graph.__blocks_start)
         new_graph.__blocks_start.clear()
         for offset, blk in usable_dict.items():
@@ -701,27 +759,33 @@ class FunctionGraph:
         new_graph.__raw_exception_blocks = list(self.__raw_exception_blocks)
         return new_graph
 
-    def register_block(self, offset, block):
+    cpdef void register_block(self, int offset, FunctionBlock block):
         self.__blocks_start[offset] = block
 
-    def __handle_try_block(self, try_offset, try_length, handler_offset, handler_length):
+    cdef void __handle_try_block(self, int try_offset, int try_length, int handler_offset, int handler_length):
         self.__parse_block(try_offset, try_offset, try_offset + try_length, True, False, False, False)
         self.__parse_block(handler_offset, handler_offset, handler_offset + handler_length, False, True, False, False)
 
-    def __handle_finally_block(self, try_offset, try_length, handler_offset, handler_length):
+    cdef void __handle_finally_block(self, int try_offset, int try_length, int handler_offset, int handler_length):
         self.__parse_block(try_offset, try_offset, try_offset + try_length, True, False, False, False)
         self.__parse_block(handler_offset, handler_offset, handler_offset + handler_length, False, False, True, False)
 
-    def __handle_filter_block(self, try_offset, try_length, handler_offset, handler_length, filter_offset, filter_length):
+    cdef void __handle_filter_block(self, int try_offset, int try_length, int handler_offset, int handler_length, int filter_offset, int filter_length):
         self.__parse_block(try_offset, try_offset, try_offset + try_length, True, False, False, False)
         self.__parse_block(handler_offset, handler_offset, handler_offset + handler_length, False, True, False, False)
         self.__parse_block(filter_offset, filter_offset, filter_offset + filter_length, False, False, False, True)
-    #def __parse_block(self, start_offset, clause_start=-1, max_end_offset=-1, is_try=False, is_catch=False, is_finally=False, is_filter=False)
 
-    def __handle_try_catch_finally_blocks(self):
+    cdef void __handle_try_catch_finally_blocks(self):
         """
         Ensure that try catch finally blocks are treated as their own blocks.  
         """
+        cdef tuple exc = None
+        cdef net_structs.CorILExceptionClause clause_flags = net_structs.CorILExceptionClause.Exception
+        cdef int try_offset = 0
+        cdef int try_length = 0
+        cdef int handler_offset = 0
+        cdef int handler_length = 0
+        cdef object class_token = 0
         for exc in self.__raw_exception_blocks:
             clause_flags, try_offset, try_length, handler_offset, handler_length, class_token = exc
             if clause_flags == net_structs.CorILExceptionClause.Exception:
@@ -737,42 +801,50 @@ class FunctionGraph:
                 raise net_exceptions.OperationNotSupportedException()
         self.sort_blocks()
 
-    def get_exception_blocks(self):
+    cpdef list get_exception_blocks(self):
         return self.__exception_blocks
 
-    def get_disassembler(self):
+    cpdef net_cil_disas.MethodDisassembler get_disassembler(self):
         return self.__disasm_object
 
-    def sort_blocks(self):
-        keys = list(self.__blocks_start.keys())
+    cpdef void sort_blocks(self):
+        cdef list keys = list(self.__blocks_start.keys())
         keys.sort()
         self.__blocks_start = {i: self.__blocks_start[i] for i in keys}
     
-    def enable_debug_printing(self):
+    cpdef void enable_debug_printing(self):
         self.__debug_print = True
 
-    def debug_printing_enabled(self):
+    cpdef bint debug_printing_enabled(self):
         return self.__debug_print
 
-    def set_root_block(self, root_block):
+    cpdef void set_root_block(self, FunctionBlock root_block):
         self.__root_block = root_block
 
-    def get_root_block(self):
+    cpdef FunctionBlock get_root_block(self):
         return self.__root_block
 
-    def get_block_by_offset(self, offset):
+    cpdef FunctionBlock get_block_by_offset(self, int offset):
+        cdef FunctionBlock block = None
         for block in self.__blocks_start.values():
             if block.has_offset(offset):
                 return block
         return None
     
-    def get_block_by_start_offset(self, offset):
+    cpdef FunctionBlock get_block_by_start_offset(self, int offset):
+        cdef FunctionBlock block = None
         for block in self.blocks():
             if block.get_start_offset() == offset:
                 return block
         return None
     
-    def get_shortest_path(self, from_offset, to_offset):
+    cpdef list get_shortest_path(self, from_offset, to_offset):
+        cdef list explored = None
+        cdef list queue = None
+        cdef list path = None
+        cdef FunctionBlock node = None
+        cdef FunctionBlock neighbor = None
+        cdef list neighbors = None
         if isinstance(to_offset, FunctionBlock) and isinstance(from_offset, FunctionBlock):
             to_block = to_offset
             from_block = from_offset
@@ -803,29 +875,33 @@ class FunctionGraph:
 
         return None
     
-    def __walk_path_max_stack(self, block, already_analyzed):
+    cdef int __walk_path_max_stack(self, FunctionBlock block, list already_analyzed):
+        cdef int max_value = 0
+        cdef int result = 0
+        cdef net_cil_disas.Instruction instr = None
+        cdef FunctionBlock blk = None
+        cdef int next_val = 0
         if block in already_analyzed:
             return 0
         already_analyzed.append(block)
-        max_value = 0
-        result = 0
         for instr in block.get_instrs():
             result += instr.get_nstack()
             max_value = max(max_value, result)
-        next_val = 0
         for blk in block.get_next():
             val = self.__walk_path_max_stack(blk, already_analyzed)
             next_val = max(val, next_val)
         return max(max_value, next_val)        
     
-    def calculate_max_stack_size(self):
-        max_val = 0
-        already_analyzed = list()
+    cpdef int calculate_max_stack_size(self):
+        cdef int max_val = 0
+        cdef list already_analyzed = list()
+        cdef FunctionBlock block = None
         for block in self.__blocks_start.values():
             max_val = max(self.__walk_path_max_stack(block, already_analyzed), max_val)
         return max_val
 
     def get_paths_to_block(self, to_offset, from_offset):
+        #TODO: Cythonize this
         to_block = to_offset
         from_block = from_offset
         if not isinstance(to_block, FunctionBlock) or not isinstance(from_block, FunctionBlock):
@@ -856,7 +932,16 @@ class FunctionGraph:
         path_checker(to_block, from_block, [to_block], paths, visited)
         return paths
     
-    def update_block_handlers(self):
+    cpdef void update_block_handlers(self):
+        cdef net_structs.CorILExceptionClause exc_flags = net_structs.CorILExceptionClause.Exception
+        cdef int try_offset = 0
+        cdef int try_length = 0
+        cdef int catch_offset = 0
+        cdef int catch_length = 0
+        cdef int token = 0
+        cdef int filter_offset = 0
+        cdef int filter_length = 0
+        cdef FunctionBlock block = None
         for exc_flags, try_offset, try_length, catch_offset, catch_length, token in self.__raw_exception_blocks:
             filter_offset = -1
             filter_length = -1
@@ -872,9 +957,20 @@ class FunctionGraph:
                     if filter_offset <= block.get_start_offset() < (filter_offset + filter_length):
                         block.add_exception_handler((exc_flags, self.get_block_by_start_offset(filter_offset)))
 
-    def __parse_block(self, start_offset, clause_start=-1, max_end_offset=-1, is_try=False, is_catch=False, is_finally=False, is_filter=False):
-        usable_offset = start_offset
-        debug = False
+    cdef FunctionBlock __parse_block(self, int start_offset, int clause_start=-1, int max_end_offset=-1, bint is_try=False, bint is_catch=False, bint is_finally=False, bint is_filter=False):
+        cdef int usable_offset = start_offset
+        cdef bint debug = False
+        cdef int x = 0
+        cdef FunctionBlock blk = None
+        cdef FunctionBlock block = None
+        cdef FunctionBlock new_block = None
+        cdef net_cil_disas.Instruction instr = None
+        cdef Opcodes opcode = Opcodes.Nop
+        cdef FunctionBlock usable_block = None
+        cdef list targets = None
+        cdef int potential_offset = 0
+        cdef int potential_offset1 = 0
+        cdef int potential_offset2 = 0
         if debug:
             print('calling __parse_block {} {} {} {}'.format(hex(start_offset), is_try, is_catch, is_finally))
         x = self.__instr_offsets[start_offset].get_instr_index()
@@ -923,7 +1019,7 @@ class FunctionGraph:
         if is_filter:
             block.mark_block_filter()
 
-        while x >= 0 and x < len(self.__instrs):
+        while x >= 0 and x < <int>len(self.__instrs):
             if usable_offset in self.__blocks_start and usable_offset != start_offset:
                 new_block = self.__blocks_start[usable_offset]
                 if not block.has_next(new_block):
@@ -937,7 +1033,7 @@ class FunctionGraph:
             if instr.is_branch():
                 #leave br and br.s are treated as absolute jumps since they basically are.
                 if opcode == Opcodes.Br or opcode == Opcodes.Br_S or opcode == Opcodes.Leave or opcode == Opcodes.Leave_S:
-                    potential_offset = usable_offset + len(instr) + instr.get_argument()
+                    potential_offset = usable_offset + <int>len(instr) + instr.get_argument()
                     if opcode == Opcodes.Br or opcode == Opcodes.Br_S:
                         new_block = self.__parse_block(potential_offset, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                     else:
@@ -961,7 +1057,7 @@ class FunctionGraph:
                             usable_block.add_next(new_block)
                             new_block.mark_switch_case()
 
-                        fallthrough_offset = instr.get_instr_offset() + len(instr)
+                        fallthrough_offset = instr.get_instr_offset() + <int>len(instr)
                         new_block = self.__parse_block(
                             fallthrough_offset, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
                         usable_block = self.get_block_by_offset(
@@ -971,8 +1067,8 @@ class FunctionGraph:
                     else:
                         #this block of code is to handle conditional branches.
                         potential_offset1 = usable_offset + \
-                            len(instr) + instr.get_argument()
-                        potential_offset2 = usable_offset + len(instr)
+                            <int>len(instr) + instr.get_argument()
+                        potential_offset2 = usable_offset + <int>len(instr)
 
                         new_block = self.__parse_block(
                             potential_offset1, clause_start, max_end_offset, is_try, is_catch, is_finally, is_filter)
@@ -990,7 +1086,7 @@ class FunctionGraph:
                 if opcode == Opcodes.Throw or opcode == Opcodes.Rethrow:
                     break
 
-            usable_offset += len(instr)
+            usable_offset += <int>len(instr)
 
             if opcode == Opcodes.Ret or opcode == Opcodes.Endfinally:
                 break
@@ -1002,7 +1098,10 @@ class FunctionGraph:
             raise net_exceptions.InvalidBlockException(None)
         return block
     
-    def validate_blocks(self):
+    cpdef void validate_blocks(self) except *:
+        cdef FunctionBlock blk = None
+        cdef FunctionBlock nxt = None
+        cdef FunctionBlock prv = None
         for blk in self.blocks():
             blk.validate_block()
             for nxt in blk.get_next():
@@ -1017,37 +1116,42 @@ class FunctionGraph:
             if blk.get_start_offset() < 0:
                 raise net_exceptions.InvalidBlockException(blk)
             
-    def dump_block_relations(self):
+    cpdef void dump_block_relations(self):
+        cdef FunctionBlock block = None
         for block in self.blocks():
             print('block {} {}'.format(block, block.get_last_instr()))
             print('block nexts {}'.format(block.get_next()))
             print('block prevs {}'.format(block.get_prev()))
 
-    def print_root(self):
-        dont_print_again = set()
+    cpdef void print_root(self):
+        cdef set dont_print_again = set()
         print('Printing graph for method {} {}'.format(self.__method_object, hex(self.__method_object.get_token())))
         print('Calculated max stack {}'.format(self.calculate_max_stack_size()))
         self.__print_block(self.__root_block, dont_print_again)
                 
 
-    def debug_print_blocks(self):
+    cpdef void debug_print_blocks(self):
+        cdef FunctionBlock block = None
+        cdef net_cil_disas.Instruction instr = None
         print('debug printing blocks')
         for block in self.__blocks_start.values():
             print('Block {}'.format(hex(block.get_start_offset())))
             for instr in block.get_instrs():
                 print('{}: {}'.format(hex(instr.get_instr_offset()), instr.get_name()))
 
-    def debug_print_nexts(self):
-        block: FunctionBlock
+    cpdef void debug_print_nexts(self):
+        cdef FunctionBlock block = None
+        cdef FunctionBlock nxt = None
         print('Debug printing blocks')
         for block in self.__blocks_start.values():
             print('Block {} is_junk={} is_switch_case={}'.format(hex(block.get_start_offset()), block.is_junk_block(), block.is_switch_case()))
-            nxt: FunctionBlock
             for nxt in block.get_next():
                 print('Next: {}'.format(hex(nxt.get_start_offset())))
 
-    def update_offsets(self):
-        blocks = dict(self.__blocks_start)
+    cpdef void update_offsets(self):
+        cdef dict blocks = dict(self.__blocks_start)
+        cdef int offset = 0
+        cdef FunctionBlock block = None
         self.__blocks_start.clear()
         for offset, block in blocks.items():
             self.__blocks_start[block.get_start_offset()] = block
@@ -1057,20 +1161,27 @@ class FunctionGraph:
             for instr in block.get_instrs():
                 self.__instr_offsets[instr.get_instr_offset()] = instr
     
-    def unregister_block(self, offset):
+    cpdef void unregister_block(self, int offset) except *:
+        cdef net_structs.CorILExceptionClause clause_flags = net_structs.CorILExceptionClause.Exception
+        cdef FunctionBlock try_block = None
+        cdef FunctionBlock catch_block = None
+        cdef object token = None
         for clause_flags, try_block, catch_block, token in self.__exception_blocks:
             if try_block.get_start_offset() == offset or catch_block.get_start_offset() == offset or (isinstance(token, FunctionBlock) and token.get_start_offset() == offset):
                 raise Exception()
         del self.__blocks_start[offset]
 
-    def get_block_offsets(self):
+    cpdef dict get_block_offsets(self):
         return self.__blocks_start
     
-    def blocks(self):
-        return self.__blocks_start.values()
+    cpdef list blocks(self):
+        return list(self.__blocks_start.values())
     
-    def __stack_checker(self, block, stack_count, checked):
-        curr_count = stack_count
+    cdef void __stack_checker(self, FunctionBlock block, int stack_count, list checked):
+        cdef int curr_count = stack_count
+        cdef net_cil_disas.Instruction instr = None
+        cdef int needed = 0
+        cdef FunctionBlock nxt = None
         for instr in block.get_instrs():
             needed = instr.get_pstack()
             if curr_count < needed:
@@ -1083,11 +1194,15 @@ class FunctionGraph:
                 checked.append((block.get_start_offset(), nxt.get_start_offset()))
                 self.__stack_checker(nxt, curr_count, checked)
 
-    def stack_checker(self):
-        checked = list()
+    cpdef void stack_checker(self):
+        cdef list checked = list()
         self.__stack_checker(self.__blocks_start[0], 0, checked)
 
-    def get_exc_handler_for_block(self, flags, block):
+    cpdef tuple get_exc_handler_for_block(self, net_structs.CorILExceptionClause flags, FunctionBlock block):
+        cdef net_structs.CorILExceptionClause clause_flag = net_structs.CorILExceptionClause.Exception
+        cdef FunctionBlock try_block = None
+        cdef FunctionBlock catch_block = None
+        cdef object token = None
         if block.is_block_try():
             for clause_flag, try_block, catch_block, token in self.get_exception_blocks():
                 if flags == clause_flag:
@@ -1105,10 +1220,18 @@ class FunctionGraph:
                         return (clause_flag, try_block, catch_block, token)
         return None
 
-    def __print_block(self, block, already_printed, indent=0):
-        instrs = block.get_instrs()
-        is_block_try = False
-        is_leave = False
+    cdef void __print_block(self, FunctionBlock block, set already_printed, int indent=0):
+        cdef list instrs = block.get_instrs()
+        cdef bint is_block_try = False
+        cdef bint is_leave = False
+        cdef set exc_handlers = None
+        cdef net_cil_disas.Instruction instr = None
+        cdef net_structs.CorILExceptionClause cl_flags = net_structs.CorILExceptionClause.Exception
+        cdef FunctionBlock cl_blk = None
+        cdef FunctionBlock next_block = None
+        cdef FunctionBlock exc_block = None
+        cdef FunctionBlock finally_block = None
+        cdef FunctionBlock catch_block = None
 
         if block.get_start_offset() not in already_printed:
             print((' ' * indent) + 'Printing block with offset {} size {} num_instrs {} (is junk: {}, is switch case: {}, is_try: {}, is_catch: {}, is_finally: {}, is_filter: {})'.format(
@@ -1150,6 +1273,9 @@ class FunctionGraph:
                 else:
                     print((' ' * indent) + '{}: {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(),
                                              instr.get_argument()))
+                    
+            if block.get_last_instr() is None:
+                return
 
             if instrs[-1].get_opcode() == Opcodes.Switch:
                 print((' ' * indent) + 'switch ({}):'.format(hex(instrs[-1].get_instr_offset())))
@@ -1218,13 +1344,16 @@ class FunctionGraph:
         else:
             print((' ' * indent) + 'goto block {}'.format(hex(block.get_start_offset())))
 
-    def emit_instructions_as_list(self):
+    cpdef list emit_instructions_as_list(self):
         if self.__disasm_object is None:
             raise Exception('Cant emit a instruction without a disassembler object.')
-        current_offset = 0
-        result = list()
-        current_index = 0
-        debug = False
+        cdef int current_offset = 0
+        cdef list result = list()
+        cdef int current_index = 0
+        cdef bint debug = False
+        cdef int offset = 0
+        cdef FunctionBlock block = None
+        cdef net_cil_disas.Instruction instr = None
         for offset, block in self.__blocks_start.items():
             if debug:
                 print('emitting block {} {} {} {}'.format(hex(offset), block, block.get_prev(), block.get_next()))
@@ -1235,15 +1364,27 @@ class FunctionGraph:
                     print('emitting instr', instr)
                 instr.setup_instr_offset(current_offset, current_index)
                 result.append(instr)
-                current_offset += len(instr)
+                current_offset += <int>len(instr)
                 current_index += 1
         return result
 
-    def has_block(self, offset):
+    cpdef bint has_block(self, int offset):
         return offset in self.__blocks_start
     
-    def update_raw_exception_clauses(self):
-        result = list()
+    cpdef list update_raw_exception_clauses(self):
+        cdef list result = list()
+        cdef net_structs.CorILExceptionClause cl_flag = net_structs.CorILExceptionClause.Exception
+        cdef FunctionBlock try_block = None
+        cdef FunctionBlock catch_block = None
+        cdef object token = None
+        cdef int try_offset = 0
+        cdef int catch_offset = 0
+        cdef int try_size = 0
+        cdef int catch_size = 0
+        cdef FunctionBlock block
+        cdef set exc_clauses = None
+        cdef net_structs.CorILExceptionClause exc_flag = net_structs.CorILExceptionClause.Exception
+        cdef FunctionBlock blk = None
         for cl_flag, try_block, catch_block, token in self.__exception_blocks:
             try_offset = try_block.get_start_offset()
             catch_offset = catch_block.get_start_offset()
@@ -1263,7 +1404,10 @@ class FunctionGraph:
             result.append((cl_flag, try_offset, try_size, catch_offset, catch_size, token))
         return result
 
-    def repopulate_prevs(self):
+    cpdef void repopulate_prevs(self):
+        cdef FunctionBlock block = None
+        cdef list nxts = None
+        cdef FunctionBlock nxt = None
         for block in self.blocks():
             block.clear_prev_raw()
         for block in self.blocks():

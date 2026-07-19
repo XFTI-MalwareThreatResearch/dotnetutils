@@ -575,6 +575,7 @@ class ConfuserExDeobfuscator(Deobfuscator):
             return
         new_arr = net_emu_types.DotNetArray(emu, len(decomp_buffer), dotnet.get_typeref_by_full_name(b'System.Byte'))
         new_arr.from_python_obj(list(decomp_buffer))
+        print('setting array to {}'.format(new_arr))
         emu.set_static_field_obj(string_data_field.get_rid(), new_arr)
         appended_strings = dict()
         us_heap.begin_append_tx()
