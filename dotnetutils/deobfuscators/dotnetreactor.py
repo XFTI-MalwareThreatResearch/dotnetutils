@@ -845,8 +845,24 @@ class NETReactor(Deobfuscator):
                 instr = dis.get_instr_at_offset(xref_offset)
                 dotnet.patch_instruction(xfm, b'\x00' * len(instr), xref_offset, len(instr))
 
+    def remove_junk_prolog(self, dotnet):
+        for method in dotnet.get_metadata_table('MethodDef'):
+            if method.has_body():
+                disasm = method.disassemble_method()
+                if disasm[0].get_opcode() in (net_opcodes.Opcodes.Br, net_opcodes.Opcodes.Br_S):
+                    target_offset = disasm[0].get_argument() + len(disasm[0])
+                    if disasm[1].get_opcode() == net_opcodes.Opcodes.Call:
+                        if disasm[1].get_argument() is None:
+                            target_instr = disasm.get_instr_at_offset(target_offset)
+                            if target_instr.get_instr_index() == 2:
+                                patch_buffer = b'\x00' * target_instr.get_instr_offset()
+                                dotnet.patch_instruction(method, patch_buffer, 0, len(patch_buffer))
+
     def clean_code(self, dotnet):
         #Detect and remove some common patterns from dotnetreactor that can later be picked up by control flow deob
+        print('Removing junk prologs')
+        self.remove_junk_prolog(dotnet)
+        print('Done removing junk prologs')
         return_true_methods = list()
         return_null_methods = list()
         for mdef in dotnet.get_metadata_table('MethodDef'):

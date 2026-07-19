@@ -59,9 +59,13 @@ class Babel(Deobfuscator):
         OTHER_ALLOWED = [Opcodes.Pop, Opcodes.Nop, Opcodes.Switch, Opcodes.Ret]
         STLOC = [Opcodes.Stloc_S, Opcodes.Stloc, Opcodes.Stloc_0, Opcodes.Stloc_1, Opcodes.Stloc_2, Opcodes.Stloc_3]
         LDLOC = [Opcodes.Ldloc_S, Opcodes.Ldloc, Opcodes.Ldloc_0, Opcodes.Ldloc_1, Opcodes.Ldloc_2, Opcodes.Ldloc_3]
-        MUST_BE_IN = [LDARG_INSTRS, LDC_INSTRS, MATH_OPS, OTHER_ALLOWED, STLOC, LDLOC]
+        BRANCHES = [Opcodes.Br, Opcodes.Br_S, Opcodes.Brtrue, Opcodes.Brtrue_S, Opcodes.Brfalse, Opcodes.Brfalse_S, Opcodes.Beq, Opcodes.Beq_S, Opcodes.Bne_Un, Opcodes.Bne_Un_S, \
+                Opcodes.Bge, Opcodes.Bge_S, Opcodes.Bge_Un, Opcodes.Bge_Un_S, Opcodes.Bgt, Opcodes.Bgt_S, Opcodes.Bgt_Un, Opcodes.Bgt_Un_S, \
+                Opcodes.Ble, Opcodes.Ble_S, Opcodes.Ble_Un, Opcodes.Ble_Un_S, Opcodes.Blt, Opcodes.Blt_S, Opcodes.Blt_Un, Opcodes.Blt_Un_S, Opcodes.Switch]
+        MUST_BE_IN = [LDARG_INSTRS, LDC_INSTRS, MATH_OPS, OTHER_ALLOWED, STLOC, LDLOC, BRANCHES]
         for method in dotnet.get_metadata_table('MethodDef'):
-            debug = method.get_token() ==  0x06000088
+            debug = method.get_token() == 0
+            debug and print('Checking method for junk')
             if not method.is_static_method():
                 debug and print('is static')
                 continue
@@ -89,11 +93,12 @@ class Babel(Deobfuscator):
                 debug and print('disasm len')
                 continue
             misidentified = False
-
+            
             for instr in disasm:
                 op = instr.get_opcode()
                 is_in = any(op in item for item in MUST_BE_IN)
                 if not is_in:
+                    debug and print('misidentifying instr', instr)
                     misidentified = True
                     break
 
@@ -215,7 +220,6 @@ class Babel(Deobfuscator):
         print('Removing Babel String obfuscation')
         if not self.remove_string_obfuscation(dotnet):
             return True
-        
         self.clean_code(dotnet)
         dotnet.add_string('DNU_BABEL_DEOB')
         return True
