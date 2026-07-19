@@ -4984,7 +4984,7 @@ cdef class DotNetEmulator:
         is_destroyed (bint): has the emulator already been deallocated?
     """
 
-    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False, bint init_open_generics_as_object=False, list force_instrs=None):
+    def __init__(self, net_row_objects.MethodDefOrRef method_obj, int end_method_rid=-1, int end_offset=-1, DotNetEmulator caller=None, bint break_on_unsupported=False, bint ignore_security_exceptions=False, bint dont_execute_cctor=False, force_memory=None, int start_offset=0, list print_debug_instrs=[], list print_debug_rids=[], should_print_callback=None, should_print_callback_param=None, list ignore_instrs=list(), app_domain=None, int timeout_seconds=-1, net_row_objects.MethodSpec spec_obj=None, bint strict_typing=False, bint init_open_generics_as_object=False, list force_instrs=None, bint cleanup=True):
         """ Constructor for Emulator objects.
 
         Params:
@@ -5017,14 +5017,8 @@ cdef class DotNetEmulator:
             raise net_exceptions.InvalidArgumentsException()
 
         if force_instrs is not None:
-            for instr in force_instrs:
-                if instr.get_opcode() in (Opcodes.Call, Opcodes.Callvirt, Opcodes.Ldarg, Opcodes.Ldarg_0, Opcodes.Ldarg_1, Opcodes.Ldarg_2, Opcodes.Ldarg_3, Opcodes.Ldarg_S, Opcodes.Ldarga_S):
-                    raise Exception('Banned instr in force_instrs')
-                if instr.is_branch():
-                    raise Exception('Banned instr in force_instrs')
-                Py_INCREF(instr)
-                self.force_instrs.push_back(<PyObject*>instr)
-
+            self.set_force_instrs(force_instrs)
+        self.do_cleanup = cleanup
         self.spec_obj = None
         self.is_destroyed = False
         self.__init_open_generics_as_object = init_open_generics_as_object
@@ -5098,6 +5092,24 @@ cdef class DotNetEmulator:
         self.start_time = 0
         self.initialize_locals() #So that locals can be set before everything is set up.
 
+    cpdef void set_force_instrs(self, list force_instrs):
+        cdef net_cil_disas.Instruction instr = None
+        cdef PyObject * obj = NULL
+        cdef size_t x = 0
+        if self.force_instrs.size() > 0:
+            for x in range(self.force_instrs.size()):
+                Py_XDECREF(self.force_instrs[x])
+            self.force_instrs.clear()
+        for instr in force_instrs:
+            if instr.get_opcode() in (Opcodes.Call, Opcodes.Callvirt, Opcodes.Ldarg, Opcodes.Ldarg_0, Opcodes.Ldarg_1, Opcodes.Ldarg_2, Opcodes.Ldarg_3, Opcodes.Ldarg_S, Opcodes.Ldarga_S):
+                raise Exception('Banned instr in force_instrs')
+            if instr.is_branch():
+                raise Exception('Banned instr in force_instrs')
+            Py_INCREF(instr)
+            self.force_instrs.push_back(<PyObject*>instr)
+        self.current_eip = 0
+        self.current_offset = 0
+    
     cpdef net_cil_disas.Instruction get_instr(self):
         return self.instr
 
@@ -8867,7 +8879,8 @@ cdef class DotNetEmulator:
             self.get_appdomain().set_calling_dotnetpe(None)
         if self.caller is not None: #sp that users can pop results off the stack if needed.
             self.stack.clear()
-        self.cleanup()
+        if self.do_cleanup:
+            self.cleanup()
 
     cdef void cleanup(self):
         """ Cleans up all allocated memory by the emulator.

@@ -1138,6 +1138,9 @@ cdef class TypeRef(TypeDefOrRef):
             return False
         return True
 
+    def __hash__(self):
+        return hash(f'{self.get_full_name()}_{self.get_token()}')
+
     def __str__(self):
         return 'TypeRef: {} {} - '.format(self.get_rid(), hex(self.get_token())) + self.get_full_name().decode('utf-8')
 

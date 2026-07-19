@@ -82,7 +82,7 @@ def main():
                     print('function is not obfuscated.')
                     continue
             except net_exceptions.EmulatorExecutionException as e:
-                print('emulation failed due to error')
+                print('emulation failed due to error', str(e))
                 continue
             except net_exceptions.ControlFlowDeobfuscationMisidentify as e:
                 print('Possible control flow misidentification:', str(e))

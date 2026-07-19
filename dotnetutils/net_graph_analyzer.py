@@ -155,7 +155,7 @@ class GraphAnalyzer:
         start_instr = instrs[start_index]
         start_offset = start_instr.get_instr_offset()
         end_offset = instr.get_instr_offset()
-        emu_obj = net_emulator.DotNetEmulator(self.__method, start_offset=start_offset, end_offset=end_offset, dont_execute_cctor=True)
+        emu_obj = net_emulator.DotNetEmulator(self.__method, start_offset=start_offset, end_offset=end_offset, dont_execute_cctor=True, init_open_generics_as_object=True)
         try:
             emu_obj.run_function()
         except net_exceptions.EmulatorEndExecutionException:
@@ -518,7 +518,7 @@ class GraphAnalyzer:
                 x += 1
                 continue
             DEBUG and print('emulating instructions {} {}'.format(modifiers, switch_path))
-            emu = net_emulator.DotNetEmulator(self.__method, force_instrs=modifiers, dont_execute_cctor=True)
+            emu = net_emulator.DotNetEmulator(self.__method, force_instrs=modifiers, dont_execute_cctor=True, init_open_generics_as_object=True)
             emu.run_function()
             num = emu.get_stack().pop_obj()
             if not isinstance(num, net_emu_types.DotNetNumber):
@@ -630,7 +630,7 @@ class GraphAnalyzer:
                         if len(combined_path) < 2 or combined_path[-1] is None or combined_path[-2] is None:
                             continue
                         try:
-                            emu = net_emulator.DotNetEmulator(self.__method, force_instrs=full_modifiers, dont_execute_cctor=True)
+                            emu = net_emulator.DotNetEmulator(self.__method, force_instrs=full_modifiers, dont_execute_cctor=True, init_open_generics_as_object=True)
                             emu.run_function()
                             num = emu.get_stack().pop_obj()
                         except Exception:
@@ -669,20 +669,23 @@ class GraphAnalyzer:
                         ranged = {v for v in values if v >= ncases}
                         if ranged:
                             values = ranged
-                DEBUG and print('reachable values {} {} {}'.format(values, switch_block.has_next(curr_path[-1]), curr_path[-1]))
-                if len(values) == 0 and switch_block.has_next(curr_path[-1]):
-                    idx = switch_block.get_next().index(curr_path[-1])
+                start_index = len(curr_path) - 1
+                while curr_path[start_index] is None:
+                    start_index -= 1
+                DEBUG and print('reachable values {} {} {}'.format(values, switch_block.has_next(curr_path[start_index]), curr_path[start_index]))
+                if len(values) == 0 and switch_block.has_next(curr_path[start_index]):
+                    idx = switch_block.get_next().index(curr_path[start_index])
                     DEBUG and print('idx', idx)
                     if idx == (len(switch_block.get_next()) - 1):
                         if not any(v is not None and v >= (len(switch_block.get_next()) - 1) for v in path_values):
                             DEBUG and print('skipping because fallthrough literally cant happen')
-                            last_blk = new_graph.get_block_by_offset(curr_path[-1].get_start_offset())
+                            last_blk = new_graph.get_block_by_offset(curr_path[start_index].get_start_offset())
                             new_switch_block.remove_next(last_blk)
                             continue
                     else:
                         if idx not in path_values:
                             DEBUG and print('skipping because block literally cant happen')
-                            last_blk = new_graph.get_block_by_offset(curr_path[-1].get_start_offset())
+                            last_blk = new_graph.get_block_by_offset(curr_path[start_index].get_start_offset())
                             new_switch_block.remove_next(last_blk)
                             continue
 
@@ -948,6 +951,16 @@ class GraphAnalyzer:
             if out is None:
                 DEBUG and self.__graph.print_root()
                 for block in list(graph.blocks()):
+                    start_offsets = list()
+                    bad_instrs = set()
+                    if self.__is_cex_style_switch(block, start_offsets, bad_instrs):
+                        graph.validate_blocks()
+                        out = graph.duplicate()
+                        is_obfuscated = True
+                        is_obfuscated_at_all = True
+                        self.__deobfuscate_switch(block, start_offsets, block.get_last_instr(), out, bad_instrs)
+                        out.validate_blocks()
+                        break
                     new_graph = self.new_switch_deob(block)
                     if new_graph is not None:
                         new_graph.validate_blocks()
@@ -1332,6 +1345,820 @@ class GraphAnalyzer:
                                 catch_blocks = self.get_all_handler_blocks(full_handler[3])
                                 self.__block_walker(full_handler[3], handled, deferred_blocks, catch_blocks)
                                 self.__drain_deferred_for_region(catch_blocks, handled, deferred_blocks)
+    
+    def __start_block_walker(self, start_block, end_block, not_in, handled):
+        """
+        Is it possible to go from start_block to switch_block without hitting not_in
+        Because we are individually deobfuscating all loops, we should be able to reliably start from entry.
+        """
+        debug = False
+        results = set()
+        if start_block in handled:
+            if debug:
+                print(start_block, 'in handled')
+            return results
+        if debug:
+            print('Running __start_block_walker start_block={}, end_block={}, not_in={}'.format(start_block, end_block, not_in))
+        handled.append(start_block)
+        if start_block == end_block:
+            if debug:
+                print('returning {}'.format([start_block]))
+            return {end_block}
+        if start_block in not_in:
+            if debug:
+                print('returning results', results)
+            return results
+
+
+        for nxt in start_block.get_next():
+            res = self.__start_block_walker(nxt, end_block, not_in, handled)
+            results |= res
+        if debug:
+            print('returning results', results)
+        return results
+
+    def __math_block_walker(self, block, start_block, needed, handled=set()):
+        if block in handled:
+            return set()
+        instrs = block.get_instrs()
+        handled.add(block)
+        for x in range(len(instrs) -1, -1, -1):
+            instr = instrs[x]
+            added = instr.get_astack()
+            pulled = instr.get_pstack()
+            needed = needed - added + pulled
+        
+        if needed <= 0:
+            return {(start_block, block)}
+        result = set()
+        for prev in block.get_prev():
+            result |= self.__math_block_walker(prev, start_block, needed, handled)
+        return result
+
+    def __find_math_blocks(self, start_blocks):
+        result = set()
+        for start_block in start_blocks:
+            instrs = start_block.get_instrs()
+            needed = 0
+            for x in range(len(instrs)-1, -1, -1):
+                instr = instrs[x]
+                added = instr.get_astack()
+                pulled = instr.get_pstack()
+                needed = needed - added + pulled
+            
+            if needed <= 0:
+                result.add((start_block, start_block))
+            else:
+                for prev in start_block.get_prev():
+                    result |= self.__math_block_walker(prev, start_block, needed)
+        return result
+
+    def __determine_start_block(self, switch_block):
+        debug = False
+        results = set()
+        needed = 0
+        instrs = switch_block.get_instrs()
+        for x in range(len(instrs) - 1, -1, -1):
+            instr = instrs[x]
+            ins_op = instr.get_opcode()
+            added = instr.get_astack()
+            pulled = instr.get_pstack()
+            needed = needed - added + pulled
+            if debug:
+                print('instr {} needed {}'.format(instr, needed))
+            if ins_op in self.LDLOC:
+                break
+            if needed == 0:
+                if debug:
+                    print('start block is the switch block.', instr)
+                results.add((switch_block, switch_block))
+                return results
+        #at this point, we need to search a bit for the start block.  We need to find the block that the switch will execute from FIRST.
+        #If the order is messed up, deobfuscation will be incorrect.
+        if debug:
+            print('running walker')
+        entry_blocks = set([self.__graph.get_block_by_start_offset(0)])
+        for eh_flag, try_block, catch_block, token in self.__graph.get_exception_blocks():
+            entry_blocks.add(catch_block)
+            if isinstance(token, net_graphing.FunctionBlock):
+                entry_blocks.add(token)
+        
+            
+        for prev in switch_block.get_prev():
+            #check if the previous block has a way to get to the switch statement that doesnt start from the switch statement.\
+            not_in = [b for b in switch_block.get_prev() if b is not prev]
+            for entry_block in entry_blocks:
+                handled = list()
+                res = self.__start_block_walker(entry_block, prev, not_in, handled)
+                results |= res
+        if debug:
+            print('results of determine start block', results)
+        return self.__find_math_blocks(results)
+
+    def __add_to_bad_instrs(self, block, start_offset, switch_block, bad_instrs, handled=set()):
+        if block in handled:
+            return
+        handled.add(block)
+        is_first = block.has_offset(start_offset)
+        past_start = not is_first
+        for instr in block.get_instrs():
+            if instr.is_absolute_jmp() or instr.is_branch():
+                continue
+            if past_start:
+                bad_instrs.add(instr.get_instr_offset())
+            else:
+                if start_offset == instr.get_instr_offset():
+                    past_start = True
+                    bad_instrs.add(start_offset)
+        
+        if block == switch_block:
+            return
+        
+        for nxt in block.get_next():
+            self.__add_to_bad_instrs(nxt, start_offset, switch_block, bad_instrs, handled)
+
+    def __switch_block_walker(self, block, new_switch_block, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num, nexts_added):
+        debug = False
+        if block.get_start_offset() in already_handled:
+            base_vars = already_handled[block.get_start_offset()]
+            if base_local_var.as_python_obj() in base_vars:
+                return
+        else:
+            already_handled[block.get_start_offset()] = list()
+        already_handled[block.get_start_offset()].append(base_local_var.as_python_obj())
+        if debug:
+            print('walking switch statement case: Block={}, base_local_var={}'.format(block, base_local_var))
+        if block.get_start_offset() in offsets_grouped:
+            offsets = offsets_grouped[block.get_start_offset()]
+            for offset in offsets:
+                if debug:
+                    print('Handling offset {}'.format(hex(offset)))
+                #absolute jmp, it can only go one place.
+                start_offset = offset
+                end_offset = switch_instr.get_instr_offset()
+                emu = initial_emu.spawn_new_emulator(self.__method, start_offset=start_offset, end_offset=end_offset, init_open_generics_as_object=True)
+                emu.set_local_obj(stloc_num, base_local_var)
+                emu.setup_method_params([])
+                worked = False
+                try:
+                    emu.run_function()
+                except net_exceptions.EmulatorEndExecutionException:
+                    worked = True
+                if not worked:
+                    raise Exception()
+                new_target = emu.get_stack().pop_obj()
+                if not isinstance(new_target, net_emu_types.DotNetNumber):
+                    raise Exception()
+                new_local_var = emu.get_local_obj(stloc_num)
+                switch_targets = switch_instr.get_argument()
+                new_target = new_target.as_python_obj()
+                if new_target < 0 or new_target >= len(switch_targets):
+                    new_offset = len(switch_instr) + switch_instr.get_instr_offset() 
+                else:
+                    new_offset = switch_targets[new_target]
+                new_start_block = new_graph.get_block_by_offset(start_offset)
+                old_start_block = self.__graph.get_block_by_offset(start_offset)
+                new_next_block = new_graph.get_block_by_offset(new_offset)
+                if debug:
+                    print('Got result {} which maps to block {} which should be next'.format(new_target, new_next_block))
+                if len(old_start_block.get_next()) != 1:
+                    raise Exception()
+                old_next = old_start_block.get_next()[0]
+                new_next = new_graph.get_block_by_offset(old_next.get_start_offset())
+                end_block = new_graph.get_block_by_start_offset(block.get_start_offset())
+
+                if debug:
+                    print('attempting to remove {} as prev from {}: (switch block prevs {})'.format(end_block, new_switch_block, new_switch_block.get_prev()))
+                nexts_added.append((end_block, new_start_block, new_next, new_next_block))
+                self.__switch_block_walker(self.__graph.get_block_by_offset(new_offset), new_switch_block, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, new_local_var, stloc_num, nexts_added)
+            return
+        for nxt in block.get_next():
+            self.__switch_block_walker(nxt, new_switch_block, switch_instr, offsets_grouped, new_graph, already_handled, initial_emu, base_local_var, stloc_num, nexts_added)
+
+    def __determine_loop_blocks(self, switch_block):
+        forward = set()
+        blocks = [switch_block]
+        while blocks:
+            blk = blocks.pop()
+            if blk in forward:
+                continue
+            forward.add(blk)
+            for nxt in blk.get_next():
+                blocks.append(nxt)
+
+        backwards = set()
+        blocks = [switch_block]
+        while blocks:
+            blk = blocks.pop()
+            if blk in backwards:
+                continue
+            backwards.add(blk)
+            for prv in blk.get_prev():
+                blocks.append(prv)
+        return forward & backwards
+
+    def __collect_preswitch_chain(self, switch_block):
+        blocks = set()
+        work = list(switch_block.get_prev())
+
+        while work:
+            blk = work.pop()
+            if blk in blocks:
+                continue
+            if len(blk.get_next()) == 1:
+                blocks.add(blk)
+                work.extend(blk.get_prev())
+        return blocks
+
+    def __target_walker(self, block, needed, already_checked, stloc_instr, start_offsets, child_addr, bad_instr_offsets, counter=0):
+        """
+        This method is definitely going to need some testing and work but I mean its okay for now.
+        """
+        instrs = block.get_instrs()
+        debug = False
+        if block.get_start_offset() in already_checked:
+            if debug:
+                print(0, block, needed)
+            return False
+        already_checked.append(block.get_start_offset())
+        if debug:
+            print('Checking block {} {} {}'.format(hex(block.get_start_offset()), needed, stloc_instr.get_argument()))
+        need_local = False
+        for x in range(len(instrs) - 1, -1, -1):
+            instr = instrs[x]
+            ins_op = instr.get_opcode()
+            pulled = instr.get_pstack()
+            added = instr.get_astack()
+            if instr.is_absolute_jmp():
+                continue
+            if debug:
+                print('Checking instr {} {} {} {} {}'.format(hex(instr.get_instr_offset()), instr.get_name(), needed, added, pulled))
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch] + self.STLOC + self.LDLOC):
+                if pulled > 0 or added > 0:
+                    if debug:
+                        print(1, hex(instr.get_instr_offset()))
+                    return False
+            if ins_op in self.LDLOC:
+                if instr.get_argument() == stloc_instr.get_argument():
+                    if needed <= 0:
+                        raise Exception()
+                    needed -= 1
+
+                    if needed == 0:
+                        #Gate this off if theres a stloc above.
+                        skip = False
+                        if x > 0:
+                            if instrs[x-1].get_opcode() in self.STLOC:
+                                if instrs[x-1].get_argument() == stloc_instr.get_argument():
+                                    bad_instr_offsets.add(instr.get_instr_offset())
+                                    debug and print('setting needs local 1', hex(instr.get_instr_offset()))
+                                    need_local = True
+                                    continue
+                        elif x == 0:
+                            skip = True
+                            for prev_blk in block.get_prev():
+                                for y in range(len(prev_blk.get_instrs()) - 1, -1, -1):
+                                    instr2 = prev_blk.get_instrs()[y]
+                                    if instr2.is_absolute_jmp():
+                                        continue
+                                    if instr2.get_opcode() not in self.STLOC:
+                                        skip = False
+                                        break
+                                    if instr2.get_argument() != stloc_instr.get_argument():
+                                        skip = False
+                                        break
+                                    break
+                                        
+                                if not skip:
+                                    break
+
+                            if skip:
+                                need_local = True
+                                bad_instr_offsets.add(instr.get_instr_offset())
+                                continue
+
+                        if not skip:
+                            bad_instr_offsets.add(instr.get_instr_offset())
+                            start_offsets.append((child_addr, instr.get_instr_offset()))
+                            if debug:
+                                print(2, hex(instr.get_instr_offset()))
+                            return True
+                    needed += 1
+            needed = needed - added + pulled
+            if debug:
+                print('needed is now 1 {} {} {}'.format(needed, added, pulled))
+            if needed < 0:
+                needed = 0
+            if debug:
+                print('needed is now 2 {}'.format(needed))
+            if needed == 0:
+                bad_instr_offsets.add(instr.get_instr_offset())
+                start_offsets.append((child_addr, instr.get_instr_offset()))
+                if debug:
+                    print(3, hex(instr.get_instr_offset()), hex(child_addr))
+                return True
+            if ins_op in self.STLOC:
+                if instr.get_argument() == stloc_instr.get_argument():
+                    bad_instr_offsets.add(instr.get_instr_offset())
+                    continue
+                elif instr.get_argument() != stloc_instr.get_argument():
+                    if needed == 0:
+                        bad_instr_offsets.add(instr.get_instr_offset())
+                        start_offsets.append((child_addr, instr.get_instr_offset()))
+                        if debug:
+                            print(4, hex(instr.get_instr_offset()))
+                        return True
+                    else:
+                        if debug:
+                            print(5, hex(instr.get_instr_offset()))
+                        return False
+            if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + [Opcodes.Switch]):
+                if debug:
+                    print(6, hex(instr.get_instr_offset()))
+                return False
+            bad_instr_offsets.add(instr.get_instr_offset())
+            
+        if needed != 0 or need_local:
+            if debug:
+                print('needed ', needed, 'needs local ', need_local)
+            for prev in block.get_prev():
+                if prev == block:
+                    continue
+                if debug:
+                    print('Checking prev {} {} {} {}'.format(block, prev, counter, block.get_prev()))
+                if counter == 0:
+                    result = not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, prev.get_start_offset(), bad_instr_offsets, counter=counter+1)
+                else:
+                    result = not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, child_addr, bad_instr_offsets, counter=counter+1)
+                if result:
+                    if debug:
+                        print(7, prev)
+                    return False
+        if debug:
+            print(8, hex(block.get_start_offset()), hex(child_addr))
+        return True
+
+    def __is_cex_style_switch(self, block, start_offsets, bad_instr_offsets):
+        #check if all paths have a relatively constant value.
+        instrs = block.get_instrs()
+        debug = False
+        if debug:
+            print('Checking {} {}'.format(block, block.get_instrs()))
+        if block.get_last_instr().get_opcode() != Opcodes.Switch:
+            if debug:
+                print('not switch')
+            return False
+        if len(instrs) < 2:
+            if debug:
+                print('instr len')
+            return False
+        if instrs[-2].get_opcode() not in self.MATH_OPS:
+            if debug:
+                print('not math ops')
+            return False
+        
+        if len(block.get_prev()) <= 1:
+            if debug:
+                print('Not enough previous blocks for a loop.')
+            return False
+        #make sure theres at least one branch thats a fall through or a 1-1 ration
+        already_checked = list()
+        stloc_instr = None
+        for x in range(len(instrs) - 1, -1, -1):
+            ins_op = instrs[x].get_opcode()
+            bad_instr_offsets.add(instrs[x].get_instr_offset())
+            if ins_op in self.STLOC:
+                stloc_instr = instrs[x]
+                break
+            #if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + self.BRANCHES):
+            #    break
+        if stloc_instr is None:
+            for prv in block.get_prev():
+                if (prv.get_start_offset() + prv.get_original_length()) == block.get_start_offset():
+                    instrs = prv.get_instrs()
+                    for x in range(len(instrs) - 1, -1, -1):
+                        ins_op = instrs[x].get_opcode()
+                        bad_instr_offsets.add(instrs[x].get_instr_offset())
+                        if ins_op in self.STLOC:
+                            stloc_instr = instrs[x]
+                            break
+                        #if ins_op not in (self.MATH_OPS + self.ALLOWED_STACK_OPS + self.BRANCHES):
+                        #    break
+            if stloc_instr is None:
+                if debug:
+                    print('no stloc instr')
+                return False
+        start_offsets.clear()
+        in_loop_blocks = self.__determine_loop_blocks(block) | self.__collect_preswitch_chain(block)
+        #calculate needed for switch:
+        needed = 0
+        for x in range(len(block.get_instrs()) - 1, -1, -1):
+            instr = block.get_instrs()[x]
+            if debug:
+                print('getting needed loop: checking instr {}'.format(instr))
+            added = instr.get_astack()
+            pulled = instr.get_pstack()
+            needed = needed - added + pulled
+            if instr.get_opcode() not in self.ALLOWED_SWITCH_LOOP_INSTRS:
+                if debug:
+                    print('Returning false because instruction isnt allowed.')
+                return False
+
+        if debug:
+            print('determined loop blocks', in_loop_blocks)
+            
+        for prev in block.get_prev():
+            if prev not in in_loop_blocks:
+                continue
+            if debug:
+                print('checking prev {} {}'.format(prev, needed))
+            if not self.__target_walker(prev, needed, already_checked, stloc_instr, start_offsets, prev.get_start_offset(), bad_instr_offsets, counter=1):
+                if debug:
+                    print('prev is false')
+                return False
+        if debug:
+            print('Returning true due to fallthrough.')
+        return True
+    
+    def __has_path_to_entry(self, b):
+        blocks = [b] + b.get_prev()
+        handled = set()
+        while blocks:
+            block = blocks.pop()
+            if block in handled:
+                continue
+
+            handled.add(block)
+            if block.is_block_start():
+                return True
+            for prv in block.get_prev():
+                if prv not in handled:
+                    blocks.append(prv)
+        return False
+
+    
+    def __find_switch_case_mappings_internal(self, block, switch_block, offsets_grouped, already_done):
+        if block.get_start_offset() in offsets_grouped:
+            return [block]
+        if block in already_done:
+            return list()
+        already_done.add(block)
+        res = list()
+        for nxt in block.get_next():
+            res.extend(self.__find_switch_case_mappings_internal(nxt, switch_block, offsets_grouped, already_done))
+        if len(block.get_next()) == 0:
+            res.append(block)
+        return res
+
+    def __find_switch_case_mappings(self, switch_block, offsets_grouped):
+        result = dict()
+        for nxt in switch_block.get_next():
+            end_blocks = self.__find_switch_case_mappings_internal(nxt, switch_block, offsets_grouped, set())
+            for end_block in end_blocks:
+                if end_block not in result:
+                    result[end_block] = list()
+                result[end_block].append(nxt)
+        for prv in switch_block.get_prev():
+            end_blocks = self.__find_switch_case_mappings_internal(prv, switch_block, offsets_grouped, set())
+            for end_block in end_blocks:
+                if end_block not in result:
+                    result[end_block] = list()
+                result[end_block].append(nxt)
+        return result
+
+    def __deobfuscate_switch(self, block, offsets, switch_instr, new_graph, bad_instrs):
+        #first group the offsets together.
+        offsets_grouped = dict()
+        for block_offset, offset in offsets:
+            if block_offset not in offsets_grouped:
+                offsets_grouped[block_offset] = list()
+            offsets_grouped[block_offset].append(offset)
+
+        debug = False
+        if debug:
+            print('deobfuscating switch {}'.format(block))
+        if debug:
+            for block_offset, offsets in offsets_grouped.items():
+                for offset in offsets:
+                    print('block offset {} -> start {}'.format(hex(block_offset), hex(offset)))
+        start_blocks = self.__determine_start_block(block)
+        if len(start_blocks) == 0:
+            raise net_exceptions.ControlFlowDeobfuscationMisidentify('Could not determine start blocks.  Its possible a legitimate switch was misidentified.  Contact devs if wrong.')
+        if debug:
+            print('Start blocks {}'.format(start_blocks))
+        stloc_instr = None
+        for instr in reversed(block.get_instrs()):
+            if instr.get_opcode() in self.STLOC:
+                stloc_instr = instr
+                break
+
+        if stloc_instr is None:
+            for prv in block.get_prev():
+                if (prv.get_start_offset() + prv.get_original_length()) == block.get_start_offset():
+                    instrs = prv.get_instrs()
+                    for x in range(len(instrs) - 1, -1, -1):
+                        ins_op = instrs[x].get_opcode()
+                        bad_instrs.add(instrs[x].get_instr_offset())
+                        if ins_op in self.STLOC:
+                            bad_instrs.add(instrs[x].get_instr_offset())
+                            stloc_instr = instrs[x]
+                            break
+                if stloc_instr is not None:
+                    break
+            if stloc_instr is None:
+                raise Exception()
+
+        if debug:
+            print('Our switch state stloc instruction is {}'.format(stloc_instr))
+        nexts_added = list()
+
+        for start_block, math_block in start_blocks:
+            #we already have the first start offset somewhere in offsets grouped
+            first_start_offset = -1
+            end_block_offset = -1
+            for end, start_offsets in offsets_grouped.items():
+                for start_offset in start_offsets:
+                    if math_block.has_offset(start_offset):
+                        end_block_offset = end
+                        first_start_offset = start_offset
+                        break
+            if debug:
+                print('Determined the start offset for the first case to be {}'.format(hex(first_start_offset)))
+            #get the initial feed value.
+            if first_start_offset == -1:
+                #This case happens if the switch doesnt have a reference back to the start math block.
+                #See if we can pull it from here.
+                for x in range(len(math_block.get_instrs()) - 1, - 1, - 1):
+                    instr = math_block.get_instrs()[x]
+                    if instr.get_opcode() not in self.MATH_OPS:
+                        first_start_offset = instr.get_instr_offset() + len(instr)
+                        break
+                #at this point its kinda a guess - some refinement could probably be used here.
+
+            if first_start_offset == -1:
+                raise Exception()
+            self.__add_to_bad_instrs(math_block, first_start_offset, block, bad_instrs)
+            emu = net_emulator.DotNetEmulator(self.__method, start_offset=first_start_offset, end_offset=switch_instr.get_instr_offset(), dont_execute_cctor=True, init_open_generics_as_object=True)
+            emu.setup_method_params([])
+            worked = False
+            try:
+                emu.run_function()
+            except net_exceptions.EmulatorEndExecutionException as e:
+                worked = True
+            except:
+                #If theres any other error, there are two possibilities:
+                # First is a misidentified switch statement, second is an internal error.
+                #A misidentification is pretty likely to be caught here so I am going to raise the misidentify exception
+                #But if theres issues on switches being identified as not obfuscated that are obfuscated, this is a pretty good place to check.
+                #TODO: fix up the identification logic to better catch switch statements that are legitimate.
+                # the above is a more complete fix, will work on it at some point.
+                pass
+            if not worked:
+                raise net_exceptions.ControlFlowDeobfuscationMisidentify('Could not finish emulating the entry case.  Could be a misidentification, could be an internal error with determining start offsets.')
+            result = emu.get_stack().pop_obj()
+            base_local = emu.get_local_obj(stloc_instr.get_argument())
+            if not isinstance(result, net_emu_types.DotNetNumber) or not isinstance(base_local, net_emu_types.DotNetNumber):
+                raise Exception()
+            result = result.as_python_obj()
+            orig_base_local = base_local
+            base_local = base_local.as_python_obj()
+            switch_targets = switch_instr.get_argument()
+            if result < 0 or result >= len(switch_targets):
+                starting_offset = switch_instr.get_instr_offset() + len(switch_instr)
+            else:
+                starting_offset = switch_targets[result]
+
+            #unlink the switch block
+            new_switch_block = new_graph.get_block_by_offset(block.get_start_offset())
+            new_start_block = new_graph.get_block_by_offset(first_start_offset)
+            new_initial_block = new_graph.get_block_by_offset(starting_offset)
+            initial_block = self.__graph.get_block_by_offset(starting_offset)
+            if debug:
+                print('For the first case, the result is {} which maps to block {}'.format(result, new_initial_block))
+            #new_switch_block.clear_next()
+            if debug:
+                print('cleared out all switch nexts and prevs')
+            potential_start_block = new_graph.get_block_by_offset(start_block.get_start_offset())
+            if debug:
+                print('adding block {} to {} nexts as the initial entry of the switch.'.format(new_initial_block, potential_start_block))
+                print('new start block is {}'.format(new_start_block))
+            if new_switch_block == new_start_block:
+                nexts_added.append((potential_start_block, new_start_block, new_switch_block, new_initial_block))
+            else:
+                if len(new_start_block.get_next()) != 1:
+                    raise Exception()
+                nexts_added.append((potential_start_block, new_start_block, new_start_block.get_next()[0], new_initial_block))
+            already_handled = {new_start_block.get_start_offset(): [base_local]}
+            stloc_num = stloc_instr.get_argument()
+            self.__switch_block_walker(initial_block, new_switch_block, switch_instr, offsets_grouped, new_graph, already_handled, emu, orig_base_local, stloc_num, nexts_added)
+        start_mappings = self.__find_switch_case_mappings(new_switch_block, offsets_grouped)
+        end_block_handled = set()
+        for end_block, start_blocks in list(start_mappings.items()):
+            start_mappings[end_block] = [b for b in start_blocks if new_switch_block in b.get_prev()]
+        nexts_grouped = dict()
+        for new_end_block, block_to_change, old_next, new_next_block in nexts_added:
+            if new_end_block not in nexts_grouped:
+                nexts_grouped[new_end_block] = list()
+            nexts_grouped[new_end_block].append((block_to_change, new_next_block))
+
+        if debug:
+            print('Bad instruction dump:')
+            for bad_instr in bad_instrs:
+                print(hex(bad_instr))
+        if debug:
+            print('Start mappings')
+            for end_blk, start_blocks in start_mappings.items():
+                print('end blk {} maps to start blocks {}'.format(end_blk, start_blocks))
+
+        for new_end_block, block_to_change, old_next, new_next_block in nexts_added:
+            if new_end_block not in start_mappings:
+                #TODO: Go through all these ControlFlowDeobfuscationMisidentify exceptions and try to tighten __is_target_switch() to prevent them from hitting.
+                raise net_exceptions.ControlFlowDeobfuscationMisidentify('new end block isnt in start mappings.  This could either be an internal error or a misidentify.')
+            start_blocks = start_mappings[new_end_block]
+            if debug:
+                print('new_end_block={}, block_to_change={}, old_next={}, new_next_block={}, start_blocks={}'.format(new_end_block, block_to_change, old_next, new_next_block, start_blocks))
+            if len(start_blocks) > 0:
+                for block_after_switch in start_blocks:
+                    if new_switch_block.has_next(block_after_switch):
+                        if block_to_change == new_switch_block and block_after_switch == old_next:
+                            continue
+                        new_switch_block.remove_next(block_after_switch)
+            if block_to_change.has_next(old_next):
+                if debug:
+                    print('For block {}, replacing next {} with new next {}'.format(block_to_change, old_next, new_next_block))
+                block_to_change.replace_next(old_next, new_next_block)
+            
+            end_block_handled.add(new_end_block)
+            if new_switch_block.has_prev(new_end_block):
+                new_switch_block.remove_prev(new_end_block)
+        if debug:
+            print('Start mappings dump')
+            print(start_mappings)
+            print('before new switch block', new_switch_block, new_switch_block.get_prev(), new_switch_block.get_next())
+        #clean off the old switch block.
+        #now remove any instructions that we know are junk.
+        for blk in new_graph.blocks():
+            amt_deleted = 0
+            instrs = list(blk.get_instrs())
+            for x in range(len(instrs)):
+                instr = instrs[x]
+                if instr.get_instr_offset() in bad_instrs and ((not instr.is_branch() and not instr.is_absolute_jmp()) or instr.get_opcode() == Opcodes.Switch):
+                    blk.remove_instrs(x - amt_deleted, x - amt_deleted + 1)
+                    amt_deleted += 1
+        switch_nexts = list()
+        for new_end_block, block_to_change, old_next, new_next in nexts_added:
+            if block_to_change == new_switch_block:
+                switch_nexts.append(new_next)
+
+        for nxt in list(new_switch_block.get_next()):
+            if nxt in switch_nexts:
+                switch_nexts.remove(nxt)
+            else:
+                new_switch_block.remove_next(nxt)
+        
+        if debug:
+            print('after new switch block', new_switch_block, new_switch_block.get_prev(), new_switch_block.get_next())
+
+        for blk in list(new_graph.blocks()):
+            if len(blk.get_next()) == 0 and len(blk.get_prev()) == 0 and not blk.is_block_start():
+                new_graph.unregister_block(blk.get_start_offset())
+
+            elif len(blk.get_prev()) == 0 and not blk.is_block_start():
+                new_graph.unregister_block(blk.get_start_offset())
+            elif not blk.is_block_start() and len(blk.get_instrs()) == 0 and len(blk.get_prev()) == len(blk.get_next()) == 1:
+                if blk.get_prev()[0] == blk.get_next()[0] == blk:
+                    new_graph.unregister_block(blk.get_start_offset())
+        new_graph.repopulate_prevs()
+        #here check if theres any blocks that have 2 nexts but only link back to 1 block and have no instrs.
+        for block in list(new_graph.blocks()):
+            if not self.__has_path_to_entry(block):
+                block.clear_next()
+                block.clear_prev()
+                new_graph.unregister_block(block.get_start_offset())
+
+        if debug:
+            new_graph.dump_block_relations()
+        new_graph.validate_blocks()
+        #For the switch block, prune any previous that are illegal.
+        #new_graph.validate_blocks()
+        #First remove any useless blocks.
+        #new_graph.repopulate_prevs()
+        blocks = list(new_graph.blocks())
+        removed_blocks = list()
+        #if a block only has one next block and no jump, merge them.
+        for blk in blocks:
+            if blk.get_start_offset() in removed_blocks:
+                continue
+            last_instr = blk.get_last_instr()
+            if last_instr is not None:
+                last_op = last_instr.get_opcode()
+                instrs = blk.get_instrs()
+                if last_op in (Opcodes.Ret, Opcodes.Throw, Opcodes.Endfinally, Opcodes.Rethrow):
+                    continue
+                if last_instr.is_branch():
+                    continue
+
+                if last_instr.is_absolute_jmp():
+                    continue
+            if len(blk.get_prev()) == len(blk.get_next()) == len(blk.get_instrs()) == 0:
+                if new_graph.has_block(blk.get_start_offset()):
+                    removed_blocks.append(blk.get_start_offset())
+                    new_graph.unregister_block(blk.get_start_offset())
+                continue
+
+            if debug:
+                print('doing br checks for block {}'.format(blk))
+
+            nxts = blk.get_next()
+            if len(nxts) != 1:
+                print(blk, blk.get_prev(), nxts, blk.get_instrs())
+                raise Exception()
+            nxt = nxts[0]
+            if nxt.is_block_try() or nxt.is_block_catch() or nxt.is_block_finally() or nxt.is_block_filter():
+                shouldnt_remove = False
+                for cl_flags, cl_blk in nxt.get_exception_handlers():
+                    if cl_blk == nxt:
+                        shouldnt_remove = True
+                        break 
+                if shouldnt_remove:
+                    continue
+            if len(nxt.get_prev()) == 1:
+                if debug:
+                    print(1)
+                blk.remove_next(nxt)
+                blk.merge_block(nxt)
+                blk_nxts = list(nxt.get_next())
+                nxt.clear_next()
+                for n in blk_nxts:
+                    blk.add_next(n)
+                removed_blocks.append(nxt.get_start_offset())
+                new_graph.unregister_block(nxt.get_start_offset())
+            else:
+                if debug:
+                    print(2)
+                if (blk.get_start_offset() + blk.get_original_length()) == nxt.get_start_offset():
+                    if debug:
+                        print(3)
+                    if last_instr is None:
+                        for prev_blk in list(blk.get_prev()):
+                            prev_blk.replace_next(blk, nxt)
+                        blk.remove_next(nxt)
+                        new_graph.unregister_block(blk.get_start_offset())
+                        if debug:
+                            print(4)
+                        removed_blocks.append(blk.get_start_offset())
+                    continue
+                if not blk.is_block_try() and not blk.is_block_catch() and not blk.is_block_finally() and not blk.is_block_filter():
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Br)
+                else:
+                    new_instr = self.__disasm.emit_instruction(Opcodes.Leave)
+                target = nxt.get_start_offset() - (blk.get_start_offset() + blk.get_current_size()) - 5
+                new_instr.setup_instr_size(5)
+                ins_index = blk.get_start_index()
+                if last_instr is not None:
+                    ins_index = last_instr.get_instr_index() + 1
+                new_instr.setup_instr_offset(blk.get_start_offset() + blk.get_current_size(), ins_index)
+                new_instr.setup_arguments_from_int32(target)
+                blk.add_instr(new_instr)
+        new_graph.validate_blocks()
+
+        #lastly update all the offsets for branches
+        for blk in new_graph.blocks():
+            last_instr = blk.get_last_instr()
+            if last_instr is None:
+                continue
+            last_op = last_instr.get_opcode()
+            if last_instr.is_absolute_jmp():
+                if len(blk.get_next()) != 1:
+                    raise Exception()
+                nxt = blk.get_next()[0]
+                argument = nxt.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                last_instr.setup_arguments_from_int32(argument)
+            else:
+                if last_instr.is_branch():
+                    if last_instr.get_opcode() == Opcodes.Switch:
+                        args = list()
+                        nxts = blk.get_next()
+                        for x in range(len(nxts) - 1): #last case is fallthrough
+                            target = nxts[x]
+                            argument = target.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                            args.append(argument)
+                        last_instr.setup_arguments_from_argslist(args)
+                    else:
+                        if len(blk.get_next()) != 2:
+                            raise Exception()
+                        nxt = blk.get_next()[1]
+                        argument = nxt.get_start_offset() - last_instr.get_instr_offset() - len(last_instr)
+                        last_instr.setup_arguments_from_int32(argument)
+        new_graph.validate_blocks()
+        new_graph.sort_blocks()
+
+        new_analyzer = GraphAnalyzer(self.__method, new_graph)
+        new_analyzer.repair_blocks()
+        new_graph.update_offsets()
+        new_graph.sort_blocks()
+        new_graph.validate_blocks()
+
 
     def repair_blocks(self):
         #Goal of this method is to fixup block relationships and make it look pretty.

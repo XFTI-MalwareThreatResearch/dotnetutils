@@ -213,6 +213,7 @@ cdef class DotNetEmulator:
     cdef net_cil_disas.Instruction instr
     cdef bint is_destroyed
     cdef bint __init_open_generics_as_object
+    cdef bint do_cleanup
 
     cdef net_sigs.TypeSig get_sig_from_type(self, net_row_objects.TypeDefOrRef tdefref)
 
@@ -403,3 +404,5 @@ cdef class DotNetEmulator:
     cpdef void run_function(self) except *
 
     cdef void cleanup(self)
+
+    cpdef void set_force_instrs(self, list force_instrs)
