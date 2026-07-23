@@ -444,7 +444,7 @@ cdef class FunctionBlock:
             if self.__start_offset <= offset < (self.__start_offset + self.__original_length):
                 return True
         for instr in self.get_instrs():
-            if instr.get_instr_offset() == offset:
+            if instr.get_instr_offset() == <unsigned int>offset:
                 return True
         return False
     
@@ -560,7 +560,7 @@ cdef class FunctionBlock:
         cdef list new_next = None
         cdef FunctionBlock nxt = None
         for instr in self.__instrs:
-            if instr.get_instr_offset() == split_offset:
+            if instr.get_instr_offset() == <unsigned int>split_offset:
                 start_splitting = True
             if not start_splitting:
                 new_size += <int>len(instr)
