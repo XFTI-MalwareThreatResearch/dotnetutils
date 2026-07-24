@@ -703,35 +703,49 @@ cdef class GuidHeapObject(HeapObject):
         self.raw_data = bytearray(self.dotnetpe.get_exe_data()[self.offset:self.offset + self.size])
 
     cdef bytes read_item(self, int offset):
-        if not self.has_offset(offset) or not self.has_offset(offset + 15):
+        cdef int pos = (offset-1) * 16;
+        if not self.has_offset(pos) or not self.has_offset(pos + 15):
             return None
-        return bytes(self.raw_data[offset:offset+16])
+        return bytes(self.raw_data[pos:pos+16])
 
     cpdef object get_item(self, int offset):
         return self.read_item(offset)
 
     cpdef int del_item(self, int offset):
+        cdef int pos = (offset-1) * 16;
         cdef int difference = -16
         cdef int off = 0
         cdef uint32_t va_addr = 0
-        if not self.has_offset(offset):
+        if not self.has_offset(pos):
             raise net_exceptions.InvalidArgumentsException()
         if not self.is_offset_referenced(offset):
             self.update_bitmask(<int>len(self.raw_data) + difference)
-            self.raw_data = self.raw_data[:offset] + self.raw_data[offset + 16:]
-            self.update(offset, offset, difference)
+            self.raw_data = self.raw_data[:pos] + self.raw_data[pos + 16:]
+            self.update(offset, offset, -1)
             return difference
         else:
             warnings.warn('Attempting to delete a guid item that is currently referenced.')
             return 0
 
     cpdef int replace_item(self, int offset, object item):
+        cdef int pos = (offset-1) * 16;
         if len(item) != 16:
             raise net_exceptions.InvalidArgumentsException()
-        if not self.has_offset(offset):
+        if not self.has_offset(pos):
             raise net_exceptions.InvalidArgumentsException()
-        self.raw_data = self.raw_data[:offset] + item + self.raw_data[offset + 16:]
+        self.raw_data = self.raw_data[:pos] + item + self.raw_data[pos + 16:]
         return 0
+
+    cpdef int get_offset_of_item(self, object item):
+        cdef Py_ssize_t x = 0
+        cdef int pos = 0
+        cdef bytes potential_item = None
+        for x in range(len(self.raw_data) // 16):
+            pos = <int>x * 16;
+            potential_item = self.raw_data[pos:pos+16]
+            if potential_item == item:
+                return <int>x
+        return -1       
 
     cpdef int append_item(self, object item):
         if len(item) != 16:
@@ -739,14 +753,16 @@ cdef class GuidHeapObject(HeapObject):
         cdef int offset = <int>len(self.raw_data)
         cdef int potential = self.get_offset_of_item(item)
         cdef uint32_t va_addr = 0
+        if offset % 16 != 0:
+            raise net_exceptions.OperationNotSupportedException()
         if potential == -1:
             self.update_bitmask(<int>len(self.raw_data) + 16)
             self.raw_data += item
-            return offset
+            return offset // 16
         return potential
 
     cpdef int get_next_append_index(self):
-        return <int>len(self.raw_data)
+        return (<int>len(self.raw_data) // 16) + 1
 
 cdef class UserStringsHeapObject(HeapObject):
     def __init__(self, int offset, int size, bytes name, dotnetpefile.DotNetPeFile dotnetpe):
