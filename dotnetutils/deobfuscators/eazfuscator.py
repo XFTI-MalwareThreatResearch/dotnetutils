@@ -1,6 +1,6 @@
 from dotnetutils.deobfuscators.deobfuscator import Deobfuscator
 from dotnetutils import net_exceptions, net_sigs, net_emulator, net_emu_types
-from dotnetutils import net_deobfuscate_funcs
+from dotnetutils import net_patch
 from dotnetutils.net_opcodes import Opcodes
 
 
@@ -92,6 +92,10 @@ class Eazfuscator(Deobfuscator):
         
     def deobfuscate(self, dotnet, ctx):
         print('Removing eazfuscator String obfuscation')
+        if not dotnet.has_heap('#US'):
+            net_patch.insert_blank_userstrings(dotnet)
+            if not dotnet.has_heap('#US'):
+                raise Exception('Internal error adding #US stream')
         if not self.remove_string_obfuscation(dotnet):
             return True
         dotnet.add_string('DNU_EAZFUSCATOR_DEOB')

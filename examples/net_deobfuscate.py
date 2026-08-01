@@ -37,6 +37,7 @@ def main():
             print('Not a dotnet file.')
             exit(0)
     else:
+        print(obf_exe)
         if not os.path.isdir(obf_exe):
             print('invalid args')
             exit(0)
