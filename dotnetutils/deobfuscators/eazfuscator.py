@@ -70,7 +70,6 @@ class Eazfuscator(Deobfuscator):
             new_emu = emu.spawn_new_emulator(xfm, start_offset=start_offset, end_offset=end_offset, dont_execute_first_cctor=True)
             worked = False
             try:
-                #new_emu.set_print_debugging(False, True, print_debug_methods=[3329])
                 new_emu.run_function()
             except net_exceptions.EmulatorEndExecutionException:
                 worked = True
