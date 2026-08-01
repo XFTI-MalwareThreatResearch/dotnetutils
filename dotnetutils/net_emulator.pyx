@@ -5632,7 +5632,7 @@ cdef class DotNetEmulator:
         cdef CorElementType tag2 = <CorElementType>two.tag
         cdef StackCell result = self.duplicate_cell(one)
         #first check unsigned
-        if tag1 == CorElementType.ELEMENT_TYPE_U or tag2 == CorElementType.ELEMENT_TYPE_U:
+        if tag1 != CorElementType.ELEMENT_TYPE_PTR and (tag1 == CorElementType.ELEMENT_TYPE_U or tag2 == CorElementType.ELEMENT_TYPE_U):
             if self.__is_64bit:
                 result.item.u8 -= two.item.u8
             else:

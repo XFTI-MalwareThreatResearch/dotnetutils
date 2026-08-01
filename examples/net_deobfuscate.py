@@ -4,6 +4,8 @@ import hashlib
 from dotnetutils.deobfuscators.confuserex import ConfuserExDeobfuscator
 from dotnetutils.deobfuscators.dotnetreactor import NETReactor
 from dotnetutils.deobfuscators.babel import Babel
+from dotnetutils.deobfuscators.eazfuscator import Eazfuscator
+
 from dotnetutils.deobfuscators import deobfuscator
 from dotnetutils import net_deobfuscate_funcs, net_exceptions, dotnetpefile, net_graphing, net_graph_analyzer, net_rebuilder
 
@@ -35,6 +37,7 @@ def main():
             print('Not a dotnet file.')
             exit(0)
     else:
+        print(obf_exe)
         if not os.path.isdir(obf_exe):
             print('invalid args')
             exit(0)
@@ -148,7 +151,7 @@ def main():
         """ The deob functionality is currently under development.  Currently using it mostly for testing related to control flow deobfuscation.
             They arent really optimized for speed yet, and some functions dont work.  confuserex is probably the more stable one right now.
         """
-        deobfuscators = [ConfuserExDeobfuscator, NETReactor, Babel]
+        deobfuscators = [ConfuserExDeobfuscator, NETReactor, Babel, Eazfuscator]
         if not os.path.isdir(obf_exe):
             work = [(dotnet, obf_exe)]
         else:
